@@ -13,6 +13,7 @@ The dependency-free test suite proves:
 - permits are bound to the exact intent and cannot be replayed;
 - audit-chain tampering is detected.
 - configured agent roles cannot exceed their action, resource, or cost grant.
+- a bounded domain order is bound to its full request, quote, reserved budget, and one-use permit.
 
 ```bash
 python -m unittest discover -s tests -v
@@ -45,3 +46,5 @@ Pulpo currently proves governance semantics in process. It does not yet claim du
 See [architecture](docs/ARCHITECTURE.md), [project governance](docs/GOVERNANCE.md),
 [current state](docs/CURRENT_STATE.md), [canonicalization](docs/CANONICALIZATION.md),
 and [agents and plugins](docs/AGENTS_AND_PLUGINS.md).
+The bounded transaction proof and its remaining live-execution gates are in
+[commerce proof](docs/COMMERCE_PROOF.md).

@@ -31,6 +31,11 @@ class CommerceViolation(ValueError):
     """A purchase object or state transition violated the commerce contract."""
 
 
+def _require_sha256(value: str, field: str) -> None:
+    if len(value) != 64 or value != value.lower() or any(character not in "0123456789abcdef" for character in value):
+        raise CommerceViolation(f"{field} must be a lowercase SHA-256 digest")
+
+
 @dataclass(frozen=True)
 class DomainPurchaseRequest:
     request_id: str
@@ -66,6 +71,10 @@ class DomainPurchaseRequest:
         if self.expires_at_ns <= 0:
             raise CommerceViolation("request expiration is required")
 
+    @property
+    def request_hash(self) -> str:
+        return _hash(asdict(self))
+
 
 @dataclass(frozen=True)
 class DomainQuote:
@@ -95,11 +104,17 @@ class DomainQuote:
         if self.expires_at_ns <= 0:
             raise CommerceViolation("quote expiration is required")
 
+    @property
+    def quote_hash(self) -> str:
+        return _hash(asdict(self))
+
 
 @dataclass(frozen=True)
 class DomainPurchaseOrder:
     request_id: str
+    request_hash: str
     quote_id: str
+    quote_hash: str
     principal: str
     domain: str
     registrar: str
@@ -112,8 +127,28 @@ class DomainPurchaseOrder:
     expires_at_ns: int
 
     def __post_init__(self) -> None:
-        if not self.credential_ref.startswith("credential://"):
+        if not self.request_id or not self.quote_id or not self.principal:
+            raise CommerceViolation("order identity and principal are required")
+        _require_sha256(self.request_hash, "request_hash")
+        _require_sha256(self.quote_hash, "quote_hash")
+        if not self.domain or not self.registrar:
+            raise CommerceViolation("order domain and registrar are required")
+        if self.domain != self.domain.lower() or self.registrar != self.registrar.lower():
+            raise CommerceViolation("order domain and registrar must be normalized")
+        if not 0 <= self.purchase_price_cents <= PILOT_PURCHASE_CEILING_CENTS:
+            raise CommerceViolation("order exceeds the $30 pilot boundary")
+        if self.renewal_price_cents < 0:
+            raise CommerceViolation("order renewal must be non-negative")
+        if not self.owner_ref.startswith("owner://") or self.owner_ref == "owner://":
+            raise CommerceViolation("order owner must be an opaque owner reference")
+        if len(set(self.prohibited_upsells)) != len(self.prohibited_upsells):
+            raise CommerceViolation("order prohibited upsells must be unique")
+        if any(not item or item != item.lower() for item in self.prohibited_upsells):
+            raise CommerceViolation("order prohibited upsells must be normalized")
+        if not self.credential_ref.startswith("credential://") or self.credential_ref == "credential://":
             raise CommerceViolation("credential must be an opaque credential reference")
+        if self.expires_at_ns <= 0:
+            raise CommerceViolation("order expiration is required")
 
     @property
     def order_hash(self) -> str:
@@ -165,7 +200,9 @@ def assess_quote(
     if reason == "policy_satisfied":
         order = DomainPurchaseOrder(
             request_id=request.request_id,
+            request_hash=request.request_hash,
             quote_id=quote.quote_id,
+            quote_hash=quote.quote_hash,
             principal=request.principal,
             domain=quote.domain,
             registrar=quote.registrar,
@@ -227,6 +264,13 @@ class PaymentEvidence:
     charged_cents: int
     receipt_hash: str
 
+    def __post_init__(self) -> None:
+        if not self.payment_id:
+            raise CommerceViolation("payment identifier is required")
+        if self.charged_cents < 0:
+            raise CommerceViolation("payment charge must be non-negative")
+        _require_sha256(self.receipt_hash, "receipt_hash")
+
 
 @dataclass(frozen=True)
 class DeliveryEvidence:
@@ -247,10 +291,93 @@ class VerificationEvidence:
 
 @dataclass(frozen=True)
 class Reconciliation:
+    reservation_id: str
     authorized_cents: int
     charged_cents: int
     variance_cents: int
     balanced: bool
+
+
+@dataclass(frozen=True)
+class BudgetReservation:
+    reservation_id: str
+    order_hash: str
+    reserved_cents: int
+
+
+class BudgetAccount:
+    """In-memory budget reservation state for the bounded pilot."""
+
+    def __init__(self, ceiling_cents: int = PILOT_PURCHASE_CEILING_CENTS) -> None:
+        if not 0 <= ceiling_cents <= PILOT_PURCHASE_CEILING_CENTS:
+            raise CommerceViolation("budget exceeds the $30 pilot boundary")
+        self.ceiling_cents = ceiling_cents
+        self.spent_cents = 0
+        self._active: dict[str, BudgetReservation] = {}
+        self._order_hashes: set[str] = set()
+        self._attempted: set[str] = set()
+
+    @property
+    def reserved_cents(self) -> int:
+        return sum(reservation.reserved_cents for reservation in self._active.values())
+
+    @property
+    def available_cents(self) -> int:
+        return self.ceiling_cents - self.spent_cents - self.reserved_cents
+
+    def reserve(self, order: DomainPurchaseOrder, *, now_ns: int) -> BudgetReservation:
+        if now_ns <= 0 or now_ns >= order.expires_at_ns:
+            raise CommerceViolation("order_expired")
+        if order.order_hash in self._order_hashes:
+            raise CommerceViolation("order_already_reserved")
+        if order.purchase_price_cents > self.available_cents:
+            raise CommerceViolation("insufficient_available_budget")
+        reservation_id = _hash(
+            {
+                "order_hash": order.order_hash,
+                "reserved_cents": order.purchase_price_cents,
+                "ceiling_cents": self.ceiling_cents,
+            }
+        )
+        reservation = BudgetReservation(reservation_id, order.order_hash, order.purchase_price_cents)
+        self._active[reservation_id] = reservation
+        self._order_hashes.add(order.order_hash)
+        return reservation
+
+    def require_active(self, reservation_id: str, order: DomainPurchaseOrder, *, now_ns: int) -> BudgetReservation:
+        if now_ns <= 0 or now_ns >= order.expires_at_ns:
+            raise CommerceViolation("order_expired")
+        reservation = self._active.get(reservation_id)
+        if reservation is None:
+            raise CommerceViolation("reservation_unknown_or_consumed")
+        if reservation_id in self._attempted:
+            raise CommerceViolation("reservation_already_attempted")
+        if reservation.order_hash != order.order_hash:
+            raise CommerceViolation("reservation_order_mismatch")
+        if reservation.reserved_cents != order.purchase_price_cents:
+            raise CommerceViolation("reservation_amount_mismatch")
+        return reservation
+
+    def mark_attempted(self, reservation_id: str) -> None:
+        if reservation_id not in self._active or reservation_id in self._attempted:
+            raise CommerceViolation("reservation_not_active")
+        self._attempted.add(reservation_id)
+
+    def reconcile(self, reservation_id: str, payment: PaymentEvidence) -> Reconciliation:
+        reservation = self._active.get(reservation_id)
+        if reservation is None or reservation_id not in self._attempted:
+            raise CommerceViolation("reservation_not_attempted")
+        if payment.charged_cents > reservation.reserved_cents:
+            raise CommerceViolation("charge_exceeded_reservation")
+        del self._active[reservation_id]
+        self.spent_cents += payment.charged_cents
+        return Reconciliation(
+            reservation_id=reservation_id,
+            authorized_cents=reservation.reserved_cents,
+            charged_cents=payment.charged_cents,
+            variance_cents=reservation.reserved_cents - payment.charged_cents,
+            balanced=True,
+        )
 
 
 @dataclass
@@ -279,6 +406,8 @@ class DomainCommerceExecutor:
         order: DomainPurchaseOrder,
         permit: str,
         adapter: RegistrarAdapter,
+        budget: BudgetAccount,
+        reservation_id: str,
         *,
         now_ns: int,
     ) -> CommerceOutcome:
@@ -287,12 +416,15 @@ class DomainCommerceExecutor:
         if order.order_hash in self.attempted_order_hashes:
             raise CommerceViolation("duplicate_purchase_attempt")
 
+        budget.require_active(reservation_id, order, now_ns=now_ns)
+
         intent = purchase_intent(order)
         if not kernel.consume(permit, intent):
             raise CommerceViolation("permit_rejected")
 
         # Mark before the external call.  An uncertain network outcome must be
         # reconciled, not blindly retried with a new capability.
+        budget.mark_attempted(reservation_id)
         self.attempted_order_hashes.add(order.order_hash)
         outcome = CommerceOutcome(order_hash=order.order_hash, authorized=True, capability_revoked=True)
         result = adapter.purchase(order, max_charge_cents=order.purchase_price_cents)
@@ -303,12 +435,7 @@ class DomainCommerceExecutor:
             if result.charged_cents < 0 or result.charged_cents > order.purchase_price_cents:
                 raise CommerceViolation("charge_exceeded_authorized_amount")
             outcome.payment = PaymentEvidence(result.payment_id, result.charged_cents, result.receipt_hash)
-            outcome.reconciliation = Reconciliation(
-                authorized_cents=order.purchase_price_cents,
-                charged_cents=result.charged_cents,
-                variance_cents=order.purchase_price_cents - result.charged_cents,
-                balanced=result.charged_cents <= order.purchase_price_cents,
-            )
+            outcome.reconciliation = budget.reconcile(reservation_id, outcome.payment)
 
         if result.registration_id is not None or result.domain is not None or result.registrar is not None:
             if None in (result.registration_id, result.domain, result.registrar):
@@ -325,7 +452,6 @@ def accept_delivery(
 ) -> None:
     """Accept only independently verified delivery and configuration evidence."""
 
-    outcome.verification = verification
     if outcome.payment is None:
         raise CommerceViolation("payment_not_proven")
     if outcome.delivery is None:
@@ -342,6 +468,7 @@ def accept_delivery(
         raise CommerceViolation("privacy_not_verified")
     if verification.dns_state not in {"registered", "configured"}:
         raise CommerceViolation("dns_state_not_accepted")
+    outcome.verification = verification
     outcome.accepted = True
 
 

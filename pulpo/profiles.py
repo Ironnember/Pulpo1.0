@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from .commerce import PILOT_PURCHASE_CEILING_CENTS
 from .kernel import AgentGrant
 
 
@@ -25,6 +26,12 @@ ESSENTIAL_AGENT_GRANTS = (
         allowed_actions=frozenset({"read", "test", "verify"}),
         resource_prefixes=("repo:", "evidence:", "plugin:github:"),
         max_cost=20,
+    ),
+    AgentGrant(
+        principal="agent:commerce",
+        allowed_actions=frozenset({"purchase_domain"}),
+        resource_prefixes=("commerce:domain:",),
+        max_cost=PILOT_PURCHASE_CEILING_CENTS,
     ),
 )
 

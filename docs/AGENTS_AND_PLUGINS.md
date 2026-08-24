@@ -13,8 +13,10 @@ The initial profiles are intentionally small:
 | `agent:planner` | turn source and intent into a bounded plan | `read`, `plan` | repository, docs, declared sources, and read-only GitHub |
 | `agent:builder` | implement and test an approved slice | `read`, `write`, `test` | repository only |
 | `agent:verifier` | independently challenge results and evidence | `read`, `test`, `verify` | repository, evidence, and read-only GitHub |
+| `agent:commerce` | submit one exact bounded domain order | `purchase_domain` | hashed domain orders, maximum 3,000 USD cents |
 
-No agent is a human approver. No default agent can push, deploy, enroll an
+No agent is a human approver. `agent:commerce` remains subject to the kernel's
+configured `purchase_domain` approval action. No default agent can push, deploy, enroll an
 authority credential, or widen its own policy.
 
 `AgentGrant` is enforced during the normal `GovernanceKernel.evaluate()` path.

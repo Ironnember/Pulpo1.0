@@ -26,6 +26,8 @@ is subordinate to the canonical `GovernanceKernel`:
 - the pilot ceiling cannot exceed 3,000 cents;
 - a quote is assessed deterministically with a distinct denial reason;
 - the exact resulting order is hashed into the normal Pulpo intent resource;
+- the order binds SHA-256 hashes of the complete request and complete quote;
+- an in-memory budget account reserves the exact quoted amount before permit use;
 - the normal kernel issues and consumes the one-use permit;
 - the executor marks the order attempted before the external call so an
   uncertain result must be reconciled instead of blindly retried;
@@ -33,6 +35,8 @@ is subordinate to the canonical `GovernanceKernel`:
 - a registrar adapter must receive and enforce the exact maximum charge;
 - payment, delivery, independent verification, acceptance, and continuing value
   remain separate evidence fields;
+- reconciliation consumes an attempted reservation, validates a SHA-256 receipt
+  identifier, rejects overcharge, and releases any unspent amount;
 - the proof bundle projects the existing kernel audit tip and validity rather
   than creating a second ledger.
 
@@ -77,6 +81,8 @@ semantics in process. It does not claim a completed autonomous purchase.
 Quote assessments and attempted-order guards are not yet durable denial receipts;
 they must be written through Pulpo's canonical evidence ledger before the live
 pilot. Restart-safe replay prevention is therefore still unproven.
+The current budget account is likewise an in-memory semantics proof, not a bank,
+card-network, or restart-safe financial ledger.
 
 ## First live acceptance standard
 
