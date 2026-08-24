@@ -8,7 +8,7 @@ import hmac
 import json
 import secrets
 import time
-from typing import Any
+from typing import Any, Callable
 
 from .authority import ApprovalEnvelope, ApprovalVerifier
 
@@ -23,6 +23,7 @@ class Intent:
     action: str
     resource: str
     cost: int = 0
+    session_id: str = "default"
 
 
 @dataclass(frozen=True)
@@ -79,10 +80,12 @@ class GovernanceKernel:
         policy: Policy,
         secret: bytes | None = None,
         approval_verifier: ApprovalVerifier | None = None,
+        clock: Callable[[], int] | None = None,
     ) -> None:
         self.policy = policy
         self._secret = secret or secrets.token_bytes(32)
         self._approval_verifier = approval_verifier
+        self._clock = clock or time.time_ns
         self._issued: dict[str, str] = {}
         self._spent: set[str] = set()
         self._consumed_approval_ids: set[str] = set()
@@ -113,16 +116,13 @@ class GovernanceKernel:
         }
         return sha256(_canonical(payload)).hexdigest()
 
-    def evaluate(self, intent: Intent, approved: bool = False) -> Decision:
+    def evaluate(self, intent: Intent) -> Decision:
         digest = self.intent_hash(intent)
         failure = self._policy_failure(intent)
         if failure:
             return self._decide("deny", failure, digest)
         if intent.action in self.policy.approval_actions:
-            if approved and self._approval_verifier is not None:
-                return self._decide("deny", "caller_approval_disabled", digest)
-            if not approved:
-                return self._decide("require_approval", "approval_required", digest)
+            return self._decide("require_approval", "approval_required", digest)
 
         return self._issue_permit(digest)
 
@@ -130,9 +130,6 @@ class GovernanceKernel:
         self,
         intent: Intent,
         envelope: ApprovalEnvelope,
-        *,
-        session_id: str,
-        now_ns: int,
     ) -> Decision:
         """Issue a permit only after verification by the configured authority."""
 
@@ -141,14 +138,18 @@ class GovernanceKernel:
         if failure:
             return self._decide("deny", failure, digest)
         if intent.action not in self.policy.approval_actions:
+            if not isinstance(envelope, ApprovalEnvelope):
+                return self._decide("deny", "approval_envelope_invalid", digest)
             return self._approval_decide("approval_not_required", digest, envelope)
+        if not isinstance(envelope, ApprovalEnvelope):
+            return self._decide("deny", "approval_envelope_invalid", digest)
         if self._approval_verifier is None:
             return self._approval_decide("approval_verifier_unavailable", digest, envelope)
         if not envelope.signature:
             return self._approval_decide("approval_signature_missing", digest, envelope)
         if envelope.authority_id != self._approval_verifier.authority_id:
             return self._approval_decide("approval_authority_mismatch", digest, envelope)
-        if envelope.session_id != session_id:
+        if envelope.session_id != intent.session_id:
             return self._approval_decide("approval_session_mismatch", digest, envelope)
         if envelope.principal != intent.principal:
             return self._approval_decide("approval_principal_mismatch", digest, envelope)
@@ -156,7 +157,10 @@ class GovernanceKernel:
             return self._approval_decide("approval_intent_mismatch", digest, envelope)
         if envelope.policy_hash != self.policy_hash:
             return self._approval_decide("approval_policy_mismatch", digest, envelope)
-        if now_ns <= 0 or now_ns >= envelope.expires_at_ns:
+        now_ns = self._clock()
+        if now_ns <= 0:
+            return self._approval_decide("approval_clock_invalid", digest, envelope)
+        if now_ns >= envelope.expires_at_ns:
             return self._approval_decide("approval_expired", digest, envelope)
         if envelope.approval_id in self._consumed_approval_ids:
             return self._approval_decide("approval_id_replayed", digest, envelope)
@@ -183,7 +187,7 @@ class GovernanceKernel:
         return self._issue_permit(digest, reason="verified_approval")
 
     def _policy_failure(self, intent: Intent) -> str | None:
-        if not intent.principal or not intent.action or not intent.resource:
+        if not intent.principal or not intent.session_id or not intent.action or not intent.resource:
             return "incomplete_intent"
         if intent.cost < 0 or intent.cost > self.policy.max_cost:
             return "budget_exceeded"
@@ -249,5 +253,5 @@ class GovernanceKernel:
 
     def _append(self, event: str, payload: dict[str, Any]) -> None:
         previous = self.audit[-1]["hash"] if self.audit else "0" * 64
-        body = {"event": event, "payload": payload, "previous_hash": previous, "timestamp_ns": time.time_ns()}
+        body = {"event": event, "payload": payload, "previous_hash": previous, "timestamp_ns": self._clock()}
         self.audit.append({**body, "hash": sha256(_canonical(body)).hexdigest()})

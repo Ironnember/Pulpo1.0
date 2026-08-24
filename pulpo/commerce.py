@@ -240,6 +240,7 @@ def purchase_intent(order: DomainPurchaseOrder) -> Intent:
         action="purchase_domain",
         resource=f"commerce:domain:{order.order_hash}",
         cost=order.purchase_price_cents,
+        session_id=f"commerce:{order.request_id}",
     )
 
 

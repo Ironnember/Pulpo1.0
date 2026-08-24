@@ -22,7 +22,6 @@ from pulpo.profiles import ESSENTIAL_AGENT_GRANTS
 
 
 NOW = 1_000_000
-SESSION = "commerce-proof-1"
 
 
 class CommerceTestVerifier:
@@ -40,7 +39,7 @@ def verified_approval(kernel, intent, verifier):
     unsigned = ApprovalEnvelope(
         approval_id=f"approval-{kernel.intent_hash(intent)[:12]}",
         authority_id=verifier.authority_id,
-        session_id=SESSION,
+        session_id=intent.session_id,
         principal=intent.principal,
         intent_hash=kernel.intent_hash(intent),
         policy_hash=kernel.policy_hash,
@@ -104,12 +103,13 @@ class CommerceProofTests(unittest.TestCase):
             Policy(actions, 3_000, frozenset({"purchase_domain"}), ESSENTIAL_AGENT_GRANTS),
             secret=b"test-secret",
             approval_verifier=verifier,
+            clock=lambda: NOW,
         )
         budget = BudgetAccount()
         reservation = budget.reserve(order, now_ns=NOW)
         intent = purchase_intent(order)
         envelope = verified_approval(kernel, intent, verifier)
-        permit = kernel.evaluate_with_approval(intent, envelope, session_id=SESSION, now_ns=NOW).permit
+        permit = kernel.evaluate_with_approval(intent, envelope).permit
         return kernel, budget, reservation, permit
 
     def test_exact_order_requires_approval_and_uses_one_permit(self):
@@ -120,13 +120,14 @@ class CommerceProofTests(unittest.TestCase):
             Policy(actions, 3_000, frozenset({"purchase_domain"}), ESSENTIAL_AGENT_GRANTS),
             secret=b"test-secret",
             approval_verifier=verifier,
+            clock=lambda: NOW,
         )
         intent = purchase_intent(order)
         self.assertEqual("require_approval", kernel.evaluate(intent).outcome)
         budget = BudgetAccount()
         reservation = budget.reserve(order, now_ns=NOW)
         envelope = verified_approval(kernel, intent, verifier)
-        permit = kernel.evaluate_with_approval(intent, envelope, session_id=SESSION, now_ns=NOW).permit
+        permit = kernel.evaluate_with_approval(intent, envelope).permit
         registrar = FakeRegistrar(
             RegistrarResult("payment-1", 2_000, "a" * 64, "registration-1", order.domain, order.registrar)
         )
