@@ -35,11 +35,19 @@ ceiling, complete request-and-quote hash binding, in-memory budget reservation,
 one attempted execution per order, charge reconciliation, and separation of
 authorization, payment, delivery, acceptance, and continuing value.
 
+The authority tests prove a configured external-verifier path whose signed
+envelope binds authority, approval, session, principal, exact intent, exact
+policy, nonce, and expiry. Configuring this verifier disables the legacy caller
+approval boolean for gated actions in that kernel instance. Invalid signatures,
+binding mismatch, expiry, replay, missing verifier, and verifier failure deny.
+
 ## Trust boundary
 
 The current kernel is an in-process governance semantics proof. It does not yet prove:
 
-- independently authenticated human approval—the current `approved` value is caller supplied;
+- independently authenticated human approval—the envelope verifier contract is
+  implemented, but no production signer/passkey service or isolated authority
+  principal is deployed;
 - durable permits, budgets, approval state, or audit records across restart;
 - OS-enforced filesystem, network, process, or secret isolation;
 - hostile-code containment;
@@ -47,6 +55,7 @@ The current kernel is an in-process governance semantics proof. It does not yet 
 - durable budget reservation or payment-rail enforcement—the commerce budget
   account is in memory and the registrar adapter remains a protocol/test double;
 - distributed identity or multi-principal signer separation;
+- durable approval-ID and nonce replay prevention across restart;
 - an external production workload, independent evaluation, or customer outcome;
 - production readiness.
 

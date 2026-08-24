@@ -60,8 +60,9 @@ acceptance without proving continuing value.
 ## Live transaction gate
 
 No live registrar adapter, account credential, or payment method belongs in this
-repository yet. The current kernel still accepts caller-provided `approved=True`;
-that is not independently authenticated human authority.
+repository yet. The commerce tests now use the configured external-verifier
+envelope path, which disables `approved=True` for that kernel instance. Its test
+verifier is not independently authenticated human authority.
 
 The first real purchase remains blocked until all of these are present:
 

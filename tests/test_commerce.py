@@ -1,5 +1,8 @@
+import hashlib
 import unittest
+from dataclasses import replace
 
+from pulpo.authority import ApprovalEnvelope
 from pulpo.commerce import (
     BudgetAccount,
     CommerceViolation,
@@ -19,6 +22,33 @@ from pulpo.profiles import ESSENTIAL_AGENT_GRANTS
 
 
 NOW = 1_000_000
+SESSION = "commerce-proof-1"
+
+
+class CommerceTestVerifier:
+    authority_id = "authority:test-owner"
+
+    @staticmethod
+    def signature(payload):
+        return hashlib.sha256(b"test-authority:" + payload).hexdigest()
+
+    def verify(self, payload, signature):
+        return signature == self.signature(payload)
+
+
+def verified_approval(kernel, intent, verifier):
+    unsigned = ApprovalEnvelope(
+        approval_id=f"approval-{kernel.intent_hash(intent)[:12]}",
+        authority_id=verifier.authority_id,
+        session_id=SESSION,
+        principal=intent.principal,
+        intent_hash=kernel.intent_hash(intent),
+        policy_hash=kernel.policy_hash,
+        nonce=f"nonce-{kernel.intent_hash(intent)[12:24]}",
+        expires_at_ns=NOW + 100,
+        signature="",
+    )
+    return replace(unsigned, signature=verifier.signature(unsigned.signing_bytes()))
 
 
 class FakeRegistrar:
@@ -69,27 +99,34 @@ class CommerceProofTests(unittest.TestCase):
 
     def authorized_execution(self, order):
         actions = frozenset().union(*(grant.allowed_actions for grant in ESSENTIAL_AGENT_GRANTS))
+        verifier = CommerceTestVerifier()
         kernel = GovernanceKernel(
             Policy(actions, 3_000, frozenset({"purchase_domain"}), ESSENTIAL_AGENT_GRANTS),
             secret=b"test-secret",
+            approval_verifier=verifier,
         )
         budget = BudgetAccount()
         reservation = budget.reserve(order, now_ns=NOW)
-        permit = kernel.evaluate(purchase_intent(order), approved=True).permit
+        intent = purchase_intent(order)
+        envelope = verified_approval(kernel, intent, verifier)
+        permit = kernel.evaluate_with_approval(intent, envelope, session_id=SESSION, now_ns=NOW).permit
         return kernel, budget, reservation, permit
 
     def test_exact_order_requires_approval_and_uses_one_permit(self):
         order = self.assessment().order
         actions = frozenset().union(*(grant.allowed_actions for grant in ESSENTIAL_AGENT_GRANTS))
+        verifier = CommerceTestVerifier()
         kernel = GovernanceKernel(
             Policy(actions, 3_000, frozenset({"purchase_domain"}), ESSENTIAL_AGENT_GRANTS),
             secret=b"test-secret",
+            approval_verifier=verifier,
         )
         intent = purchase_intent(order)
         self.assertEqual("require_approval", kernel.evaluate(intent).outcome)
         budget = BudgetAccount()
         reservation = budget.reserve(order, now_ns=NOW)
-        permit = kernel.evaluate(intent, approved=True).permit
+        envelope = verified_approval(kernel, intent, verifier)
+        permit = kernel.evaluate_with_approval(intent, envelope, session_id=SESSION, now_ns=NOW).permit
         registrar = FakeRegistrar(
             RegistrarResult("payment-1", 2_000, "a" * 64, "registration-1", order.domain, order.registrar)
         )
