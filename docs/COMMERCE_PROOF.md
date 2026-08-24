@@ -1,0 +1,90 @@
+# Bounded Autonomous Commerce Proof
+
+## Decision
+
+Pulpo's first external-consequence demonstration will be one low-risk digital
+procurement transaction: an approved domain purchase under a hard $30 ceiling.
+
+The proof sequence is:
+
+```text
+request -> discover -> quote -> authorize -> execute -> verify -> reconcile -> learn
+```
+
+Healthcare, governed science, quantum resources, and physical execution remain
+later consequence tiers. Commerce is first because it combines real money,
+credentials, a counterparty, changing external state, measurable delivery, and
+bounded failure in one understandable transaction.
+
+## Implemented contract proof
+
+`pulpo/commerce.py` now provides a dependency-free domain-purchase contract that
+is subordinate to the canonical `GovernanceKernel`:
+
+- a request fixes acceptable domains, purchase and renewal ceilings, registrar,
+  owner reference, privacy, prohibited upsells, expiration, and principal;
+- the pilot ceiling cannot exceed 3,000 cents;
+- a quote is assessed deterministically with a distinct denial reason;
+- the exact resulting order is hashed into the normal Pulpo intent resource;
+- the normal kernel issues and consumes the one-use permit;
+- the executor marks the order attempted before the external call so an
+  uncertain result must be reconciled instead of blindly retried;
+- credentials are opaque references, never credential material;
+- a registrar adapter must receive and enforce the exact maximum charge;
+- payment, delivery, independent verification, acceptance, and continuing value
+  remain separate evidence fields;
+- the proof bundle projects the existing kernel audit tip and validity rather
+  than creating a second ledger.
+
+The executable tests cover $30.01, unapproved domains and registrars, excessive
+renewal price, prohibited upsells, expiration, owner substitution, missing
+privacy, invalid credential references, order substitution, permit reuse,
+duplicate execution, excessive provider charge, incomplete delivery, and the
+separation of authorization, payment, delivery, acceptance, and value.
+
+## Invariant
+
+```text
+AUTHORIZED != PAID != DELIVERED != ACCEPTED != VALUABLE
+```
+
+A receipt can prove payment without delivery. Registrar output can identify a
+registration without independently proving ownership or configuration.
+Independent ownership, duration, privacy, and DNS verification can prove
+acceptance without proving continuing value.
+
+## Live transaction gate
+
+No live registrar adapter, account credential, or payment method belongs in this
+repository yet. The current kernel still accepts caller-provided `approved=True`;
+that is not independently authenticated human authority.
+
+The first real purchase remains blocked until all of these are present:
+
+1. a human approval envelope generated outside the governed worker boundary and
+   bound to the exact order hash, policy hash, principal, expiry, and nonce;
+2. a registrar-scoped credential unavailable to the planning and building
+   principals;
+3. a payment rail or virtual card that enforces the exact transaction ceiling,
+   rather than merely detecting an overcharge after payment;
+4. an adapter with discovery/quote and purchase operations separated;
+5. an independent ownership, registration-period, privacy, and DNS verifier;
+6. durable attempted-order and permit state that prevents replay across restart;
+7. an evidence bundle signed or checkpointed by an independent verifier.
+
+Until these gates pass, this tranche proves the commerce contract and denial
+semantics in process. It does not claim a completed autonomous purchase.
+Quote assessments and attempted-order guards are not yet durable denial receipts;
+they must be written through Pulpo's canonical evidence ledger before the live
+pilot. Restart-safe replay prevention is therefore still unproven.
+
+## First live acceptance standard
+
+The initial transaction is successful only if the exact approved domain is
+registered at the approved registrar, the actual charge and renewal terms stay
+within policy, the required owner receives the asset, privacy is enabled, DNS is
+in an accepted state, the capability cannot be reused, the charge reconciles,
+and an independent verifier can reproduce the proof bundle.
+
+Failure at any step must remain visible as failure. Payment alone must never be
+promoted to delivery, acceptance, or value.
