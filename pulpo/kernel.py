@@ -24,10 +24,41 @@ class Intent:
 
 
 @dataclass(frozen=True)
+class AgentGrant:
+    """Least-authority limits for one agent principal.
+
+    Resource prefixes are namespaces such as ``repo:`` or ``evidence:``.  They
+    are evaluated by the same kernel as every other policy condition; this is
+    not a second agent router.
+    """
+
+    principal: str
+    allowed_actions: frozenset[str]
+    resource_prefixes: tuple[str, ...]
+    max_cost: int
+
+    def __post_init__(self) -> None:
+        if not self.principal or not self.allowed_actions or not self.resource_prefixes:
+            raise ValueError("agent grant fields must be non-empty")
+        if any(not prefix for prefix in self.resource_prefixes):
+            raise ValueError("resource prefixes must be non-empty")
+        if self.max_cost < 0:
+            raise ValueError("agent max_cost must be non-negative")
+
+
+@dataclass(frozen=True)
 class Policy:
     allowed_actions: frozenset[str]
     max_cost: int
     approval_actions: frozenset[str] = frozenset()
+    agent_grants: tuple[AgentGrant, ...] = ()
+
+    def __post_init__(self) -> None:
+        principals = [grant.principal for grant in self.agent_grants]
+        if len(principals) != len(set(principals)):
+            raise ValueError("agent principals must be unique")
+        if any(not grant.allowed_actions.issubset(self.allowed_actions) for grant in self.agent_grants):
+            raise ValueError("agent actions must be a subset of policy actions")
 
 
 @dataclass(frozen=True)
@@ -60,6 +91,16 @@ class GovernanceKernel:
             return self._decide("deny", "budget_exceeded", digest)
         if intent.action not in self.policy.allowed_actions:
             return self._decide("deny", "action_not_allowed", digest)
+        if self.policy.agent_grants:
+            grant = next((item for item in self.policy.agent_grants if item.principal == intent.principal), None)
+            if grant is None:
+                return self._decide("deny", "unknown_principal", digest)
+            if intent.action not in grant.allowed_actions:
+                return self._decide("deny", "agent_action_not_allowed", digest)
+            if not any(intent.resource.startswith(prefix) for prefix in grant.resource_prefixes):
+                return self._decide("deny", "agent_resource_not_allowed", digest)
+            if intent.cost > grant.max_cost:
+                return self._decide("deny", "agent_budget_exceeded", digest)
         if intent.action in self.policy.approval_actions and not approved:
             return self._decide("require_approval", "approval_required", digest)
 
