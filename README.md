@@ -41,4 +41,4 @@ if decision.outcome == "allow":
 
 Pulpo currently proves governance semantics in process. It does not yet claim durable storage, network isolation, hostile-code sandboxing, distributed identity, or production readiness.
 
-See [architecture](docs/ARCHITECTURE.md) and [project governance](docs/GOVERNANCE.md).
+See [architecture](docs/ARCHITECTURE.md), [project governance](docs/GOVERNANCE.md), [current state](docs/CURRENT_STATE.md), and [canonicalization](docs/CANONICALIZATION.md).
