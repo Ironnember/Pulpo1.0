@@ -1,6 +1,7 @@
 import unittest
 
 from pulpo.commerce import (
+    BudgetAccount,
     CommerceViolation,
     DomainCommerceExecutor,
     DomainPurchaseRequest,
@@ -14,6 +15,7 @@ from pulpo.commerce import (
     record_value,
 )
 from pulpo.kernel import GovernanceKernel, Policy
+from pulpo.profiles import ESSENTIAL_AGENT_GRANTS
 
 
 NOW = 1_000_000
@@ -65,24 +67,55 @@ class CommerceProofTests(unittest.TestCase):
             now_ns=now_ns,
         )
 
+    def authorized_execution(self, order):
+        actions = frozenset().union(*(grant.allowed_actions for grant in ESSENTIAL_AGENT_GRANTS))
+        kernel = GovernanceKernel(
+            Policy(actions, 3_000, frozenset({"purchase_domain"}), ESSENTIAL_AGENT_GRANTS),
+            secret=b"test-secret",
+        )
+        budget = BudgetAccount()
+        reservation = budget.reserve(order, now_ns=NOW)
+        permit = kernel.evaluate(purchase_intent(order), approved=True).permit
+        return kernel, budget, reservation, permit
+
     def test_exact_order_requires_approval_and_uses_one_permit(self):
         order = self.assessment().order
+        actions = frozenset().union(*(grant.allowed_actions for grant in ESSENTIAL_AGENT_GRANTS))
         kernel = GovernanceKernel(
-            Policy(frozenset({"purchase_domain"}), 3_000, frozenset({"purchase_domain"})),
+            Policy(actions, 3_000, frozenset({"purchase_domain"}), ESSENTIAL_AGENT_GRANTS),
             secret=b"test-secret",
         )
         intent = purchase_intent(order)
         self.assertEqual("require_approval", kernel.evaluate(intent).outcome)
+        budget = BudgetAccount()
+        reservation = budget.reserve(order, now_ns=NOW)
         permit = kernel.evaluate(intent, approved=True).permit
         registrar = FakeRegistrar(
-            RegistrarResult("payment-1", 2_000, "receipt-hash", "registration-1", order.domain, order.registrar)
+            RegistrarResult("payment-1", 2_000, "a" * 64, "registration-1", order.domain, order.registrar)
         )
         executor = DomainCommerceExecutor()
-        outcome = executor.execute(kernel, order, permit, registrar, now_ns=NOW)
+        outcome = executor.execute(
+            kernel,
+            order,
+            permit,
+            registrar,
+            budget,
+            reservation.reservation_id,
+            now_ns=NOW,
+        )
         self.assertTrue(outcome.authorized)
         self.assertTrue(outcome.capability_revoked)
+        self.assertEqual(2_000, budget.spent_cents)
         with self.assertRaisesRegex(CommerceViolation, "duplicate"):
-            executor.execute(kernel, order, permit, registrar, now_ns=NOW)
+            executor.execute(
+                kernel,
+                order,
+                permit,
+                registrar,
+                budget,
+                reservation.reservation_id,
+                now_ns=NOW,
+            )
         self.assertEqual(1, registrar.calls)
 
     def test_hard_pilot_ceiling_denies_30_01(self):
@@ -139,20 +172,37 @@ class CommerceProofTests(unittest.TestCase):
         changed_quote = DomainQuote(**(self.quote.__dict__ | {"purchase_price_cents": 2_001, "quote_id": "quote-2"}))
         changed_order = self.assessment(quote=changed_quote).order
         kernel = GovernanceKernel(Policy(frozenset({"purchase_domain"}), 3_000), secret=b"test-secret")
+        budget = BudgetAccount()
+        reservation = budget.reserve(changed_order, now_ns=NOW)
         permit = kernel.evaluate(purchase_intent(order)).permit
         registrar = FakeRegistrar(RegistrarResult(None, None, None, None, None, None))
         with self.assertRaisesRegex(CommerceViolation, "permit_rejected"):
-            DomainCommerceExecutor().execute(kernel, changed_order, permit, registrar, now_ns=NOW)
+            DomainCommerceExecutor().execute(
+                kernel,
+                changed_order,
+                permit,
+                registrar,
+                budget,
+                reservation.reservation_id,
+                now_ns=NOW,
+            )
         self.assertEqual(0, registrar.calls)
 
     def test_authorized_paid_delivered_accepted_and_valuable_are_separate(self):
         order = self.assessment().order
-        kernel = GovernanceKernel(Policy(frozenset({"purchase_domain"}), 3_000), secret=b"test-secret")
-        permit = kernel.evaluate(purchase_intent(order)).permit
+        kernel, budget, reservation, permit = self.authorized_execution(order)
         registrar = FakeRegistrar(
-            RegistrarResult("payment-1", 1_950, "receipt-hash", None, None, None)
+            RegistrarResult("payment-1", 1_950, "b" * 64, None, None, None)
         )
-        outcome = DomainCommerceExecutor().execute(kernel, order, permit, registrar, now_ns=NOW)
+        outcome = DomainCommerceExecutor().execute(
+            kernel,
+            order,
+            permit,
+            registrar,
+            budget,
+            reservation.reservation_id,
+            now_ns=NOW,
+        )
         self.assertTrue(outcome.authorized)
         self.assertIsNotNone(outcome.payment)
         self.assertIsNone(outcome.delivery)
@@ -167,13 +217,21 @@ class CommerceProofTests(unittest.TestCase):
 
     def test_acceptance_requires_independent_ownership_period_privacy_and_dns(self):
         order = self.assessment().order
-        kernel = GovernanceKernel(Policy(frozenset({"purchase_domain"}), 3_000), secret=b"test-secret")
-        permit = kernel.evaluate(purchase_intent(order)).permit
-        result = RegistrarResult("payment-1", 2_000, "receipt-hash", "registration-1", order.domain, order.registrar)
-        outcome = DomainCommerceExecutor().execute(kernel, order, permit, FakeRegistrar(result), now_ns=NOW)
+        kernel, budget, reservation, permit = self.authorized_execution(order)
+        result = RegistrarResult("payment-1", 2_000, "c" * 64, "registration-1", order.domain, order.registrar)
+        outcome = DomainCommerceExecutor().execute(
+            kernel,
+            order,
+            permit,
+            FakeRegistrar(result),
+            budget,
+            reservation.reservation_id,
+            now_ns=NOW,
+        )
         wrong_owner = VerificationEvidence(order.domain, order.registrar, "owner://attacker", 1, True, "registered")
         with self.assertRaisesRegex(CommerceViolation, "ownership_not_verified"):
             accept_delivery(order, outcome, wrong_owner)
+        self.assertIsNone(outcome.verification)
         verified = VerificationEvidence(order.domain, order.registrar, order.owner_ref, 1, True, "configured")
         accept_delivery(order, outcome, verified)
         self.assertTrue(outcome.accepted)
@@ -183,13 +241,41 @@ class CommerceProofTests(unittest.TestCase):
 
     def test_payment_rail_rejects_provider_charge_above_exact_cap(self):
         order = self.assessment().order
-        kernel = GovernanceKernel(Policy(frozenset({"purchase_domain"}), 3_000), secret=b"test-secret")
-        permit = kernel.evaluate(purchase_intent(order)).permit
+        kernel, budget, reservation, permit = self.authorized_execution(order)
         registrar = FakeRegistrar(
-            RegistrarResult("payment-1", 2_001, "receipt-hash", "registration-1", order.domain, order.registrar)
+            RegistrarResult("payment-1", 2_001, "d" * 64, "registration-1", order.domain, order.registrar)
         )
         with self.assertRaisesRegex(CommerceViolation, "provider_charge_cap_rejected"):
-            DomainCommerceExecutor().execute(kernel, order, permit, registrar, now_ns=NOW)
+            DomainCommerceExecutor().execute(
+                kernel,
+                order,
+                permit,
+                registrar,
+                budget,
+                reservation.reservation_id,
+                now_ns=NOW,
+            )
+
+    def test_budget_reservation_rejects_duplicate_insufficient_and_mismatch(self):
+        order = self.assessment().order
+        budget = BudgetAccount(2_000)
+        reservation = budget.reserve(order, now_ns=NOW)
+        self.assertEqual(0, budget.available_cents)
+        with self.assertRaisesRegex(CommerceViolation, "already_reserved"):
+            budget.reserve(order, now_ns=NOW)
+        changed_quote = DomainQuote(**(self.quote.__dict__ | {"purchase_price_cents": 1_999, "quote_id": "quote-2"}))
+        changed_order = self.assessment(quote=changed_quote).order
+        with self.assertRaisesRegex(CommerceViolation, "order_mismatch"):
+            budget.require_active(reservation.reservation_id, changed_order, now_ns=NOW)
+        with self.assertRaisesRegex(CommerceViolation, "insufficient_available"):
+            budget.reserve(changed_order, now_ns=NOW)
+
+    def test_order_binds_complete_request_and_quote_hashes(self):
+        order = self.assessment().order
+        self.assertEqual(self.request.request_hash, order.request_hash)
+        self.assertEqual(self.quote.quote_hash, order.quote_hash)
+        with self.assertRaisesRegex(CommerceViolation, "SHA-256"):
+            type(order)(**(order.__dict__ | {"request_hash": "not-a-hash"}))
 
     def test_bundle_projects_kernel_audit_without_becoming_a_second_ledger(self):
         assessment = self.assessment()

@@ -13,6 +13,11 @@ Optional `AgentGrant` records further restrict named agent principals by action,
 resource namespace, and per-intent cost. They are evaluated inside step 2, so
 role specialization cannot bypass the canonical policy or create another router.
 
+The commerce layer remains subordinate to the kernel. It evaluates a quote,
+binds the complete request and quote to an exact order hash, reserves the quoted
+amount, and submits that hash through the normal intent and one-use permit path.
+Payment, delivery, acceptance, and value remain distinct evidence states.
+
 The kernel is deliberately small and deterministic. Adapters, APIs, persistence, model routing, and host isolation belong outside this trusted core and must earn inclusion through tests and evidence.
 
 ## Security boundary

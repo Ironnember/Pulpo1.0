@@ -50,8 +50,9 @@ class GovernanceKernelTests(unittest.TestCase):
         self.assertEqual(("deny", "unknown_principal"), (decision.outcome, decision.reason))
 
     def test_agent_role_cannot_expand_its_action_or_resource(self):
+        actions = frozenset().union(*(grant.allowed_actions for grant in ESSENTIAL_AGENT_GRANTS))
         kernel = GovernanceKernel(
-            Policy(frozenset({"read", "write", "test", "plan", "verify"}), 100, agent_grants=ESSENTIAL_AGENT_GRANTS),
+            Policy(actions, 3_000, agent_grants=ESSENTIAL_AGENT_GRANTS),
             secret=b"test-secret",
         )
         action = kernel.evaluate(Intent("agent:planner", "write", "repo:README.md"))
@@ -94,6 +95,8 @@ class GovernanceKernelTests(unittest.TestCase):
         self.assertNotIn("agent:approver", principals)
         self.assertNotIn("push", actions)
         self.assertNotIn("deploy", actions)
+        commerce = next(grant for grant in ESSENTIAL_AGENT_GRANTS if grant.principal == "agent:commerce")
+        self.assertEqual((frozenset({"purchase_domain"}), 3_000), (commerce.allowed_actions, commerce.max_cost))
 
     def test_plugin_profiles_are_declarations_not_connection_claims(self):
         ids = {profile.plugin_id for profile in ESSENTIAL_PLUGIN_PROFILES}

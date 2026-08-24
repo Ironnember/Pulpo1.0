@@ -29,6 +29,12 @@ python -m unittest discover -s tests -v
 
 Passing CI is evidence only for the commit and environment identified by that workflow run.
 
+The bounded-commerce tests additionally prove in-process semantics for exact
+domain/registrar/owner/privacy/upsell/price/renewal constraints, a USD 30 pilot
+ceiling, complete request-and-quote hash binding, in-memory budget reservation,
+one attempted execution per order, charge reconciliation, and separation of
+authorization, payment, delivery, acceptance, and continuing value.
+
 ## Trust boundary
 
 The current kernel is an in-process governance semantics proof. It does not yet prove:
@@ -38,6 +44,8 @@ The current kernel is an in-process governance semantics proof. It does not yet 
 - OS-enforced filesystem, network, process, or secret isolation;
 - hostile-code containment;
 - cumulative or metered billing enforcement;
+- durable budget reservation or payment-rail enforcement—the commerce budget
+  account is in memory and the registrar adapter remains a protocol/test double;
 - distributed identity or multi-principal signer separation;
 - an external production workload, independent evaluation, or customer outcome;
 - production readiness.
