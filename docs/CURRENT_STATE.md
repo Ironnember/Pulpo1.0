@@ -15,7 +15,8 @@ The dependency-free kernel and its executable tests currently prove these in-pro
 - incomplete intents fail closed;
 - unknown actions fail closed;
 - negative or above-policy declared cost fails closed;
-- configured high-impact actions return `require_approval` unless the caller supplies the approval input;
+- configured high-impact actions return `require_approval` unless the external
+  verifier path validates a signed approval envelope;
 - allowed intents receive permits bound to the exact intent;
 - a permit can be consumed successfully only once in the running process;
 - using a permit for a different intent fails;
@@ -37,9 +38,11 @@ authorization, payment, delivery, acceptance, and continuing value.
 
 The authority tests prove a configured external-verifier path whose signed
 envelope binds authority, approval, session, principal, exact intent, exact
-policy, nonce, and expiry. Configuring this verifier disables the legacy caller
-approval boolean for gated actions in that kernel instance. Invalid signatures,
-binding mismatch, expiry, replay, missing verifier, and verifier failure deny.
+policy, nonce, and expiry. The caller approval boolean is absent for every
+kernel; session is part of the intent; and the authorization caller cannot
+override the kernel time used for expiry. Invalid signatures, malformed
+envelopes, binding mismatch, expiry, replay, missing verifier, and verifier
+failure deny.
 
 ## Trust boundary
 
@@ -59,7 +62,12 @@ The current kernel is an in-process governance semantics proof. It does not yet 
 - an external production workload, independent evaluation, or customer outcome;
 - production readiness.
 
-External language must therefore say **in-process governance kernel**, **explicit approval input**, **one-use in-process permit**, and **tamper-evident in-memory audit chain**. Stronger claims require separate implementation and evidence.
+External language must therefore say **in-process governance kernel**,
+**external-verifier approval-envelope contract**, **one-use in-process permit**,
+and **tamper-evident in-memory audit chain**. It must not claim independent
+human authority until signer, verifier, clock, and trust bootstrap separation is
+deployed and tested. Stronger claims require separate implementation and
+evidence.
 
 ## Forward-development rule
 
@@ -70,7 +78,8 @@ Do not bulk-import the legacy repository, generated evidence, local runtime stat
 ## Priority proof sequence
 
 1. Keep the minimal kernel and dependency-free CI reproducible.
-2. Replace caller-supplied approval with independently authenticated authority outside the governed worker boundary.
+2. Deploy independently authenticated authority, trusted time, and verifier
+   bootstrap outside the governed worker boundary.
 3. Add durable, replay-safe state without weakening fail-closed behavior.
 4. Enforce host filesystem, network, process, and secret boundaries.
 5. Run one external workload through the complete Pulpo sequence and publish an inspectable evidence bundle.

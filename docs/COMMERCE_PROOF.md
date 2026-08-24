@@ -60,9 +60,10 @@ acceptance without proving continuing value.
 ## Live transaction gate
 
 No live registrar adapter, account credential, or payment method belongs in this
-repository yet. The commerce tests now use the configured external-verifier
-envelope path, which disables `approved=True` for that kernel instance. Its test
-verifier is not independently authenticated human authority.
+repository yet. The commerce tests use the configured external-verifier
+envelope path. Boolean approval has been removed, the session is derived from
+the request, and expiry uses the kernel's bootstrapped clock. The test verifier
+is not independently authenticated human authority.
 
 The first real purchase remains blocked until all of these are present:
 

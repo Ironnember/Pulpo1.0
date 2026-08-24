@@ -45,12 +45,13 @@ human approval once that boundary exists.
 
 ## Current boundary
 
-Kernels without a configured verifier retain the legacy caller-provided
-`approved=True` compatibility path. A verifier-configured kernel disables that
-path and accepts approval-gated work only through a verified envelope. This does
-not prove independent human identity until the verifier and signer are deployed
-outside the governed worker boundary. Plugin writes remain blocked from live use
-until that deployment evidence exists.
+The caller-provided approval boolean has been removed for every kernel.
+Approval-gated work can receive a permit only through a verified envelope, and
+the evaluation caller cannot override its session or the kernel time used for
+expiry. This does not prove independent human identity until the verifier,
+signer, clock, and trust bootstrap are deployed outside the governed worker
+boundary. Plugin writes remain blocked from live use until that deployment
+evidence exists.
 
 The legacy CryoAgent correctly detects exact repetition, short oscillation, and
 a configured depth limit in its unit tests. It is not yet imported because its

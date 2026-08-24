@@ -28,11 +28,11 @@ class GovernanceKernelTests(unittest.TestCase):
         self.assertEqual("deny", self.kernel.evaluate(Intent("agent", "delete", "repo", 0)).outcome)
         self.assertEqual("deny", self.kernel.evaluate(Intent("agent", "write", "repo", 101)).outcome)
         self.assertEqual("deny", self.kernel.evaluate(Intent("", "read", "repo", 0)).outcome)
+        self.assertEqual("deny", self.kernel.evaluate(Intent("agent", "read", "repo", 0, "")).outcome)
 
     def test_approval_is_explicit(self):
         intent = Intent("agent", "push", "origin/main", 0)
         self.assertEqual("require_approval", self.kernel.evaluate(intent).outcome)
-        self.assertEqual("allow", self.kernel.evaluate(intent, approved=True).outcome)
 
     def test_audit_chain_detects_tampering(self):
         self.kernel.evaluate(Intent("agent", "read", "repo"))

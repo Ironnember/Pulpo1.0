@@ -9,12 +9,15 @@ This repository is the clean canonical Pulpo project. The older `Iron-Ember/pulp
 The dependency-free test suite proves:
 
 - unknown, incomplete, and over-budget intents fail closed;
-- selected high-impact actions require explicit approval;
+- selected high-impact actions require a verifier-backed approval envelope;
+- caller-controlled boolean approval and authorization timestamps are absent
+  from the evaluation API;
 - permits are bound to the exact intent and cannot be replayed;
 - audit-chain tampering is detected.
 - configured agent roles cannot exceed their action, resource, or cost grant.
 - a bounded domain order is bound to its full request, quote, reserved budget, and one-use permit.
-- a configured external verifier checks approval envelopes bound to intent, policy, principal, session, nonce, and expiry.
+- a configured external verifier checks approval envelopes bound to intent,
+  policy, principal, session, nonce, and expiry using the kernel's trusted clock.
 
 ```bash
 python -m unittest discover -s tests -v
@@ -42,7 +45,10 @@ if decision.outcome == "allow":
 
 ## Boundary
 
-Pulpo currently proves governance semantics in process. It does not yet claim durable storage, network isolation, hostile-code sandboxing, distributed identity, or production readiness.
+Pulpo currently proves governance and external-verifier contract semantics in
+process. It does not yet claim an independently deployed human signer, durable
+storage, network isolation, hostile-code sandboxing, distributed identity, or
+production readiness.
 
 See [architecture](docs/ARCHITECTURE.md), [project governance](docs/GOVERNANCE.md),
 [current state](docs/CURRENT_STATE.md), [canonicalization](docs/CANONICALIZATION.md),
