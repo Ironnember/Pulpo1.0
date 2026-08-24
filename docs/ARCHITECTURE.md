@@ -9,6 +9,10 @@ Pulpo sits between an agent's intent and an external side effect.
 5. Consume the permit only for that exact intent.
 6. Append every decision and consumption attempt to a tamper-evident audit chain.
 
+Optional `AgentGrant` records further restrict named agent principals by action,
+resource namespace, and per-intent cost. They are evaluated inside step 2, so
+role specialization cannot bypass the canonical policy or create another router.
+
 The kernel is deliberately small and deterministic. Adapters, APIs, persistence, model routing, and host isolation belong outside this trusted core and must earn inclusion through tests and evidence.
 
 ## Security boundary

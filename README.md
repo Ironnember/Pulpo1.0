@@ -12,6 +12,7 @@ The dependency-free test suite proves:
 - selected high-impact actions require explicit approval;
 - permits are bound to the exact intent and cannot be replayed;
 - audit-chain tampering is detected.
+- configured agent roles cannot exceed their action, resource, or cost grant.
 
 ```bash
 python -m unittest discover -s tests -v
@@ -41,4 +42,6 @@ if decision.outcome == "allow":
 
 Pulpo currently proves governance semantics in process. It does not yet claim durable storage, network isolation, hostile-code sandboxing, distributed identity, or production readiness.
 
-See [architecture](docs/ARCHITECTURE.md), [project governance](docs/GOVERNANCE.md), [current state](docs/CURRENT_STATE.md), and [canonicalization](docs/CANONICALIZATION.md).
+See [architecture](docs/ARCHITECTURE.md), [project governance](docs/GOVERNANCE.md),
+[current state](docs/CURRENT_STATE.md), [canonicalization](docs/CANONICALIZATION.md),
+and [agents and plugins](docs/AGENTS_AND_PLUGINS.md).
