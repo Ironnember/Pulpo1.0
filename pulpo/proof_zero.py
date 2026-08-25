@@ -74,6 +74,11 @@ def project_proof_zero(entries: tuple[ProofZeroEntry, ...], *, mode: str) -> Pro
 
 
 def eligible_for_consequential_reference(entry: ProofZeroEntry) -> bool:
-    """Only verified claims may be referred onward; this never authorizes use."""
+    """Fail closed until evidence references are independently verified.
 
-    return entry.status == "verified" and bool(entry.evidence_refs)
+    ``status='verified'`` is a classification recorded by this projection, not
+    an authentication primitive. Proof Zero therefore cannot make its own
+    entries consequentially referable merely by attaching reference strings.
+    """
+
+    return False
