@@ -37,7 +37,7 @@ state backend and kernel over the same database, and proves:
 Run the complete proof with:
 
 ```bash
-python -W error -m unittest discover -s tests -v
+python3 -W error -m unittest discover -s tests -v
 ```
 
 ## Boundary still open
