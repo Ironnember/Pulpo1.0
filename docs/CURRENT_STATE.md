@@ -18,9 +18,13 @@ The dependency-free kernel and its executable tests currently prove these in-pro
 - configured high-impact actions return `require_approval` unless the external
   verifier path validates a signed approval envelope;
 - allowed intents receive permits bound to the exact intent;
-- a permit can be consumed successfully only once in the running process;
+- a permit can be consumed successfully only once, including after reopening a
+  configured SQLite state database;
 - using a permit for a different intent fails;
-- mutation of an in-memory audit record is detected by audit-chain verification.
+- mutation of an in-memory audit record is detected by audit-chain verification;
+- approval IDs, approval nonces, issued and spent permits, and audit records are
+  atomically persisted by the optional SQLite kernel-state backend;
+- persisted audit-chain tampering blocks kernel bootstrap.
 
 The standard verification command is:
 
@@ -42,7 +46,9 @@ policy, nonce, and expiry. The caller approval boolean is absent for every
 kernel; session is part of the intent; and the authorization caller cannot
 override the kernel time used for expiry. Invalid signatures, malformed
 envelopes, binding mismatch, expiry, replay, missing verifier, and verifier
-failure deny.
+failure deny. The restart proof shows approval-ID, nonce, and spent-permit replay
+remain denied after the original process closes and a new kernel opens the same
+SQLite state.
 
 ## Trust boundary
 
@@ -51,23 +57,24 @@ The current kernel is an in-process governance semantics proof. It does not yet 
 - independently authenticated human approval—the envelope verifier contract is
   implemented, but no production signer/passkey service or isolated authority
   principal is deployed;
-- durable permits, budgets, approval state, or audit records across restart;
+- durable commerce budget reservations across restart;
 - OS-enforced filesystem, network, process, or secret isolation;
 - hostile-code containment;
 - cumulative or metered billing enforcement;
 - durable budget reservation or payment-rail enforcement—the commerce budget
   account is in memory and the registrar adapter remains a protocol/test double;
 - distributed identity or multi-principal signer separation;
-- durable approval-ID and nonce replay prevention across restart;
+- protection of the SQLite state file from a hostile worker, host compromise,
+  rollback to an older valid snapshot, disk failure, or unproven backup/restore;
 - an external production workload, independent evaluation, or customer outcome;
 - production readiness.
 
-External language must therefore say **in-process governance kernel**,
-**external-verifier approval-envelope contract**, **one-use in-process permit**,
-and **tamper-evident in-memory audit chain**. It must not claim independent
-human authority until signer, verifier, clock, and trust bootstrap separation is
-deployed and tested. Stronger claims require separate implementation and
-evidence.
+External language may say **governance kernel with local restart-safe replay
+state**, **external-verifier approval-envelope contract**, **one-use durable
+permit with SQLite configured**, and **restart-verified tamper-evident audit
+chain**. It must not claim independent human authority or protected storage
+until signer, verifier, clock, trust bootstrap, and host isolation are deployed
+and tested. Stronger claims require separate implementation and evidence.
 
 ## Forward-development rule
 
@@ -80,7 +87,8 @@ Do not bulk-import the legacy repository, generated evidence, local runtime stat
 1. Keep the minimal kernel and dependency-free CI reproducible.
 2. Deploy independently authenticated authority, trusted time, and verifier
    bootstrap outside the governed worker boundary.
-3. Add durable, replay-safe state without weakening fail-closed behavior.
+3. Extend the now-proven kernel replay persistence to durable commerce budget
+   reservation without creating another ledger.
 4. Enforce host filesystem, network, process, and secret boundaries.
 5. Run one external workload through the complete Pulpo sequence and publish an inspectable evidence bundle.
 

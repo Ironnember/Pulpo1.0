@@ -23,16 +23,20 @@ expiry using its bootstrapped clock. The approval call accepts neither a session
 override nor a timestamp override. Domain-purchase intents derive their session
 from the bounded request identifier.
 
-Approval IDs and nonces are consumed when a permit is issued. Signature failure,
-binding mismatch, expiry, replay, missing verifier, and verifier exceptions all
-fail closed and append approval evidence to the canonical audit chain.
+Approval IDs and nonces are consumed atomically when a permit is issued. With
+`SQLiteKernelState`, those replay guards, the permit, and the canonical audit
+records survive restart together. Signature failure, binding mismatch, expiry,
+replay, missing verifier, and verifier exceptions all fail closed and append
+approval evidence to the same audit chain.
 
 ## What this proves
 
 The tests prove envelope binding, configured-verifier routing, replay rejection,
 permit issuance after successful verification, removal of the boolean bypass,
-trusted-clock expiry, and malformed-envelope denial in one running process. The
-commerce proof uses this path.
+trusted-clock expiry, and malformed-envelope denial. The SQLite proof reopens
+the same state and proves consumed approval IDs, nonces, and permits remain
+unusable, while persisted audit tampering blocks kernel bootstrap. The commerce
+proof uses this path but its budget state remains in memory.
 
 ## Boundary still open
 
@@ -49,7 +53,8 @@ Independent authority requires deployment evidence that:
    user verification;
 4. trusted bootstrap prevents the worker from replacing the kernel clock,
    intent session, verifier, nonce policy, or expiry policy;
-5. consumed approvals and permits survive restart transactionally;
+5. the SQLite state file is protected from the governed worker and operated with
+   deployment-grade backup and recovery evidence;
 6. verifier public material and configuration are pinned and auditable;
 7. signer failure remains fail closed.
 

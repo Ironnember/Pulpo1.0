@@ -13,7 +13,9 @@ The dependency-free test suite proves:
 - caller-controlled boolean approval and authorization timestamps are absent
   from the evaluation API;
 - permits are bound to the exact intent and cannot be replayed;
-- audit-chain tampering is detected.
+- an optional SQLite state backend preserves approval-ID, nonce, permit, and
+  audit state across process restart in the same canonical kernel;
+- persisted audit-chain tampering fails closed when the kernel restarts;
 - configured agent roles cannot exceed their action, resource, or cost grant.
 - a bounded domain order is bound to its full request, quote, reserved budget, and one-use permit.
 - a configured external verifier checks approval envelopes bound to intent,
@@ -45,10 +47,11 @@ if decision.outcome == "allow":
 
 ## Boundary
 
-Pulpo currently proves governance and external-verifier contract semantics in
-process. It does not yet claim an independently deployed human signer, durable
-storage, network isolation, hostile-code sandboxing, distributed identity, or
-production readiness.
+Pulpo currently proves governance, external-verifier contract semantics, and
+local restart-safe replay state with a dependency-free SQLite backend. It does
+not yet claim an independently deployed human signer, trusted verifier
+bootstrap, durable commerce budgets, host-storage isolation, network isolation,
+hostile-code sandboxing, distributed identity, or production readiness.
 
 See [architecture](docs/ARCHITECTURE.md), [project governance](docs/GOVERNANCE.md),
 [current state](docs/CURRENT_STATE.md), [canonicalization](docs/CANONICALIZATION.md),
@@ -57,3 +60,5 @@ The bounded transaction proof and its remaining live-execution gates are in
 [commerce proof](docs/COMMERCE_PROOF.md).
 The external approval contract and its still-open signer boundary are in
 [authority](docs/AUTHORITY.md).
+The restart-safe state proof and its storage boundary are in
+[persistence](docs/PERSISTENCE.md).
