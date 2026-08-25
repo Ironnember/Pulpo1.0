@@ -1,16 +1,21 @@
 import unittest
 
-from pulpo.decision_evidence import AgentInteraction, DecisionBoundary, evidence_projection
+from pulpo.decision_evidence import (
+    AgentInteraction,
+    DecisionBoundary,
+    attach_to_proof_bundle,
+    evidence_projection,
+)
 
 
 class DecisionEvidenceTests(unittest.TestCase):
-    def boundary(self):
+    def boundary(self, resource="commerce:domain:example.com"):
         return DecisionBoundary(
             boundary_id="boundary:purchase",
             task_id="task:1",
             principal="agent:commerce",
             proposed_action="purchase_domain",
-            resource="commerce:domain:example.com",
+            resource=resource,
             consequence_class="economic_external",
             required_evidence=("quote", "approval", "delivery"),
             approval_class="human_external",
@@ -26,6 +31,26 @@ class DecisionEvidenceTests(unittest.TestCase):
             payload_hash="a" * 64,
             boundary_hash=boundary.boundary_hash,
         )
+
+    def proof_bundle(self):
+        from pulpo.decision_evidence import _digest
+
+        order = {
+            "principal": "agent:commerce",
+            "domain": "example.com",
+            "purchase_price_cents": 2000,
+        }
+        payload = {
+            "schema": "pulpo.commerce.proof.v1",
+            "request": {"request_id": "request-1"},
+            "quote": {"quote_id": "quote-1"},
+            "assessment": {"outcome": "allow"},
+            "order": order,
+            "outcome": None,
+            "audit_valid": True,
+            "audit_tip": "f" * 64,
+        }
+        return {**payload, "bundle_hash": _digest(payload)}, order
 
     def test_boundary_hash_is_deterministic(self):
         first = self.boundary()
@@ -107,6 +132,48 @@ class DecisionEvidenceTests(unittest.TestCase):
                 consequence_class="economic_external",
                 required_evidence=(),
             )
+
+    def test_attachment_is_hash_covered_and_preserves_audit_tip(self):
+        from pulpo.decision_evidence import _digest
+
+        bundle, order = self.proof_bundle()
+        resource = f"commerce:domain:{_digest(order)}"
+        boundary = self.boundary(resource)
+        attached = attach_to_proof_bundle(bundle, boundary, (self.interaction(boundary),))
+        self.assertEqual(bundle["audit_tip"], attached["audit_tip"])
+        self.assertEqual("pulpo.decision-evidence.v1", attached["decision_evidence"]["schema"])
+        self.assertNotEqual(bundle["bundle_hash"], attached["bundle_hash"])
+        payload = {key: value for key, value in attached.items() if key != "bundle_hash"}
+        self.assertEqual(_digest(payload), attached["bundle_hash"])
+
+    def test_attachment_rejects_tampered_bundle(self):
+        bundle, order = self.proof_bundle()
+        bundle["audit_tip"] = "0" * 64
+        from pulpo.decision_evidence import _digest
+        boundary = self.boundary(f"commerce:domain:{_digest(order)}")
+        with self.assertRaisesRegex(ValueError, "hash mismatch"):
+            attach_to_proof_bundle(bundle, boundary)
+
+    def test_attachment_rejects_substituted_order_boundary(self):
+        bundle, _ = self.proof_bundle()
+        boundary = self.boundary("commerce:domain:" + "0" * 64)
+        with self.assertRaisesRegex(ValueError, "exact order"):
+            attach_to_proof_bundle(bundle, boundary)
+
+    def test_attachment_rejects_authority_substitution(self):
+        from pulpo.decision_evidence import _digest
+        bundle, order = self.proof_bundle()
+        boundary = DecisionBoundary(
+            boundary_id="boundary:purchase",
+            task_id="task:1",
+            principal="agent:planner",
+            proposed_action="purchase_domain",
+            resource=f"commerce:domain:{_digest(order)}",
+            consequence_class="economic_external",
+            required_evidence=("quote", "approval", "delivery"),
+        )
+        with self.assertRaisesRegex(ValueError, "principal"):
+            attach_to_proof_bundle(bundle, boundary)
 
 
 if __name__ == "__main__":
