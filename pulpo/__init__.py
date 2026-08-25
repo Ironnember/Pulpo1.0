@@ -1,6 +1,7 @@
 """Pulpo governed-execution kernel."""
 
 from .authority import ApprovalEnvelope, ApprovalVerifier
+from .commerce import SQLiteBudgetAccount
 from .kernel import AgentGrant, Decision, GovernanceKernel, Intent, Policy, StateIntegrityError
 from .state import InMemoryKernelState, KernelState, SQLiteKernelState
 
@@ -14,6 +15,7 @@ __all__ = [
     "Intent",
     "KernelState",
     "Policy",
+    "SQLiteBudgetAccount",
     "SQLiteKernelState",
     "StateIntegrityError",
 ]

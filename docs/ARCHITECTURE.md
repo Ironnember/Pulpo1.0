@@ -23,6 +23,10 @@ The commerce layer remains subordinate to the kernel. It evaluates a quote,
 binds the complete request and quote to an exact order hash, reserves the quoted
 amount, and submits that hash through the normal intent and one-use permit path.
 Payment, delivery, acceptance, and value remain distinct evidence states.
+`SQLiteBudgetAccount` can preserve the bounded pilot's reservation, attempted,
+reconciled, and spent state transactionally across restart and concurrent
+workers. It is operational state behind the same commerce path, not a second
+router, audit ledger, payment rail, or source of authority.
 
 Approval-gated actions require an `ApprovalVerifier` configured on the trusted
 kernel. Its signed envelope binds the exact intent and policy plus authority,

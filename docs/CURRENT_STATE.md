@@ -36,9 +36,12 @@ Passing CI is evidence only for the commit and environment identified by that wo
 
 The bounded-commerce tests additionally prove in-process semantics for exact
 domain/registrar/owner/privacy/upsell/price/renewal constraints, a USD 30 pilot
-ceiling, complete request-and-quote hash binding, in-memory budget reservation,
-one attempted execution per order, charge reconciliation, and separation of
-authorization, payment, delivery, acceptance, and continuing value.
+ceiling, complete request-and-quote hash binding, budget reservation, one
+attempted execution per order, charge reconciliation, and separation of
+authorization, payment, delivery, acceptance, and continuing value. An optional
+transactional SQLite budget store preserves reservation, attempted-order,
+reconciliation, receipt-hash, and spent state across restart and prevents two
+workers from over-reserving the same pilot ceiling.
 
 The authority tests prove a configured external-verifier path whose signed
 envelope binds authority, approval, session, principal, exact intent, exact
@@ -61,8 +64,10 @@ The current kernel is an in-process governance semantics proof. It does not yet 
 - OS-enforced filesystem, network, process, or secret isolation;
 - hostile-code containment;
 - cumulative or metered billing enforcement;
-- durable budget reservation or payment-rail enforcement—the commerce budget
-  account is in memory and the registrar adapter remains a protocol/test double;
+- payment-rail enforcement—the registrar adapter remains a protocol/test double;
+- rollback-resistant commerce storage—the SQLite budget database is durable
+  across ordinary restart but is not protected from a worker that can delete,
+  replace, write, or roll it back;
 - distributed identity or multi-principal signer separation;
 - protection of the SQLite state file from a hostile worker, host compromise,
   rollback to an older valid snapshot, disk failure, or unproven backup/restore;
