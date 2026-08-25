@@ -227,6 +227,9 @@ class SQLiteKernelState:
 
     def append(self, event: str, payload: dict[str, Any], timestamp_ns: int) -> None:
         with self._connection:
+            # Lock before reading the audit tip so overlapping kernel
+            # connections cannot append records from the same predecessor.
+            self._connection.execute("BEGIN IMMEDIATE")
             self._append(event, payload, timestamp_ns)
 
     def _append(self, event: str, payload: dict[str, Any], timestamp_ns: int) -> None:

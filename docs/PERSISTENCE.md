@@ -9,8 +9,9 @@ maintain a second evidence history.
 One SQLite transaction records a verified approval ID and nonce, its issued
 permit, the `approval_verified` record, and the allow decision. Permit
 consumption atomically marks that permit spent and appends the corresponding
-audit record. Every other decision continues to append to the same canonical
-hash chain.
+audit record. Every other decision acquires the same immediate SQLite write
+lock before reading the audit tip, so overlapping local connections cannot fork
+the canonical hash chain.
 
 At bootstrap, `GovernanceKernel` verifies every persisted audit link and record
 hash. Invalid persisted evidence raises `StateIntegrityError` before the kernel
@@ -27,8 +28,11 @@ state backend and kernel over the same database, and proves:
   its exact intent, and remains unusable after another restart;
 - the canonical audit chain continues from its pre-restart head;
 - modified persisted audit payload fails closed at the next bootstrap;
+- malformed persisted evidence raises `StateIntegrityError` at bootstrap;
 - approval consumption, permit issuance, and their audit evidence commit in one
-  database transaction.
+  database transaction;
+- a failed permit-consumption audit write rolls back the spent marker;
+- overlapping SQLite connections serialize audit-tip selection.
 
 Run the complete proof with:
 

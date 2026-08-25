@@ -93,7 +93,11 @@ class GovernanceKernel:
         self._approval_verifier = approval_verifier
         self._clock = clock or time.time_ns
         self._state = state if state is not None else InMemoryKernelState()
-        if not self.verify_audit():
+        try:
+            audit_valid = self.verify_audit()
+        except Exception as exc:
+            raise StateIntegrityError("kernel state audit chain is invalid") from exc
+        if not audit_valid:
             raise StateIntegrityError("kernel state audit chain is invalid")
 
     @property

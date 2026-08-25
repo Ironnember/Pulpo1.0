@@ -2,9 +2,13 @@ import hashlib
 import hmac
 import sqlite3
 import tempfile
+import threading
 import unittest
 from dataclasses import replace
 from pathlib import Path
+from unittest.mock import patch
+
+import pulpo.state as state_module
 
 from pulpo import (
     ApprovalEnvelope,
@@ -152,6 +156,85 @@ class RestartSafeStateTests(unittest.TestCase):
             self.assertEqual(0, connection.execute("SELECT COUNT(*) FROM permits").fetchone()[0])
             self.assertEqual(0, connection.execute("SELECT COUNT(*) FROM audit").fetchone()[0])
 
+    def test_failed_consumption_audit_rolls_back_spent_permit(self):
+        state = SQLiteKernelState(self.path)
+        self.addCleanup(state.close)
+        kernel = self.kernel(state)
+        decision = kernel.evaluate_with_approval(
+            self.intent,
+            signed_envelope(kernel, self.intent, self.verifier),
+        )
+        with sqlite3.connect(self.path) as connection:
+            connection.execute(
+                """
+                CREATE TRIGGER reject_consumed_audit
+                BEFORE INSERT ON audit
+                WHEN NEW.event = 'permit_consumed'
+                BEGIN
+                    SELECT RAISE(ABORT, 'forced consumption audit failure');
+                END
+                """
+            )
+
+        with self.assertRaisesRegex(sqlite3.IntegrityError, "forced consumption audit failure"):
+            kernel.consume(decision.permit, self.intent)
+
+        with sqlite3.connect(self.path) as connection:
+            self.assertEqual(0, connection.execute("SELECT spent FROM permits").fetchone()[0])
+            connection.execute("DROP TRIGGER reject_consumed_audit")
+        self.assertTrue(kernel.consume(decision.permit, self.intent))
+        self.assertTrue(kernel.verify_audit())
+
+    def test_overlapping_connections_serialize_audit_tip_selection(self):
+        first_record_started = threading.Event()
+        release_first_record = threading.Event()
+        second_record_started = threading.Event()
+        record_count = 0
+        record_count_lock = threading.Lock()
+        original_audit_record = state_module._audit_record
+
+        def observed_audit_record(previous_hash, event, payload, timestamp_ns):
+            nonlocal record_count
+            with record_count_lock:
+                record_count += 1
+                current_record = record_count
+            if current_record == 1:
+                first_record_started.set()
+                self.assertTrue(release_first_record.wait(2))
+            elif current_record == 2:
+                second_record_started.set()
+            return original_audit_record(previous_hash, event, payload, timestamp_ns)
+
+        errors = []
+
+        def append_from_connection(event):
+            state = SQLiteKernelState(self.path)
+            try:
+                state.append(event, {"source": event}, NOW)
+            except Exception as exc:
+                errors.append(exc)
+            finally:
+                state.close()
+
+        with patch.object(state_module, "_audit_record", observed_audit_record):
+            first = threading.Thread(target=append_from_connection, args=("first",))
+            second = threading.Thread(target=append_from_connection, args=("second",))
+            first.start()
+            self.assertTrue(first_record_started.wait(2))
+            second.start()
+            self.assertFalse(second_record_started.wait(0.1))
+            release_first_record.set()
+            first.join(2)
+            second.join(2)
+
+        self.assertFalse(first.is_alive())
+        self.assertFalse(second.is_alive())
+        self.assertEqual([], errors)
+        state = SQLiteKernelState(self.path)
+        self.addCleanup(state.close)
+        self.assertEqual(["first", "second"], [record["event"] for record in state.audit])
+        self.assertTrue(self.kernel(state).verify_audit())
+
     def test_tampered_persisted_audit_fails_closed_at_restart(self):
         state = SQLiteKernelState(self.path)
         kernel = self.kernel(state)
@@ -168,6 +251,23 @@ class RestartSafeStateTests(unittest.TestCase):
         self.addCleanup(tampered_state.close)
         with self.assertRaisesRegex(StateIntegrityError, "audit chain"):
             self.kernel(tampered_state)
+
+    def test_malformed_persisted_audit_raises_integrity_error_at_restart(self):
+        state = SQLiteKernelState(self.path)
+        kernel = self.kernel(state)
+        kernel.evaluate_with_approval(
+            self.intent,
+            signed_envelope(kernel, self.intent, self.verifier),
+        )
+        state.close()
+
+        with sqlite3.connect(self.path) as connection:
+            connection.execute("UPDATE audit SET payload_json = ? WHERE sequence = 1", ("{not-json",))
+
+        malformed_state = SQLiteKernelState(self.path)
+        self.addCleanup(malformed_state.close)
+        with self.assertRaisesRegex(StateIntegrityError, "audit chain"):
+            self.kernel(malformed_state)
 
 
 if __name__ == "__main__":
