@@ -237,9 +237,11 @@ def assess_for_consequential_use(
     *,
     memory_trusted: bool,
 ) -> LearningUseAssessment:
-    """Fail closed and, at most, refer evidence to Pulpo governance.
+    """Fail closed until independent learning-evidence verification exists.
 
-    This function never returns ``allow`` and never issues authority.
+    ``memory_trusted`` is retained only as an input-quality gate. It is not
+    sufficient to make learning consequentially referable. This function never
+    returns ``allow`` or ``refer_to_governance`` in the current proof layer.
     """
 
     if not memory_trusted:
@@ -248,4 +250,4 @@ def assess_for_consequential_use(
         return LearningUseAssessment("deny", "material_contradiction_unresolved")
     if unit.confidence != "verified":
         return LearningUseAssessment("deny", "knowledge_not_verified")
-    return LearningUseAssessment("refer_to_governance", "verified_learning_is_not_authority")
+    return LearningUseAssessment("deny", "independent_verification_not_implemented")
