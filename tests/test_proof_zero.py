@@ -22,7 +22,7 @@ class ProofZeroTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "remaining gap"):
             ProofZeroEntry("pz:4", "Hostile workers are contained", "blocked", (), "pulpo:runtime")
 
-    def test_projection_preserves_traceability(self):
+    def test_projection_preserves_traceability_without_self_verifying(self):
         entry = ProofZeroEntry(
             "pz:5",
             "Approval replay remains rejected after restart",
@@ -33,7 +33,7 @@ class ProofZeroTests(unittest.TestCase):
         projection = project_proof_zero((entry,), mode="security_review")
         self.assertEqual(entry, projection.entries[0])
         self.assertEqual(("audit:approval-consumed", "test:restart-replay"), projection.evidence_refs)
-        self.assertTrue(eligible_for_consequential_reference(entry))
+        self.assertFalse(eligible_for_consequential_reference(entry))
 
     def test_projection_cannot_change_authority(self):
         with self.assertRaisesRegex(ValueError, "cannot alter authority"):
@@ -43,6 +43,10 @@ class ProofZeroTests(unittest.TestCase):
         entry = ProofZeroEntry("pz:7", "Historical dogfood result", "recorded", ("record:dogfood",), "pulpo:history")
         projection = project_proof_zero((entry,), mode="public_founder")
         self.assertEqual("recorded", projection.entries[0].status)
+
+    def test_caller_supplied_verified_status_cannot_unlock_consequential_reference(self):
+        entry = ProofZeroEntry("pz:8", "Caller claims this is verified", "verified", ("arbitrary:ref",), "test")
+        self.assertFalse(eligible_for_consequential_reference(entry))
 
 
 if __name__ == "__main__":
