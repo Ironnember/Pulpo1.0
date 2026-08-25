@@ -15,6 +15,8 @@ The dependency-free test suite proves:
 - permits are bound to the exact intent and cannot be replayed;
 - audit-chain tampering is detected.
 - configured agent roles cannot exceed their action, resource, or cost grant.
+- learning evidence preserves provenance, scope, contradictions, and distinct
+  understanding dimensions without granting authority;
 - a bounded domain order is bound to its full request, quote, reserved budget, and one-use permit.
 - a configured external verifier checks approval envelopes bound to intent,
   policy, principal, session, nonce, and expiry using the kernel's trusted clock.
@@ -53,6 +55,8 @@ production readiness.
 See [architecture](docs/ARCHITECTURE.md), [project governance](docs/GOVERNANCE.md),
 [current state](docs/CURRENT_STATE.md), [canonicalization](docs/CANONICALIZATION.md),
 and [agents and plugins](docs/AGENTS_AND_PLUGINS.md).
+The canonical learning doctrine and its fail-closed authority boundary are in
+[Master Teacher and Index Guide](docs/MASTER_TEACHER.md).
 The bounded transaction proof and its remaining live-execution gates are in
 [commerce proof](docs/COMMERCE_PROOF.md).
 The external approval contract and its still-open signer boundary are in
