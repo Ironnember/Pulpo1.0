@@ -117,3 +117,47 @@ def evidence_projection(
         ],
         "authority_effect": "none",
     }
+
+
+def attach_to_proof_bundle(
+    bundle: dict[str, object],
+    boundary: DecisionBoundary,
+    interactions: tuple[AgentInteraction, ...] = (),
+) -> dict[str, object]:
+    """Attach decision evidence to an existing canonical proof bundle.
+
+    The incoming bundle must already be internally hash-consistent. This function
+    validates it, attaches the evidence projection, and recomputes the same bundle
+    hash over the augmented payload. It does not create or append a second receipt,
+    ledger, permit, or authority record.
+    """
+
+    if bundle.get("schema") != "pulpo.commerce.proof.v1":
+        raise ValueError("unsupported proof bundle schema")
+    supplied_hash = bundle.get("bundle_hash")
+    if not isinstance(supplied_hash, str) or len(supplied_hash) != 64:
+        raise ValueError("proof bundle hash is required")
+
+    base_payload = {key: value for key, value in bundle.items() if key != "bundle_hash"}
+    if _digest(base_payload) != supplied_hash:
+        raise ValueError("proof bundle hash mismatch")
+    if "decision_evidence" in base_payload:
+        raise ValueError("decision evidence already attached")
+
+    order = base_payload.get("order")
+    if not isinstance(order, dict):
+        raise ValueError("proof bundle requires an exact order")
+    order_hash = _digest(order)
+    expected_resource = f"commerce:domain:{order_hash}"
+    if boundary.principal != order.get("principal"):
+        raise ValueError("decision boundary principal does not match order")
+    if boundary.proposed_action != "purchase_domain":
+        raise ValueError("decision boundary action does not match commerce proof")
+    if boundary.resource != expected_resource:
+        raise ValueError("decision boundary resource does not match exact order")
+
+    augmented = {
+        **base_payload,
+        "decision_evidence": evidence_projection(boundary, interactions),
+    }
+    return {**augmented, "bundle_hash": _digest(augmented)}
