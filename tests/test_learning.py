@@ -50,12 +50,12 @@ class MasterTeacherTests(unittest.TestCase):
             (fact.kind, inference.kind, directive.kind),
         )
 
-    def test_verified_confidence_requires_verified_sources(self):
+    def test_verified_confidence_requires_verification_references(self):
         source = SourceRef("source:unverified", "secondary", "document:2")
         with self.assertRaisesRegex(ValueError, "verified sources"):
             knowledge_unit(sources=(source,))
 
-    def test_source_verification_requires_evidence_reference(self):
+    def test_source_verification_marker_requires_evidence_reference(self):
         source = SourceRef("source:one", "primary", "document:1")
         self.assertFalse(source.verified)
         self.assertTrue(verified_source().verified)
@@ -131,12 +131,13 @@ class MasterTeacherTests(unittest.TestCase):
         assessment = assess_for_consequential_use(knowledge_unit(), memory_trusted=False)
         self.assertEqual(("deny", "essential_memory_untrusted"), (assessment.outcome, assessment.reason))
 
-    def test_verified_learning_is_referred_not_authorized(self):
+    def test_verification_markers_cannot_refer_learning_to_governance(self):
         assessment = assess_for_consequential_use(knowledge_unit(), memory_trusted=True)
         self.assertEqual(
-            ("refer_to_governance", "verified_learning_is_not_authority"),
+            ("deny", "independent_verification_not_implemented"),
             (assessment.outcome, assessment.reason),
         )
+        self.assertNotEqual("refer_to_governance", assessment.outcome)
         self.assertNotEqual("allow", assessment.outcome)
 
     def test_unverified_learning_is_denied(self):
