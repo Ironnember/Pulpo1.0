@@ -9,6 +9,12 @@ Pulpo sits between an agent's intent and an external side effect.
 5. Consume the permit only for that exact intent.
 6. Append every decision and consumption attempt to a tamper-evident audit chain.
 
+`KernelState` is the storage seam beneath those same steps. The default backend
+keeps the original ephemeral behavior; `SQLiteKernelState` atomically persists
+approval replay guards, issued and spent permits, and audit records. Reopening
+that state does not create another decision path or ledger: `GovernanceKernel`
+remains the only authority and its audit chain remains the canonical evidence.
+
 Optional `AgentGrant` records further restrict named agent principals by action,
 resource namespace, and per-intent cost. They are evaluated inside step 2, so
 role specialization cannot bypass the canonical policy or create another router.
@@ -25,7 +31,10 @@ is evaluated with the kernel's bootstrapped clock; neither is supplied by the
 evaluation caller. The verifier produces permit authority through the same
 kernel; it is not a second router or audit ledger.
 
-The kernel is deliberately small and deterministic. Adapters, APIs, persistence, model routing, and host isolation belong outside this trusted core and must earn inclusion through tests and evidence.
+The kernel is deliberately small and deterministic. Adapters, APIs, model
+routing, and host isolation belong outside this trusted core and must earn
+inclusion through tests and evidence. The SQLite backend proves local restart
+semantics, not trusted hosting or independent storage authority.
 
 ## Security boundary
 

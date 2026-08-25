@@ -11,6 +11,7 @@ import time
 from typing import Any, Callable
 
 from .authority import ApprovalEnvelope, ApprovalVerifier
+from .state import ApprovalUse, InMemoryKernelState, KernelState
 
 
 def _canonical(value: Any) -> bytes:
@@ -72,6 +73,10 @@ class Decision:
     permit: str | None = None
 
 
+class StateIntegrityError(RuntimeError):
+    """Raised when persisted audit state cannot be trusted at bootstrap."""
+
+
 class GovernanceKernel:
     """Evaluates intent, issues one-use permits, and maintains an audit chain."""
 
@@ -81,16 +86,19 @@ class GovernanceKernel:
         secret: bytes | None = None,
         approval_verifier: ApprovalVerifier | None = None,
         clock: Callable[[], int] | None = None,
+        state: KernelState | None = None,
     ) -> None:
         self.policy = policy
         self._secret = secret or secrets.token_bytes(32)
         self._approval_verifier = approval_verifier
         self._clock = clock or time.time_ns
-        self._issued: dict[str, str] = {}
-        self._spent: set[str] = set()
-        self._consumed_approval_ids: set[str] = set()
-        self._consumed_approval_nonces: set[str] = set()
-        self.audit: list[dict[str, Any]] = []
+        self._state = state if state is not None else InMemoryKernelState()
+        if not self.verify_audit():
+            raise StateIntegrityError("kernel state audit chain is invalid")
+
+    @property
+    def audit(self) -> list[dict[str, Any]]:
+        return self._state.audit
 
     @staticmethod
     def intent_hash(intent: Intent) -> str:
@@ -162,10 +170,9 @@ class GovernanceKernel:
             return self._approval_decide("approval_clock_invalid", digest, envelope)
         if now_ns >= envelope.expires_at_ns:
             return self._approval_decide("approval_expired", digest, envelope)
-        if envelope.approval_id in self._consumed_approval_ids:
-            return self._approval_decide("approval_id_replayed", digest, envelope)
-        if envelope.nonce in self._consumed_approval_nonces:
-            return self._approval_decide("approval_nonce_replayed", digest, envelope)
+        replay = self._state.approval_replay_reason(envelope.approval_id, envelope.nonce)
+        if replay:
+            return self._approval_decide(replay, digest, envelope)
         try:
             signature_valid = self._approval_verifier.verify(envelope.signing_bytes(), envelope.signature)
         except Exception:
@@ -173,10 +180,9 @@ class GovernanceKernel:
         if not signature_valid:
             return self._approval_decide("approval_signature_invalid", digest, envelope)
 
-        self._consumed_approval_ids.add(envelope.approval_id)
-        self._consumed_approval_nonces.add(envelope.nonce)
-        self._append(
-            "approval_verified",
+        approval = ApprovalUse(
+            envelope.approval_id,
+            envelope.nonce,
             {
                 "approval_id": envelope.approval_id,
                 "authority_id": envelope.authority_id,
@@ -184,7 +190,7 @@ class GovernanceKernel:
                 "intent_hash": digest,
             },
         )
-        return self._issue_permit(digest, reason="verified_approval")
+        return self._issue_permit(digest, reason="verified_approval", approval=approval, envelope=envelope)
 
     def _policy_failure(self, intent: Intent) -> str | None:
         if not intent.principal or not intent.session_id or not intent.action or not intent.resource:
@@ -205,13 +211,24 @@ class GovernanceKernel:
                 return "agent_budget_exceeded"
         return None
 
-    def _issue_permit(self, digest: str, *, reason: str = "policy_satisfied") -> Decision:
+    def _issue_permit(
+        self,
+        digest: str,
+        *,
+        reason: str = "policy_satisfied",
+        approval: ApprovalUse | None = None,
+        envelope: ApprovalEnvelope | None = None,
+    ) -> Decision:
         nonce = secrets.token_hex(16)
         payload = f"{digest}:{nonce}"
         signature = hmac.new(self._secret, payload.encode(), sha256).hexdigest()
         permit = f"{payload}:{signature}"
-        self._issued[permit] = digest
-        return self._decide("allow", reason, digest, permit)
+        replay = self._state.issue_permit(permit, digest, reason, self._clock(), approval)
+        if replay:
+            if envelope is None:
+                raise RuntimeError("state rejected an approval-free permit")
+            return self._approval_decide(replay, digest, envelope)
+        return Decision("allow", reason, digest, permit)
 
     def _approval_decide(self, reason: str, digest: str, envelope: ApprovalEnvelope) -> Decision:
         self._append(
@@ -228,11 +245,7 @@ class GovernanceKernel:
 
     def consume(self, permit: str, intent: Intent) -> bool:
         digest = self.intent_hash(intent)
-        valid = self._issued.get(permit) == digest and permit not in self._spent
-        if valid:
-            self._spent.add(permit)
-        self._append("permit_consumed" if valid else "permit_rejected", {"intent_hash": digest})
-        return valid
+        return self._state.consume_permit(permit, digest, self._clock())
 
     def verify_audit(self) -> bool:
         previous = "0" * 64
@@ -252,6 +265,4 @@ class GovernanceKernel:
         return decision
 
     def _append(self, event: str, payload: dict[str, Any]) -> None:
-        previous = self.audit[-1]["hash"] if self.audit else "0" * 64
-        body = {"event": event, "payload": payload, "previous_hash": previous, "timestamp_ns": self._clock()}
-        self.audit.append({**body, "hash": sha256(_canonical(body)).hexdigest()})
+        self._state.append(event, payload, self._clock())
