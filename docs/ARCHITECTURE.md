@@ -27,6 +27,12 @@ kernel; it is not a second router or audit ledger.
 
 The kernel is deliberately small and deterministic. Adapters, APIs, persistence, model routing, and host isolation belong outside this trusted core and must earn inclusion through tests and evidence.
 
+The optional Master Teacher and Index Guide contracts structure sourced claims,
+explanations, reasoning errors, mastery evidence, and proposed memory updates.
+They have no persistence, model, router, permit, or authority path. Even verified
+learning can only be referred to this governance kernel; it cannot authorize a
+consequential action. See [Master Teacher](MASTER_TEACHER.md).
+
 ## Security boundary
 
 This kernel governs authorization decisions. It is not an operating-system sandbox, network firewall, identity provider, or billing system. Those claims require separate implementations and proof.
