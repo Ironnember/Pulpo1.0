@@ -54,6 +54,13 @@ verifier contains public material only. The restart proof shows approval-ID,
 nonce, and spent-permit replay remain denied after the original process closes
 and a new kernel opens the same SQLite state.
 
+The authority deployment architecture is now owner-authorized and recorded:
+one founder-controlled single-device hardware WebAuthn credential, a separate
+offline recovery-only hardware credential, an external authority service,
+service-owned time and protected monotonic state, privacy-minimized Pulpo audit
+hashes, and separate full signature bundles. This is a selected architecture,
+not evidence that the boundary has been deployed.
+
 ## Trust boundary
 
 The current kernel is an in-process governance semantics proof. It does not yet prove:
@@ -89,8 +96,9 @@ Do not bulk-import the legacy repository, generated evidence, local runtime stat
 ## Priority proof sequence
 
 1. Keep the minimal kernel and dependency-free CI reproducible.
-2. Deploy independently authenticated authority, trusted time, and verifier
-   bootstrap outside the governed worker boundary.
+2. Implement and deploy the selected independently authenticated authority,
+   trusted time, monotonic state, and verifier bootstrap outside the governed
+   worker boundary.
 3. Extend the now-proven kernel replay persistence to durable commerce budget
    reservation without creating another ledger.
 4. Enforce host filesystem, network, process, and secret boundaries.
