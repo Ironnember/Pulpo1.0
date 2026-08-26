@@ -2,6 +2,7 @@
 
 from .authority import ApprovalEnvelope, ApprovalVerifier, AuthorityTrust, Ed25519ApprovalVerifier
 from .authority_client import AuthorityApprovalRequest, AuthorityClient, AuthorityPoll
+from .commerce import SQLiteBudgetAccount
 from .kernel import (
     AgentGrant,
     AuthorityTrustError,
@@ -29,6 +30,7 @@ __all__ = [
     "Intent",
     "KernelState",
     "Policy",
+    "SQLiteBudgetAccount",
     "SQLiteKernelState",
     "StateIntegrityError",
 ]

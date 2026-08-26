@@ -27,7 +27,10 @@ is subordinate to the canonical `GovernanceKernel`:
 - a quote is assessed deterministically with a distinct denial reason;
 - the exact resulting order is hashed into the normal Pulpo intent resource;
 - the order binds SHA-256 hashes of the complete request and complete quote;
-- an in-memory budget account reserves the exact quoted amount before permit use;
+- a budget account reserves the exact quoted amount before permit use;
+- an optional transactional SQLite implementation preserves reservation,
+  attempted-order, reconciliation, receipt-hash, and spend state across restart;
+- concurrent workers sharing that database cannot over-reserve the pilot ceiling;
 - the normal kernel issues and consumes the one-use permit;
 - the executor marks the order attempted before the external call so an
   uncertain result must be reconciled instead of blindly retried;
@@ -75,16 +78,17 @@ The first real purchase remains blocked until all of these are present:
    rather than merely detecting an overcharge after payment;
 4. an adapter with discovery/quote and purchase operations separated;
 5. an independent ownership, registration-period, privacy, and DNS verifier;
-6. durable attempted-order and permit state that prevents replay across restart;
+6. durable permit state that prevents replay across restart;
 7. an evidence bundle signed or checkpointed by an independent verifier.
 
 Until these gates pass, this tranche proves the commerce contract and denial
 semantics in process. It does not claim a completed autonomous purchase.
-Quote assessments and attempted-order guards are not yet durable denial receipts;
-they must be written through Pulpo's canonical evidence ledger before the live
-pilot. Restart-safe replay prevention is therefore still unproven.
-The current budget account is likewise an in-memory semantics proof, not a bank,
-card-network, or restart-safe financial ledger.
+Quote assessments are not yet durable denial receipts; they must be written
+through Pulpo's canonical evidence ledger before the live pilot. Permit
+consumption remains in process. `SQLiteBudgetAccount` proves restart-durable
+reservation, attempted-order, reconciliation, receipt-hash, and spend state
+only when its database path is trusted and protected. It is not a bank, card
+network, payment rail, rollback-proof financial ledger, or evidence ledger.
 
 ## First live acceptance standard
 

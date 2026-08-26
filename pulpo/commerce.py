@@ -11,6 +11,8 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass
 from hashlib import sha256
 import json
+from pathlib import Path
+import sqlite3
 from typing import Any, Protocol
 
 from .kernel import GovernanceKernel, Intent
@@ -306,6 +308,25 @@ class BudgetReservation:
     reserved_cents: int
 
 
+class BudgetState(Protocol):
+    """Budget-state interface used by the canonical commerce executor."""
+
+    def require_active(
+        self,
+        reservation_id: str,
+        order: DomainPurchaseOrder,
+        *,
+        now_ns: int,
+    ) -> BudgetReservation:
+        """Return the exact active reservation or fail closed."""
+
+    def mark_attempted(self, reservation_id: str) -> None:
+        """Atomically make an external attempt non-repeatable."""
+
+    def reconcile(self, reservation_id: str, payment: PaymentEvidence) -> Reconciliation:
+        """Consume an attempted reservation against verified payment evidence."""
+
+
 class BudgetAccount:
     """In-memory budget reservation state for the bounded pilot."""
 
@@ -381,6 +402,259 @@ class BudgetAccount:
         )
 
 
+class SQLiteBudgetAccount:
+    """Restart-durable commerce state for one bounded pilot budget.
+
+    This is operational state, not an audit ledger or payment rail.  SQLite
+    transactions make reservation, attempt, and reconciliation transitions
+    atomic across workers that share a protected database path.  The caller is
+    still responsible for placing that path outside governed-worker mutation
+    and rollback authority.
+    """
+
+    def __init__(
+        self,
+        path: str | Path,
+        ceiling_cents: int = PILOT_PURCHASE_CEILING_CENTS,
+    ) -> None:
+        if not 0 <= ceiling_cents <= PILOT_PURCHASE_CEILING_CENTS:
+            raise CommerceViolation("budget exceeds the $30 pilot boundary")
+        if not str(path) or str(path) == ":memory:":
+            raise CommerceViolation("durable budget requires a filesystem path")
+        self.path = Path(path)
+        if not self.path.parent.is_dir():
+            raise CommerceViolation("budget store parent directory must already exist")
+        if self.path.exists() and not self.path.is_file():
+            raise CommerceViolation("budget store path must be a regular file")
+        self.ceiling_cents = ceiling_cents
+        try:
+            with self._connect() as connection:
+                connection.execute("PRAGMA journal_mode=WAL")
+                connection.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS commerce_budget (
+                        singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
+                        ceiling_cents INTEGER NOT NULL CHECK (ceiling_cents >= 0),
+                        spent_cents INTEGER NOT NULL CHECK (spent_cents >= 0)
+                    )
+                    """
+                )
+                connection.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS commerce_reservations (
+                        reservation_id TEXT PRIMARY KEY,
+                        order_hash TEXT NOT NULL UNIQUE,
+                        reserved_cents INTEGER NOT NULL CHECK (reserved_cents >= 0),
+                        state TEXT NOT NULL CHECK (state IN ('active', 'attempted', 'reconciled')),
+                        charged_cents INTEGER,
+                        receipt_hash TEXT,
+                        CHECK (
+                            (state != 'reconciled' AND charged_cents IS NULL AND receipt_hash IS NULL)
+                            OR
+                            (state = 'reconciled' AND charged_cents IS NOT NULL AND receipt_hash IS NOT NULL)
+                        )
+                    )
+                    """
+                )
+                row = connection.execute(
+                    "SELECT ceiling_cents FROM commerce_budget WHERE singleton = 1"
+                ).fetchone()
+                if row is None:
+                    connection.execute(
+                        "INSERT INTO commerce_budget (singleton, ceiling_cents, spent_cents) VALUES (1, ?, 0)",
+                        (ceiling_cents,),
+                    )
+                elif row[0] != ceiling_cents:
+                    raise CommerceViolation("configured ceiling does not match durable budget")
+        except CommerceViolation:
+            raise
+        except (OSError, sqlite3.Error) as error:
+            raise CommerceViolation("durable budget store unavailable") from error
+
+    def _connect(self) -> sqlite3.Connection:
+        connection = sqlite3.connect(self.path, timeout=5.0, isolation_level=None)
+        connection.execute("PRAGMA synchronous=FULL")
+        return connection
+
+    @property
+    def spent_cents(self) -> int:
+        try:
+            with self._connect() as connection:
+                return int(
+                    connection.execute(
+                        "SELECT spent_cents FROM commerce_budget WHERE singleton = 1"
+                    ).fetchone()[0]
+                )
+        except (OSError, sqlite3.Error, TypeError) as error:
+            raise CommerceViolation("durable budget store unavailable") from error
+
+    @property
+    def reserved_cents(self) -> int:
+        try:
+            with self._connect() as connection:
+                return int(
+                    connection.execute(
+                        """
+                        SELECT COALESCE(SUM(reserved_cents), 0)
+                        FROM commerce_reservations
+                        WHERE state IN ('active', 'attempted')
+                        """
+                    ).fetchone()[0]
+                )
+        except (OSError, sqlite3.Error, TypeError) as error:
+            raise CommerceViolation("durable budget store unavailable") from error
+
+    @property
+    def available_cents(self) -> int:
+        return self.ceiling_cents - self.spent_cents - self.reserved_cents
+
+    def reserve(self, order: DomainPurchaseOrder, *, now_ns: int) -> BudgetReservation:
+        if now_ns <= 0 or now_ns >= order.expires_at_ns:
+            raise CommerceViolation("order_expired")
+        reservation_id = _hash(
+            {
+                "order_hash": order.order_hash,
+                "reserved_cents": order.purchase_price_cents,
+                "ceiling_cents": self.ceiling_cents,
+            }
+        )
+        try:
+            with self._connect() as connection:
+                connection.execute("BEGIN IMMEDIATE")
+                if connection.execute(
+                    "SELECT 1 FROM commerce_reservations WHERE order_hash = ?",
+                    (order.order_hash,),
+                ).fetchone():
+                    connection.rollback()
+                    raise CommerceViolation("order_already_reserved")
+                spent = connection.execute(
+                    "SELECT spent_cents FROM commerce_budget WHERE singleton = 1"
+                ).fetchone()[0]
+                reserved = connection.execute(
+                    """
+                    SELECT COALESCE(SUM(reserved_cents), 0)
+                    FROM commerce_reservations
+                    WHERE state IN ('active', 'attempted')
+                    """
+                ).fetchone()[0]
+                if order.purchase_price_cents > self.ceiling_cents - spent - reserved:
+                    connection.rollback()
+                    raise CommerceViolation("insufficient_available_budget")
+                connection.execute(
+                    """
+                    INSERT INTO commerce_reservations
+                        (reservation_id, order_hash, reserved_cents, state)
+                    VALUES (?, ?, ?, 'active')
+                    """,
+                    (reservation_id, order.order_hash, order.purchase_price_cents),
+                )
+                connection.commit()
+        except CommerceViolation:
+            raise
+        except (OSError, sqlite3.Error, TypeError) as error:
+            raise CommerceViolation("durable budget store unavailable") from error
+        return BudgetReservation(reservation_id, order.order_hash, order.purchase_price_cents)
+
+    def require_active(
+        self,
+        reservation_id: str,
+        order: DomainPurchaseOrder,
+        *,
+        now_ns: int,
+    ) -> BudgetReservation:
+        if now_ns <= 0 or now_ns >= order.expires_at_ns:
+            raise CommerceViolation("order_expired")
+        try:
+            with self._connect() as connection:
+                row = connection.execute(
+                    """
+                    SELECT order_hash, reserved_cents, state
+                    FROM commerce_reservations
+                    WHERE reservation_id = ?
+                    """,
+                    (reservation_id,),
+                ).fetchone()
+        except (OSError, sqlite3.Error) as error:
+            raise CommerceViolation("durable budget store unavailable") from error
+        if row is None or row[2] == "reconciled":
+            raise CommerceViolation("reservation_unknown_or_consumed")
+        if row[2] == "attempted":
+            raise CommerceViolation("reservation_already_attempted")
+        if row[0] != order.order_hash:
+            raise CommerceViolation("reservation_order_mismatch")
+        if row[1] != order.purchase_price_cents:
+            raise CommerceViolation("reservation_amount_mismatch")
+        return BudgetReservation(reservation_id, row[0], row[1])
+
+    def mark_attempted(self, reservation_id: str) -> None:
+        try:
+            with self._connect() as connection:
+                connection.execute("BEGIN IMMEDIATE")
+                cursor = connection.execute(
+                    """
+                    UPDATE commerce_reservations
+                    SET state = 'attempted'
+                    WHERE reservation_id = ? AND state = 'active'
+                    """,
+                    (reservation_id,),
+                )
+                if cursor.rowcount != 1:
+                    connection.rollback()
+                    raise CommerceViolation("reservation_not_active")
+                connection.commit()
+        except CommerceViolation:
+            raise
+        except (OSError, sqlite3.Error) as error:
+            raise CommerceViolation("durable budget store unavailable") from error
+
+    def reconcile(self, reservation_id: str, payment: PaymentEvidence) -> Reconciliation:
+        try:
+            with self._connect() as connection:
+                connection.execute("BEGIN IMMEDIATE")
+                row = connection.execute(
+                    """
+                    SELECT reserved_cents, state
+                    FROM commerce_reservations
+                    WHERE reservation_id = ?
+                    """,
+                    (reservation_id,),
+                ).fetchone()
+                if row is None or row[1] != "attempted":
+                    connection.rollback()
+                    raise CommerceViolation("reservation_not_attempted")
+                if payment.charged_cents > row[0]:
+                    connection.rollback()
+                    raise CommerceViolation("charge_exceeded_reservation")
+                connection.execute(
+                    """
+                    UPDATE commerce_reservations
+                    SET state = 'reconciled', charged_cents = ?, receipt_hash = ?
+                    WHERE reservation_id = ?
+                    """,
+                    (payment.charged_cents, payment.receipt_hash, reservation_id),
+                )
+                connection.execute(
+                    """
+                    UPDATE commerce_budget
+                    SET spent_cents = spent_cents + ?
+                    WHERE singleton = 1
+                    """,
+                    (payment.charged_cents,),
+                )
+                connection.commit()
+        except CommerceViolation:
+            raise
+        except (OSError, sqlite3.Error, TypeError) as error:
+            raise CommerceViolation("durable budget store unavailable") from error
+        return Reconciliation(
+            reservation_id=reservation_id,
+            authorized_cents=row[0],
+            charged_cents=payment.charged_cents,
+            variance_cents=row[0] - payment.charged_cents,
+            balanced=True,
+        )
+
+
 @dataclass
 class CommerceOutcome:
     order_hash: str
@@ -407,7 +681,7 @@ class DomainCommerceExecutor:
         order: DomainPurchaseOrder,
         permit: str,
         adapter: RegistrarAdapter,
-        budget: BudgetAccount,
+        budget: BudgetState,
         reservation_id: str,
         *,
         now_ns: int,
