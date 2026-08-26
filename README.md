@@ -53,7 +53,7 @@ not yet claim an independently deployed human signer, trusted verifier
 bootstrap, durable commerce budgets, host-storage isolation, network isolation,
 hostile-code sandboxing, distributed identity, or production readiness.
 
-See [architecture](docs/ARCHITECTURE.md), [project governance](docs/GOVERNANCE.md),
+See [project source baseline](docs/PROJECT_SOURCE_BASELINE.md), [architecture](docs/ARCHITECTURE.md), [project governance](docs/GOVERNANCE.md),
 [current state](docs/CURRENT_STATE.md), [canonicalization](docs/CANONICALIZATION.md),
 and [agents and plugins](docs/AGENTS_AND_PLUGINS.md).
 The bounded transaction proof and its remaining live-execution gates are in
