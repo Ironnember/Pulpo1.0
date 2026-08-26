@@ -1,7 +1,9 @@
 # Pulpo Project Source Baseline
 
-Status date: 2026-08-26  
-Canonical repository assessed: `Ironnember/Pulpo1.0` at `91424e0794f9cedce04262c458f9bad7cae5fd66`  
+Status date: 2026-08-26
+
+Canonical repository assessed: `Ironnember/Pulpo1.0` at `91424e0794f9cedce04262c458f9bad7cae5fd66`
+
 Historical repository assessed: `Iron-Ember/pulpo` at `17a6784cf0157d8ee1ec417ce33b18f4cea8cb69`
 
 ## Authority of this document
