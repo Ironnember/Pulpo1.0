@@ -25,6 +25,8 @@ The base dependency-free suite and optional asymmetric-authority suite prove:
 - a configured external verifier checks v2 approval envelopes bound to trust,
   deployment, intent, policy, principal, session, nonce, issue time, and expiry
   using the kernel's trusted clock.
+- transactional SQLite commerce state preserves reservations, attempted orders,
+  reconciliation, and spend across restart.
 
 ```bash
 python -m unittest discover -s tests -v
@@ -52,11 +54,11 @@ if decision.outcome == "allow":
 ## Boundary
 
 Pulpo currently proves governance, pinned asymmetric external-verifier contract
-semantics, and
-local restart-safe replay state with a dependency-free SQLite backend. It does
-not yet claim an independently deployed human signer, trusted verifier
-bootstrap, durable commerce budgets, host-storage isolation, network isolation,
-hostile-code sandboxing, distributed identity, or production readiness.
+semantics, local restart-safe kernel replay state, and restart-durable bounded-
+commerce state with dependency-free SQLite backends. It does not yet claim an
+independently deployed human signer, trusted verifier bootstrap, rollback-proof
+host storage, a real payment rail, network isolation, hostile-code sandboxing,
+distributed identity, or production readiness.
 
 See [project source baseline](docs/PROJECT_SOURCE_BASELINE.md), [architecture](docs/ARCHITECTURE.md), [project governance](docs/GOVERNANCE.md),
 [current state](docs/CURRENT_STATE.md), [canonicalization](docs/CANONICALIZATION.md),

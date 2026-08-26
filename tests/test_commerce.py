@@ -1,3 +1,6 @@
+from pathlib import Path
+from tempfile import TemporaryDirectory
+from threading import Barrier, Thread
 import unittest
 
 from pulpo.commerce import (
@@ -6,7 +9,9 @@ from pulpo.commerce import (
     DomainCommerceExecutor,
     DomainPurchaseRequest,
     DomainQuote,
+    PaymentEvidence,
     RegistrarResult,
+    SQLiteBudgetAccount,
     VerificationEvidence,
     accept_delivery,
     assess_quote,
@@ -32,6 +37,16 @@ class FakeRegistrar:
         if self.result.charged_cents is not None and self.result.charged_cents > max_charge_cents:
             raise CommerceViolation("provider_charge_cap_rejected")
         return self.result
+
+
+class UncertainRegistrar:
+    def __init__(self):
+        self.calls = 0
+
+    def purchase(self, order, *, max_charge_cents):
+        del order, max_charge_cents
+        self.calls += 1
+        raise ConnectionError("provider result is unknown")
 
 
 class CommerceProofTests(unittest.TestCase):
@@ -305,6 +320,115 @@ class CommerceProofTests(unittest.TestCase):
             budget.require_active(reservation.reservation_id, changed_order, now_ns=NOW)
         with self.assertRaisesRegex(CommerceViolation, "insufficient_available"):
             budget.reserve(changed_order, now_ns=NOW)
+
+    def test_durable_budget_survives_restart_and_blocks_attempt_replay(self):
+        order = self.assessment().order
+        with TemporaryDirectory() as directory:
+            path = Path(directory) / "commerce.sqlite3"
+            first = SQLiteBudgetAccount(path)
+            reservation = first.reserve(order, now_ns=NOW)
+            first.mark_attempted(reservation.reservation_id)
+
+            restarted = SQLiteBudgetAccount(path)
+            self.assertEqual(order.purchase_price_cents, restarted.reserved_cents)
+            with self.assertRaisesRegex(CommerceViolation, "already_attempted"):
+                restarted.require_active(reservation.reservation_id, order, now_ns=NOW)
+            with self.assertRaisesRegex(CommerceViolation, "already_reserved"):
+                restarted.reserve(order, now_ns=NOW)
+
+    def test_uncertain_external_result_cannot_be_blindly_retried_after_restart(self):
+        order = self.assessment().order
+        with TemporaryDirectory() as directory:
+            path = Path(directory) / "commerce.sqlite3"
+            budget = SQLiteBudgetAccount(path)
+            reservation = budget.reserve(order, now_ns=NOW)
+            kernel = GovernanceKernel(Policy(frozenset({"purchase_domain"}), 3_000), secret=b"test-secret")
+            permit = kernel.evaluate(purchase_intent(order)).permit
+            uncertain = UncertainRegistrar()
+
+            with self.assertRaisesRegex(ConnectionError, "unknown"):
+                DomainCommerceExecutor().execute(
+                    kernel,
+                    order,
+                    permit,
+                    uncertain,
+                    budget,
+                    reservation.reservation_id,
+                    now_ns=NOW,
+                )
+            self.assertEqual(1, uncertain.calls)
+
+            restarted = SQLiteBudgetAccount(path)
+            retry_kernel = GovernanceKernel(Policy(frozenset({"purchase_domain"}), 3_000), secret=b"retry-secret")
+            retry_permit = retry_kernel.evaluate(purchase_intent(order)).permit
+            should_not_run = FakeRegistrar(RegistrarResult(None, None, None, None, None, None))
+            with self.assertRaisesRegex(CommerceViolation, "already_attempted"):
+                DomainCommerceExecutor().execute(
+                    retry_kernel,
+                    order,
+                    retry_permit,
+                    should_not_run,
+                    restarted,
+                    reservation.reservation_id,
+                    now_ns=NOW,
+                )
+            self.assertEqual(0, should_not_run.calls)
+
+    def test_durable_reconciliation_survives_restart(self):
+        order = self.assessment().order
+        payment = RegistrarResult("payment-1", 1_950, "e" * 64, None, None, None)
+        with TemporaryDirectory() as directory:
+            path = Path(directory) / "commerce.sqlite3"
+            budget = SQLiteBudgetAccount(path)
+            reservation = budget.reserve(order, now_ns=NOW)
+            budget.mark_attempted(reservation.reservation_id)
+            evidence = PaymentEvidence(payment.payment_id, payment.charged_cents, payment.receipt_hash)
+            reconciliation = budget.reconcile(reservation.reservation_id, evidence)
+
+            restarted = SQLiteBudgetAccount(path)
+            self.assertEqual(1_950, restarted.spent_cents)
+            self.assertEqual(0, restarted.reserved_cents)
+            self.assertEqual(1_050, restarted.available_cents)
+            self.assertEqual(50, reconciliation.variance_cents)
+            with self.assertRaisesRegex(CommerceViolation, "not_attempted"):
+                restarted.reconcile(reservation.reservation_id, evidence)
+
+    def test_durable_budget_reservation_is_atomic_between_workers(self):
+        first_order = self.assessment().order
+        second_quote = DomainQuote(**(self.quote.__dict__ | {"domain": "pulpo-proof-two.example", "quote_id": "quote-2"}))
+        second_order = self.assessment(quote=second_quote).order
+        with TemporaryDirectory() as directory:
+            path = Path(directory) / "commerce.sqlite3"
+            SQLiteBudgetAccount(path)
+            barrier = Barrier(2)
+            results = []
+
+            def reserve(order):
+                account = SQLiteBudgetAccount(path)
+                barrier.wait()
+                try:
+                    account.reserve(order, now_ns=NOW)
+                    results.append("reserved")
+                except CommerceViolation as error:
+                    results.append(str(error))
+
+            workers = [Thread(target=reserve, args=(order,)) for order in (first_order, second_order)]
+            for worker in workers:
+                worker.start()
+            for worker in workers:
+                worker.join()
+
+            self.assertEqual(1, results.count("reserved"))
+            self.assertEqual(1, results.count("insufficient_available_budget"))
+
+    def test_durable_budget_requires_stable_path_and_ceiling(self):
+        with self.assertRaisesRegex(CommerceViolation, "filesystem path"):
+            SQLiteBudgetAccount(":memory:")
+        with TemporaryDirectory() as directory:
+            path = Path(directory) / "commerce.sqlite3"
+            SQLiteBudgetAccount(path, 2_000)
+            with self.assertRaisesRegex(CommerceViolation, "does not match"):
+                SQLiteBudgetAccount(path, 3_000)
 
     def test_order_binds_complete_request_and_quote_hashes(self):
         order = self.assessment().order
