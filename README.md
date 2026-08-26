@@ -70,5 +70,7 @@ in [independent authority proof](docs/INDEPENDENT_AUTHORITY_PROOF.md).
 The selected founder-passkey boundary and the worker-visible external service
 contract are in [authority boundary decision](docs/AUTHORITY_BOUNDARY_DECISION.md)
 and [authority service contract](docs/AUTHORITY_SERVICE_CONTRACT.md).
+The separately packaged executable reference and its remaining production gate
+are in [authority service proof](docs/AUTHORITY_SERVICE_PROOF.md).
 The restart-safe state proof and its storage boundary are in
 [persistence](docs/PERSISTENCE.md).

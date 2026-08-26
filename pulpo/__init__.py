@@ -1,6 +1,7 @@
 """Pulpo governed-execution kernel."""
 
 from .authority import ApprovalEnvelope, ApprovalVerifier, AuthorityTrust, Ed25519ApprovalVerifier
+from .authority_client import AuthorityApprovalRequest, AuthorityClient, AuthorityPoll
 from .kernel import (
     AgentGrant,
     AuthorityTrustError,
@@ -15,6 +16,9 @@ from .state import InMemoryKernelState, KernelState, SQLiteKernelState
 __all__ = [
     "AgentGrant",
     "ApprovalEnvelope",
+    "AuthorityApprovalRequest",
+    "AuthorityClient",
+    "AuthorityPoll",
     "ApprovalVerifier",
     "AuthorityTrust",
     "AuthorityTrustError",

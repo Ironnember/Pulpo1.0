@@ -36,3 +36,18 @@ jobs:
         run: python -m pip install '.[authority]'
       - name: Run asymmetric authority contract tests
         run: python -W error -m unittest tests.test_authority_crypto -v
+
+  authority-service:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install independent authority proof packages
+        run: python -m pip install '.[authority]' './authority-service[test]'
+      - name: Run independent authority service proof
+        run: PYTHONPATH=authority-service/src:. python -W error -m unittest discover -s authority-service/tests -v
+      - name: Compile independent service sources
+        run: python -m compileall -q authority-service/src authority-service/tests

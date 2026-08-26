@@ -61,6 +61,14 @@ service-owned time and protected monotonic state, privacy-minimized Pulpo audit
 hashes, and separate full signature bundles. This is a selected architecture,
 not evidence that the boundary has been deployed.
 
+The repository now contains a separately packaged executable authority-service
+reference and a worker request/poll client. Their deterministic and HTTP-level
+acceptance tests are **Verified**. The reference uses only test/in-memory state,
+evidence, signer, and WebAuthn fixtures; no production RP, credential, service
+key, protected state, or external evidence store exists. Independent deployed
+human authority therefore remains **Blocked**. See
+[the authority service proof](AUTHORITY_SERVICE_PROOF.md).
+
 ## Trust boundary
 
 The current kernel is an in-process governance semantics proof. It does not yet prove:

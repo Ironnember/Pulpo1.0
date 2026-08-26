@@ -8,8 +8,12 @@ implementation inside Pulpo.
 
 ### Request approval
 
-The worker may submit the complete unsigned `pulpo.approval.v2` payload. The
-service returns an opaque request identifier and a human-facing approval URL.
+The worker submits the exact intent display fields, Pulpo-computed intent and
+policy hashes, deployment identifier, session, and requested TTL. The service
+recomputes the intent hash and rejects any display/hash disagreement. It owns
+the approval ID, authority metadata, issue time, expiration, service nonce, and
+final unsigned `pulpo.approval.v2` signing payload. The service returns an
+opaque request identifier and a human-facing approval URL.
 The request is immutable, short-lived, deployment-bound, and single-use.
 The URL identifies the request but carries no bearer authority; opening it never
 approves an intent or creates a reusable authenticated session.
@@ -38,7 +42,8 @@ The human-facing origin must:
 2. derive a domain-separated WebAuthn challenge bound to the immutable request
    ID, Pulpo signing-payload hash, expiration, and a fresh service nonce;
 3. obtain a fresh WebAuthn assertion over that challenge with user verification
-   required;
+   required, using discoverable credential selection so the worker-visible URL
+   does not enumerate credential identifiers;
 4. verify exact challenge, origin, RP ID hash, credential status, user presence,
    user verification, and the approved hardware policy;
 5. atomically consume the challenge and advance service-owned monotonic state;
@@ -64,6 +69,11 @@ that Pulpo verifies.
 
 Administrative and recovery ceremonies require a separately authenticated
 human route that is unreachable from the governed worker identity.
+
+The worker request operation must be ingress-restricted by independently
+administered workload identity or mutual TLS. That transport identity may
+request and poll; it is not human approval authority and cannot create an
+envelope without the WebAuthn ceremony.
 
 ## Failure semantics
 
