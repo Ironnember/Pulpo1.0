@@ -2,12 +2,19 @@ import unittest
 
 from pulpo import AgentGrant, GovernanceKernel, Intent, Policy
 from pulpo.profiles import ESSENTIAL_AGENT_GRANTS, ESSENTIAL_PLUGIN_PROFILES
+from tests.authority_support import HmacTestVerifier, trust_for
 
 
 class GovernanceKernelTests(unittest.TestCase):
     def setUp(self):
+        verifier = HmacTestVerifier()
         self.kernel = GovernanceKernel(
-            Policy(frozenset({"read", "write", "push"}), 100, frozenset({"push"})),
+            Policy(
+                frozenset({"read", "write", "push"}),
+                100,
+                frozenset({"push"}),
+                authority_trust=trust_for(verifier),
+            ),
             secret=b"test-secret",
         )
 

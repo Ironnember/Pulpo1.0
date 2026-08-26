@@ -1,6 +1,6 @@
 # Pulpo Current State
 
-Status date: 2026-08-24
+Status date: 2026-08-26
 
 ## Canonical source
 
@@ -16,7 +16,8 @@ The dependency-free kernel and its executable tests currently prove these in-pro
 - unknown actions fail closed;
 - negative or above-policy declared cost fails closed;
 - configured high-impact actions return `require_approval` unless the external
-  verifier path validates a signed approval envelope;
+  verifier path matches policy-pinned public trust and validates a signed v2
+  approval envelope;
 - allowed intents receive permits bound to the exact intent;
 - a permit can be consumed successfully only once, including after reopening a
   configured SQLite state database;
@@ -41,22 +42,25 @@ one attempted execution per order, charge reconciliation, and separation of
 authorization, payment, delivery, acceptance, and continuing value.
 
 The authority tests prove a configured external-verifier path whose signed
-envelope binds authority, approval, session, principal, exact intent, exact
-policy, nonce, and expiry. The caller approval boolean is absent for every
-kernel; session is part of the intent; and the authorization caller cannot
-override the kernel time used for expiry. Invalid signatures, malformed
-envelopes, binding mismatch, expiry, replay, missing verifier, and verifier
-failure deny. The restart proof shows approval-ID, nonce, and spent-permit replay
-remain denied after the original process closes and a new kernel opens the same
-SQLite state.
+envelope binds authority, verifier, key, deployment, trust configuration,
+approval, session, principal, exact intent, exact policy, nonce, issue time, and
+expiry. Policy binds the public-key fingerprint, algorithm, and maximum approval
+lifetime. The caller approval boolean is absent for every kernel; session is
+part of the intent; and the authorization caller cannot override kernel time.
+Invalid signatures, malformed envelopes, key or deployment substitution, future
+issue time, excessive lifetime, expiry, clock rollback, replay, missing or
+untrusted verifier, and verifier failure deny. A reviewed optional Ed25519
+verifier contains public material only. The restart proof shows approval-ID,
+nonce, and spent-permit replay remain denied after the original process closes
+and a new kernel opens the same SQLite state.
 
 ## Trust boundary
 
 The current kernel is an in-process governance semantics proof. It does not yet prove:
 
-- independently authenticated human approval—the envelope verifier contract is
-  implemented, but no production signer/passkey service or isolated authority
-  principal is deployed;
+- independently authenticated human approval—the pinned asymmetric verifier
+  contract is implemented, but no production signer/passkey service, protected
+  bootstrap, or isolated authority principal is deployed;
 - durable commerce budget reservations across restart;
 - OS-enforced filesystem, network, process, or secret isolation;
 - hostile-code containment;
@@ -70,7 +74,7 @@ The current kernel is an in-process governance semantics proof. It does not yet 
 - production readiness.
 
 External language may say **governance kernel with local restart-safe replay
-state**, **external-verifier approval-envelope contract**, **one-use durable
+state**, **pinned asymmetric approval-envelope contract**, **one-use durable
 permit with SQLite configured**, and **restart-verified tamper-evident audit
 chain**. It must not claim independent human authority or protected storage
 until signer, verifier, clock, trust bootstrap, and host isolation are deployed
