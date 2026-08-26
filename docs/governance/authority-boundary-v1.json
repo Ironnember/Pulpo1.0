@@ -1,0 +1,59 @@
+{
+  "schema": "pulpo.authority-boundary-decision.v1",
+  "status": "owner_authorized_not_deployed",
+  "authorized_at": "2026-08-26",
+  "authorized_by": "Austin Irvan",
+  "primary_authority": {
+    "protocol": "webauthn",
+    "credential_class": "single_device_hardware_bound",
+    "user_verification": "required",
+    "user_presence": "required",
+    "backup_eligible": false,
+    "attestation": "required",
+    "normal_approval_principal_count": 1
+  },
+  "recovery_authority": {
+    "protocol": "webauthn",
+    "credential_class": "separate_offline_hardware_bound",
+    "normal_approvals_allowed": false,
+    "recovery_only": true,
+    "successful_recovery_revokes_prior_credentials": true,
+    "successful_recovery_requires_new_recovery_credential": true
+  },
+  "authority_service": {
+    "trust_domain": "external_to_governed_worker",
+    "human_assertion_required_for_each_approval": true,
+    "webauthn_challenge_binding": "request_id_signing_payload_hash_expiry_service_nonce",
+    "worker_may_request_approval": true,
+    "worker_may_poll_completed_approval": true,
+    "worker_raw_signing_access": false,
+    "worker_credential_enrollment_access": false,
+    "worker_credential_rotation_access": false,
+    "worker_credential_recovery_access": false,
+    "worker_trust_configuration_access": false,
+    "approval_output_schema": "pulpo.approval.v2",
+    "service_signing_key": "non_exportable_service_key"
+  },
+  "time_and_state": {
+    "trusted_time": "authority_service_owned",
+    "monotonic_approval_sequence": "externally_protected",
+    "replay_state": "externally_protected",
+    "governed_worker_may_rollback": false
+  },
+  "evidence": {
+    "pulpo_audit": "privacy_minimized_hashes",
+    "full_signature_bundles": "separate_append_only_store",
+    "private_credentials_recorded": false,
+    "claim_until_acceptance": "blocked"
+  },
+  "deployment_particulars": {
+    "rp_id": null,
+    "allowed_origins": [],
+    "authority_service_host": null,
+    "primary_authenticator_models": [],
+    "recovery_authenticator_models": [],
+    "external_time_provider": null,
+    "monotonic_state_provider": null,
+    "signature_bundle_store": null
+  }
+}

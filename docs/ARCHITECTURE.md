@@ -34,6 +34,14 @@ neither is supplied by the evaluation caller. The verifier produces permit
 authority through the same kernel; it is not a signer, second router, or audit
 ledger.
 
+The selected deployment boundary places WebAuthn human authentication and the
+approval signer in an external trust domain. The worker may request an approval
+and poll for the resulting envelope; it cannot sign, enroll, rotate, recover,
+revoke, or alter trust. The external service's security state supports the
+authority boundary but does not replace Pulpo policy, permits, decisions, or
+canonical governance evidence. See
+[the authority service contract](AUTHORITY_SERVICE_CONTRACT.md).
+
 The kernel is deliberately small and deterministic. Adapters, APIs, model
 routing, and host isolation belong outside this trusted core and must earn
 inclusion through tests and evidence. The SQLite backend proves local restart

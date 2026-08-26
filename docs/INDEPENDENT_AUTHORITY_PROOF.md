@@ -68,20 +68,28 @@ worker identity, verifier identity, public key fingerprint, policy hash, intent
 hash, envelope hash, test environment, and denial/success results. It must not
 contain private credentials.
 
-## Choices requiring legitimate owner authorization
+## Owner-authorized boundary
 
-Repository work stops before making these choices on Austin Irvan's behalf:
+Austin Irvan authorized the recommended architecture on 2026-08-26:
 
-- one founder passkey versus quorum and recovery principals;
-- a passkey/WebAuthn authority service versus another hardware or managed
-  signing trust domain;
-- trusted time and rollback anchoring outside the governed worker;
-- privacy-minimized audit hashes versus separately retained full signature
-  bundles for third-party offline verification;
-- actual credential enrollment, recovery, rotation, and revocation policy.
+- one founder-controlled, single-device hardware WebAuthn credential requiring
+  user presence and verification for every approval;
+- one separate offline hardware credential restricted to recovery;
+- an external WebAuthn authority service with no worker-accessible raw signing
+  or credential-administration interface;
+- service-owned trusted time and externally protected monotonic/replay state;
+- privacy-minimized hashes in Pulpo plus full signature bundles in a separate
+  append-only evidence store;
+- explicit revocation, controlled rotation, and independently tested recovery.
 
-These are authority and legitimacy decisions, not routine implementation
-details. Learning may recommend them; it may not authorize them.
+See [the authority decision](AUTHORITY_BOUNDARY_DECISION.md) and
+[service contract](AUTHORITY_SERVICE_CONTRACT.md). This is **Recorded** owner
+authorization, not **Verified** deployment evidence.
+
+Exact RP ID, HTTPS origin, service host, hardware models, protected state/time
+providers, evidence store, and the physical enrollment ceremony remain
+**Blocked** deployment particulars. No governed agent may choose or enact those
+facts by pretending a placeholder is operational authority.
 
 ## Prohibited shortcuts
 

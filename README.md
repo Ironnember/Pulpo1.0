@@ -67,5 +67,8 @@ The external approval contract and its still-open signer boundary are in
 [authority](docs/AUTHORITY.md).
 The mandatory deployment tests before claiming independent human authority are
 in [independent authority proof](docs/INDEPENDENT_AUTHORITY_PROOF.md).
+The selected founder-passkey boundary and the worker-visible external service
+contract are in [authority boundary decision](docs/AUTHORITY_BOUNDARY_DECISION.md)
+and [authority service contract](docs/AUTHORITY_SERVICE_CONTRACT.md).
 The restart-safe state proof and its storage boundary are in
 [persistence](docs/PERSISTENCE.md).

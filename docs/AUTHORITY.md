@@ -81,4 +81,6 @@ semantics with pinned asymmetric trust**, not independently human-authenticated
 authority.
 
 See [the independent authority proof gate](INDEPENDENT_AUTHORITY_PROOF.md) for
-the mandatory external acceptance tests and owner-authorized choices.
+the mandatory external acceptance tests, and see
+[the authority boundary decision](AUTHORITY_BOUNDARY_DECISION.md) for the
+owner-authorized deployment architecture.
