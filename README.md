@@ -6,10 +6,14 @@ This repository is the clean canonical Pulpo project. The older `Iron-Ember/pulp
 
 ## Proven now
 
-The dependency-free test suite proves:
+The base dependency-free suite and optional asymmetric-authority suite prove:
 
 - unknown, incomplete, and over-budget intents fail closed;
 - selected high-impact actions require a verifier-backed approval envelope;
+- authority policy pins verifier, key, algorithm, public-key fingerprint,
+  deployment, and maximum approval lifetime;
+- optional Ed25519 verification contains public material only and exposes no
+  signer;
 - caller-controlled boolean approval and authorization timestamps are absent
   from the evaluation API;
 - permits are bound to the exact intent and cannot be replayed;
@@ -18,8 +22,9 @@ The dependency-free test suite proves:
 - persisted audit-chain tampering fails closed when the kernel restarts;
 - configured agent roles cannot exceed their action, resource, or cost grant.
 - a bounded domain order is bound to its full request, quote, reserved budget, and one-use permit.
-- a configured external verifier checks approval envelopes bound to intent,
-  policy, principal, session, nonce, and expiry using the kernel's trusted clock.
+- a configured external verifier checks v2 approval envelopes bound to trust,
+  deployment, intent, policy, principal, session, nonce, issue time, and expiry
+  using the kernel's trusted clock.
 
 ```bash
 python -m unittest discover -s tests -v
@@ -32,9 +37,8 @@ from pulpo import GovernanceKernel, Intent, Policy
 
 kernel = GovernanceKernel(
     Policy(
-        allowed_actions=frozenset({"read", "write", "push"}),
+        allowed_actions=frozenset({"read", "write"}),
         max_cost=100,
-        approval_actions=frozenset({"push"}),
     )
 )
 
@@ -47,7 +51,8 @@ if decision.outcome == "allow":
 
 ## Boundary
 
-Pulpo currently proves governance, external-verifier contract semantics, and
+Pulpo currently proves governance, pinned asymmetric external-verifier contract
+semantics, and
 local restart-safe replay state with a dependency-free SQLite backend. It does
 not yet claim an independently deployed human signer, trusted verifier
 bootstrap, durable commerce budgets, host-storage isolation, network isolation,
@@ -60,5 +65,7 @@ The bounded transaction proof and its remaining live-execution gates are in
 [commerce proof](docs/COMMERCE_PROOF.md).
 The external approval contract and its still-open signer boundary are in
 [authority](docs/AUTHORITY.md).
+The mandatory deployment tests before claiming independent human authority are
+in [independent authority proof](docs/INDEPENDENT_AUTHORITY_PROOF.md).
 The restart-safe state proof and its storage boundary are in
 [persistence](docs/PERSISTENCE.md).

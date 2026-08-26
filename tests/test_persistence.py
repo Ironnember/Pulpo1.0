@@ -1,5 +1,3 @@
-import hashlib
-import hmac
 import sqlite3
 import tempfile
 import threading
@@ -11,44 +9,16 @@ from unittest.mock import patch
 import pulpo.state as state_module
 
 from pulpo import (
-    ApprovalEnvelope,
     GovernanceKernel,
     Intent,
     Policy,
     SQLiteKernelState,
     StateIntegrityError,
 )
+from tests.authority_support import HmacTestVerifier, signed_envelope, trust_for
 
 
 NOW = 1_000_000
-
-
-class HmacTestVerifier:
-    authority_id = "authority:test-owner"
-
-    def __init__(self, secret=b"external-test-authority"):
-        self.secret = secret
-
-    def sign(self, payload):
-        return hmac.new(self.secret, payload, hashlib.sha256).hexdigest()
-
-    def verify(self, payload, signature):
-        return hmac.compare_digest(self.sign(payload), signature)
-
-
-def signed_envelope(kernel, intent, verifier, *, approval_id="approval-1", nonce="nonce-1"):
-    unsigned = ApprovalEnvelope(
-        approval_id=approval_id,
-        authority_id=verifier.authority_id,
-        session_id=intent.session_id,
-        principal=intent.principal,
-        intent_hash=kernel.intent_hash(intent),
-        policy_hash=kernel.policy_hash,
-        nonce=nonce,
-        expires_at_ns=NOW + 1_000,
-        signature="",
-    )
-    return replace(unsigned, signature=verifier.sign(unsigned.signing_bytes()))
 
 
 class RestartSafeStateTests(unittest.TestCase):
@@ -56,8 +26,13 @@ class RestartSafeStateTests(unittest.TestCase):
         self.directory = tempfile.TemporaryDirectory()
         self.addCleanup(self.directory.cleanup)
         self.path = Path(self.directory.name) / "kernel.sqlite3"
-        self.policy = Policy(frozenset({"push"}), 100, frozenset({"push"}))
         self.verifier = HmacTestVerifier()
+        self.policy = Policy(
+            frozenset({"push"}),
+            100,
+            frozenset({"push"}),
+            authority_trust=trust_for(self.verifier),
+        )
         self.intent = Intent("agent:publisher", "push", "repo:origin/main", 0, "session-1")
 
     def kernel(self, state):
@@ -72,7 +47,7 @@ class RestartSafeStateTests(unittest.TestCase):
     def test_approval_and_permit_replay_remain_denied_after_restart(self):
         first_state = SQLiteKernelState(self.path)
         first_kernel = self.kernel(first_state)
-        envelope = signed_envelope(first_kernel, self.intent, self.verifier)
+        envelope = signed_envelope(first_kernel, self.intent, self.verifier, now_ns=NOW)
         decision = first_kernel.evaluate_with_approval(self.intent, envelope)
         self.assertEqual("allow", decision.outcome)
         first_length = len(first_kernel.audit)
@@ -90,6 +65,7 @@ class RestartSafeStateTests(unittest.TestCase):
             restarted_kernel,
             self.intent,
             self.verifier,
+            now_ns=NOW,
             approval_id="approval-2",
             nonce=envelope.nonce,
         )
@@ -114,11 +90,45 @@ class RestartSafeStateTests(unittest.TestCase):
         self.assertFalse(final_kernel.consume(decision.permit, self.intent))
         self.assertTrue(final_kernel.verify_audit())
 
+    def test_concurrent_identical_approval_allows_exactly_once(self):
+        signing_state = SQLiteKernelState(self.path)
+        signing_kernel = self.kernel(signing_state)
+        envelope = signed_envelope(signing_kernel, self.intent, self.verifier, now_ns=NOW)
+        signing_state.close()
+
+        barrier = threading.Barrier(2)
+        results = []
+        errors = []
+
+        def evaluate():
+            state = SQLiteKernelState(self.path)
+            try:
+                kernel = self.kernel(state)
+                barrier.wait()
+                results.append(kernel.evaluate_with_approval(self.intent, envelope))
+            except Exception as exc:
+                errors.append(exc)
+            finally:
+                state.close()
+
+        threads = [threading.Thread(target=evaluate) for _ in range(2)]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join()
+
+        self.assertEqual([], errors)
+        self.assertEqual(["allow", "deny"], sorted((result.outcome for result in results)))
+        self.assertEqual(
+            ["approval_id_replayed"],
+            [result.reason for result in results if result.outcome == "deny"],
+        )
+
     def test_verified_approval_and_permit_are_committed_with_one_transaction(self):
         state = SQLiteKernelState(self.path)
         self.addCleanup(state.close)
         kernel = self.kernel(state)
-        envelope = signed_envelope(kernel, self.intent, self.verifier)
+        envelope = signed_envelope(kernel, self.intent, self.verifier, now_ns=NOW)
         decision = kernel.evaluate_with_approval(self.intent, envelope)
 
         connection = sqlite3.connect(self.path)
@@ -135,7 +145,7 @@ class RestartSafeStateTests(unittest.TestCase):
         state = SQLiteKernelState(self.path)
         self.addCleanup(state.close)
         kernel = self.kernel(state)
-        envelope = signed_envelope(kernel, self.intent, self.verifier)
+        envelope = signed_envelope(kernel, self.intent, self.verifier, now_ns=NOW)
         with sqlite3.connect(self.path) as connection:
             connection.execute(
                 """
@@ -162,7 +172,7 @@ class RestartSafeStateTests(unittest.TestCase):
         kernel = self.kernel(state)
         decision = kernel.evaluate_with_approval(
             self.intent,
-            signed_envelope(kernel, self.intent, self.verifier),
+            signed_envelope(kernel, self.intent, self.verifier, now_ns=NOW),
         )
         with sqlite3.connect(self.path) as connection:
             connection.execute(
@@ -240,7 +250,7 @@ class RestartSafeStateTests(unittest.TestCase):
         kernel = self.kernel(state)
         kernel.evaluate_with_approval(
             self.intent,
-            signed_envelope(kernel, self.intent, self.verifier),
+            signed_envelope(kernel, self.intent, self.verifier, now_ns=NOW),
         )
         state.close()
 
@@ -257,7 +267,7 @@ class RestartSafeStateTests(unittest.TestCase):
         kernel = self.kernel(state)
         kernel.evaluate_with_approval(
             self.intent,
-            signed_envelope(kernel, self.intent, self.verifier),
+            signed_envelope(kernel, self.intent, self.verifier, now_ns=NOW),
         )
         state.close()
 

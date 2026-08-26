@@ -25,11 +25,14 @@ amount, and submits that hash through the normal intent and one-use permit path.
 Payment, delivery, acceptance, and value remain distinct evidence states.
 
 Approval-gated actions require an `ApprovalVerifier` configured on the trusted
-kernel. Its signed envelope binds the exact intent and policy plus authority,
-session, principal, nonce, and expiry. Session comes from the intent and expiry
-is evaluated with the kernel's bootstrapped clock; neither is supplied by the
-evaluation caller. The verifier produces permit authority through the same
-kernel; it is not a second router or audit ledger.
+kernel. `AuthorityTrust` binds the permitted verifier, public key fingerprint,
+algorithm, deployment, and maximum approval lifetime into policy. Its signed v2
+envelope binds that trust to the exact intent and policy plus authority,
+verifier, key, session, principal, nonce, issue time, and expiry. Session comes
+from the intent and time is evaluated with the kernel's bootstrapped clock;
+neither is supplied by the evaluation caller. The verifier produces permit
+authority through the same kernel; it is not a signer, second router, or audit
+ledger.
 
 The kernel is deliberately small and deterministic. Adapters, APIs, model
 routing, and host isolation belong outside this trusted core and must earn

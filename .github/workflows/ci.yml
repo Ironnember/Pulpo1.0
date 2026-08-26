@@ -23,3 +23,16 @@ jobs:
         run: python -m compileall -q pulpo tests
       - name: Check committed whitespace
         run: git diff --check 4b825dc642cb6eb9a060e54bf8d69288fbee4904 HEAD
+
+  authority:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install reviewed authority verifier dependency
+        run: python -m pip install '.[authority]'
+      - name: Run asymmetric authority contract tests
+        run: python -W error -m unittest tests.test_authority_crypto -v

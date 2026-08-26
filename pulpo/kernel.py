@@ -10,7 +10,7 @@ import secrets
 import time
 from typing import Any, Callable
 
-from .authority import ApprovalEnvelope, ApprovalVerifier
+from .authority import ApprovalEnvelope, ApprovalVerifier, AuthorityTrust
 from .state import ApprovalUse, InMemoryKernelState, KernelState
 
 
@@ -56,6 +56,7 @@ class Policy:
     max_cost: int
     approval_actions: frozenset[str] = frozenset()
     agent_grants: tuple[AgentGrant, ...] = ()
+    authority_trust: AuthorityTrust | None = None
 
     def __post_init__(self) -> None:
         principals = [grant.principal for grant in self.agent_grants]
@@ -63,6 +64,10 @@ class Policy:
             raise ValueError("agent principals must be unique")
         if any(not grant.allowed_actions.issubset(self.allowed_actions) for grant in self.agent_grants):
             raise ValueError("agent actions must be a subset of policy actions")
+        if self.approval_actions and self.authority_trust is None:
+            raise ValueError("approval actions require a pinned authority trust")
+        if self.authority_trust is not None and not self.approval_actions:
+            raise ValueError("authority trust requires at least one approval action")
 
 
 @dataclass(frozen=True)
@@ -75,6 +80,10 @@ class Decision:
 
 class StateIntegrityError(RuntimeError):
     """Raised when persisted audit state cannot be trusted at bootstrap."""
+
+
+class AuthorityTrustError(RuntimeError):
+    """Raised when a configured verifier does not match pinned policy trust."""
 
 
 class GovernanceKernel:
@@ -93,6 +102,8 @@ class GovernanceKernel:
         self._approval_verifier = approval_verifier
         self._clock = clock or time.time_ns
         self._state = state if state is not None else InMemoryKernelState()
+        if self._approval_verifier is not None and not self._verifier_matches_trust(self._approval_verifier):
+            raise AuthorityTrustError("approval verifier does not match pinned authority trust")
         try:
             audit_valid = self.verify_audit()
         except Exception as exc:
@@ -125,6 +136,7 @@ class GovernanceKernel:
             "max_cost": self.policy.max_cost,
             "approval_actions": sorted(self.policy.approval_actions),
             "agent_grants": grants,
+            "authority_trust": asdict(self.policy.authority_trust) if self.policy.authority_trust else None,
         }
         return sha256(_canonical(payload)).hexdigest()
 
@@ -155,12 +167,26 @@ class GovernanceKernel:
             return self._approval_decide("approval_not_required", digest, envelope)
         if not isinstance(envelope, ApprovalEnvelope):
             return self._decide("deny", "approval_envelope_invalid", digest)
-        if self._approval_verifier is None:
+        verifier = self._approval_verifier
+        if verifier is None:
             return self._approval_decide("approval_verifier_unavailable", digest, envelope)
+        if not self._verifier_matches_trust(verifier):
+            return self._approval_decide("approval_verifier_untrusted", digest, envelope)
         if not envelope.signature:
             return self._approval_decide("approval_signature_missing", digest, envelope)
-        if envelope.authority_id != self._approval_verifier.authority_id:
+        trust = self.policy.authority_trust
+        if trust is None:
+            return self._approval_decide("approval_trust_unavailable", digest, envelope)
+        if envelope.authority_id != trust.authority_id:
             return self._approval_decide("approval_authority_mismatch", digest, envelope)
+        if envelope.verifier_id != trust.verifier_id:
+            return self._approval_decide("approval_verifier_mismatch", digest, envelope)
+        if envelope.key_id != trust.key_id:
+            return self._approval_decide("approval_key_mismatch", digest, envelope)
+        if envelope.deployment_id != trust.deployment_id:
+            return self._approval_decide("approval_deployment_mismatch", digest, envelope)
+        if envelope.trust_hash != trust.trust_hash:
+            return self._approval_decide("approval_trust_mismatch", digest, envelope)
         if envelope.session_id != intent.session_id:
             return self._approval_decide("approval_session_mismatch", digest, envelope)
         if envelope.principal != intent.principal:
@@ -169,20 +195,36 @@ class GovernanceKernel:
             return self._approval_decide("approval_intent_mismatch", digest, envelope)
         if envelope.policy_hash != self.policy_hash:
             return self._approval_decide("approval_policy_mismatch", digest, envelope)
-        now_ns = self._clock()
-        if now_ns <= 0:
-            return self._approval_decide("approval_clock_invalid", digest, envelope)
+        now_ns = self._trusted_now()
+        if now_ns is None:
+            return self._approval_decide("approval_clock_invalid", digest, envelope, timestamp_ns=0)
+        if now_ns < envelope.issued_at_ns:
+            return self._approval_decide("approval_not_yet_valid", digest, envelope, timestamp_ns=now_ns)
+        if envelope.expires_at_ns - envelope.issued_at_ns > trust.max_approval_ttl_ns:
+            return self._approval_decide("approval_ttl_exceeded", digest, envelope, timestamp_ns=now_ns)
         if now_ns >= envelope.expires_at_ns:
             return self._approval_decide("approval_expired", digest, envelope)
         replay = self._state.approval_replay_reason(envelope.approval_id, envelope.nonce)
         if replay:
             return self._approval_decide(replay, digest, envelope)
         try:
-            signature_valid = self._approval_verifier.verify(envelope.signing_bytes(), envelope.signature)
+            signature_valid = verifier.verify(envelope.signing_bytes(), envelope.signature)
         except Exception:
             return self._approval_decide("approval_verifier_failed", digest, envelope)
-        if not signature_valid:
+        if signature_valid is not True:
             return self._approval_decide("approval_signature_invalid", digest, envelope)
+        verified_at_ns = self._trusted_now()
+        if verified_at_ns is None:
+            return self._approval_decide("approval_clock_invalid", digest, envelope, timestamp_ns=0)
+        if verified_at_ns < now_ns:
+            return self._approval_decide("approval_clock_rollback", digest, envelope, timestamp_ns=verified_at_ns)
+        if verified_at_ns >= envelope.expires_at_ns:
+            return self._approval_decide(
+                "approval_expired_during_verification",
+                digest,
+                envelope,
+                timestamp_ns=verified_at_ns,
+            )
 
         approval = ApprovalUse(
             envelope.approval_id,
@@ -190,11 +232,60 @@ class GovernanceKernel:
             {
                 "approval_id": envelope.approval_id,
                 "authority_id": envelope.authority_id,
+                "verifier_id": envelope.verifier_id,
+                "key_id": envelope.key_id,
+                "algorithm": trust.algorithm,
+                "key_fingerprint": trust.key_fingerprint,
+                "deployment_id": envelope.deployment_id,
+                "trust_hash": envelope.trust_hash,
                 "envelope_hash": envelope.envelope_hash,
+                "signing_payload_hash": envelope.signing_payload_hash,
                 "intent_hash": digest,
+                "policy_hash": self.policy_hash,
+                "issued_at_ns": envelope.issued_at_ns,
+                "expires_at_ns": envelope.expires_at_ns,
+                "verified_at_ns": verified_at_ns,
             },
         )
-        return self._issue_permit(digest, reason="verified_approval", approval=approval, envelope=envelope)
+        return self._issue_permit(
+            digest,
+            reason="verified_approval",
+            approval=approval,
+            envelope=envelope,
+            timestamp_ns=verified_at_ns,
+        )
+
+    def _verifier_matches_trust(self, verifier: ApprovalVerifier) -> bool:
+        trust = self.policy.authority_trust
+        if trust is None:
+            return False
+        try:
+            actual = (
+                verifier.authority_id,
+                verifier.verifier_id,
+                verifier.key_id,
+                verifier.algorithm,
+                verifier.key_fingerprint,
+            )
+        except Exception:
+            return False
+        expected = (
+            trust.authority_id,
+            trust.verifier_id,
+            trust.key_id,
+            trust.algorithm,
+            trust.key_fingerprint,
+        )
+        return actual == expected
+
+    def _trusted_now(self) -> int | None:
+        try:
+            value = self._clock()
+        except Exception:
+            return None
+        if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+            return None
+        return value
 
     def _policy_failure(self, intent: Intent) -> str | None:
         if not intent.principal or not intent.session_id or not intent.action or not intent.resource:
@@ -222,30 +313,57 @@ class GovernanceKernel:
         reason: str = "policy_satisfied",
         approval: ApprovalUse | None = None,
         envelope: ApprovalEnvelope | None = None,
+        timestamp_ns: int | None = None,
     ) -> Decision:
         nonce = secrets.token_hex(16)
         payload = f"{digest}:{nonce}"
         signature = hmac.new(self._secret, payload.encode(), sha256).hexdigest()
         permit = f"{payload}:{signature}"
-        replay = self._state.issue_permit(permit, digest, reason, self._clock(), approval)
+        issued_at_ns = self._clock() if timestamp_ns is None else timestamp_ns
+        replay = self._state.issue_permit(permit, digest, reason, issued_at_ns, approval)
         if replay:
             if envelope is None:
                 raise RuntimeError("state rejected an approval-free permit")
             return self._approval_decide(replay, digest, envelope)
         return Decision("allow", reason, digest, permit)
 
-    def _approval_decide(self, reason: str, digest: str, envelope: ApprovalEnvelope) -> Decision:
-        self._append(
+    def _approval_decide(
+        self,
+        reason: str,
+        digest: str,
+        envelope: ApprovalEnvelope,
+        *,
+        timestamp_ns: int | None = None,
+    ) -> Decision:
+        if timestamp_ns is None:
+            trusted_time = self._trusted_now()
+            rejection_time = 0 if trusted_time is None else trusted_time
+        else:
+            rejection_time = timestamp_ns
+        self._state.append(
             "approval_rejected",
             {
                 "approval_id": envelope.approval_id,
                 "authority_id": envelope.authority_id,
+                "verifier_id": envelope.verifier_id,
+                "key_id": envelope.key_id,
+                "deployment_id": envelope.deployment_id,
+                "trust_hash": envelope.trust_hash,
                 "envelope_hash": envelope.envelope_hash,
+                "signing_payload_hash": envelope.signing_payload_hash,
                 "intent_hash": digest,
+                "policy_hash": self.policy_hash,
                 "reason": reason,
             },
+            rejection_time,
         )
-        return self._decide("deny", reason, digest)
+        decision = Decision("deny", reason, digest)
+        self._state.append(
+            "decision",
+            {"outcome": "deny", "reason": reason, "intent_hash": digest},
+            rejection_time,
+        )
+        return decision
 
     def consume(self, permit: str, intent: Intent) -> bool:
         digest = self.intent_hash(intent)

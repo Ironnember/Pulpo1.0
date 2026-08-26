@@ -48,10 +48,11 @@ human approval once that boundary exists.
 The caller-provided approval boolean has been removed for every kernel.
 Approval-gated work can receive a permit only through a verified envelope, and
 the evaluation caller cannot override its session or the kernel time used for
-expiry. This does not prove independent human identity until the verifier,
-signer, clock, and trust bootstrap are deployed outside the governed worker
-boundary. Plugin writes remain blocked from live use until that deployment
-evidence exists.
+issue-time, lifetime, and expiry checks. Policy now pins verifier, key,
+algorithm, public-key fingerprint, and deployment. This does not prove
+independent human identity until the verifier, signer, clock, and trust bootstrap
+are deployed outside the governed worker boundary. Plugin writes remain blocked
+from live use until that deployment evidence exists.
 
 The legacy CryoAgent correctly detects exact repetition, short oscillation, and
 a configured depth limit in its unit tests. It is not yet imported because its

@@ -3,3 +3,6 @@ name = "pulpo"
 version = "0.1.0"
 description = "A minimal governed-execution kernel for agentic systems"
 requires-python = ">=3.11"
+
+[project.optional-dependencies]
+authority = ["cryptography==50.0.1"]
