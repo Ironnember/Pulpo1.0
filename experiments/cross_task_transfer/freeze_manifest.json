@@ -1,0 +1,13 @@
+{
+  "authority_effect": "none",
+  "frozen_files": {
+    "FROZEN_CONTRACT.md": "fce7d3601ca74c5cdec356345da4181348df08b5c79085e272a1848e921d00b5",
+    "candidates.json": "d49cd9ffdac94b37a4a3aef877f5030fab1f34343aa6dfa8417146c7b246770e",
+    "knowledge_packet.json": "1c99c18591d5e536b2e5716cde6142771ae2668a952f100433aeca492965e0f8",
+    "rubric.json": "1d08c5b770a42551b8836c14a2813c12c7f9165ca9aad356a89c6c87229bb2c3",
+    "task.json": "222e9ab4da7a68607ad96a66b3245ccbd235425812553a77bca458e131668d27"
+  },
+  "implementation_files_present_at_freeze": false,
+  "result_files_present_at_freeze": false,
+  "schema": "pulpo.cross-task-freeze.v1"
+}
