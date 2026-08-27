@@ -5,9 +5,11 @@ from __future__ import annotations
 from base64 import urlsafe_b64encode
 
 from fastapi import FastAPI, HTTPException
+from fastapi.responses import HTMLResponse, Response
 from pydantic import BaseModel, ConfigDict, Field, StrictInt
 
 from .core import ApprovalRequest, AuthorityService
+from .human_ui import APPROVAL_JAVASCRIPT, SECURITY_HEADERS, render_approval_page
 
 
 class RequestBody(BaseModel):
@@ -63,14 +65,23 @@ def create_app(service: AuthorityService) -> FastAPI:
         except RuntimeError as exc:
             raise HTTPException(status_code=503, detail="authority unavailable") from exc
 
-    @app.get("/human/approval/{request_id}")
-    def display_approval(request_id: str) -> dict[str, object]:
+    @app.get("/human/approval.js", response_class=Response)
+    def approval_javascript() -> Response:
+        return Response(
+            APPROVAL_JAVASCRIPT,
+            media_type="application/javascript",
+            headers=SECURITY_HEADERS,
+        )
+
+    @app.get("/human/approval/{request_id}", response_class=HTMLResponse)
+    def display_approval(request_id: str) -> HTMLResponse:
         try:
-            return service.display(request_id)
+            display = service.display(request_id)
         except KeyError as exc:
             raise HTTPException(status_code=404, detail="unknown approval request") from exc
         except RuntimeError as exc:
             raise HTTPException(status_code=503, detail="authority unavailable") from exc
+        return HTMLResponse(render_approval_page(display), headers=SECURITY_HEADERS)
 
     @app.post("/human/approval/{request_id}/challenge")
     def begin_approval(request_id: str) -> dict[str, object]:
@@ -86,6 +97,7 @@ def create_app(service: AuthorityService) -> FastAPI:
             "rp_id": service.config.rp_id,
             "credential_selection": "discoverable",
             "user_verification": "required",
+            "hints": ["security-key"],
         }
 
     @app.post("/human/approval/{request_id}/assertion")
