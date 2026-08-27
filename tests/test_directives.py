@@ -172,6 +172,29 @@ class DirectiveProofTests(unittest.TestCase):
         decision = projection.evaluate(Intent("agent:builder", "write", "shell:root", 1), broadened)
         self.assertEqual("directive_version_mismatch", decision.reason)
 
+    def test_revoked_directive_invalidates_previously_issued_permit(self):
+        state = InMemoryKernelState()
+        d = directive()
+        kernel, verifier, controller = self.activate(state, d)
+        projection = GovernedDirectiveProjection(kernel, state, lambda: NOW)
+        intent = Intent("agent:builder", "write", "repo:file", 1)
+        decision = projection.evaluate(intent, d)
+        self.assertEqual("allow", decision.outcome)
+        self.assertIsNotNone(decision.permit)
+
+        revoke_envelope = self.approve(
+            kernel,
+            verifier,
+            controller.REVOKE,
+            d,
+            "revoke-1",
+            "revoke-nonce-1",
+        )
+        revoke = controller.revoke(d, revoke_envelope, operator_principal=OPERATOR)
+        self.assertEqual("allow", revoke.outcome)
+
+        self.assertFalse(kernel.consume(decision.permit, intent))
+
 
 if __name__ == "__main__":
     unittest.main()
