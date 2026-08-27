@@ -6,6 +6,7 @@ on:
       - main
       - experiment/cross-model-pulpo-lift-2026-08-27
       - experiment/cross-model-pulpo-lift-authorized-2026-08-27
+      - experiment/cross-model-pulpo-lift-compatible-client-2026-08-27
   pull_request:
 
 permissions:
@@ -140,5 +141,45 @@ jobs:
             experiments/cross-model-pulpo-lift/results_authorized.json
             experiments/cross-model-pulpo-lift/SUMMARY_AUTHORIZED.md
             experiments/cross-model-pulpo-lift/execution_authorization.json
+          if-no-files-found: warn
+          retention-days: 30
+
+  cross-model-benchmark-generation4:
+    if: >-
+      (github.event_name == 'pull_request' && github.head_ref == 'experiment/cross-model-pulpo-lift-compatible-client-2026-08-27') ||
+      (github.event_name == 'push' && github.ref == 'refs/heads/experiment/cross-model-pulpo-lift-compatible-client-2026-08-27')
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install Generation 4 compatible Copilot CLI
+        run: npm install -g '@github/copilot@1.128.0'
+      - name: Run Generation 4 frozen eight-call benchmark
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python experiments/cross-model-pulpo-lift/run_generation4.py
+      - name: Publish Generation 4 summary
+        if: always()
+        run: |
+          if [ -f experiments/cross-model-pulpo-lift/SUMMARY_GENERATION4.md ]; then
+            cat experiments/cross-model-pulpo-lift/SUMMARY_GENERATION4.md >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Upload Generation 4 audit artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cross-model-pulpo-lift-generation4-${{ github.sha }}
+          path: |
+            experiments/cross-model-pulpo-lift/results_generation4.json
+            experiments/cross-model-pulpo-lift/SUMMARY_GENERATION4.md
+            experiments/cross-model-pulpo-lift/execution_authorization_generation4.json
           if-no-files-found: warn
           retention-days: 30
