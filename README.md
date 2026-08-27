@@ -76,3 +76,6 @@ The separately packaged executable reference and its remaining production gate
 are in [authority service proof](docs/AUTHORITY_SERVICE_PROOF.md).
 The restart-safe state proof and its storage boundary are in
 [persistence](docs/PERSISTENCE.md).
+The governed success-and-failure learning rules are in the
+[outcome learning protocol](docs/OUTCOME_LEARNING_PROTOCOL.md), including the
+[legacy migration regression case](docs/OUTCOME_CASE_LEGACY_MIGRATION_REGRESSION.md).

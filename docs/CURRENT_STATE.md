@@ -6,7 +6,7 @@ Status date: 2026-08-26
 
 `Ironnember/Pulpo1.0` on `main` is the sole source of truth for current Pulpo code, tests, architecture, governance, and forward development.
 
-`Iron-Ember/pulpo` and other earlier Pulpo artifacts remain historical evidence and pattern sources. Documents dated before this canonicalization may accurately describe the source of truth at that earlier time, but they do not override this file for current status.
+`Iron-Ember/pulpo` and other earlier Pulpo artifacts remain historical evidence and pattern sources. Documents dated before this canonicalization may accurately describe the source of truth at that earlier time, but they do not override this file for current status. Later commits or merges into a historical repository also remain non-canonical unless a separate legitimate governance decision explicitly redesignates the source. Recency, merge status, or successful execution cannot grant source-of-truth authority.
 
 ## Proven in this repository
 

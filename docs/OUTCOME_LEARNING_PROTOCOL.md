@@ -1,6 +1,6 @@
 # Pulpo Outcome Learning Protocol
 
-Status: canonical governance proposal on PR #21 branch
+Status: canonical governance doctrine
 
 ## Purpose
 
@@ -251,6 +251,25 @@ The GitHub branch-protection case is the reference `BLOCKED_CAPABILITY` outcome:
 The durable lesson is:
 
 > Governance may authorize execution, but only evidence may establish consequence.
+
+
+## Legacy migration regression example
+
+The historical-repository migration case is the reference `GOVERNANCE_REGRESSION` with a secondary `EVIDENCE_FAILURE`:
+
+- `Ironnember/Pulpo1.0` had already been designated canonical;
+- PR #52 then merged a proposed clean-core migration into historical `Iron-Ember/pulpo`;
+- the promised pull-request workflow ended in `startup_failure`;
+- the merge was newer than canonical work but had no authority to redesignate its repository;
+- static inspection showed the proposed Mac worker delegated execution to the control-plane host rather than proving local Mac execution;
+- no false canonicalization or Mac-worker success claim is permitted;
+- the useful worker constraints may be reconciled only one behavior at a time into the existing canonical path.
+
+The durable invariant is:
+
+`MERGED != VERIFIED != CANONICAL`
+
+The full evidence-linked record is [Outcome Case: Legacy Migration Merged Without Proof](OUTCOME_CASE_LEGACY_MIGRATION_REGRESSION.md).
 
 ## Operating doctrine
 
