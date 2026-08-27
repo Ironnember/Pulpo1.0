@@ -1,8 +1,8 @@
 # Outcome Case: Legacy Migration Merged Without Proof
 
-Status date: 2026-08-26  
-Canonical repository: `Ironnember/Pulpo1.0`  
-Historical repository: `Iron-Ember/pulpo`  
+Status date: 2026-08-26
+Canonical repository: `Ironnember/Pulpo1.0`
+Historical repository: `Iron-Ember/pulpo`
 Historical change: PR #52, merge commit `e03a941e423977e8ea1ae6b12139ad669d4fc24a`
 
 ## Summary
