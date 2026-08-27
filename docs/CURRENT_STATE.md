@@ -79,7 +79,6 @@ The current kernel is an in-process governance semantics proof. It does not yet 
 - independently authenticated human approval—the pinned asymmetric verifier
   contract is implemented, but no production signer/passkey service, protected
   bootstrap, or isolated authority principal is deployed;
-- durable commerce budget reservations across restart;
 - OS-enforced filesystem, network, process, or secret isolation;
 - hostile-code containment;
 - cumulative or metered billing enforcement;
@@ -112,8 +111,8 @@ Do not bulk-import the legacy repository, generated evidence, local runtime stat
 2. Implement and deploy the selected independently authenticated authority,
    trusted time, monotonic state, and verifier bootstrap outside the governed
    worker boundary.
-3. Extend the now-proven kernel replay persistence to durable commerce budget
-   reservation without creating another ledger.
+3. Protect the now-proven kernel and commerce SQLite state from worker mutation,
+   host rollback, and unproven backup or recovery behavior.
 4. Enforce host filesystem, network, process, and secret boundaries.
 5. Run one external workload through the complete Pulpo sequence and publish an inspectable evidence bundle.
 
