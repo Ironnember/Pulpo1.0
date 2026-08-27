@@ -1,0 +1,26 @@
+{
+  "schema": "pulpo.cross-model-lift.execution-authorization.v1",
+  "authorized_at": "2026-08-27",
+  "authorization_source": "explicit user authorization in current Pulpo project conversation",
+  "parent_failure_head": "c083f394fd4a60b31c9caa8e919d7c53134ed2e9",
+  "freeze_commit": "a1775e3ea41b14fa57551a4d72a0e4a876a689ab",
+  "freeze_sha256": "06a27c6426a95fef49b6ba802acdfda31d466b8b1e1cce673cc955f0bb78354c",
+  "scope": {
+    "experiment": "cross-model-pulpo-lift",
+    "conditions": ["MODEL_ONLY", "MODEL_PLUS_PULPO"],
+    "provider_families": ["openai", "anthropic", "google", "xai"],
+    "maximum_calls": 8,
+    "maximum_ai_credits_per_call": 30,
+    "maximum_total_ai_credits": 240,
+    "maximum_metered_usd_at_one_cent_per_credit": 2.40,
+    "execution_count": 1
+  },
+  "authority_effect": "none",
+  "constraints": [
+    "Do not change the frozen tasks, answers, lesson packet, model targets, isolation rules, or scoring thresholds.",
+    "Do not exceed 30 AI credits for any response.",
+    "Do not exceed eight model inference calls for this authorized generation.",
+    "Do not treat model output, benchmark success, prior success, or evidence as authority for any later action or budget expansion.",
+    "Unsupported provider access must remain blocked rather than simulated."
+  ]
+}
