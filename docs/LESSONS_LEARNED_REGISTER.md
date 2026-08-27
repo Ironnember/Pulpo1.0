@@ -1,12 +1,24 @@
 # Pulpo Consolidated Lessons Learned Register
 
 Status date: 2026-08-26
-Status: governed Outcome Memory; proposed for canonical admission through review
+Document role: governed Outcome Memory / Lessons Learned Register
+Canonicality rule: this document is canonical only at commits reachable from
+protected `Ironnember/Pulpo1.0/main`; copies on proposal branches remain
+`Recorded` and `Proposed` until admitted through review.
 Related issue: #29
 
 ## Constitutional boundary
 
-This register compounds learning without granting authority. It is a projection over stronger evidence, not a second ledger. Executable behavior, tests, canonical repository state, durable runtime evidence, and evidence-linked outcome records outrank this summary when they conflict.
+Pulpo is not fundamentally an agent framework. It is the governance and
+evidence plane between intelligence and consequence. Intelligence reasons,
+researches, plans, proposes, and learns. Pulpo owns identity, authority, policy,
+budgets, decisions, one-use permits, evidence, reconciliation, and outcome
+memory. Execution surfaces perform only permitted side effects.
+
+This register compounds learning without granting authority. It is a projection
+over stronger evidence, not a second ledger. Executable behavior, tests,
+canonical repository state, durable runtime evidence, and evidence-linked
+outcome records outrank this summary when they conflict.
 
 `Learning may improve competence and recommendations. Learning may not grant authority to itself.`
 
@@ -16,11 +28,24 @@ Each lesson should be read as:
 
 Claim classes: `Verified`, `Recorded`, `Inferred`, `Proposed`, `Unknown`.
 
+## Evidence and source discipline
+
+The evidence links below resolve to artifacts in the sole canonical repository.
+Historical project files, chats, screenshots, prototypes, test-count reports,
+and external analogies remain useful input, but they do not become canonical by
+being summarized here. Claims from the accumulated project record are included
+only to the extent that they are reconciled against current executable behavior
+and the source precedence in
+[PROJECT_SOURCE_BASELINE.md](PROJECT_SOURCE_BASELINE.md). Current proof and
+remaining boundaries are controlled by [CURRENT_STATE.md](CURRENT_STATE.md).
+
 ## Consolidated lessons
 
 ### 1. Capability is not authority
 - Observation: tools, credentials, endpoints, and successful prior execution expose capability but do not establish permission.
-- Evidence: authority-boundary tests, GitHub capability/authority cases, external Nitter/X case study.
+- Evidence: [kernel authority behavior](../tests/test_authority.py),
+  [Proof Zero authority-without-capability case](PROOF_ZERO_AUTHORITY_WITHOUT_CAPABILITY.md),
+  and the separately classified Nitter/X case below.
 - Lesson: discovered capability cannot bootstrap authority.
 - Invariant: `CAPABILITY != AUTHORITY`.
 - Architectural consequence: authority and policy evaluation precede permits and execution.
@@ -29,7 +54,9 @@ Claim classes: `Verified`, `Recorded`, `Inferred`, `Proposed`, `Unknown`.
 
 ### 2. Authority cannot authenticate itself
 - Observation: cryptographic verification is insufficient if the governed principal controls enrollment, signing, or trust bootstrap.
-- Evidence: pinned asymmetric verifier and external authority-service work.
+- Evidence: [pinned asymmetric verifier proof](INDEPENDENT_AUTHORITY_PROOF.md),
+  [authority-service contract](AUTHORITY_SERVICE_CONTRACT.md), and
+  [authority-service reference proof](AUTHORITY_SERVICE_PROOF.md).
 - Lesson: authority establishment must be outside the governed worker boundary.
 - Invariant: the principal requesting authority cannot create or impersonate the authority mechanism.
 - Architectural consequence: external authority service, pinned verifier trust, protected monotonic state and trusted time.
@@ -38,7 +65,8 @@ Claim classes: `Verified`, `Recorded`, `Inferred`, `Proposed`, `Unknown`.
 
 ### 3. Learning cannot grant authority
 - Observation: competence, confidence, repeated success, and repeated approval can tempt systems to widen permissions automatically.
-- Evidence: Outcome Learning Protocol and governed-learning doctrine.
+- Evidence: [Outcome Learning Protocol](OUTCOME_LEARNING_PROTOCOL.md) and the
+  repository's [contribution authority](../AGENTS.md).
 - Lesson: adaptation and constitutional authority are separate.
 - Invariant: learning may recommend authority changes but never enact them.
 - Architectural consequence: capability, budget, identity scope, approval class, policy power, and execution-surface expansion require separate legitimate authorization.
@@ -47,7 +75,9 @@ Claim classes: `Verified`, `Recorded`, `Inferred`, `Proposed`, `Unknown`.
 
 ### 4. Security state must survive restart
 - Observation: one-use/replay guarantees fail if consumption state disappears with process memory.
-- Evidence: restart-safe replay persistence proof.
+- Evidence: [persistence contract](PERSISTENCE.md),
+  [kernel persistence tests](../tests/test_persistence.py), and
+  [current proof classification](CURRENT_STATE.md).
 - Lesson: restart is an adversarial boundary whenever durable authority matters.
 - Invariant: consumed approvals, nonces, permits and relevant evidence remain consumed after restart.
 - Architectural consequence: atomic durable state and bootstrap verification.
@@ -56,7 +86,9 @@ Claim classes: `Verified`, `Recorded`, `Inferred`, `Proposed`, `Unknown`.
 
 ### 5. Concurrency is governance correctness
 - Observation: concurrent audit appends exposed a race around evidence-chain state.
-- Evidence: recorded audit concurrency failure and correction.
+- Evidence: [persistence contract](PERSISTENCE.md), transactional
+  [kernel-state implementation](../pulpo/state.py), and
+  [commerce concurrency tests](../tests/test_commerce.py).
 - Lesson: sequential correctness is insufficient for shared governance state.
 - Invariant: concurrent operations cannot fork canonical evidence or over-reserve governed resources.
 - Architectural consequence: transactional serialization and concurrency tests.
@@ -65,7 +97,8 @@ Claim classes: `Verified`, `Recorded`, `Inferred`, `Proposed`, `Unknown`.
 
 ### 6. Durable storage is not protected storage
 - Observation: SQLite persistence survives ordinary restart but a hostile host may delete, replace, write, or roll back the file.
-- Evidence: CURRENT_STATE and commerce persistence reconciliation.
+- Evidence: [CURRENT_STATE](CURRENT_STATE.md),
+  [PERSISTENCE](PERSISTENCE.md), and [commerce proof](COMMERCE_PROOF.md).
 - Lesson: persistence and rollback resistance are distinct claims.
 - Invariant: `DURABLE != ROLLBACK_RESISTANT`.
 - Architectural consequence: protected monotonic state is required for stronger authority/economic claims.
@@ -74,7 +107,8 @@ Claim classes: `Verified`, `Recorded`, `Inferred`, `Proposed`, `Unknown`.
 
 ### 7. Budget policy must bind the real economic side effect
 - Observation: provider APIs may not expose a hard pre-charge maximum even when Pulpo has an internal ceiling.
-- Evidence: name.com CORE fail-closed production boundary.
+- Evidence: [name.com CORE boundary](COMMERCE_PROOF.md#namecom-core-adapter-boundary)
+  and [provider contract tests](../tests/test_namecom.py).
 - Lesson: post-charge accounting cannot substitute for pre-execution spending control.
 - Invariant: execution must deny when the payment/provider surface cannot enforce the authorized ceiling.
 - Architectural consequence: provider contracts must map Pulpo budget semantics to enforceable external behavior.
@@ -83,7 +117,9 @@ Claim classes: `Verified`, `Recorded`, `Inferred`, `Proposed`, `Unknown`.
 
 ### 8. Command success is not outcome success
 - Observation: API/CLI success does not prove delivery, acceptance, value, or correct external consequence.
-- Evidence: commerce outcome decomposition and Outcome Learning Protocol.
+- Evidence: [commerce proof](COMMERCE_PROOF.md),
+  [commerce tests](../tests/test_commerce.py), and the
+  [Outcome Learning Protocol](OUTCOME_LEARNING_PROTOCOL.md).
 - Lesson: execution evidence and outcome evidence are separate.
 - Invariant: `AUTHORIZED != EXECUTED != DELIVERED != ACCEPTED != VALUABLE`.
 - Architectural consequence: verification and reconciliation follow execution.
@@ -92,7 +128,9 @@ Claim classes: `Verified`, `Recorded`, `Inferred`, `Proposed`, `Unknown`.
 
 ### 9. Reconciliation is a first-class control
 - Observation: governance that stops at execution cannot detect cost drift, provider substitution, incomplete delivery, or stale external authority.
-- Evidence: canonical lifecycle and outcome protocol.
+- Evidence: the lifecycle in
+  [PROJECT_SOURCE_BASELINE](PROJECT_SOURCE_BASELINE.md#constitutional-foundation)
+  and the [Outcome Learning Protocol](OUTCOME_LEARNING_PROTOCOL.md).
 - Lesson: reconciliation closes intent-to-consequence gaps.
 - Invariant: material execution remains unresolved until expected and observed state are compared.
 - Architectural consequence: `Purpose -> Intent -> Authority -> Policy -> Decision -> Permit -> Execution -> Evidence -> Reconciliation -> Memory -> Adaptation -> Purpose`.
@@ -101,7 +139,9 @@ Claim classes: `Verified`, `Recorded`, `Inferred`, `Proposed`, `Unknown`.
 
 ### 10. Evidence is not authority
 - Observation: receipts, signatures, logs, tests, and provider responses prove facts only within their evidence scope.
-- Evidence: authority and evidence contracts.
+- Evidence: [authority contract](AUTHORITY.md),
+  [decision-evidence implementation](../pulpo/decision_evidence.py), and
+  [decision-evidence tests](../tests/test_decision_evidence.py).
 - Lesson: downstream evidence cannot retroactively legitimize upstream authority.
 - Invariant: evidence reports; governance disposes.
 - Architectural consequence: evidence references decisions but cannot issue permits.
@@ -110,7 +150,9 @@ Claim classes: `Verified`, `Recorded`, `Inferred`, `Proposed`, `Unknown`.
 
 ### 11. One governance truth; many projections
 - Observation: specialized proof, learning, portability, and multi-agent views create pressure for duplicate ledgers.
-- Evidence: proof-bundle and outcome-memory architecture.
+- Evidence: [architecture](ARCHITECTURE.md), the
+  [Outcome Learning Protocol](OUTCOME_LEARNING_PROTOCOL.md), and the repository
+  [governance contract](GOVERNANCE.md).
 - Lesson: useful views should project canonical evidence rather than become competing truth stores.
 - Invariant: no second canonical ledger.
 - Architectural consequence: read-only evidence projections.
@@ -119,7 +161,9 @@ Claim classes: `Verified`, `Recorded`, `Inferred`, `Proposed`, `Unknown`.
 
 ### 12. Multiple authority/router paths create constitutional ambiguity
 - Observation: legacy accumulation widened trusted surfaces and duplicated orchestration responsibilities.
-- Evidence: clean Pulpo1.0 baseline and migration rules.
+- Evidence: [canonical architecture](ARCHITECTURE.md),
+  [source baseline and legacy intake rule](PROJECT_SOURCE_BASELINE.md#legacy-intake-rule),
+  and [canonicalization rules](CANONICALIZATION.md).
 - Lesson: architectural convenience can silently multiply authority paths.
 - Invariant: one canonical governance/permit path; no second router, executor, ledger, or authority system by implication.
 - Architectural consequence: reuse current canonical components before adding new ones.
@@ -128,7 +172,9 @@ Claim classes: `Verified`, `Recorded`, `Inferred`, `Proposed`, `Unknown`.
 
 ### 13. Migration can reproduce the failure it intends to remove
 - Observation: a legacy migration merged into a historical repository after Pulpo1.0 had been designated canonical, while promised CI proof failed.
-- Evidence: OUTCOME_CASE_LEGACY_MIGRATION_REGRESSION.md and merge evidence.
+- Evidence: the
+  [legacy migration governance-regression case](OUTCOME_CASE_LEGACY_MIGRATION_REGRESSION.md),
+  including its linked merge and failed-workflow evidence.
 - Lesson: useful code and recent merges do not establish source-of-truth authority.
 - Invariant: `MERGED != VERIFIED != CANONICAL`.
 - Architectural consequence: behavior-by-behavior admission with adversarial tests.
@@ -137,7 +183,8 @@ Claim classes: `Verified`, `Recorded`, `Inferred`, `Proposed`, `Unknown`.
 
 ### 14. Historical evidence should inform, not govern
 - Observation: older repositories contain valuable mechanisms and failures but also stale assumptions and clutter.
-- Evidence: CURRENT_STATE forward-development rule.
+- Evidence: the [CURRENT_STATE forward-development rule](CURRENT_STATE.md#forward-development-rule)
+  and [PROJECT_SOURCE_BASELINE source precedence](PROJECT_SOURCE_BASELINE.md#source-precedence).
 - Lesson: memory must not silently become policy.
 - Invariant: recency, merge status, historical success, or convenience cannot grant canonical authority.
 - Architectural consequence: preserve history as evidence/pattern source only.
@@ -146,7 +193,9 @@ Claim classes: `Verified`, `Recorded`, `Inferred`, `Proposed`, `Unknown`.
 
 ### 15. Negative tests are primary proof instruments
 - Observation: replay, mismatch, expiry, tamper, substitution, concurrency and denied execution reveal controls more strongly than happy paths alone.
-- Evidence: kernel, authority, persistence, commerce, and provider contract tests.
+- Evidence: canonical kernel, authority, persistence, commerce, provider, and
+  authority-service test suites, plus the denial boundaries documented in
+  [CURRENT_STATE](CURRENT_STATE.md).
 - Lesson: security/governance claims require adversarial denial evidence.
 - Invariant: material controls require success and relevant denial/failure proofs.
 - Architectural consequence: test suites emphasize mismatch, replay, restart, tamper and boundary failure.
@@ -155,7 +204,9 @@ Claim classes: `Verified`, `Recorded`, `Inferred`, `Proposed`, `Unknown`.
 
 ### 16. Test counts are not proof classifications
 - Observation: many passing tests can surround the wrong trust boundary.
-- Evidence: authority-boundary evolution and explicit CURRENT_STATE claim limits.
+- Evidence: [CURRENT_STATE claim limits](CURRENT_STATE.md#trust-boundary),
+  [independent-authority proof limits](INDEPENDENT_AUTHORITY_PROOF.md), and
+  [authority-service proof limits](AUTHORITY_SERVICE_PROOF.md).
 - Lesson: proof scope matters more than count.
 - Invariant: every test claim identifies invariant, environment, commit and untested boundary.
 - Architectural consequence: evidence-bounded language.
@@ -164,7 +215,10 @@ Claim classes: `Verified`, `Recorded`, `Inferred`, `Proposed`, `Unknown`.
 
 ### 17. CI is part of the evidence system
 - Observation: startup failures prevented promised repository-level proof even where code existed.
-- Evidence: historical migration workflow failure and canonical CI discipline.
+- Evidence: the recorded
+  [migration workflow failure](OUTCOME_CASE_LEGACY_MIGRATION_REGRESSION.md),
+  the standard verification command in [CURRENT_STATE](CURRENT_STATE.md), and
+  required protected-branch checks.
 - Lesson: reproducibility infrastructure is evidence infrastructure.
 - Invariant: passing CI proves only the identified commit/environment; failed or absent CI cannot be promoted to verified execution.
 - Architectural consequence: minimal dependency-free reproducible verification remains a priority.
@@ -173,7 +227,7 @@ Claim classes: `Verified`, `Recorded`, `Inferred`, `Proposed`, `Unknown`.
 
 ### 18. Authority without capability is blocked; capability without authority is denied
 - Observation: GitHub branch protection demonstrated legitimate authorization while the connected surface lacked administrative capability.
-- Evidence: Proof Zero BLOCKED_CAPABILITY case.
+- Evidence: [Proof Zero: Authority Without Capability](PROOF_ZERO_AUTHORITY_WITHOUT_CAPABILITY.md).
 - Lesson: authority and execution capability are orthogonal.
 - Invariant: neither substitutes for the other.
 - Architectural consequence: route only to already-authorized capable surfaces; never widen machine authority to escape a block.
@@ -182,7 +236,9 @@ Claim classes: `Verified`, `Recorded`, `Inferred`, `Proposed`, `Unknown`.
 
 ### 19. Tools, plugins, models and workers are capabilities, not governors
 - Observation: execution surfaces can be powerful and mutable.
-- Evidence: canonical three-plane doctrine.
+- Evidence: the [canonical three-plane doctrine](PROJECT_SOURCE_BASELINE.md#constitutional-foundation),
+  [architecture](ARCHITECTURE.md), and
+  [agent/plugin constraints](AGENTS_AND_PLUGINS.md).
 - Lesson: changing or adding a tool must not change constitutional authority.
 - Invariant: models/plugins/shells/APIs/providers cannot grant themselves authority.
 - Architectural consequence: all execution surfaces remain subordinate to Pulpo policy/permits.
@@ -191,7 +247,9 @@ Claim classes: `Verified`, `Recorded`, `Inferred`, `Proposed`, `Unknown`.
 
 ### 20. UI state is not security evidence
 - Observation: prototypes can display security states without corresponding enforcement.
-- Evidence: quarantined prototype lessons and evidence doctrine.
+- Evidence: the canonical [source precedence](PROJECT_SOURCE_BASELINE.md#source-precedence),
+  [CURRENT_STATE claim limits](CURRENT_STATE.md#trust-boundary), and the
+  accumulated prototype record classified as historical rather than proof.
 - Lesson: presentation cannot establish a control.
 - Invariant: `DISPLAYED != ENFORCED != VERIFIED`.
 - Architectural consequence: UI consumes evidence rather than inventing it.
@@ -200,7 +258,9 @@ Claim classes: `Verified`, `Recorded`, `Inferred`, `Proposed`, `Unknown`.
 
 ### 21. Measure the state change claimed
 - Observation: generated explanation, task completion, or engagement does not by itself prove learning or value.
-- Evidence: Master Teacher/governed-learning reasoning and Outcome Learning Protocol.
+- Evidence: the [Outcome Learning Protocol](OUTCOME_LEARNING_PROTOCOL.md),
+  which independently classifies execution, observation, delivery, acceptance,
+  and value.
 - Lesson: acceptance/value need explicit measurement.
 - Invariant: claimed outcome requires evidence of the corresponding state change.
 - Architectural consequence: diagnose/attempt/feedback/transfer/evidence/reconciliation for learning; analogous acceptance criteria elsewhere.
@@ -209,7 +269,8 @@ Claim classes: `Verified`, `Recorded`, `Inferred`, `Proposed`, `Unknown`.
 
 ### 22. Outcome Memory should preserve consequences, not transcripts
 - Observation: raw conversation is noisy, privacy-expensive, and weaker than durable evidence.
-- Evidence: Outcome Learning Protocol.
+- Evidence: the [Outcome Learning Protocol](OUTCOME_LEARNING_PROTOCOL.md),
+  including evidence-linked compact outcome records and retention boundaries.
 - Lesson: memory should retain verified outcomes, conditions, failures, provenance and reusable paths.
 - Invariant: stronger evidence outranks conversational summary.
 - Architectural consequence: evidence-linked compact memory records.
@@ -218,7 +279,10 @@ Claim classes: `Verified`, `Recorded`, `Inferred`, `Proposed`, `Unknown`.
 
 ### 23. Failure is valuable only when reconciled
 - Observation: failures become repeated waste unless converted into durable invariants and regression proofs.
-- Evidence: audit race, authority gaps, CI failures, migration regression and provider limitations.
+- Evidence: the [Outcome Learning Protocol](OUTCOME_LEARNING_PROTOCOL.md),
+  [legacy migration regression](OUTCOME_CASE_LEGACY_MIGRATION_REGRESSION.md),
+  [Proof Zero case](PROOF_ZERO_AUTHORITY_WITHOUT_CAPABILITY.md), and current
+  authority, persistence, and provider proof boundaries.
 - Lesson: failure should compound competence, not authority.
 - Invariant: `failure -> evidence -> root cause -> invariant -> correction -> regression proof -> memory`.
 - Architectural consequence: governed outcome learning.
@@ -227,7 +291,10 @@ Claim classes: `Verified`, `Recorded`, `Inferred`, `Proposed`, `Unknown`.
 
 ### 24. Simulated proof must remain explicitly simulated
 - Observation: mocks, sandboxes and simulators validate semantics but not production boundaries.
-- Evidence: authority-service fixtures, name.com sandbox, prototype/quantum reasoning.
+- Evidence: explicit fixture limits in
+  [AUTHORITY_SERVICE_PROOF](AUTHORITY_SERVICE_PROOF.md), sandbox/provider limits
+  in [COMMERCE_PROOF](COMMERCE_PROOF.md), and
+  [CURRENT_STATE](CURRENT_STATE.md).
 - Lesson: simulation scope must be explicit.
 - Invariant: `SIMULATED != DEPLOYED != PRODUCTION_VERIFIED`.
 - Architectural consequence: claim classifications distinguish protocol proof from production consequence.
@@ -236,7 +303,9 @@ Claim classes: `Verified`, `Recorded`, `Inferred`, `Proposed`, `Unknown`.
 
 ### 25. External authority and provider conditions drift over time
 - Observation: execution methods can remain technically functional while terms, credentials, API behavior, law, or provider policy changes.
-- Evidence: external Nitter/X case study, classified `Inferred` for Pulpo architectural relevance rather than internal Pulpo proof.
+- Evidence: the external Nitter/X case below, classified `Recorded` as an
+  external account and `Inferred` for Pulpo architectural relevance, not as
+  internal Pulpo proof.
 - Lesson: historical success cannot create permanent execution entitlement.
 - Invariant: external authority/environment changes require reconciliation before continued consequential execution.
 - Architectural consequence: proposed authority-drift detection/invalidation mechanism.
@@ -245,7 +314,10 @@ Claim classes: `Verified`, `Recorded`, `Inferred`, `Proposed`, `Unknown`.
 
 ### 26. Portability means governed state continuity, not hidden-mind copying
 - Observation: opaque model reasoning/session state is not a reliable portable authority artifact.
-- Evidence: portability and evidence-contract reasoning.
+- Evidence: explicit-state and provider-subordination rules in
+  [AGENTS_AND_PLUGINS](AGENTS_AND_PLUGINS.md),
+  [PROJECT_SOURCE_BASELINE](PROJECT_SOURCE_BASELINE.md), and the
+  [Outcome Learning Protocol](OUTCOME_LEARNING_PROTOCOL.md).
 - Lesson: migrate explicit Pulpo-owned contracts, checkpoints, evidence and authority references.
 - Invariant: hidden provider state is not canonical governance state.
 - Architectural consequence: provider-neutral explicit state bundles.
@@ -254,7 +326,9 @@ Claim classes: `Verified`, `Recorded`, `Inferred`, `Proposed`, `Unknown`.
 
 ### 27. Efficiency remains subordinate to proof
 - Observation: caching, compression and routing can reduce work but can also reuse stale evidence or hide changed risk.
-- Evidence: verification and evidence doctrine.
+- Evidence: [source precedence](PROJECT_SOURCE_BASELINE.md#source-precedence),
+  [CURRENT_STATE proof limits](CURRENT_STATE.md#trust-boundary), and the
+  [Outcome Learning Protocol reusable-path criteria](OUTCOME_LEARNING_PROTOCOL.md#reusable-completion-paths).
 - Lesson: optimize computation only after equivalence and risk are established.
 - Invariant: minimum sufficient computation, never minimum sufficient evidence.
 - Architectural consequence: high-risk changes re-prove relevant boundaries.
@@ -263,7 +337,9 @@ Claim classes: `Verified`, `Recorded`, `Inferred`, `Proposed`, `Unknown`.
 
 ### 28. External providers cannot become implicit policy authorities
 - Observation: provider API semantics often differ from Pulpo's required authority/budget/evidence semantics.
-- Evidence: name.com CORE boundary and GitHub capability cases.
+- Evidence: the [name.com CORE boundary](COMMERCE_PROOF.md#namecom-core-adapter-boundary),
+  [Proof Zero GitHub case](PROOF_ZERO_AUTHORITY_WITHOUT_CAPABILITY.md), and
+  [adapter constraints](AGENTS_AND_PLUGINS.md).
 - Lesson: provider capability must be translated into Pulpo-governed contracts.
 - Invariant: provider behavior cannot widen Pulpo authority.
 - Architectural consequence: fail closed when provider guarantees are weaker than policy.
@@ -272,7 +348,9 @@ Claim classes: `Verified`, `Recorded`, `Inferred`, `Proposed`, `Unknown`.
 
 ### 29. Humans belong at authority boundaries, not every keystroke
 - Observation: constant micro-approval destroys useful autonomy while broad ambient authority destroys control.
-- Evidence: Proof Zero and external-authority architecture.
+- Evidence: [Proof Zero](PROOF_ZERO_AUTHORITY_WITHOUT_CAPABILITY.md), the
+  [authority-boundary decision](AUTHORITY_BOUNDARY_DECISION.md), and the
+  [authority-service contract](AUTHORITY_SERVICE_CONTRACT.md).
 - Lesson: humans should establish purpose, consequential boundaries, exceptions and authority transitions while machines execute bounded work.
 - Invariant: legitimate human authority remains separable from machine competence.
 - Architectural consequence: request/poll approval boundary and one-use permits.
@@ -281,7 +359,10 @@ Claim classes: `Verified`, `Recorded`, `Inferred`, `Proposed`, `Unknown`.
 
 ### 30. Evidence constrains humans and machines
 - Observation: humans, models, providers and interfaces can all overstate success or misunderstand system state.
-- Evidence: accumulated regressions and evidence-bounded claim discipline.
+- Evidence: [CURRENT_STATE](CURRENT_STATE.md),
+  [PROJECT_SOURCE_BASELINE](PROJECT_SOURCE_BASELINE.md), the
+  [Outcome Learning Protocol](OUTCOME_LEARNING_PROTOCOL.md), and recorded
+  governance-regression cases.
 - Lesson: governance needs independently inspectable evidence, not trusted narration.
 - Invariant: material claims remain classified and bounded by reproducible evidence.
 - Architectural consequence: `Intelligence proposes. Governance disposes. Execution obeys. Evidence reports. Reconciliation teaches.`
@@ -290,7 +371,8 @@ Claim classes: `Verified`, `Recorded`, `Inferred`, `Proposed`, `Unknown`.
 
 ## External case study: Nitter / X authority drift
 
-Classification: `Recorded external event` plus `Inferred Pulpo lesson`; not an internal Pulpo proof.
+Classification: `Recorded external account` plus `Inferred Pulpo lesson`; not
+an independently verified legal finding and not an internal Pulpo proof.
 
 Reported 2026-08-25/26 events around X Corp.'s cease-and-desist against Nitter illustrate a useful governance distinction: long-running technical capability and repeated successful access do not themselves establish durable authority to continue an execution method. Terms, credentials, platform controls, legal assertions, and provider policy can change independently of technical competence.
 
@@ -311,6 +393,14 @@ Pulpo is the governance and evidence plane between intelligence and consequentia
 `Intelligence proposes. Governance disposes. Execution obeys. Evidence reports. Reconciliation teaches.`
 
 Reconciliation teaches, but it does not legislate.
+
+Human purpose establishes direction. Intelligence proposes action. Authority
+originates independently of the intelligence seeking to use it. Pulpo evaluates
+that authority against policy and consequence, issues the minimum sufficient
+one-use permit, and execution obeys only that permit. Evidence records what
+actually happened. Reconciliation compares intention with consequence. Memory
+preserves verified learning. Adaptation may improve competence, but only a
+separately authorized governance transition may expand authority.
 
 ## Admission and update rule
 
