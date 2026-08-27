@@ -1,0 +1,15 @@
+{
+  "schema": "pulpo.field-freeze-manifest.v1",
+  "authority_effect": "none",
+  "canonical_base": "81338eed28ec32fe214c7eee086a82840ca0923f",
+  "source_head": "72f556554cf803d3fe24e84d5822514bc4e14667",
+  "frozen_blob_shas": {
+    "knowledge_source.json": "85701bee5a9c470498e6d99667a45f4732f86c6a",
+    "task_pool.json": "b74c342d8d038af81cc52a10e0dccff04186c312",
+    "rubric.json": "997b9e45a997dd3015174163278da9323927656d",
+    "FROZEN_CONTRACT.md": "5605e5a56a1588b275b57ef4cc0386156f7b3cea"
+  },
+  "external_execution_started": false,
+  "result_files_present_at_freeze": false,
+  "lesson_k6_present_at_freeze": false
+}
