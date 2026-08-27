@@ -12,8 +12,10 @@ Status date: 2026-08-26
   verification, rejects backup-eligible and recovery credentials, checks its
   signer against pinned trust, writes complete evidence before releasing an
   envelope, and allows one exact envelope through the canonical kernel.
-- **Verified:** HTTP tests exercise request, display, challenge, assertion,
-  poll, malformed input, unknown request, and field-substitution behavior.
+- **Verified:** HTTP tests exercise request, the escaped human review page,
+  challenge, assertion, poll, malformed input, unknown request, strict browser
+  response headers, completed-request button disabling, and field-substitution
+  behavior.
 - **Recorded:** the service uses `webauthn==3.0.0` for server-side assertion
   validation and separately pins its HTTP/runtime dependencies.
 - **Blocked:** production deployment, independent administration, real hardware
@@ -62,6 +64,13 @@ The tests fail closed for:
 - duplicate ceremony completion;
 - invalid RP/origin configuration; and
 - unknown authority requests.
+
+The human button is executable reference code, not proof of a real hardware
+ceremony. No real browser, approved authenticator, enrolled credential,
+production RP ID/origin, or deployed service participated in the repository
+tests. WebAuthn requires user verification but does not report the local
+verification modality to the relying party. Touch ID, Face ID, and phone
+confirmation therefore remain **Not Tested** and are not claimed.
 
 ## Production acceptance gate
 
