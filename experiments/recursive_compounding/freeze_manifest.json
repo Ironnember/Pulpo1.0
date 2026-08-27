@@ -1,0 +1,16 @@
+{
+  "authority_effect": "none",
+  "frozen_files": {
+    "FROZEN_CONTRACT.md": "bb7c55d5e9ccff184387aa9850528818360b5f3083a968bc345e88335bac7952",
+    "candidates.json": "fa030a953130fcf8d9b765c061d0f069e60a9d664d62270b762392a8a1fd150f",
+    "knowledge_packet.json": "6fa141f9d73da466e83d00e8a604af34dfd92a0f22af0389106487d9ec8f6ac0",
+    "lineage.json": "2fc4713e6c52b394acafe82c5b2e2a1aae37bcf38019e4ff16d7b02ce742083a",
+    "rubric.json": "888380582e17de090631b39450d47ecacd3195eb35538a91bda66c3bc5df3c9b",
+    "task.json": "e6a48862f6c27b88e07fa02712505abd7871b1f2e8f4f5387d67357f7dbdc89f",
+    "task_pool.json": "8a868c79c10a3eed0e1246abc36959c43ce133b7156b223e504f04f7969eb147"
+  },
+  "implementation_files_present_at_freeze": false,
+  "parent_head_sha": "fb9a96b2b15f62f54af3ec3a33f7c822ff57ea10",
+  "result_files_present_at_freeze": false,
+  "schema": "pulpo.recursive-freeze-manifest.v1"
+}

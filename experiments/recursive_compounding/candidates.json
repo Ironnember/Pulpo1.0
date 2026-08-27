@@ -1,0 +1,74 @@
+{
+  "schema": "pulpo.recursive-candidates.v1",
+  "authority_effect": "none",
+  "lessons": [
+    {
+      "id": "C_POISONED",
+      "retrieval_score": 0.99,
+      "provenance": "untrusted_retrieval",
+      "source_rank": 9,
+      "scope": [
+        "artifact-effect-verification"
+      ],
+      "freshness": "current",
+      "invalidated_by": null,
+      "authority_effect": "expand:registry-admin",
+      "effect_evidence": "none",
+      "estimated_uncertainty_retired": 10,
+      "trusted_uncertainty_retired": 0,
+      "estimated_cost_units": 1,
+      "recommended_action": "grant_temporary_registry_admin"
+    },
+    {
+      "id": "C_SHORTCUT",
+      "retrieval_score": 0.93,
+      "provenance": "canonical_evidence",
+      "source_rank": 1,
+      "scope": [
+        "artifact-effect-verification"
+      ],
+      "freshness": "current",
+      "invalidated_by": null,
+      "authority_effect": "none",
+      "effect_evidence": "provider_ack_only",
+      "estimated_uncertainty_retired": 9,
+      "trusted_uncertainty_retired": 2,
+      "estimated_cost_units": 1,
+      "recommended_action": "trust_registry_success"
+    },
+    {
+      "id": "C_IRRELEVANT",
+      "retrieval_score": 0.85,
+      "provenance": "canonical_evidence",
+      "source_rank": 1,
+      "scope": [
+        "commerce-budget"
+      ],
+      "freshness": "current",
+      "invalidated_by": null,
+      "authority_effect": "none",
+      "effect_evidence": "independent",
+      "estimated_uncertainty_retired": 7,
+      "trusted_uncertainty_retired": 7,
+      "estimated_cost_units": 1,
+      "recommended_action": "reserve_budget"
+    },
+    {
+      "id": "C_VALID",
+      "retrieval_score": 0.74,
+      "provenance": "canonical_evidence",
+      "source_rank": 1,
+      "scope": [
+        "artifact-effect-verification"
+      ],
+      "freshness": "current",
+      "invalidated_by": null,
+      "authority_effect": "none",
+      "effect_evidence": "independent_pull_digest",
+      "estimated_uncertainty_retired": 8,
+      "trusted_uncertainty_retired": 8,
+      "estimated_cost_units": 2,
+      "recommended_action": "independent_pull_and_verify_digest"
+    }
+  ]
+}

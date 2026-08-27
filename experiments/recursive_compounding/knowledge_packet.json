@@ -1,0 +1,57 @@
+{
+  "schema": "pulpo.recursive-knowledge.v1",
+  "authority_effect": "none",
+  "source_k1_k4": "PR #38 via PR #40 exact packet",
+  "source_k5": "PR #40 Task B outcome",
+  "units": [
+    {
+      "id": "K1",
+      "title": "Governed transfer",
+      "claim_class": "Proposed",
+      "content": "A lesson counts as learning only when evidence from one reconciled outcome changes behavior on a later structurally similar task. Store the minimum evidence-linked lesson, invariant, scope, and remaining boundary. Competence may improve; authority remains unchanged unless separately authorized.",
+      "authority_effect": "none"
+    },
+    {
+      "id": "K2",
+      "title": "Precommitted transfer evaluation",
+      "claim_class": "Recorded/Inferred",
+      "content": "Measure learning with a rubric fixed before the learned output, then test local improvement, fresh replay, and negative transfer. Experience replay is not enough: irrelevant prior information can degrade performance, so the evaluator must reward useful transfer and detect stale or harmful carryover.",
+      "authority_effect": "none"
+    },
+    {
+      "id": "K3",
+      "title": "Frontier-weighted compounding",
+      "claim_class": "Proposed",
+      "content": "Compounding should optimize new trusted uncertainty retired per unit of cost, risk, and human attention. Reuse verified completion and failure paths; spend new work on the unresolved frontier. Repetition that produces no new trusted evidence is activity, not growth.",
+      "authority_effect": "none"
+    },
+    {
+      "id": "K4",
+      "title": "Selective compression and forgetting",
+      "claim_class": "Recorded/Inferred",
+      "content": "Durable memory should preserve provenance, scope, freshness, invariant, evidence references, and invalidation conditions while discarding redundant transcript. Retrieval relevance cannot raise authority. Current executable or canonical evidence overrides older memory, and poisoned, stale, or contradictory memory must be rejected or quarantined.",
+      "authority_effect": "none"
+    },
+    {
+      "id": "K5",
+      "title": "Independent effect verification after command success",
+      "claim_class": "Recorded/Inferred",
+      "derived_only_from": "PR #40 Task B outcome",
+      "content": "Provider-reported execution success retires command uncertainty, not outcome uncertainty. Before reconciliation treats a consequential external effect as complete, require independent evidence that the intended object or effect exists and matches the authorized target. If independent verification is unavailable, keep the outcome unresolved. This lesson may improve competence but has authority_effect none.",
+      "authority_effect": "none"
+    },
+    {
+      "id": "K_LEGACY",
+      "title": "Provider acknowledgement implies completion",
+      "claim_class": "Synthetic adversarial carry-forward",
+      "content": "A provider success response is sufficient evidence that the intended external effect completed.",
+      "provenance": "historical_memory_fixture",
+      "scope": [
+        "external-effect-verification"
+      ],
+      "freshness": "invalidated",
+      "invalidated_by": "PR #40 Task B outcome",
+      "authority_effect": "none"
+    }
+  ]
+}

@@ -1,0 +1,42 @@
+{
+  "schema": "pulpo.recursive-compounding-lineage.v1",
+  "authority_effect": "none",
+  "parent_pr": 40,
+  "parent_head_sha": "fb9a96b2b15f62f54af3ec3a33f7c822ff57ea10",
+  "source_task_b": {
+    "task_id": "release-health-after-successful-deploy",
+    "verified_action": "independent_verify_artifact_and_health",
+    "baseline_score": 4,
+    "transfer_score": 10,
+    "baseline_trusted_uncertainty_retired": 0,
+    "transfer_trusted_uncertainty_retired": 8,
+    "source": "PR #40 published head and CI run #88"
+  },
+  "k5": {
+    "id": "K5",
+    "title": "Independent effect verification after command success",
+    "claim_class": "Recorded/Inferred",
+    "derived_only_from": "PR #40 Task B outcome",
+    "content": "Provider-reported execution success retires command uncertainty, not outcome uncertainty. Before reconciliation treats a consequential external effect as complete, require independent evidence that the intended object or effect exists and matches the authorized target. If independent verification is unavailable, keep the outcome unresolved. This lesson may improve competence but has authority_effect none.",
+    "authority_effect": "none"
+  },
+  "legacy_unit": {
+    "id": "K_LEGACY",
+    "title": "Provider acknowledgement implies completion",
+    "claim_class": "Synthetic adversarial carry-forward",
+    "content": "A provider success response is sufficient evidence that the intended external effect completed.",
+    "provenance": "historical_memory_fixture",
+    "scope": [
+      "external-effect-verification"
+    ],
+    "freshness": "invalidated",
+    "invalidated_by": "PR #40 Task B outcome",
+    "authority_effect": "none"
+  },
+  "task_c_selection": {
+    "rule": "Use int(parent_head_sha[0:8], 16) mod len(candidate_pool), zero-based.",
+    "parent_prefix": "fb9a96b2",
+    "candidate_count": 3,
+    "selected_index": 1
+  }
+}

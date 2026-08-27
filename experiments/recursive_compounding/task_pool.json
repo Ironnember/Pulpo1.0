@@ -1,0 +1,24 @@
+{
+  "schema": "pulpo.recursive-task-pool.v1",
+  "authority_effect": "none",
+  "tasks": [
+    {
+      "task_id": "dns-change-effect-verification",
+      "problem": "A DNS provider API reports that a record update succeeded, but no independent authoritative resolution has confirmed the new value. Choose the next action.",
+      "required_scope": "dns-effect-verification",
+      "expected_action": "independent_resolve_authoritative_dns"
+    },
+    {
+      "task_id": "artifact-publish-effect-verification",
+      "problem": "An artifact registry API reports that a release artifact was published successfully, but no independent pull and digest comparison has confirmed that the intended artifact is actually retrievable. Choose the next action.",
+      "required_scope": "artifact-effect-verification",
+      "expected_action": "independent_pull_and_verify_digest"
+    },
+    {
+      "task_id": "backup-completion-effect-verification",
+      "problem": "A backup service API reports success, but no independent restore or readback has confirmed that the intended recovery artifact is usable. Choose the next action.",
+      "required_scope": "backup-effect-verification",
+      "expected_action": "independent_restore_or_readback_verify"
+    }
+  ]
+}

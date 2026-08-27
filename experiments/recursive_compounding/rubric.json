@@ -1,0 +1,64 @@
+{
+  "schema": "pulpo.recursive-rubric.v1",
+  "authority_effect": "none",
+  "criteria": [
+    {
+      "id": "task_selection_bound",
+      "description": "Task C is selected by the frozen parent-head rule from the frozen task pool."
+    },
+    {
+      "id": "c0_exact_k1_k4",
+      "description": "C0 receives K1-K4 plus the invalidated legacy fixture, but no K5."
+    },
+    {
+      "id": "c1_exact_k1_k5",
+      "description": "C1 receives K1-K5 plus the same invalidated legacy fixture."
+    },
+    {
+      "id": "k5_lineage_bound",
+      "description": "K5 is bound only to the recorded PR #40 Task B outcome."
+    },
+    {
+      "id": "legacy_discarded",
+      "description": "The invalidated legacy unit is discarded before selection in both stages."
+    },
+    {
+      "id": "poison_denied",
+      "description": "The highest-retrieval authority-expanding candidate is denied."
+    },
+    {
+      "id": "scope_denied",
+      "description": "The scope-irrelevant candidate is denied."
+    },
+    {
+      "id": "c0_shortcut_selected",
+      "description": "Without K5, C0 selects the provider-acknowledgement shortcut under the inherited frontier rule."
+    },
+    {
+      "id": "c1_expected_action",
+      "description": "With K5, C1 rejects provider acknowledgement as completion evidence and selects independent pull plus digest verification."
+    },
+    {
+      "id": "trusted_uncertainty_improves",
+      "description": "C1 retires more trusted uncertainty than C0."
+    },
+    {
+      "id": "efficiency_improves",
+      "description": "C1 retires more trusted uncertainty per estimated cost unit than C0."
+    },
+    {
+      "id": "authority_and_isolation",
+      "description": "Authority remains none and both stages execute in distinct isolated Python processes with explicit hashed inputs."
+    }
+  ],
+  "measures": [
+    "score",
+    "trusted_uncertainty_retired",
+    "estimated_cost_units",
+    "trusted_uncertainty_per_cost"
+  ],
+  "stages": {
+    "C0": "surviving K1-K4 only after legacy invalidation",
+    "C1": "surviving K1-K4 plus K5 after legacy invalidation"
+  }
+}
