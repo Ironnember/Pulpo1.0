@@ -44,8 +44,9 @@ pull-request mutation surfaces.
 For one separately authorized proposal, the bot may:
 
 1. read the exact current canonical `main` commit;
-2. mint one short-lived installation token scoped to the selected repository
-   and no broader permissions than the registered boundary;
+2. mint one short-lived installation token for that attempt, scoped to the
+   selected repository and no broader permissions than the registered
+   boundary;
 3. create one namespaced branch from that exact commit;
 4. push the reviewed candidate commit to that branch;
 5. open one pull request containing the required governance and evidence
@@ -54,6 +55,10 @@ For one separately authorized proposal, the bot may:
 7. allow the token to expire without persisting it.
 
 Any new proposal requires a new human instruction and a newly reconciled base.
+A corrective attempt within the same authorized proposal requires a newly
+validated candidate and reconciled remote head. It must not widen the file,
+repository, permission, or authority boundary. Each replacement token and the
+reason it was needed must be recorded.
 
 ## Stop conditions
 
@@ -94,7 +99,7 @@ Opening a pull request is not sufficient evidence:
 
 ## Outcome Learning record
 
-Lifecycle state after creation of PR #27:
+Historical checkpoint immediately after creation of PR #27:
 
 - intended: yes;
 - authorized: app registration, single-key setup, selected-repository
@@ -114,9 +119,33 @@ Lifecycle state after creation of PR #27:
 - merged: no;
 - reconciled: partial.
 
-Primary outcome class before the bot-authored pull request:
+Primary outcome class at that checkpoint:
 
 `SUCCESS_PARTIAL`
+
+## Final reconciliation of PR #27
+
+GitHub later independently reported:
+
+- final bot head `fcc807d15aeeaae31c316c4c425528c8d2bae75f`;
+- candidate merge commit `56137a3b0fbcd652442acec71dfc76ffaa9a7329`;
+- successful candidate-state checks `test`, `authority`, and
+  `authority-service` in workflow run `33040053474`;
+- explicit human approval by `Ironnember` on the final bot head;
+- merge by `Ironnember` as canonical commit
+  `827a42f86f00c9eabe3ff5e6e59e4b8a95e324ed`;
+- successful post-merge `test`, `authority`, and `authority-service` checks in
+  workflow run `33040527385`; and
+- unchanged branch-protection requirements after the merge.
+
+The bounded proposal path and this documentation change are therefore:
+
+`SUCCESS_VERIFIED`
+
+The classification is limited to App-authored proposal creation, exact
+candidate-state verification, human disposition, merge into the already-
+canonical repository, and post-merge verification. It does not prove runtime
+authority, deployment, purchase execution, or Mac-worker behavior.
 
 Root-cause tags from the local validation path:
 
@@ -139,7 +168,8 @@ Reusable path:
 5. mint the shortest-lived, repository-scoped installation token;
 6. create one branch and one pull request as the App;
 7. reconcile GitHub's actor, diff, checks, review gate, and unchanged `main`;
-8. do not approve or merge.
+8. keep the bot from approving or merging; any later approval or merge is a
+   separately attributable human governance action.
 
 ## Evidence
 
@@ -149,10 +179,15 @@ Reusable path:
 - [Capability tracking issue](https://github.com/Ironnember/Pulpo1.0/issues/25)
 - [Bot-authored proposal PR #27](https://github.com/Ironnember/Pulpo1.0/pull/27)
 - [Initial bot-authored commit](https://github.com/Ironnember/Pulpo1.0/commit/4a82072bbd4c7edbb5d4e8d9452cac9b1067f83c)
+- [Final bot-authored head](https://github.com/Ironnember/Pulpo1.0/commit/fcc807d15aeeaae31c316c4c425528c8d2bae75f)
+- [Successful candidate-state run](https://github.com/Ironnember/Pulpo1.0/actions/runs/33040053474)
+- [Canonical merge commit](https://github.com/Ironnember/Pulpo1.0/commit/827a42f86f00c9eabe3ff5e6e59e4b8a95e324ed)
+- [Successful post-merge run](https://github.com/Ironnember/Pulpo1.0/actions/runs/33040527385)
+- [Final Outcome Learning reconciliation](https://github.com/Ironnember/Pulpo1.0/issues/25#issuecomment-5434518249)
 
-The final candidate check runs, review disposition, and observed unchanged
-`main` must be reconciled before the proposal path is classified
-`SUCCESS_VERIFIED`.
+For PR #27, candidate checks, review, merge, post-merge checks, and canonical
+state were reconciled separately. Every future proposal must establish its own
+evidence rather than inheriting this outcome.
 
 ## Claim classification
 
@@ -163,7 +198,10 @@ The final candidate check runs, review disposition, and observed unchanged
 - the private key was validated locally without displaying its contents;
 - a repository- and permission-scoped installation token created PR #27 as
   `pulpo-proposal-bot[bot]` without persisting the token;
-- GitHub reports the proposal as blocked and requiring review;
+- the proposal remained blocked until `Ironnember` approved the final bot head;
+- all three required checks passed on the exact candidate merge state;
+- `Ironnember` merged the approved proposal into canonical `main`;
+- all three post-merge checks passed on the canonical merge commit;
 - this candidate imports no legacy runtime code and creates no runtime path.
 
 ### Recorded
@@ -171,16 +209,16 @@ The final candidate check runs, review disposition, and observed unchanged
 - the bot is intended only to propose a change for human disposition;
 - credential material remains separate from repository evidence.
 
-### Proposed or pending
+### Required for future proposals
 
-- require all three final candidate-state checks and explicit human review;
-- leave the pull request unmerged for human disposition.
+- establish all three candidate-state checks and explicit human review anew;
+- leave each proposal unmerged until a separately attributable human decision.
 
 ### Not tested
 
-- successful final candidate-state check results;
-- human acceptance or rejection of the proposal;
-- any merge consequence, because no merge is authorized by this proof.
+- provider-enforced inability of the App to call every prohibited API surface;
+- key rotation, installation revocation, and provider-outage recovery;
+- runtime containment, deployment, purchase execution, or Mac-worker behavior.
 
 ### Unproven boundary
 
