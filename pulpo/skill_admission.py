@@ -1,6 +1,6 @@
 """Governed admission and execution binding for untrusted agent skills.
 
-Skills are capability artifacts, never authority sources.  This module keeps
+Skills are capability artifacts, never authority sources. This module keeps
 admission deterministic and delegates consequential execution authority to the
 existing GovernanceKernel rather than creating a second router or ledger.
 """
@@ -69,35 +69,43 @@ class SkillAdmissionBoundary:
             by_name[admission.artifact.name] = admission
         self._admissions = by_name
 
-    def evaluate(self, request: SkillExecutionRequest) -> Decision:
+    def _admission_failure(self, request: SkillExecutionRequest) -> str | None:
         artifact = request.artifact
         intent = request.intent
         admission = self._admissions.get(artifact.name)
-        digest = self._kernel.intent_hash(intent)
 
         if admission is None:
-            return Decision("deny", "skill_not_admitted", digest)
+            return "skill_not_admitted"
         if admission.revoked:
-            return Decision("deny", "skill_revoked", digest)
+            return "skill_revoked"
         if not hmac.compare_digest(admission.artifact.digest, artifact.digest):
-            return Decision("deny", "skill_digest_mismatch", digest)
+            return "skill_digest_mismatch"
         if admission.artifact.source != artifact.source:
-            return Decision("deny", "skill_source_mismatch", digest)
+            return "skill_source_mismatch"
         if admission.artifact.revision != artifact.revision:
-            return Decision("deny", "skill_revision_mismatch", digest)
+            return "skill_revision_mismatch"
         if intent.action not in admission.allowed_actions:
-            return Decision("deny", "skill_action_not_allowed", digest)
+            return "skill_action_not_allowed"
         if not any(intent.resource.startswith(prefix) for prefix in admission.resource_prefixes):
-            return Decision("deny", "skill_resource_not_allowed", digest)
+            return "skill_resource_not_allowed"
         if intent.cost > admission.max_cost:
-            return Decision("deny", "skill_budget_exceeded", digest)
+            return "skill_budget_exceeded"
+        return None
 
-        # The skill never issues authority.  The canonical kernel remains the
+    def evaluate(self, request: SkillExecutionRequest) -> Decision:
+        digest = self._kernel.intent_hash(request.intent)
+        failure = self._admission_failure(request)
+        if failure:
+            return Decision("deny", failure, digest)
+
+        # The skill never issues authority. The canonical kernel remains the
         # sole policy/permit decision point for consequential execution.
-        return self._kernel.evaluate(intent)
+        return self._kernel.evaluate(request.intent)
 
     def consume(self, request: SkillExecutionRequest, permit: str) -> bool:
-        decision = self.evaluate(request)
-        if decision.outcome != "allow" or decision.permit != permit:
+        # Revalidate the exact admitted artifact and scope at execution time.
+        # This prevents an admission change/revocation from being bypassed by a
+        # permit issued before the change, while preserving kernel replay rules.
+        if self._admission_failure(request):
             return False
         return self._kernel.consume(permit, request.intent)
