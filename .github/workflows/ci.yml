@@ -79,6 +79,12 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: python experiments/cross-model-pulpo-lift/run.py
+      - name: Reconcile benchmark failure classification
+        if: always()
+        run: |
+          if [ -f experiments/cross-model-pulpo-lift/results.json ]; then
+            python experiments/cross-model-pulpo-lift/reconcile_results.py
+          fi
       - name: Publish benchmark summary
         if: always()
         run: |
