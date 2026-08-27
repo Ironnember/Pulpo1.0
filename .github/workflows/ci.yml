@@ -6,6 +6,7 @@ on:
       - main
       - experiment/cross-model-pulpo-lift-2026-08-27
       - experiment/cross-model-pulpo-lift-b-2026-08-27
+      - diagnostic/copilot-actions-model-policy-2026-08-27
   pull_request:
 
 permissions:
@@ -58,40 +59,33 @@ jobs:
       - name: Compile independent service sources
         run: python -m compileall -q authority-service/src authority-service/tests
 
-  cross-model-benchmark:
-    if: >-
-      (github.event_name == 'push' && github.ref == 'refs/heads/experiment/cross-model-pulpo-lift-b-2026-08-27')
+  copilot-auto-probe:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/diagnostic/copilot-actions-model-policy-2026-08-27'
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
       - name: Install pinned Copilot CLI
         run: npm install -g '@github/copilot@1.0.80'
-      - name: Run frozen Generation B benchmark
+      - name: Probe auto-selected model with no tools
         env:
           GITHUB_TOKEN: ${{ github.token }}
-        run: python experiments/cross-model-pulpo-lift-b/run.py
-      - name: Publish benchmark summary
-        if: always()
+          COPILOT_HOME: ${{ runner.temp }}/copilot-auto-probe
         run: |
-          if [ -f experiments/cross-model-pulpo-lift-b/SUMMARY.md ]; then
-            cat experiments/cross-model-pulpo-lift-b/SUMMARY.md >> "$GITHUB_STEP_SUMMARY"
-          fi
-      - name: Upload audit artifact
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: cross-model-pulpo-lift-b-${{ github.sha }}
-          path: |
-            experiments/cross-model-pulpo-lift-b/results.json
-            experiments/cross-model-pulpo-lift-b/SUMMARY.md
-          if-no-files-found: warn
-          retention-days: 30
+          mkdir -p "$COPILOT_HOME"
+          mkdir -p "${{ runner.temp }}/empty-probe"
+          cd "${{ runner.temp }}/empty-probe"
+          copilot -p 'Return exactly READY and nothing else.' \
+            --model auto \
+            --max-ai-credits=30 \
+            --excluded-tools='bash,powershell,list_bash,list_powershell,read_bash,read_powershell,stop_bash,stop_powershell,write_bash,write_powershell,apply_patch,create,edit,view,list_agents,read_agent,task,write_agent,ask_user,glob,grep,rg,skill,web_fetch' \
+            --disable-builtin-mcps \
+            --no-custom-instructions \
+            --no-ask-user \
+            --no-auto-update \
+            --no-bash-env \
+            --no-color \
+            --log-level=error
