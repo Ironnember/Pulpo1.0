@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import asdict
+from dataclasses import asdict, replace
 import unittest
 
 from fastapi.testclient import TestClient
@@ -38,13 +38,60 @@ class AuthorityApiTests(unittest.TestCase):
         approved = self.client.get(f"/v1/approval-requests/{request_id}")
 
         self.assertEqual("pending", pending.json()["status"])
-        self.assertEqual(self.intent.resource, display.json()["resource"])
+        self.assertIn(self.intent.resource, display.text)
+        self.assertIn('id="pulpo-approve"', display.text)
         self.assertEqual("required", challenge.json()["user_verification"])
         self.assertEqual("discoverable", challenge.json()["credential_selection"])
+        self.assertEqual(["security-key"], challenge.json()["hints"])
         self.assertNotIn("credential_ids", challenge.json())
         self.assertEqual("approved", completed.json()["status"])
         self.assertEqual("approved", approved.json()["status"])
         self.assertIn("envelope", approved.json())
+
+    def test_human_page_invokes_only_the_existing_webauthn_assertion_route(self):
+        created = self.client.post("/v1/approval-requests", json=asdict(self.request))
+        request_id = created.json()["request_id"]
+
+        page = self.client.get(f"/human/approval/{request_id}")
+        script = self.client.get("/human/approval.js")
+
+        self.assertEqual(200, page.status_code)
+        self.assertTrue(page.headers["content-type"].startswith("text/html"))
+        self.assertEqual("no-store", page.headers["cache-control"])
+        self.assertIn("default-src 'none'", page.headers["content-security-policy"])
+        self.assertEqual("publickey-credentials-get=(self)", page.headers["permissions-policy"])
+        self.assertIn("A click alone grants no authority", page.text)
+        self.assertIn("approved Pulpo hardware authenticator", page.text)
+        self.assertNotIn("Touch ID", page.text)
+        self.assertNotIn("Face ID", page.text)
+        self.assertNotIn("navigator.credentials", page.text)
+
+        self.assertEqual(200, script.status_code)
+        self.assertTrue(script.headers["content-type"].startswith("application/javascript"))
+        self.assertIn("navigator.credentials.get", script.text)
+        self.assertIn("userVerification: 'required'", script.text)
+        self.assertIn("hints: ['security-key']", script.text)
+        self.assertIn("credential_id: credential.id", script.text)
+        self.assertNotIn("/deny", script.text)
+
+    def test_human_page_escapes_request_text_and_disables_completed_requests(self):
+        hostile = replace(self.request, resource='repo:</dd><script id="attack">alert(1)</script>')
+        hostile = replace(hostile, intent_hash=hostile.recomputed_intent_hash)
+        created = self.client.post("/v1/approval-requests", json=asdict(hostile))
+        request_id = created.json()["request_id"]
+
+        page = self.client.get(f"/human/approval/{request_id}")
+        self.assertNotIn('<script id="attack">', page.text)
+        self.assertIn("&lt;script id=&quot;attack&quot;&gt;", page.text)
+
+        completed = self.client.post(
+            f"/human/approval/{request_id}/assertion",
+            json={"credential_id": self.primary.credential_id, "assertion": "raw-assertion-json"},
+        )
+        self.assertEqual(200, completed.status_code)
+        completed_page = self.client.get(f"/human/approval/{request_id}")
+        self.assertIn('id="pulpo-approve" type="button" disabled', completed_page.text)
+        self.assertIn("This request is approved.", completed_page.text)
 
     def test_unknown_invalid_and_extra_input_fail_closed(self):
         self.assertEqual(404, self.client.get("/v1/approval-requests/unknown").status_code)
