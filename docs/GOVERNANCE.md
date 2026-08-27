@@ -27,6 +27,13 @@ Canonical `main` must be protected as part of Pulpo's constitutional change-cont
 
 Until GitHub reports those controls as enabled, canonical branch protection is **Blocked**, not **Proven**. Documentation or workflow files must not imply that CI is merge-enforced merely because CI exists.
 
+## Proposal automation
+
+An automation identity may prepare a reviewable change, but it cannot convert
+its own proposal into a governance decision. The bounded GitHub App contract,
+credential rules, stop conditions, and proof requirements are defined in
+[GitHub Proposal Bot Operating Contract](GITHUB_PROPOSAL_BOT.md).
+
 ## Legacy intake
 
 Carry forward one behavior at a time. Rewrite it behind the current interface, add adversarial tests, and record the proof. Do not copy generated evidence, startup programs, task backlogs, local-machine scripts, historical plans, or CI workarounds.
