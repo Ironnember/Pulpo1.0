@@ -1,6 +1,6 @@
 # Authority Boundary Decision
 
-Status date: 2026-08-26
+Status date: 2026-08-27
 
 Decision status: **Recorded — owner authorized, not deployed**
 
@@ -9,6 +9,18 @@ Pulpo. The machine-readable decision is
 [`docs/governance/authority-boundary-v1.json`](governance/authority-boundary-v1.json).
 This authorization selects the architecture; it is not credential enrollment,
 deployment evidence, or proof that the boundary is operating.
+
+On 2026-08-27, Austin Irvan separately selected the permanent WebAuthn
+deployment identity and hosting class:
+
+- exact HTTPS origin: `https://authority.pulpo.ai`;
+- narrow RP ID: `authority.pulpo.ai`;
+- hosting boundary: isolated managed cloud, external to `governator.local` and
+  the governed worker.
+
+This selection binds deployment identity. It does not select a cloud provider,
+create DNS, provision an account, create a signer, enroll credentials, or make
+the service reachable.
 
 ## Selected boundary
 
@@ -73,11 +85,12 @@ become a worker-accessible bypass.
 
 ## Still unresolved by design
 
-These values depend on the real environment and remain **Blocked** until chosen
-and independently verified:
+The exact origin, RP ID, and hosting class are now selected. These remaining
+values depend on the real environment and remain **Blocked** until chosen and
+independently verified:
 
-- exact RP ID and HTTPS origin;
-- authority-service hosting account and isolation boundary;
+- exact managed-cloud provider, account, project, region, and service identity;
+- DNS control and certificate issuance for `authority.pulpo.ai`;
 - approved primary and recovery hardware authenticator models;
 - external trusted-time, monotonic-state, and append-only evidence providers;
 - the physical enrollment and recovery ceremony.
