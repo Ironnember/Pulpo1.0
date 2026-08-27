@@ -1,7 +1,9 @@
 # GitHub Proposal Bot Operating Contract
 
-Status date: 2026-08-26  
-Canonical repository: `Ironnember/Pulpo1.0`  
+Status date: 2026-08-26
+
+Canonical repository: `Ironnember/Pulpo1.0`
+
 Governed identity: `Pulpo Proposal Bot`
 
 ## Purpose
@@ -92,18 +94,22 @@ Opening a pull request is not sufficient evidence:
 
 ## Outcome Learning record
 
-Lifecycle state at contract creation:
+Lifecycle state after creation of PR #27:
 
 - intended: yes;
 - authorized: app registration, single-key setup, selected-repository
   installation, and preparation of this candidate were separately confirmed;
 - permitted: repository proposal capability is installed;
-- attempted: registration and installation only;
-- executed: clean app and selected-repository installation created;
+- attempted: registration, installation, token minting, and one proposal;
+- executed: clean app, selected-repository installation, one scoped token, one
+  branch, one commit, and one pull request created;
 - externally observed: app, single public key, effective permissions, and sole
-  repository selection observed in GitHub;
-- bot-authored proposal: `NOT_TESTED` until GitHub reports the pull request;
-- human review: `NOT_TESTED` until the proposal reaches that gate;
+  repository selection observed in GitHub; PR #27 reports the App as author;
+- bot-authored proposal: externally observed;
+- human review: GitHub reports `REVIEW_REQUIRED` and merge state `BLOCKED`;
+- required checks: the first candidate run passed `authority`, failed `test`
+  because of two trailing spaces, and had not completed `authority-service` at
+  reconciliation time;
 - merged: no;
 - reconciled: partial.
 
@@ -117,6 +123,10 @@ Root-cause tags from the local validation path:
 - execution capability mismatch: the default `python3` was 3.9 while the
   project requires Python 3.11 or newer;
 - bounded recovery: an already-installed supported interpreter was selected;
+- evidence incomplete: pre-commit `git diff --check` did not inspect the
+  untracked new document, so GitHub detected two trailing spaces;
+- bounded adaptation: validate the committed candidate or explicitly include
+  new files before treating the whitespace check as passed;
 - authority unchanged: no permission or policy expansion was used.
 
 Reusable path:
@@ -136,10 +146,12 @@ Reusable path:
 - [Single-key state recorded](https://github.com/Ironnember/Pulpo1.0/issues/25#issuecomment-5434294886)
 - [Selected-repository installation recorded](https://github.com/Ironnember/Pulpo1.0/issues/25#issuecomment-5434332570)
 - [Capability tracking issue](https://github.com/Ironnember/Pulpo1.0/issues/25)
+- [Bot-authored proposal PR #27](https://github.com/Ironnember/Pulpo1.0/pull/27)
+- [Initial bot-authored commit](https://github.com/Ironnember/Pulpo1.0/commit/4a82072bbd4c7edbb5d4e8d9452cac9b1067f83c)
 
-The eventual pull request, commit, check runs, review requirement, and observed
-unchanged `main` must be added as external evidence before the proposal path is
-classified `SUCCESS_VERIFIED`.
+The final candidate check runs, review disposition, and observed unchanged
+`main` must be reconciled before the proposal path is classified
+`SUCCESS_VERIFIED`.
 
 ## Claim classification
 
@@ -148,6 +160,9 @@ classified `SUCCESS_VERIFIED`.
 - the clean App registration, single public key, permission selection, and
   selected-repository installation were externally observed and recorded;
 - the private key was validated locally without displaying its contents;
+- a repository- and permission-scoped installation token created PR #27 as
+  `pulpo-proposal-bot[bot]` without persisting the token;
+- GitHub reports the proposal as blocked and requiring review;
 - this candidate imports no legacy runtime code and creates no runtime path.
 
 ### Recorded
@@ -155,18 +170,16 @@ classified `SUCCESS_VERIFIED`.
 - the bot is intended only to propose a change for human disposition;
 - credential material remains separate from repository evidence.
 
-### Proposed
+### Proposed or pending
 
-- create one bot-authored pull request containing this contract;
-- require all three candidate-state checks and explicit human review;
+- require all three final candidate-state checks and explicit human review;
 - leave the pull request unmerged for human disposition.
 
 ### Not tested
 
-- installation-token minting for this clean App;
-- GitHub actor attribution on the proposed pull request;
-- exact candidate-state check results;
-- provider enforcement of the human-review gate for this proposal.
+- successful final candidate-state check results;
+- human acceptance or rejection of the proposal;
+- any merge consequence, because no merge is authorized by this proof.
 
 ### Unproven boundary
 
