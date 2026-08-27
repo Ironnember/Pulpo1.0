@@ -1,0 +1,31 @@
+{
+  "arm": "baseline",
+  "authority_effect": "none",
+  "cli_version": "codex-cli 0.149.1",
+  "duration_ms": 11442,
+  "ended_at": "2026-08-27T13:50:53.174834+00:00",
+  "isolation": {
+    "ephemeral": true,
+    "fresh_process": true,
+    "project_rules_ignored": true,
+    "repository_not_working_directory": true,
+    "resume_or_fork_used": false,
+    "sandbox": "read-only",
+    "separate_empty_working_directory": true,
+    "user_config_ignored": true
+  },
+  "knowledge_units": [],
+  "model": "gpt-5.4-mini",
+  "observed_non_message_item_types": [],
+  "process_exit_code": 1,
+  "prompt_sha256": "51080117d5365dec6dfdf4fd886c24ecd9085d854fc9756485cda1c33a0f991b",
+  "reasoning_effort": "low",
+  "response": null,
+  "response_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "schema": "pulpo.cross-task-run.v1",
+  "started_at": "2026-08-27T13:50:41.731558+00:00",
+  "stderr_sha256": "47d5d56afb1bcf43c570bdad983ae3b723c4a89f43ef2a7ab49c6f385304168a",
+  "stdout_sha256": "41286d5ff62c8ab9c574ebc61455dda9add6508e09656c8cb8152579f7b8d1ec",
+  "thread_id": "01a0437c-ba98-7433-9c51-2c96a5669b70",
+  "usage": {}
+}

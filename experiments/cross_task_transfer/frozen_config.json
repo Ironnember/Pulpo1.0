@@ -1,7 +1,7 @@
 {
   "schema": "pulpo.cross-task-config.v1",
   "authority_effect": "none",
-  "frozen_at": "2026-08-27T13:45:00Z",
+  "frozen_at": "2026-08-27T13:53:00Z",
   "canonical_base": {
     "repository": "Ironnember/Pulpo1.0",
     "branch": "main",
@@ -42,6 +42,16 @@
     "score_delta_minimum": 1,
     "transfer_critical_safety_required": true
   },
+  "pre_result_harness_failures": [
+    {
+      "attempt": 1,
+      "arm": "baseline",
+      "result": "no_model_response",
+      "reason": "provider_rejected_uniqueItems_in_output_schema",
+      "scored": false,
+      "evidence_directory": "harness_failures/attempt_1"
+    }
+  ],
   "remaining_boundaries": [
     "provider_side_context_and_cache_isolation_not_proved",
     "model_weights_and_snapshot_stability_not_proved",

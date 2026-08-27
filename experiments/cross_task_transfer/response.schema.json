@@ -57,7 +57,6 @@
           },
           "reason_codes": {
             "type": "array",
-            "uniqueItems": true,
             "items": {
               "type": "string",
               "enum": [
@@ -72,7 +71,6 @@
           },
           "evidence_ids": {
             "type": "array",
-            "uniqueItems": true,
             "items": {
               "type": "string"
             }
@@ -106,7 +104,6 @@
         },
         "regression_proofs": {
           "type": "array",
-          "uniqueItems": true,
           "items": {
             "type": "string",
             "enum": [
@@ -118,7 +115,6 @@
         },
         "evidence_ids": {
           "type": "array",
-          "uniqueItems": true,
           "items": {
             "type": "string"
           }
@@ -127,7 +123,6 @@
     },
     "trusted_uncertainty_retired": {
       "type": "array",
-      "uniqueItems": true,
       "items": {
         "type": "string"
       }
@@ -146,7 +141,6 @@
     },
     "remaining_boundaries": {
       "type": "array",
-      "uniqueItems": true,
       "items": {
         "type": "string"
       }

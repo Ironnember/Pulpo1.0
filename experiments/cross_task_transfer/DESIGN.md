@@ -103,3 +103,13 @@ correctness.
 Every experiment artifact declares `authority_effect: none`. Retrieved memory
 is advisory and cannot add a router, executor, ledger, policy engine, memory
 authority, or approval authority.
+
+## Pre-result harness amendment
+
+The first baseline process reached the response-format boundary but returned no
+model response because the provider rejected JSON Schema `uniqueItems`. The
+exit record and raw error are retained under `harness_failures/attempt_1` and
+are not scored. Before restarting either arm, unsupported `uniqueItems` keywords
+were removed from the response schema; duplicate and exact-set enforcement
+remains in the deterministic verifier. The manifest was re-frozen after that
+mechanical amendment.
