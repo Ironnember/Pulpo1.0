@@ -1,3 +1,4 @@
+from dataclasses import replace
 import tempfile
 import unittest
 
@@ -82,15 +83,15 @@ class DirectiveProofTests(unittest.TestCase):
         kernel, verifier = self.governed(state)
         controller = DirectiveAuthorityController(kernel, state, lambda: NOW)
         intent = controller.authority_intent(controller.ACTIVATE, d, operator_principal=OPERATOR)
-        envelope = signed_envelope(
+        valid = signed_envelope(
             kernel,
             intent,
             verifier,
             now_ns=NOW - 10,
             approval_id="activate-1",
             nonce="activate-nonce-1",
-            signature="00" * 32,
         )
+        envelope = replace(valid, signature="00" * 32)
         decision = controller.activate(d, envelope, operator_principal=OPERATOR)
         self.assertEqual(("deny", "approval_signature_invalid"), (decision.outcome, decision.reason))
         self.assertEqual("directive_not_authorized", state.directive_status(d.directive_id, d.version, d.directive_hash))
