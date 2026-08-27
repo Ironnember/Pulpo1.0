@@ -2,6 +2,7 @@
   "schema": "pulpo.authority-boundary-decision.v1",
   "status": "owner_authorized_not_deployed",
   "authorized_at": "2026-08-26",
+  "deployment_identity_selected_at": "2026-08-27",
   "authorized_by": "Austin Irvan",
   "primary_authority": {
     "protocol": "webauthn",
@@ -47,8 +48,12 @@
     "claim_until_acceptance": "blocked"
   },
   "deployment_particulars": {
-    "rp_id": null,
-    "allowed_origins": [],
+    "rp_id": "authority.pulpo.ai",
+    "allowed_origins": [
+      "https://authority.pulpo.ai"
+    ],
+    "hosting_boundary": "isolated_managed_cloud",
+    "managed_cloud_provider": null,
     "authority_service_host": null,
     "primary_authenticator_models": [],
     "recovery_authenticator_models": [],
