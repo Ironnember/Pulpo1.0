@@ -1,6 +1,6 @@
 # Pulpo Current State
 
-Status date: 2026-08-26
+Status date: 2026-08-27
 
 ## Canonical source
 
@@ -70,6 +70,13 @@ offline recovery-only hardware credential, an external authority service,
 service-owned time and protected monotonic state, privacy-minimized Pulpo audit
 hashes, and separate full signature bundles. This is a selected architecture,
 not evidence that the boundary has been deployed.
+
+The permanent WebAuthn origin and narrow RP ID are now selected as
+`https://authority.pulpo.ai` and `authority.pulpo.ai`. The authorized hosting
+class is an isolated managed-cloud environment outside `governator.local` and
+the governed worker. The cloud provider, account, DNS, service identity,
+non-exportable signer, protected state, evidence store, and physical hardware
+enrollment remain unselected or undeployed.
 
 The repository now contains a separately packaged executable authority-service
 reference and a worker request/poll client. Their deterministic and HTTP-level
