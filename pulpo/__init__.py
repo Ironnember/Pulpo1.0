@@ -12,6 +12,12 @@ from .kernel import (
     Policy,
     StateIntegrityError,
 )
+from .local_intelligence import (
+    LocalIntelligenceClient,
+    LocalIntelligenceError,
+    LocalModelConfig,
+    LocalModelProposal,
+)
 from .namecom import NameComCoreAdapter
 from .state import InMemoryKernelState, KernelState, SQLiteKernelState
 
@@ -30,6 +36,10 @@ __all__ = [
     "InMemoryKernelState",
     "Intent",
     "KernelState",
+    "LocalIntelligenceClient",
+    "LocalIntelligenceError",
+    "LocalModelConfig",
+    "LocalModelProposal",
     "NameComCoreAdapter",
     "Policy",
     "SQLiteBudgetAccount",
