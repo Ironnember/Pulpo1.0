@@ -100,9 +100,10 @@ Lifecycle state after creation of PR #27:
 - authorized: app registration, single-key setup, selected-repository
   installation, and preparation of this candidate were separately confirmed;
 - permitted: repository proposal capability is installed;
-- attempted: registration, installation, token minting, and one proposal;
-- executed: clean app, selected-repository installation, one scoped token, one
-  branch, one commit, and one pull request created;
+- attempted: registration, installation, short-lived token minting, and one
+  proposal;
+- executed: clean app, selected-repository installation, ephemeral scoped
+  tokens, one branch, bot-authored commits, and one pull request created;
 - externally observed: app, single public key, effective permissions, and sole
   repository selection observed in GitHub; PR #27 reports the App as author;
 - bot-authored proposal: externally observed;
