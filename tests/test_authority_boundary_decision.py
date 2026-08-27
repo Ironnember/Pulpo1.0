@@ -49,10 +49,17 @@ class AuthorityBoundaryDecisionTests(unittest.TestCase):
         self.assertIs(recovery["successful_recovery_revokes_prior_credentials"], True)
         self.assertIs(recovery["successful_recovery_requires_new_recovery_credential"], True)
 
-    def test_environment_particulars_remain_unset_before_real_deployment(self):
+    def test_owner_selected_exact_origin_and_isolated_managed_cloud_boundary(self):
+        particulars = self.decision["deployment_particulars"]
+        self.assertEqual("2026-08-27", self.decision["deployment_identity_selected_at"])
+        self.assertEqual("authority.pulpo.ai", particulars["rp_id"])
+        self.assertEqual(["https://authority.pulpo.ai"], particulars["allowed_origins"])
+        self.assertEqual("isolated_managed_cloud", particulars["hosting_boundary"])
+
+    def test_provider_and_runtime_particulars_remain_unset_before_real_deployment(self):
         particulars = self.decision["deployment_particulars"]
         for field in (
-            "rp_id",
+            "managed_cloud_provider",
             "authority_service_host",
             "external_time_provider",
             "monotonic_state_provider",
@@ -60,7 +67,6 @@ class AuthorityBoundaryDecisionTests(unittest.TestCase):
         ):
             with self.subTest(field=field):
                 self.assertIsNone(particulars[field])
-        self.assertEqual([], particulars["allowed_origins"])
         self.assertEqual([], particulars["primary_authenticator_models"])
         self.assertEqual([], particulars["recovery_authenticator_models"])
 
