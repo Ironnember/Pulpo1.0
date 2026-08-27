@@ -53,3 +53,43 @@ jobs:
         run: PYTHONPATH=authority-service/src:. python -W error -m unittest discover -s authority-service/tests -v
       - name: Compile independent service sources
         run: python -m compileall -q authority-service/src authority-service/tests
+
+  cross-model-benchmark:
+    if: github.event_name == 'pull_request' && github.head_ref == 'experiment/cross-model-pulpo-lift-2026-08-27'
+    permissions:
+      contents: read
+      copilot-requests: write
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install pinned Copilot CLI
+        run: npm install -g '@github/copilot@1.0.80'
+      - name: Run frozen model-only versus model-plus-Pulpo benchmark
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python experiments/cross-model-pulpo-lift/run.py
+      - name: Publish benchmark summary
+        if: always()
+        run: |
+          if [ -f experiments/cross-model-pulpo-lift/SUMMARY.md ]; then
+            cat experiments/cross-model-pulpo-lift/SUMMARY.md >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Upload audit artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cross-model-pulpo-lift-${{ github.sha }}
+          path: |
+            experiments/cross-model-pulpo-lift/results.json
+            experiments/cross-model-pulpo-lift/SUMMARY.md
+          if-no-files-found: warn
+          retention-days: 30
