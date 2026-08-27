@@ -59,10 +59,10 @@ jobs:
       - name: Compile independent service sources
         run: python -m compileall -q authority-service/src authority-service/tests
 
-  copilot-auto-probe:
+  copilot-model-policy-probe:
     if: github.event_name == 'push' && github.ref == 'refs/heads/diagnostic/copilot-actions-model-policy-2026-08-27'
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -70,22 +70,32 @@ jobs:
           node-version: "22"
       - name: Install pinned Copilot CLI
         run: npm install -g '@github/copilot@1.0.80'
-      - name: Probe auto-selected model with no tools
+      - name: Probe auto and documented explicit models
         env:
           GITHUB_TOKEN: ${{ github.token }}
-          COPILOT_HOME: ${{ runner.temp }}/copilot-auto-probe
         run: |
-          mkdir -p "$COPILOT_HOME"
-          mkdir -p "${{ runner.temp }}/empty-probe"
-          cd "${{ runner.temp }}/empty-probe"
-          copilot -p 'Return exactly READY and nothing else.' \
-            --model auto \
-            --max-ai-credits=30 \
-            --excluded-tools='bash,powershell,list_bash,list_powershell,read_bash,read_powershell,stop_bash,stop_powershell,write_bash,write_powershell,apply_patch,create,edit,view,list_agents,read_agent,task,write_agent,ask_user,glob,grep,rg,skill,web_fetch' \
-            --disable-builtin-mcps \
-            --no-custom-instructions \
-            --no-ask-user \
-            --no-auto-update \
-            --no-bash-env \
-            --no-color \
-            --log-level=error
+          set +e
+          TOOLS='bash,create,edit,glob,grep,list_agents,list_bash,read_agent,read_bash,skill,stop_bash,task,view,web_fetch,write_agent'
+          for MODEL in auto gpt-5.3-codex claude-haiku-4.5 gemini-3.5-flash; do
+            HOME_DIR="${{ runner.temp }}/copilot-${MODEL}"
+            WORK_DIR="${{ runner.temp }}/probe-${MODEL}"
+            mkdir -p "$HOME_DIR" "$WORK_DIR"
+            echo "=== MODEL_PROBE_START ${MODEL} ==="
+            (
+              cd "$WORK_DIR"
+              COPILOT_HOME="$HOME_DIR" copilot -p 'Return exactly READY and nothing else.' \
+                --model "$MODEL" \
+                --max-ai-credits=30 \
+                --excluded-tools="$TOOLS" \
+                --disable-builtin-mcps \
+                --no-custom-instructions \
+                --no-ask-user \
+                --no-auto-update \
+                --no-bash-env \
+                --no-color \
+                --log-level=error
+            )
+            STATUS=$?
+            echo "=== MODEL_PROBE_END ${MODEL} status=${STATUS} ==="
+          done
+          exit 0
