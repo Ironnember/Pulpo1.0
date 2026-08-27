@@ -144,12 +144,12 @@ jobs:
           if-no-files-found: warn
           retention-days: 30
 
-  cross-model-benchmark-generation4:
+  generation4-reconciliation:
     if: >-
       (github.event_name == 'pull_request' && github.head_ref == 'experiment/cross-model-pulpo-lift-compatible-client-2026-08-27') ||
       (github.event_name == 'push' && github.ref == 'refs/heads/experiment/cross-model-pulpo-lift-compatible-client-2026-08-27')
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
         with:
@@ -157,29 +157,12 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "22"
-      - name: Install Generation 4 compatible Copilot CLI
-        run: npm install -g '@github/copilot@1.128.0'
-      - name: Run Generation 4 frozen eight-call benchmark
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-        run: python experiments/cross-model-pulpo-lift/run_generation4.py
-      - name: Publish Generation 4 summary
-        if: always()
+      - name: Verify Generation 4 authorization remains bounded
+        run: python -W error -m unittest tests.test_cross_model_pulpo_lift_generation4 -v
+      - name: Verify reconciled failure record
         run: |
-          if [ -f experiments/cross-model-pulpo-lift/SUMMARY_GENERATION4.md ]; then
-            cat experiments/cross-model-pulpo-lift/SUMMARY_GENERATION4.md >> "$GITHUB_STEP_SUMMARY"
-          fi
-      - name: Upload Generation 4 audit artifact
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: cross-model-pulpo-lift-generation4-${{ github.sha }}
-          path: |
-            experiments/cross-model-pulpo-lift/results_generation4.json
-            experiments/cross-model-pulpo-lift/SUMMARY_GENERATION4.md
-            experiments/cross-model-pulpo-lift/execution_authorization_generation4.json
-          if-no-files-found: warn
-          retention-days: 30
+          test -f experiments/cross-model-pulpo-lift/GENERATION4_RECONCILIATION.md
+          grep -F 'successful model inference calls: **0**' experiments/cross-model-pulpo-lift/GENERATION4_RECONCILIATION.md
+          grep -F 'authority effect: **none**' experiments/cross-model-pulpo-lift/GENERATION4_RECONCILIATION.md
+      - name: Publish reconciliation evidence
+        run: cat experiments/cross-model-pulpo-lift/GENERATION4_RECONCILIATION.md >> "$GITHUB_STEP_SUMMARY"
