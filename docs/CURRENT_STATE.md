@@ -44,6 +44,13 @@ transactional SQLite budget store preserves reservation, attempted-order,
 reconciliation, receipt-hash, and spent state across restart and prevents two
 workers from over-reserving the same pilot ceiling.
 
+The name.com CORE contract tests prove exact registration-only discovery,
+premium/acquisition denial, exact-cent parsing, pinned sandbox/production
+origins, opaque credential references, provider idempotency binding, sandbox
+response reconciliation, and production denial before external execution when
+a hard provider charge cap is unavailable. They do not prove live API access or
+a completed purchase.
+
 The authority tests prove a configured external-verifier path whose signed
 envelope binds authority, verifier, key, deployment, trust configuration,
 approval, session, principal, exact intent, exact policy, nonce, issue time, and
