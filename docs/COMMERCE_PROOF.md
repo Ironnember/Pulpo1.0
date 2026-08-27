@@ -90,6 +90,28 @@ reservation, attempted-order, reconciliation, receipt-hash, and spend state
 only when its database path is trusted and protected. It is not a bank, card
 network, payment rail, rollback-proof financial ledger, or evidence ledger.
 
+## name.com CORE adapter boundary
+
+The optional `NameComCoreAdapter` binds discovery to CORE v1's literal
+`domains:checkAvailability` registration path, rejects premium and acquisition
+types, converts USD prices to exact cents, pins the production and sandbox
+origins, keeps API secrets behind an injected credential-owning transport, and
+uses the exact order hash as the provider idempotency key.
+
+The sandbox path can exercise Create Domain without real charges and converts
+the returned order and `totalPaid` object into registrar evidence. Production
+fails closed before Create Domain. CORE v1 exposes no per-request maximum-charge
+field; for standard non-premium registrations its documentation instructs the
+client to omit `purchasePrice`, and `totalPaid` can include VAT. Observing an
+overcharge afterward is reconciliation, not hard payment-rail enforcement.
+Production therefore remains blocked until name.com or a separately governed
+payment surface can enforce the exact authorized maximum before charge.
+
+Recorded API basis: [CORE overview](https://docs.name.com/api/v1/overview),
+[Check Availability](https://docs.name.com/api/v1/reference/domains/check-availability),
+[Create Domain](https://docs.name.com/api/v1/reference/domains/create-domain),
+and [Get Order](https://docs.name.com/api/v1/reference/orders/get-order).
+
 ## First live acceptance standard
 
 The initial transaction is successful only if the exact approved domain is
