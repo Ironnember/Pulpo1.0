@@ -6,6 +6,9 @@ Canonical repository assessed: `Ironnember/Pulpo1.0` at `91424e0794f9cedce04262c
 
 Historical repository assessed: `Iron-Ember/pulpo` at `17a6784cf0157d8ee1ec417ce33b18f4cea8cb69`
 
+This is a frozen starting assessment at the commits above. Later proof status
+and priority changes are authoritative only in [CURRENT_STATE.md](CURRENT_STATE.md).
+
 ## Authority of this document
 
 This document defines what the clean Pulpo project starts from, what the legacy repository contributes, and how legacy material may enter forward development.

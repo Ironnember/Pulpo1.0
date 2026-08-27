@@ -51,7 +51,11 @@ boolean bypass, bounded trusted-clock semantics, and malformed-envelope denial.
 The SQLite proof reopens the same state and proves consumed approval IDs,
 nonces, and permits remain unusable, while persisted audit tampering blocks
 kernel bootstrap. Concurrent presentation of one approval allows exactly once.
-The commerce proof uses this path but its budget state remains in memory.
+The commerce proof uses this path and can place its bounded budget state in the
+optional `SQLiteBudgetAccount`. That backend preserves reservations, attempted
+orders, reconciliation evidence, and spend across ordinary restart; it does not
+protect its database from a worker or host with file mutation or rollback
+authority.
 
 ## Boundary still open
 
