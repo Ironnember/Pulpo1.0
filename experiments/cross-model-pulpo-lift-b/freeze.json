@@ -1,0 +1,42 @@
+{
+  "schema": "pulpo.cross-model-lift-b.freeze.v1",
+  "frozen_at": "2026-08-27",
+  "parent_experiment": {
+    "freeze_commit": "a1775e3ea41b14fa57551a4d72a0e4a876a689ab",
+    "freeze_sha256": "06a27c6426a95fef49b6ba802acdfda31d466b8b1e1cce673cc955f0bb78354c",
+    "run_id": 33099112057,
+    "artifact_id": 9657648353,
+    "outcome": "EXECUTION_BUDGET_REJECTED_BEFORE_INFERENCE",
+    "observed_error": "Copilot CLI 1.0.80 requires --max-ai-credits to be at least 30; Generation A froze 5."
+  },
+  "single_allowed_change": {
+    "field": "execution_contract.max_ai_credits_per_call",
+    "from": 5,
+    "to": 30,
+    "reason": "provider execution surface enforces a hard minimum of 30 AI credits before inference"
+  },
+  "invariants": [
+    "Use the exact Generation A model families and preferred model identifiers.",
+    "Use the exact Generation A MODEL_ONLY and MODEL_PLUS_PULPO conditions.",
+    "Use the exact Generation A Pulpo lesson packet byte-for-byte.",
+    "Use the exact Generation A 12 benchmark tasks, options, and answer key byte-for-byte.",
+    "Use the exact Generation A isolation rules: no tools, web, memory, repository context, custom instructions, or judge model.",
+    "Use the exact Generation A deterministic scorer and success thresholds.",
+    "Do not alter model prompts except for effects mechanically implied by loading the unchanged Generation A freeze.",
+    "Do not classify a model as unavailable when the CLI fails for a benchmark-wide execution-configuration error."
+  ],
+  "claim_boundary": {
+    "may_prove": [
+      "Generation A failed before inference because of the frozen credit ceiling",
+      "Generation B changes only the execution credit ceiling required by the provider surface",
+      "cross-family reasoning lift if the unchanged Generation A success threshold is met"
+    ],
+    "does_not_prove": [
+      "that 30 credits are consumed by each call",
+      "model-weight learning",
+      "persistent retention",
+      "general intelligence improvement on arbitrary tasks",
+      "authority expansion"
+    ]
+  }
+}
