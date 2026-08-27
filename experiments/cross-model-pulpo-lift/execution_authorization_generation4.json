@@ -1,0 +1,41 @@
+{
+  "schema": "pulpo.cross-model-lift.execution-authorization.v2",
+  "authorized_at": "2026-08-27",
+  "authorized_by": "user",
+  "generation": 4,
+  "purpose": "Rerun the unchanged frozen cross-model Pulpo lift benchmark using the minimum Copilot CLI version required for the frozen GPT-5.6 Sol target, while preserving the previously authorized inference budget and all benchmark conditions.",
+  "freeze_commit": "a1775e3ea41b14fa57551a4d72a0e4a876a689ab",
+  "freeze_sha256": "06a27c6426a95fef49b6ba802acdfda31d466b8b1e1cce673cc955f0bb78354c",
+  "parent_authorized_head": "f2b9db84dda6b5630174a5cc551498d6c9b245c8",
+  "prior_authorized_run_id": 33101046499,
+  "prior_authorized_artifact_id": 9658473199,
+  "execution_surface": {
+    "copilot_cli_package": "@github/copilot",
+    "copilot_cli_version": "1.128.0",
+    "reason": "Minimum current compatible Copilot CLI version previously verified for the frozen GPT-5.6 Sol target. The version change is the only newly authorized execution-capability change."
+  },
+  "scope": {
+    "maximum_calls": 8,
+    "maximum_ai_credits_per_call": 30,
+    "maximum_total_ai_credits": 240,
+    "execution_count": 1,
+    "tasks_changed": false,
+    "answers_changed": false,
+    "lesson_packet_changed": false,
+    "model_targets_changed": false,
+    "scoring_changed": false,
+    "tools_changed": false,
+    "authority_changed": false
+  },
+  "authority_effect": "none",
+  "explicitly_not_authorized": [
+    "changing frozen tasks or answers",
+    "changing provider families or model target strings",
+    "raising the 30-credit per-call ceiling",
+    "raising the 240-credit aggregate ceiling",
+    "adding BYOK credentials or a new provider execution surface",
+    "granting model output execution authority",
+    "merging this experiment",
+    "automatically authorizing another generation"
+  ]
+}
