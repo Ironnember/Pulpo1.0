@@ -81,6 +81,11 @@ class TemporalTransferMatrixTests(unittest.TestCase):
         self.assertTrue(all(a <= b for a, b in zip(baseline, baseline[1:])), baseline)
         self.assertTrue(all(a <= b for a, b in zip(projected, projected[1:])), projected)
 
+    def test_observed_score_curve_is_exact_and_reproducible(self):
+        self.assertEqual([1, 2, 3, 4, 5, 6, 6, 8], self.result["baseline_scores"])
+        self.assertEqual([8, 8, 8, 8, 8, 8, 8, 8], self.result["projected_scores"])
+        self.assertEqual([7, 6, 5, 4, 3, 2, 2, 0], self.result["knowledge_gains"])
+
     def test_future_projection_is_distinguished_from_inherited_knowledge(self):
         first = self.checkpoints[0]
         last = self.checkpoints[-1]
