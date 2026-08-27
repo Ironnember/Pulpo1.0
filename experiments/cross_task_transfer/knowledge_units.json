@@ -1,0 +1,38 @@
+{
+  "schema": "pulpo.cross-task-knowledge.v1",
+  "authority_effect": "none",
+  "source": {
+    "repository": "Ironnember/Pulpo1.0",
+    "pull_request": 38,
+    "head_commit": "f16578bd1623d73f5e38b4eeef52cb760549a47d",
+    "artifact": "experiments/compounding/knowledge_units.json",
+    "artifact_sha256": "9d5fcacc88b9bd0443c77fb5811429c72a23aa40cb8db0c1e6fb29e95f1f6a41",
+    "relationship": "advisory_retrieved_memory"
+  },
+  "units": [
+    {
+      "id": "K1",
+      "title": "Governed transfer",
+      "claim_class": "Proposed",
+      "content": "A lesson counts as learning only when evidence from one reconciled outcome changes behavior on a later structurally similar task. Store the minimum evidence-linked lesson, invariant, scope, and remaining boundary. Competence may improve; authority remains unchanged unless separately authorized."
+    },
+    {
+      "id": "K2",
+      "title": "Precommitted transfer evaluation",
+      "claim_class": "Recorded/Inferred",
+      "content": "Measure learning with a rubric fixed before the learned output, then test local improvement, fresh replay, and negative transfer. Experience replay is not enough: irrelevant prior information can degrade performance, so the evaluator must reward useful transfer and detect stale or harmful carryover."
+    },
+    {
+      "id": "K3",
+      "title": "Frontier-weighted compounding",
+      "claim_class": "Proposed",
+      "content": "Compounding should optimize new trusted uncertainty retired per unit of cost, risk, and human attention. Reuse verified completion and failure paths; spend new work on the unresolved frontier. Repetition that produces no new trusted evidence is activity, not growth."
+    },
+    {
+      "id": "K4",
+      "title": "Selective compression and forgetting",
+      "claim_class": "Recorded/Inferred",
+      "content": "Durable memory should preserve provenance, scope, freshness, invariant, evidence references, and invalidation conditions while discarding redundant transcript. Retrieval relevance cannot raise authority. Current executable or canonical evidence overrides older memory, and poisoned, stale, or contradictory memory must be rejected or quarantined."
+    }
+  ]
+}

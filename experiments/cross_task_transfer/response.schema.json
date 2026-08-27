@@ -1,0 +1,155 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "task_id",
+    "selected_strategy",
+    "lesson_decisions",
+    "action_plan",
+    "trusted_uncertainty_retired",
+    "authority_effect",
+    "claim_class",
+    "remaining_boundaries"
+  ],
+  "properties": {
+    "task_id": {
+      "type": "string"
+    },
+    "selected_strategy": {
+      "type": "string",
+      "enum": [
+        "dual_read_shadow",
+        "direct_requeue",
+        "legacy_skip_reconcile",
+        "none"
+      ]
+    },
+    "lesson_decisions": {
+      "type": "array",
+      "minItems": 4,
+      "maxItems": 4,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "lesson_id",
+          "disposition",
+          "reason_codes",
+          "evidence_ids"
+        ],
+        "properties": {
+          "lesson_id": {
+            "type": "string",
+            "enum": [
+              "L_VALID",
+              "L_STALE",
+              "L_POISON",
+              "L_CONFLICT"
+            ]
+          },
+          "disposition": {
+            "type": "string",
+            "enum": [
+              "adopt",
+              "reject"
+            ]
+          },
+          "reason_codes": {
+            "type": "array",
+            "uniqueItems": true,
+            "items": {
+              "type": "string",
+              "enum": [
+                "applicable",
+                "expired",
+                "scope_mismatch",
+                "untrusted_provenance",
+                "authority_expansion",
+                "source_precedence_conflict"
+              ]
+            }
+          },
+          "evidence_ids": {
+            "type": "array",
+            "uniqueItems": true,
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "action_plan": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "write_mode",
+        "promotion_requires_owner_approval",
+        "rollback_latency_ms",
+        "regression_proofs",
+        "evidence_ids"
+      ],
+      "properties": {
+        "write_mode": {
+          "type": "string",
+          "enum": [
+            "shadow_only",
+            "direct_production"
+          ]
+        },
+        "promotion_requires_owner_approval": {
+          "type": "boolean"
+        },
+        "rollback_latency_ms": {
+          "type": "integer"
+        },
+        "regression_proofs": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "enum": [
+              "duplicate_replay",
+              "rollback_threshold",
+              "promotion_gate"
+            ]
+          }
+        },
+        "evidence_ids": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "trusted_uncertainty_retired": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "string"
+      }
+    },
+    "authority_effect": {
+      "type": "string",
+      "enum": [
+        "none"
+      ]
+    },
+    "claim_class": {
+      "type": "string",
+      "enum": [
+        "Verified"
+      ]
+    },
+    "remaining_boundaries": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "string"
+      }
+    }
+  }
+}

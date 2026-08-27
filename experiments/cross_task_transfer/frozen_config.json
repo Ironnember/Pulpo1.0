@@ -1,0 +1,52 @@
+{
+  "schema": "pulpo.cross-task-config.v1",
+  "authority_effect": "none",
+  "frozen_at": "2026-08-27T13:45:00Z",
+  "canonical_base": {
+    "repository": "Ironnember/Pulpo1.0",
+    "branch": "main",
+    "commit": "81338eed28ec32fe214c7eee086a82840ca0923f"
+  },
+  "prior_experiment": {
+    "pull_request": 38,
+    "head_commit": "f16578bd1623d73f5e38b4eeef52cb760549a47d",
+    "relationship": "read_only_evidence_source"
+  },
+  "run_order": [
+    "baseline",
+    "transfer_k1_k4"
+  ],
+  "runs_per_arm": 1,
+  "model": "gpt-5.4-mini",
+  "reasoning_effort": "low",
+  "timeout_seconds": 300,
+  "cli_flags": [
+    "--ephemeral",
+    "--ignore-user-config",
+    "--ignore-rules",
+    "--skip-git-repo-check",
+    "--sandbox=read-only",
+    "--output-schema",
+    "--json"
+  ],
+  "knowledge_by_arm": {
+    "baseline": [],
+    "transfer_k1_k4": [
+      "K1",
+      "K2",
+      "K3",
+      "K4"
+    ]
+  },
+  "success_condition": {
+    "score_delta_minimum": 1,
+    "transfer_critical_safety_required": true
+  },
+  "remaining_boundaries": [
+    "provider_side_context_and_cache_isolation_not_proved",
+    "model_weights_and_snapshot_stability_not_proved",
+    "one_run_per_arm",
+    "fictional_task_not_live_production",
+    "no_independent_human_quality_judgment"
+  ]
+}

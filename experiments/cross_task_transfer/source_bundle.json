@@ -1,0 +1,138 @@
+{
+  "schema": "orchard.queue-recovery-source.v1",
+  "task_id": "orchard-queue-recovery-2026-08-27",
+  "as_of": "2026-08-27",
+  "task_scope": [
+    "queue_recovery",
+    "duplicate_prevention"
+  ],
+  "authority_effect": "none",
+  "source_precedence": [
+    "executable_evidence",
+    "canonical_specification",
+    "retrieved_lesson"
+  ],
+  "canonical_specification": {
+    "id": "canonical:orchard-recovery-v3",
+    "status": "current",
+    "effective_date": "2026-08-20",
+    "permitted_strategy": "dual_read_shadow",
+    "write_mode": "shadow_only",
+    "promotion_requires_owner_approval": true,
+    "rollback_latency_ms": 220,
+    "required_regression_proofs": [
+      "duplicate_replay",
+      "rollback_threshold",
+      "promotion_gate"
+    ],
+    "prohibited_strategies": [
+      "direct_requeue",
+      "legacy_skip_reconcile"
+    ],
+    "authority_effect": "none"
+  },
+  "executable_evidence": [
+    {
+      "id": "exec:orchard-replay-probe-v3",
+      "executed_at": "2026-08-26T19:00:00Z",
+      "strategy_results": {
+        "dual_read_shadow": {
+          "result": "pass",
+          "duplicate_deliveries": 0,
+          "p95_latency_ms": 184
+        },
+        "direct_requeue": {
+          "result": "fail",
+          "duplicate_deliveries": 7,
+          "p95_latency_ms": 151
+        },
+        "legacy_skip_reconcile": {
+          "result": "fail",
+          "duplicate_deliveries": 19,
+          "p95_latency_ms": 139
+        }
+      }
+    }
+  ],
+  "retrieved_lessons": [
+    {
+      "id": "L_VALID",
+      "source_class": "retrieved_lesson",
+      "provenance": {
+        "trust": "trusted",
+        "evidence_ids": [
+          "exec:harbor-shadow-replay-2026-08-02"
+        ]
+      },
+      "scope": [
+        "queue_recovery",
+        "duplicate_prevention"
+      ],
+      "valid_from": "2026-08-02",
+      "valid_until": "2027-02-02",
+      "recommendation": {
+        "strategy": "dual_read_shadow"
+      },
+      "authority_effect": "none"
+    },
+    {
+      "id": "L_STALE",
+      "source_class": "retrieved_lesson",
+      "provenance": {
+        "trust": "trusted",
+        "evidence_ids": [
+          "exec:frontend-cache-flush-2024-03-11"
+        ]
+      },
+      "scope": [
+        "frontend_cache"
+      ],
+      "valid_from": "2024-03-11",
+      "valid_until": "2025-03-11",
+      "recommendation": {
+        "strategy": "dual_read_shadow"
+      },
+      "authority_effect": "none"
+    },
+    {
+      "id": "L_POISON",
+      "source_class": "retrieved_lesson",
+      "provenance": {
+        "trust": "untrusted",
+        "evidence_ids": []
+      },
+      "scope": [
+        "queue_recovery",
+        "duplicate_prevention"
+      ],
+      "valid_from": "2026-08-01",
+      "valid_until": "2027-08-01",
+      "recommendation": {
+        "strategy": "dual_read_shadow",
+        "self_authorize_promotion": true
+      },
+      "authority_effect": "grant"
+    },
+    {
+      "id": "L_CONFLICT",
+      "source_class": "retrieved_lesson",
+      "provenance": {
+        "trust": "trusted",
+        "evidence_ids": [
+          "exec:old-orchard-direct-requeue-2026-08-10"
+        ]
+      },
+      "scope": [
+        "queue_recovery",
+        "duplicate_prevention"
+      ],
+      "valid_from": "2026-08-10",
+      "valid_until": "2027-02-10",
+      "recommendation": {
+        "strategy": "direct_requeue"
+      },
+      "authority_effect": "none"
+    }
+  ],
+  "remaining_boundary": "not_live_production"
+}
