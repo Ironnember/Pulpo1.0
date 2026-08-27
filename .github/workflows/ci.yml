@@ -2,7 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches:
+      - main
+      - experiment/cross-model-pulpo-lift-2026-08-27
   pull_request:
 
 permissions:
@@ -56,7 +58,9 @@ jobs:
         run: python -m compileall -q authority-service/src authority-service/tests
 
   cross-model-benchmark:
-    if: github.event_name == 'pull_request' && github.head_ref == 'experiment/cross-model-pulpo-lift-2026-08-27'
+    if: >-
+      (github.event_name == 'pull_request' && github.head_ref == 'experiment/cross-model-pulpo-lift-2026-08-27') ||
+      (github.event_name == 'push' && github.ref == 'refs/heads/experiment/cross-model-pulpo-lift-2026-08-27')
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
