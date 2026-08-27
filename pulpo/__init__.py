@@ -12,6 +12,7 @@ from .kernel import (
     Policy,
     StateIntegrityError,
 )
+from .namecom import NameComCoreAdapter
 from .state import InMemoryKernelState, KernelState, SQLiteKernelState
 
 __all__ = [
@@ -29,6 +30,7 @@ __all__ = [
     "InMemoryKernelState",
     "Intent",
     "KernelState",
+    "NameComCoreAdapter",
     "Policy",
     "SQLiteBudgetAccount",
     "SQLiteKernelState",
