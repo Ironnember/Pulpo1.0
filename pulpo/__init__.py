@@ -13,6 +13,7 @@ from .kernel import (
     StateIntegrityError,
 )
 from .namecom import NameComCoreAdapter
+from .skill_admission import SkillAdmission, SkillAdmissionBoundary, SkillArtifact, SkillExecutionRequest
 from .state import InMemoryKernelState, KernelState, SQLiteKernelState
 
 __all__ = [
@@ -34,5 +35,9 @@ __all__ = [
     "Policy",
     "SQLiteBudgetAccount",
     "SQLiteKernelState",
+    "SkillAdmission",
+    "SkillAdmissionBoundary",
+    "SkillArtifact",
+    "SkillExecutionRequest",
     "StateIntegrityError",
 ]
