@@ -44,7 +44,7 @@ GovernanceKernel.evaluate(exact_locked_intent)
         +-- deny
         +-- require_approval
         +-- allow -> one-use permit
-                 
+
 require_approval
         |
         | external approval envelope bound to exact intent/policy
