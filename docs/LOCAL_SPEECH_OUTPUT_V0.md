@@ -42,6 +42,22 @@ On Windows, the PowerShell program is a fixed command string and spoken text is 
 
 This is an execution-safety property for the renderer. It is not an authentication or authority mechanism.
 
+## One-command host proof
+
+The package exposes an installed command:
+
+```text
+pulpo-speak
+```
+
+Its default phrase is:
+
+> Pulpo local speech output is online. Voice is expression, not authority.
+
+A custom sanitized phrase can also be supplied as the single positional argument.
+
+The command returns nonzero if no supported renderer exists or the renderer fails. A successful process exit proves only that the selected host speech command returned successfully. The human operator must still confirm that audio was actually audible before recording an audible-speech success claim.
+
 ## Success evidence required
 
 Tests must prove:
@@ -54,7 +70,8 @@ Tests must prove:
 6. the speech adapter has `authority_effect: none`;
 7. integration with `GovernedVoiceInterface` speaks the sanitized status only;
 8. a real kernel permit is never inserted into spoken output;
-9. permit issuance remains rendered as `not yet proven` rather than execution or completion.
+9. permit issuance remains rendered as `not yet proven` rather than execution or completion;
+10. the `pulpo-speak` entrypoint has a safe default phrase, accepts a custom phrase, and returns nonzero when speech is unavailable.
 
 The full inherited CI suites must remain green at the same commit.
 
@@ -73,14 +90,14 @@ This proof does **not** establish:
 - real governed execution;
 - evidence/reconciliation of an external consequence.
 
-A local machine must execute a separate host proof before Pulpo may claim audible speech on that platform.
+A local machine must execute `pulpo-speak` and a human must confirm audible output before Pulpo may claim real local speech on that platform.
 
 ## Claim classification
 
 Until CI passes:
 
 - renderer implementation: **Recorded**;
-- command construction semantics: **Unknown**;
+- command construction and CLI semantics: **Unknown**;
 - real audible host speech: **Unproven**.
 
-After passing CI, tested command-selection and injection-safety semantics may be **Verified** for the exact branch commit. Audible local speech remains **Unknown** until exercised on a real host.
+After passing CI, tested command-selection, injection-safety, and CLI semantics may be **Verified** for the exact branch commit. Audible local speech remains **Unknown** until exercised on a real host.
