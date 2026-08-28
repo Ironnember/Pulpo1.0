@@ -6,9 +6,15 @@ requires-python = ">=3.11"
 
 [project.scripts]
 pulpo-speak = "pulpo.local_speech:main"
+pulpo-listen = "pulpo.local_listen:main"
+pulpo-voice-demo = "pulpo.voice_demo:main"
 
 [project.optional-dependencies]
 authority = ["cryptography==50.0.1"]
+voice = [
+  "sounddevice>=0.5,<1",
+  "faster-whisper>=1.1,<2",
+]
 
 [tool.setuptools]
 packages = ["pulpo"]
