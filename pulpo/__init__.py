@@ -14,11 +14,18 @@ from .kernel import (
     StateIntegrityError,
     TargetResolution,
 )
+from .local_listen import (
+    EmptyTranscriptionError,
+    LocalTranscription,
+    LocalWhisperMicrophone,
+    MicrophoneUnavailableError,
+)
 from .local_speech import SpeechInvocation, SpeechUnavailableError, SystemSpeaker, build_speech_invocation
 from .namecom import NameComCoreAdapter
 from .state import InMemoryKernelState, KernelState, SQLiteKernelState
 from .targets import evaluate_locked_target_with_approval
 from .voice import GovernedVoiceInterface, Speaker, TargetReference, VoiceProfile, VoiceResult
+from .voice_input import StagedTarget, TranscriptArtifact, VoiceCommandSession, VoiceInputResult
 
 __all__ = [
     "AgentGrant",
@@ -31,12 +38,16 @@ __all__ = [
     "AuthorityTrustError",
     "Decision",
     "Ed25519ApprovalVerifier",
+    "EmptyTranscriptionError",
     "GovernanceKernel",
     "GovernedVoiceInterface",
     "InMemoryKernelState",
     "Intent",
     "KernelState",
+    "LocalTranscription",
+    "LocalWhisperMicrophone",
     "LockedTarget",
+    "MicrophoneUnavailableError",
     "NameComCoreAdapter",
     "Policy",
     "SQLiteBudgetAccount",
@@ -44,10 +55,14 @@ __all__ = [
     "Speaker",
     "SpeechInvocation",
     "SpeechUnavailableError",
+    "StagedTarget",
     "StateIntegrityError",
     "SystemSpeaker",
     "TargetReference",
     "TargetResolution",
+    "TranscriptArtifact",
+    "VoiceCommandSession",
+    "VoiceInputResult",
     "VoiceProfile",
     "VoiceResult",
     "build_speech_invocation",
