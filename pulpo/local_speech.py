@@ -8,11 +8,13 @@ text into executable command strings.
 
 from __future__ import annotations
 
+import argparse
 from dataclasses import dataclass, field
 import os
 import platform
 import shutil
 import subprocess
+import sys
 from typing import Callable
 
 
@@ -33,6 +35,10 @@ _WINDOWS_SCRIPT = (
     "Add-Type -AssemblyName System.Speech; "
     "$s=New-Object System.Speech.Synthesis.SpeechSynthesizer; "
     "$s.Speak($env:PULPO_TTS_TEXT)"
+)
+
+_DEFAULT_CHECK_PHRASE = (
+    "Pulpo local speech output is online. Voice is expression, not authority."
 )
 
 
@@ -106,3 +112,30 @@ class SystemSpeaker:
         if invocation.environment is not None:
             kwargs["env"] = invocation.environment
         self._runner(list(invocation.argv), **kwargs)
+
+
+def main(argv: list[str] | None = None, *, speaker: SystemSpeaker | None = None) -> int:
+    """Run the one-command local audible-speech check."""
+
+    parser = argparse.ArgumentParser(
+        prog="pulpo-speak",
+        description="Render a local Pulpo speech-output test phrase.",
+    )
+    parser.add_argument(
+        "text",
+        nargs="?",
+        default=_DEFAULT_CHECK_PHRASE,
+        help="sanitized text to render",
+    )
+    args = parser.parse_args(argv)
+    renderer = speaker if speaker is not None else SystemSpeaker()
+    try:
+        renderer.speak(args.text)
+    except (SpeechUnavailableError, subprocess.CalledProcessError, ValueError) as exc:
+        print(f"pulpo-speak failed: {exc}", file=sys.stderr)
+        return 2
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
