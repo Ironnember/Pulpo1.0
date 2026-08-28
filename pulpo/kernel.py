@@ -28,6 +28,53 @@ class Intent:
 
 
 @dataclass(frozen=True)
+class LockedTarget:
+    """Immutable proposed consequence recorded before authority evaluation.
+
+    Locking a target creates no permit and has no authority effect.  The target
+    hash binds the exact intent plus target identity, version, and lock time so a
+    later interface can resolve a short command such as ``fire`` to one durable
+    object before asking the kernel for an authorization decision.
+    """
+
+    target_id: str
+    version: int
+    intent: Intent
+    created_at_ns: int
+    schema: str = "pulpo.target.v0"
+
+    def __post_init__(self) -> None:
+        if not self.target_id or self.version <= 0 or self.created_at_ns <= 0:
+            raise ValueError("target identity, version, and lock time must be valid")
+        if self.schema != "pulpo.target.v0":
+            raise ValueError("unsupported target schema")
+
+    @property
+    def target_hash(self) -> str:
+        return sha256(
+            _canonical(
+                {
+                    "schema": self.schema,
+                    "target_id": self.target_id,
+                    "version": self.version,
+                    "intent": asdict(self.intent),
+                    "created_at_ns": self.created_at_ns,
+                }
+            )
+        ).hexdigest()
+
+
+@dataclass(frozen=True)
+class TargetResolution:
+    outcome: str
+    reason: str
+    target_id: str
+    version: int
+    expected_target_hash: str
+    target: LockedTarget | None = None
+
+
+@dataclass(frozen=True)
 class AgentGrant:
     """Least-authority limits for one agent principal.
 
@@ -139,6 +186,120 @@ class GovernanceKernel:
             "authority_trust": asdict(self.policy.authority_trust) if self.policy.authority_trust else None,
         }
         return sha256(_canonical(payload)).hexdigest()
+
+    def lock_target(self, target_id: str, intent: Intent, *, version: int = 1) -> LockedTarget:
+        """Record an exact proposed target without granting authority."""
+
+        now_ns = self._trusted_now()
+        if now_ns is None:
+            raise RuntimeError("target_clock_invalid")
+        target = LockedTarget(target_id, version, intent, now_ns)
+        existing = self.get_locked_target(target_id, version=version)
+        if existing is not None:
+            if not hmac.compare_digest(existing.target_hash, target.target_hash):
+                raise ValueError("target version is immutable")
+            return existing
+        self._state.append(
+            "target_locked",
+            {
+                "schema": target.schema,
+                "target_id": target.target_id,
+                "version": target.version,
+                "target_hash": target.target_hash,
+                "intent": asdict(target.intent),
+                "intent_hash": self.intent_hash(target.intent),
+                "created_at_ns": target.created_at_ns,
+                "authority_effect": "none",
+            },
+            now_ns,
+        )
+        return target
+
+    def get_locked_target(self, target_id: str, *, version: int = 1) -> LockedTarget | None:
+        """Resolve a locked target from the canonical audit chain."""
+
+        if not target_id or version <= 0:
+            return None
+        if not self.verify_audit():
+            raise StateIntegrityError("kernel state audit chain is invalid")
+        for record in reversed(self.audit):
+            if record.get("event") != "target_locked":
+                continue
+            payload = record.get("payload", {})
+            if payload.get("target_id") != target_id or payload.get("version") != version:
+                continue
+            try:
+                intent_payload = payload["intent"]
+                target = LockedTarget(
+                    target_id=payload["target_id"],
+                    version=payload["version"],
+                    intent=Intent(**intent_payload),
+                    created_at_ns=payload["created_at_ns"],
+                    schema=payload["schema"],
+                )
+                stored_target_hash = payload["target_hash"]
+                stored_intent_hash = payload["intent_hash"]
+            except (KeyError, TypeError, ValueError) as exc:
+                raise StateIntegrityError("locked target record is invalid") from exc
+            if not hmac.compare_digest(target.target_hash, stored_target_hash):
+                raise StateIntegrityError("locked target hash is invalid")
+            if not hmac.compare_digest(self.intent_hash(target.intent), stored_intent_hash):
+                raise StateIntegrityError("locked target intent hash is invalid")
+            if payload.get("authority_effect") != "none":
+                raise StateIntegrityError("locked target cannot carry authority")
+            return target
+        return None
+
+    def resolve_locked_target(
+        self,
+        target_id: str,
+        expected_target_hash: str,
+        *,
+        version: int = 1,
+    ) -> TargetResolution:
+        """Fail closed unless a caller references the exact durable target."""
+
+        now_ns = self._trusted_now()
+        if now_ns is None:
+            return TargetResolution("deny", "target_clock_invalid", target_id, version, expected_target_hash)
+        if not target_id or version <= 0 or not isinstance(expected_target_hash, str) or len(expected_target_hash) != 64:
+            result = TargetResolution("deny", "target_reference_invalid", target_id, version, expected_target_hash)
+        else:
+            target = self.get_locked_target(target_id, version=version)
+            if target is None:
+                result = TargetResolution("deny", "target_not_locked", target_id, version, expected_target_hash)
+            elif not hmac.compare_digest(target.target_hash, expected_target_hash):
+                result = TargetResolution("deny", "target_hash_mismatch", target_id, version, expected_target_hash)
+            else:
+                result = TargetResolution("match", "target_exact_match", target_id, version, expected_target_hash, target)
+        self._state.append(
+            "target_resolution",
+            {
+                "outcome": result.outcome,
+                "reason": result.reason,
+                "target_id": target_id,
+                "version": version,
+                "expected_target_hash": expected_target_hash,
+                "resolved_target_hash": result.target.target_hash if result.target else None,
+                "authority_effect": "none",
+            },
+            now_ns,
+        )
+        return result
+
+    def evaluate_locked_target(
+        self,
+        target_id: str,
+        expected_target_hash: str,
+        *,
+        version: int = 1,
+    ) -> tuple[TargetResolution, Decision | None]:
+        """Resolve an exact target, then delegate authority to the normal evaluator."""
+
+        resolution = self.resolve_locked_target(target_id, expected_target_hash, version=version)
+        if resolution.outcome != "match" or resolution.target is None:
+            return resolution, None
+        return resolution, self.evaluate(resolution.target.intent)
 
     def evaluate(self, intent: Intent) -> Decision:
         digest = self.intent_hash(intent)
