@@ -16,6 +16,7 @@ from .kernel import (
 )
 from .namecom import NameComCoreAdapter
 from .state import InMemoryKernelState, KernelState, SQLiteKernelState
+from .targets import evaluate_locked_target_with_approval
 
 __all__ = [
     "AgentGrant",
@@ -39,4 +40,5 @@ __all__ = [
     "SQLiteKernelState",
     "StateIntegrityError",
     "TargetResolution",
+    "evaluate_locked_target_with_approval",
 ]
