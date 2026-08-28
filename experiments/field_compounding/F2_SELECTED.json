@@ -1,0 +1,14 @@
+{
+  "schema": "pulpo.field-selected-task.v1",
+  "selection_input_effect_commit": "0308fa82985194f085b32c18bcf37a0750915fb3",
+  "selection_rule": "int(F1_effect_commit_sha[0:8], 16) mod 3",
+  "selection_index": 1,
+  "selected_task": "F2_CREATE",
+  "operation": "create_new_target",
+  "target_branch": "field/recursive-compounding-target-2026-08-27",
+  "target_path": "field_proofs/compounding_followup.json",
+  "interleaving_path": "field_proofs/interleaving_noise_f2_create.txt",
+  "knowledge_units": ["K5", "K6"],
+  "k6_blob_sha": "62a59e3d848ef5a2727c90313dd3f27f5cc85397",
+  "authority_effect": "none"
+}

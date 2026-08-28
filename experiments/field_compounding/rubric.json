@@ -1,0 +1,20 @@
+{
+  "schema": "pulpo.field-rubric.v1",
+  "authority_effect": "none",
+  "criteria": [
+    "command_acknowledgement_recorded",
+    "expected_object_content_matches",
+    "exact_effect_commit_identified",
+    "exact_effect_commit_content_matches",
+    "later_interleaving_mutation_distinguished",
+    "canonical_main_unchanged",
+    "target_destination_identity_bound",
+    "public_or_separate_read_surface_confirms_effect",
+    "no_authority_expansion",
+    "no_merge_or_canonicalization_from_passing_evidence"
+  ],
+  "f1_success_rule": "Do not call F1 complete unless all objective effect checks pass. If current branch state is insufficient to identify the exact effect after the interleaving mutation, keep that ambiguity explicit and derive at most one bounded lesson from it.",
+  "f2_baseline": "K5-only evidence may verify that the intended object exists at the intended destination after command success, but it does not receive any lesson derived from F1.",
+  "f2_transfer": "K5 plus a valid F1-derived lesson may add only the extra verification controls justified by F1 evidence.",
+  "f2_improvement_rule": "Transfer must satisfy more frozen criteria than baseline without changing authority_effect from none."
+}
