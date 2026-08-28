@@ -258,3 +258,65 @@ class RestartSafeStateTests(unittest.TestCase):
         def append_from_connection(event):
             state = SQLiteKernelState(self.path)
             try:
+                state.append(event, {"source": event}, NOW)
+            except Exception as exc:
+                errors.append(exc)
+            finally:
+                state.close()
+
+        with patch.object(state_module, "_audit_record", observed_audit_record):
+            first = threading.Thread(target=append_from_connection, args=("first",))
+            second = threading.Thread(target=append_from_connection, args=("second",))
+            first.start()
+            self.assertTrue(first_record_started.wait(2))
+            second.start()
+            self.assertFalse(second_record_started.wait(0.1))
+            release_first_record.set()
+            first.join(2)
+            second.join(2)
+
+        self.assertFalse(first.is_alive())
+        self.assertFalse(second.is_alive())
+        self.assertEqual([], errors)
+        state = SQLiteKernelState(self.path)
+        self.addCleanup(state.close)
+        self.assertEqual(["first", "second"], [record["event"] for record in state.audit])
+        self.assertTrue(self.kernel(state).verify_audit())
+
+    def test_tampered_persisted_audit_fails_closed_at_restart(self):
+        state = SQLiteKernelState(self.path)
+        kernel = self.kernel(state)
+        kernel.evaluate_with_approval(
+            self.intent,
+            signed_envelope(kernel, self.intent, self.verifier, now_ns=NOW),
+        )
+        state.close()
+
+        with sqlite3.connect(self.path) as connection:
+            connection.execute("UPDATE audit SET payload_json = ? WHERE sequence = 1", ('{"changed":true}',))
+
+        tampered_state = SQLiteKernelState(self.path)
+        self.addCleanup(tampered_state.close)
+        with self.assertRaisesRegex(StateIntegrityError, "audit chain"):
+            self.kernel(tampered_state)
+
+    def test_malformed_persisted_audit_raises_integrity_error_at_restart(self):
+        state = SQLiteKernelState(self.path)
+        kernel = self.kernel(state)
+        kernel.evaluate_with_approval(
+            self.intent,
+            signed_envelope(kernel, self.intent, self.verifier, now_ns=NOW),
+        )
+        state.close()
+
+        with sqlite3.connect(self.path) as connection:
+            connection.execute("UPDATE audit SET payload_json = ? WHERE sequence = 1", ("{not-json",))
+
+        malformed_state = SQLiteKernelState(self.path)
+        self.addCleanup(malformed_state.close)
+        with self.assertRaisesRegex(StateIntegrityError, "audit chain"):
+            self.kernel(malformed_state)
+
+
+if __name__ == "__main__":
+    unittest.main()
