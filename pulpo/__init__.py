@@ -9,8 +9,10 @@ from .kernel import (
     Decision,
     GovernanceKernel,
     Intent,
+    LockedTarget,
     Policy,
     StateIntegrityError,
+    TargetResolution,
 )
 from .namecom import NameComCoreAdapter
 from .state import InMemoryKernelState, KernelState, SQLiteKernelState
@@ -30,9 +32,11 @@ __all__ = [
     "InMemoryKernelState",
     "Intent",
     "KernelState",
+    "LockedTarget",
     "NameComCoreAdapter",
     "Policy",
     "SQLiteBudgetAccount",
     "SQLiteKernelState",
     "StateIntegrityError",
+    "TargetResolution",
 ]
