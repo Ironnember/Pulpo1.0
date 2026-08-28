@@ -1,0 +1,39 @@
+{
+  "schema": "pulpo.field-task-pool.v1",
+  "authority_effect": "none",
+  "first_task": {
+    "id": "F1",
+    "target_branch": "field/recursive-compounding-target-2026-08-27",
+    "target_path": "field_proofs/compounding_effect.json",
+    "base_sha": "81338eed28ec32fe214c7eee086a82840ca0923f",
+    "interleaving_path": "field_proofs/interleaving_noise_f1.txt",
+    "purpose": "Create one real external GitHub effect, then introduce a separate later mutation before verification so command acknowledgement, destination state, and exact effect version can be reconciled separately."
+  },
+  "followup_selection": {
+    "rule": "int(F1_effect_commit_sha[0:8], 16) mod 3",
+    "tasks": [
+      {
+        "index": 0,
+        "id": "F2_UPDATE",
+        "operation": "update_existing_target",
+        "target_path": "field_proofs/compounding_effect.json",
+        "interleaving_path": "field_proofs/interleaving_noise_f2_update.txt"
+      },
+      {
+        "index": 1,
+        "id": "F2_CREATE",
+        "operation": "create_new_target",
+        "target_path": "field_proofs/compounding_followup.json",
+        "interleaving_path": "field_proofs/interleaving_noise_f2_create.txt"
+      },
+      {
+        "index": 2,
+        "id": "F2_SECOND_BRANCH",
+        "operation": "create_on_second_branch",
+        "target_branch": "field/recursive-compounding-followup-2026-08-27",
+        "target_path": "field_proofs/compounding_followup.json",
+        "interleaving_path": "field_proofs/interleaving_noise_f2_second_branch.txt"
+      }
+    ]
+  }
+}
