@@ -1,7 +1,12 @@
 import unittest
 
 from pulpo import GovernanceKernel, Intent, Policy
-from pulpo.local_speech import SpeechUnavailableError, SystemSpeaker, build_speech_invocation
+from pulpo.local_speech import (
+    SpeechUnavailableError,
+    SystemSpeaker,
+    build_speech_invocation,
+    main,
+)
 from pulpo.voice import GovernedVoiceInterface, VoiceProfile
 
 
@@ -12,6 +17,19 @@ class RecordingRunner:
     def __call__(self, argv, **kwargs):
         self.calls.append((argv, kwargs))
         return object()
+
+
+class RecordingSpeaker:
+    def __init__(self):
+        self.messages = []
+
+    def speak(self, text):
+        self.messages.append(text)
+
+
+class FailingSpeaker:
+    def speak(self, text):
+        raise SpeechUnavailableError("no renderer")
 
 
 class LocalSpeechTests(unittest.TestCase):
@@ -104,6 +122,20 @@ class LocalSpeechTests(unittest.TestCase):
         self.assertIsNotNone(decision.permit)
         self.assertNotIn(decision.permit, spoken)
         self.assertIn("not yet proven", spoken.lower())
+
+    def test_pulpo_speak_entrypoint_has_safe_default_and_custom_text(self):
+        speaker = RecordingSpeaker()
+
+        default_code = main([], speaker=speaker)
+        custom_code = main(["Pulpo check."], speaker=speaker)
+
+        self.assertEqual(0, default_code)
+        self.assertEqual(0, custom_code)
+        self.assertIn("Voice is expression, not authority", speaker.messages[0])
+        self.assertEqual("Pulpo check.", speaker.messages[1])
+
+    def test_pulpo_speak_entrypoint_returns_nonzero_when_renderer_is_unavailable(self):
+        self.assertEqual(2, main([], speaker=FailingSpeaker()))
 
 
 if __name__ == "__main__":
