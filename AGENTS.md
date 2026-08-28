@@ -44,6 +44,9 @@ Default rule for this repository and future Iron & Ember projects:
 > When research velocity outruns canonical control admission, consolidate before expanding.
 
 See `docs/PIVOT_CANONICAL_CONSEQUENCE.md` for the evidence path and rationale.
+Use `docs/FUTURE_PROJECT_BOOTSTRAP.md` as the starting governance/evidence seed
+for a new Iron & Ember repository; it gains authority only through that new
+project's legitimate admission path.
 
 ## Required change record
 
