@@ -1,0 +1,10 @@
+{
+  "schema": "pulpo.field-effect.v1",
+  "experiment": "field-governed-compounding-2026-08-27",
+  "phase": "F1",
+  "canonical_base": "81338eed28ec32fe214c7eee086a82840ca0923f",
+  "knowledge_source_head": "72f556554cf803d3fe24e84d5822514bc4e14667",
+  "intended_target_branch": "field/recursive-compounding-target-2026-08-27",
+  "authority_effect": "none",
+  "field_nonce": "81338eed-72f55655-f1"
+}

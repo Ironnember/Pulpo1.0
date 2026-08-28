@@ -1,0 +1,89 @@
+{
+  "schema": "pulpo.field-evidence.v1",
+  "phase": "F2",
+  "claim_class": "Verified",
+  "authority_effect": "none",
+  "selected_task": "F2_CREATE",
+  "selection_rule": "int(F1_effect_commit_sha[0:8], 16) mod 3",
+  "selection_input_effect_commit": "0308fa82985194f085b32c18bcf37a0750915fb3",
+  "selection_index": 1,
+  "target_branch": "field/recursive-compounding-target-2026-08-27",
+  "target_parent_before_f2": "3a80dc0bf61edfd40ba3e6dc401d04eef4233a6f",
+  "target_path": "field_proofs/compounding_followup.json",
+  "command_ack_effect_commit": "42b90dd8d070066f88f89b714a990ed7aebac028",
+  "interleaving_commit": "8d56aab022b93654f85884866d4333787fdd7b38",
+  "observed_branch_tip_after_interleaving": "8d56aab022b93654f85884866d4333787fdd7b38",
+  "frozen_marker_blob_sha": "ff9237344372dfce7bd7e6404d67b1d12321b3ba",
+  "effect_commit_marker_blob_sha": "ff9237344372dfce7bd7e6404d67b1d12321b3ba",
+  "branch_tip_marker_blob_sha": "ff9237344372dfce7bd7e6404d67b1d12321b3ba",
+  "canonical_main_target_path": "absent_404",
+  "transition_evidence": {
+    "f1_tip_to_f2_effect": "exactly one commit; only field_proofs/compounding_followup.json added",
+    "f2_effect_to_interleaving": "exactly one later commit; only field_proofs/interleaving_noise_f2_create.txt added"
+  },
+  "knowledge": {
+    "baseline": ["K5"],
+    "transfer": ["K5", "K6"],
+    "k6_blob_sha": "62a59e3d848ef5a2727c90313dd3f27f5cc85397"
+  },
+  "frozen_criteria": [
+    "command_acknowledgement_recorded",
+    "expected_object_content_matches",
+    "exact_effect_commit_identified",
+    "exact_effect_commit_content_matches",
+    "later_interleaving_mutation_distinguished",
+    "canonical_main_unchanged",
+    "target_destination_identity_bound",
+    "public_or_separate_read_surface_confirms_effect",
+    "no_authority_expansion",
+    "no_merge_or_canonicalization_from_passing_evidence"
+  ],
+  "baseline_k5_only": {
+    "score": 7,
+    "total": 10,
+    "satisfied": [
+      "command_acknowledgement_recorded",
+      "expected_object_content_matches",
+      "exact_effect_commit_identified",
+      "target_destination_identity_bound",
+      "public_or_separate_read_surface_confirms_effect",
+      "no_authority_expansion",
+      "no_merge_or_canonicalization_from_passing_evidence"
+    ],
+    "not_satisfied_without_f1_derived_k6_controls": [
+      "exact_effect_commit_content_matches",
+      "later_interleaving_mutation_distinguished",
+      "canonical_main_unchanged"
+    ]
+  },
+  "transfer_k5_k6": {
+    "score": 10,
+    "total": 10,
+    "satisfied": [
+      "command_acknowledgement_recorded",
+      "expected_object_content_matches",
+      "exact_effect_commit_identified",
+      "exact_effect_commit_content_matches",
+      "later_interleaving_mutation_distinguished",
+      "canonical_main_unchanged",
+      "target_destination_identity_bound",
+      "public_or_separate_read_surface_confirms_effect",
+      "no_authority_expansion",
+      "no_merge_or_canonicalization_from_passing_evidence"
+    ]
+  },
+  "improvement": {
+    "frozen_rubric_points": 3,
+    "baseline_score": 7,
+    "transfer_score": 10
+  },
+  "interpretation": "The K5-only baseline verifies provider acknowledgement and current destination state but does not add the F1-derived version-transition controls. K6 adds exact effect-version content verification, explicit distinction of the later interleaving mutation, and confirmation that the field effect did not appear on canonical main.",
+  "separate_read_surface": "GitHub contents reads at the exact effect commit and current target branch independently reproduced the frozen marker blob after the write; public raw/web verification was unavailable during the run.",
+  "remaining_boundary": [
+    "baseline versus transfer is a frozen evidence-policy comparison over the same real external effect, not two independently operated provider executions",
+    "the same GitHub provider supplies the write acknowledgement and repository read evidence",
+    "public raw/web verification was unavailable during the run",
+    "the external effect is a reversible source-control mutation, not production commerce",
+    "no independent human authority deployment, OS containment, or payment rail is proved"
+  ]
+}
