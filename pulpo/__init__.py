@@ -14,6 +14,7 @@ from .kernel import (
     StateIntegrityError,
     TargetResolution,
 )
+from .local_speech import SpeechInvocation, SpeechUnavailableError, SystemSpeaker, build_speech_invocation
 from .namecom import NameComCoreAdapter
 from .state import InMemoryKernelState, KernelState, SQLiteKernelState
 from .targets import evaluate_locked_target_with_approval
@@ -41,10 +42,14 @@ __all__ = [
     "SQLiteBudgetAccount",
     "SQLiteKernelState",
     "Speaker",
+    "SpeechInvocation",
+    "SpeechUnavailableError",
     "StateIntegrityError",
+    "SystemSpeaker",
     "TargetReference",
     "TargetResolution",
     "VoiceProfile",
     "VoiceResult",
+    "build_speech_invocation",
     "evaluate_locked_target_with_approval",
 ]
