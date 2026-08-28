@@ -86,6 +86,14 @@ key, protected state, or external evidence store exists. Independent deployed
 human authority therefore remains **Blocked**. See
 [the authority service proof](AUTHORITY_SERVICE_PROOF.md).
 
+Protected `main` also contains the admitted field-level governed recursive-transfer
+experiment from PR #42. That experiment verified two reversible external GitHub
+state effects, exact effect-version reconciliation under later interleaving
+mutations, and an evidence-policy improvement from 7/10 to 10/10 after a lesson
+was extracted from the first effect, while `authority_effect` remained `none`.
+This proves a bounded form of governed external-effect learning; it does not
+prove general model learning, production autonomy, or authority expansion.
+
 ## Trust boundary
 
 The current kernel is an in-process governance semantics proof. It does not yet prove:
@@ -113,6 +121,27 @@ chain**. It must not claim independent human authority or protected storage
 until signer, verifier, clock, trust bootstrap, and host isolation are deployed
 and tested. Stronger claims require separate implementation and evidence.
 
+## Canonical consequence pivot
+
+A new project-priority failure mode has been identified: experimental evidence
+can advance faster than the strongest consequence-bearing control is admitted
+into canonical state. When that happens, additional frontier work can increase
+integration debt without retiring the highest-consequence uncertainty.
+
+Default priority rule:
+
+> When research velocity outruns canonical control admission, consolidate before expanding.
+
+Evidence, learning, and successful branches may recommend priority and
+canonicalization, but they may not authorize their own merge, scope, budget,
+authority, or canonical status. When a stronger verified candidate exists on a
+stale or divergent branch, reconstruct the smallest behavior on current `main`
+and rerun both the original proof and all current required checks rather than
+blindly merging branch history.
+
+The evidence path and future-project inheritance rule are recorded in
+[`PIVOT_CANONICAL_CONSEQUENCE.md`](PIVOT_CANONICAL_CONSEQUENCE.md).
+
 ## Forward-development rule
 
 Legacy mechanisms may enter this repository only one behavior at a time. Each must be rewritten behind the current interface, supplied with adversarial tests, and documented with the boundary the tests do not cover.
@@ -122,12 +151,22 @@ Do not bulk-import the legacy repository, generated evidence, local runtime stat
 ## Priority proof sequence
 
 1. Keep the minimal kernel and dependency-free CI reproducible.
-2. Implement and deploy the selected independently authenticated authority,
+2. Reconcile the execution-time directive revocation control demonstrated by
+   PR #44 onto the **current** protected-main lineage without blindly merging
+   its stale branch history. Reproduce the frozen stale-permit failure against
+   current behavior, apply the smallest control fix, and rerun the current
+   `test`, `authority`, and `authority-service` suites plus revocation/restart
+   denial evidence.
+3. After legitimate protected-main admission, prove the same directive
+   revocation boundary on one bounded reversible external effect: issue under a
+   valid directive, revoke before execution, deny the effect, and reconcile the
+   denial into the existing evidence chain.
+4. Implement and deploy the selected independently authenticated authority,
    trusted time, monotonic state, and verifier bootstrap outside the governed
    worker boundary.
-3. Protect the now-proven kernel and commerce SQLite state from worker mutation,
+5. Protect the now-proven kernel and commerce SQLite state from worker mutation,
    host rollback, and unproven backup or recovery behavior.
-4. Enforce host filesystem, network, process, and secret boundaries.
-5. Run one external workload through the complete Pulpo sequence and publish an inspectable evidence bundle.
+6. Enforce host filesystem, network, process, and secret boundaries.
+7. Run one external workload through the complete Pulpo sequence and publish an inspectable evidence bundle.
 
-Pulpo earns broader authority only after the preceding boundary is supported by executable denial and success evidence.
+Pulpo earns broader authority only after the preceding boundary is supported by executable denial and success evidence. Major unrelated frontier experiments should not outrun a higher-consequence verified candidate awaiting canonical reconciliation unless a separate legitimate decision records why the priority is being overridden.
