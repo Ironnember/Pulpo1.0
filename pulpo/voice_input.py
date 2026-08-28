@@ -29,9 +29,16 @@ def _canonical(value: object) -> bytes:
 
 
 def _normalize_control_text(text: str) -> str:
-    """Normalize formatting only; never infer intent from approximate speech."""
+    """Normalize formatting only; never infer intent from approximate speech.
 
-    return re.sub(r"\s+", " ", text.strip().casefold())
+    Local STT engines commonly append sentence-final punctuation to short
+    utterances.  V0 removes only terminal ``.``, ``!``, and ``?`` characters
+    after case/whitespace normalization.  It does not remove or rewrite words,
+    internal punctuation, negation, politeness, or surrounding phrases.
+    """
+
+    normalized = re.sub(r"\s+", " ", text.strip().casefold())
+    return re.sub(r"[.!?]+$", "", normalized).strip()
 
 
 @dataclass(frozen=True)
@@ -97,7 +104,7 @@ class VoiceInputResult:
 class VoiceCommandSession:
     """Maps exact control transcripts onto the governed Voice V0 interface.
 
-    Supported commands are intentionally exact after case/whitespace
+    Supported commands are intentionally exact after limited formatting
     normalization:
 
     - ``lock target``: lock the currently staged proposal;
