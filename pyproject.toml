@@ -4,6 +4,9 @@ version = "0.1.0"
 description = "A minimal governed-execution kernel for agentic systems"
 requires-python = ">=3.11"
 
+[project.scripts]
+pulpo-speak = "pulpo.local_speech:main"
+
 [project.optional-dependencies]
 authority = ["cryptography==50.0.1"]
 
