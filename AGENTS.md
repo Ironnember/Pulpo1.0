@@ -20,6 +20,31 @@ and evidence path.
 - Evidence and public language must classify material claims as **Verified**,
   **Recorded**, **Inferred**, **Proposed**, or **Blocked**.
 
+## Canonical consequence priority
+
+Research, experiments, branches, lessons, and passing evidence do not become
+progress merely by accumulating. Prefer the highest-value verified consequence
+that can be safely reconciled into the current canonical path.
+
+Before starting a major new experimental generation:
+
+1. identify the highest-consequence unresolved invariant on current `main`;
+2. check whether a verified or strongly supported candidate control already
+   exists outside canonical state;
+3. if frontier work is outrunning admission of that stronger control,
+   reconcile and reverify the control against current `main` before expanding;
+4. do not blindly merge stale proof branches: reconstruct the smallest behavior
+   on current canonical state and rerun the original success/denial proof plus
+   all current required checks;
+5. remember that evidence may recommend priority or canonicalization but may not
+   authorize its own merge, authority, budget, scope, or status.
+
+Default rule for this repository and future Iron & Ember projects:
+
+> When research velocity outruns canonical control admission, consolidate before expanding.
+
+See `docs/PIVOT_CANONICAL_CONSEQUENCE.md` for the evidence path and rationale.
+
 ## Required change record
 
 Every material pull request must state:
