@@ -111,6 +111,8 @@ Future project instructions should carry the following invariant unless a separa
 
 > **Do not optimize for accumulated evidence. Optimize for the highest-value verified consequence that can be safely reconciled into canonical state. When frontier work outruns canonical control admission, consolidate before expanding.**
 
+The reusable seed for new repositories is `docs/FUTURE_PROJECT_BOOTSTRAP.md`.
+
 ## Relationship to existing Pulpo doctrine
 
 This pivot does not replace the Pulpo lifecycle:
@@ -129,18 +131,32 @@ The pivot adds:
 
 > **Reconciliation consolidates before intelligence expands again.**
 
+## First live application
+
+The pivot was tested by its own admission attempt rather than accepted as narrative truth.
+
+PR #50 changed only doctrine/current-state guidance, yet its required `test` job exposed an existing concurrency proof failure. The duplicate approval remained fail-closed, but the losing decision was classified as `approval_nonce_replayed` instead of the frozen `approval_id_replayed` precedence. A rerun reproduced the same failure.
+
+The project did not weaken the test, dismiss the discrepancy, merge the doctrine anyway, or continue to another frontier experiment. Reconciliation traced the cause to `SQLiteKernelState._approval_replay_reason()`: approval ID and nonce were checked in two separate autocommit reads, allowing a concurrent approval commit to land between the two snapshots.
+
+PR #51 was therefore created directly from current protected `main` with one production-file change: classify both replay fields in one SQLite statement snapshot while keeping the duplicate authority denial unchanged. At its exact head, `test`, `authority`, and `authority-service` all pass. Human review is requested; the fix remains noncanonical until legitimate admission.
+
+This is the rule operating on itself:
+
+`new evidence -> stop expansion -> identify stronger canonical inconsistency -> smallest fix -> rerun full proof -> await independent admission`
+
 ## Immediate Pulpo application
 
-At this decision point, the highest-value application is to reconcile the execution-time directive revocation proof onto current protected `main`, rerun its frozen stale-permit regression and all required current checks, obtain legitimate protected-main admission, then prove the same boundary on a bounded external effect.
+After the replay-classification inconsistency is legitimately admitted, the highest-value application remains reconciling the execution-time directive revocation proof onto current protected `main`, rerunning its frozen stale-permit regression and all required current checks, obtaining legitimate protected-main admission, then proving the same boundary on a bounded external effect.
 
 That work should take priority over additional unrelated frontier-learning generations unless a separately authorized decision changes the priority.
 
 ## Claim classification
 
-**Verified:** protected `main` has admitted the field-level governed recursive-transfer experiment; PR #44 recorded a reproduced stale-permit revocation failure and a passing candidate fix; the #44 lineage has diverged from current `main`; the latest recorded cross-model generation produced zero successful inference calls while preserving authority.
+**Verified:** protected `main` has admitted the field-level governed recursive-transfer experiment; PR #44 recorded a reproduced stale-permit revocation failure and a passing candidate fix; the #44 lineage has diverged from current `main`; the latest recorded cross-model generation produced zero successful inference calls while preserving authority; PR #50's admission attempt exposed a reproducible replay-classification race; PR #51's exact head passes all three protected suites with the one-statement candidate fix.
 
-**Inferred:** research velocity had begun to outrun canonical admission, increasing integration debt and reducing the marginal value of another frontier experiment relative to the directive-revocation proof.
+**Inferred:** research velocity had begun to outrun canonical admission, increasing integration debt and reducing the marginal value of another frontier experiment relative to the directive-revocation proof. The first live application provides additional evidence that the consolidation rule catches real canonical inconsistencies rather than merely reorganizing documentation.
 
 **Authorized / Proposed for canonicalization:** make the Canonical Consequence Rule a default project-priority doctrine and an inheritance rule for future Iron & Ember projects.
 
-**Not proved:** that this priority rule is globally optimal for every future project, or that the PR #44 candidate remains correct after reconciliation onto current `main`. Those claims require current-path execution evidence.
+**Not proved:** that this priority rule is globally optimal for every future project, that PR #51 is canonical before independent review/admission, or that the PR #44 candidate remains correct after reconciliation onto current `main`. Those claims require their respective governance and current-path execution evidence.
