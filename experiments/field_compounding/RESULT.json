@@ -1,0 +1,52 @@
+{
+  "schema": "pulpo.field-governed-compounding-result.v1",
+  "status": "verified_field_result_pending_independent_review",
+  "authority_effect": "none",
+  "canonical_base": "81338eed28ec32fe214c7eee086a82840ca0923f",
+  "knowledge_source_head": "72f556554cf803d3fe24e84d5822514bc4e14667",
+  "freeze_commit": "be79bc1d44cbe9433614c6877e764a48df26088b",
+  "f1": {
+    "effect_commit": "0308fa82985194f085b32c18bcf37a0750915fb3",
+    "interleaving_commit": "3a80dc0bf61edfd40ba3e6dc401d04eef4233a6f",
+    "rubric_score": "10/10",
+    "derived_lesson": "K6",
+    "k6_blob_sha": "62a59e3d848ef5a2727c90313dd3f27f5cc85397"
+  },
+  "f2": {
+    "selection_index": 1,
+    "selected_task": "F2_CREATE",
+    "effect_commit": "42b90dd8d070066f88f89b714a990ed7aebac028",
+    "interleaving_commit": "8d56aab022b93654f85884866d4333787fdd7b38",
+    "baseline_k5_only_score": "7/10",
+    "transfer_k5_k6_score": "10/10",
+    "improvement_points": 3
+  },
+  "verified": [
+    "the field contract, task pool, rubric, K5 source, and exact F1 artifacts were frozen before F1 external execution",
+    "F1 created a real external GitHub branch effect outside protected main",
+    "a later unrelated mutation moved the branch tip before F1 verification",
+    "F1 reconciliation bound the intended object to its exact effect commit and separately reconciled current branch state",
+    "F1 produced bounded lesson K6 only after evidence collection",
+    "F2 was selected deterministically from the frozen task pool using the F1 effect commit",
+    "F2 created a second real external GitHub effect followed by a later interleaving mutation",
+    "the K5-only frozen evidence policy scored 7/10 while K5+K6 scored 10/10 on the same real F2 effect",
+    "K6 added exact effect-version, transition, and canonical-main-isolation verification controls justified by F1 evidence",
+    "authority_effect remained none and no experimental branch was merged or canonicalized"
+  ],
+  "supported_claim": "Pulpo has verified field-level governed recursive transfer on a real external GitHub state surface: K5 guided reconciliation of F1, F1 produced K6, K6 improved the completeness of verification on a deterministically selected second external effect under an interleaving mutation, and authority remained unchanged.",
+  "recorded_or_inferred": [
+    "K6 may generalize to other mutable versioned providers, but that generalization is inferred from one GitHub field sequence",
+    "the observed 7/10 to 10/10 improvement measures a frozen evidence-policy comparison, not independent model-weight learning or separate human-blind executions"
+  ],
+  "not_proved": [
+    "production recursive compounding",
+    "general language-model learning or model-weight change",
+    "hidden model-context isolation",
+    "OS-enforced containment or hostile-host resistance",
+    "independently deployed human authority",
+    "independent third-party reproduction",
+    "payment-rail or real commerce safety",
+    "continuous production Outcome Memory"
+  ],
+  "canonicalization_boundary": "Passing evidence cannot authorize merge or canonicalization. This experiment remains noncanonical unless independently reviewed and admitted through protected main. PR #41 remains separately noncanonical and is referenced only as an experimental knowledge source."
+}
