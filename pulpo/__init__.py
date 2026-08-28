@@ -17,6 +17,7 @@ from .kernel import (
 from .namecom import NameComCoreAdapter
 from .state import InMemoryKernelState, KernelState, SQLiteKernelState
 from .targets import evaluate_locked_target_with_approval
+from .voice import GovernedVoiceInterface, Speaker, TargetReference, VoiceProfile, VoiceResult
 
 __all__ = [
     "AgentGrant",
@@ -30,6 +31,7 @@ __all__ = [
     "Decision",
     "Ed25519ApprovalVerifier",
     "GovernanceKernel",
+    "GovernedVoiceInterface",
     "InMemoryKernelState",
     "Intent",
     "KernelState",
@@ -38,7 +40,11 @@ __all__ = [
     "Policy",
     "SQLiteBudgetAccount",
     "SQLiteKernelState",
+    "Speaker",
     "StateIntegrityError",
+    "TargetReference",
     "TargetResolution",
+    "VoiceProfile",
+    "VoiceResult",
     "evaluate_locked_target_with_approval",
 ]
