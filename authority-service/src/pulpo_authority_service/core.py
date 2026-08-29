@@ -50,7 +50,7 @@ class AuthorityConfig:
             raise ValueError("origin must be an exact HTTPS origin")
         if parsed.hostname != self.rp_id and not parsed.hostname.endswith(f".{self.rp_id}"):
             raise ValueError("origin host must equal or be below rp_id")
-        if not self.appro_path_prefix.startswith("/") or not self.approval_path_prefix.endswith("/"):
+        if not self.approval_path_prefix.startswith("/") or not self.approval_path_prefix.endswith("/"):
             raise ValueError("approval_path_prefix must be an absolute directory path")
 
 
@@ -188,10 +188,17 @@ class InMemoryEvidenceSink:
 
     def __init__(self) -> None:
         self.bundles: list[dict[str, object]] = []
+        self.lock = threading.RLock()
 
     def append(self, bundle: dict[str, object]) -> str:
         digest = sha256(_canonical(bundle)).hexdigest()
-        self.bundles.append({"hash": digest, "bundle": bundle})
+        with self.lock:
+            for existing in self.bundles:
+                if existing["hash"] == digest:
+                    if existing["bundle"] != bundle:
+                        raise RuntimeError("existing in-memory evidence diverged")
+                    return digest
+            self.bundles.append({"hash": digest, "bundle": bundle})
         return digest
 
 
@@ -305,12 +312,11 @@ class AuthorityService:
             return record.challenge
 
     def approve(self, request_id: str, credential_id: str, assertion: str) -> ApprovalEnvelope:
-        resume_evidence = False
         with self.state.lock:
             record = self._record(request_id)
             self._expire(record)
             if record.status == "evidence_pending":
-                resume_evidence = True
+                pass
             elif record.status != "pending":
                 raise RuntimeError("approval request is not pending")
             else:
@@ -375,13 +381,10 @@ class AuthorityService:
                 record.evidence_bundle = bundle
                 record.evidence_hash = None
 
-        # Never release the envelope while evidence is still unresolved. This
-        # operation is idempotent for a correctly implemented append-only sink.
-        # An evidence-pending retry ignores a newly supplied assertion because
+        # Never release the envelope while evidence is still unresolved. An
+        # evidence-pending retry ignores any newly supplied assertion because
         # the exact verified assertion and envelope are already durable.
-        if resume_evidence or record.status == "evidence_pending":
-            return self._complete_evidence(request_id)
-        raise RuntimeError("approval evidence state invalid")
+        return self._complete_evidence(request_id)
 
     def poll(self, request_id: str) -> dict[str, object]:
         with self.state.lock:
