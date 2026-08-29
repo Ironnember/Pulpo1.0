@@ -60,6 +60,20 @@ def _under(path: str, root: str) -> bool:
         return False
 
 
+def _relative_to_root(path: str, root: str) -> str | None:
+    if not _under(path, root):
+        return None
+    relative = os.path.relpath(path, root).replace(os.sep, "/")
+    return "." if relative == "." else relative
+
+
+def _excluded_by(surface: "SurfaceSpec", path: str) -> bool:
+    relative = _relative_to_root(path, surface.root)
+    if relative is None or relative == ".":
+        return False
+    return _is_excluded(relative, surface.exclude)
+
+
 @dataclass(frozen=True)
 class SurfaceSpec:
     root: str
@@ -107,10 +121,14 @@ class EffectEnvelope:
         roots = [surface.root for surface in self.surfaces]
         if len(set(roots)) != len(roots):
             raise EffectReconciliationError("duplicate_surface_root")
-        for index, left in enumerate(roots):
-            for right in roots[index + 1 :]:
-                if _under(left, right) or _under(right, left):
-                    raise EffectReconciliationError("overlapping_surface_roots")
+        for index, left in enumerate(self.surfaces):
+            for right in self.surfaces[index + 1 :]:
+                if _under(right.root, left.root):
+                    if not _excluded_by(left, right.root):
+                        raise EffectReconciliationError("ambiguous_overlapping_surface_roots")
+                elif _under(left.root, right.root):
+                    if not _excluded_by(right, left.root):
+                        raise EffectReconciliationError("ambiguous_overlapping_surface_roots")
 
     @property
     def envelope_hash(self) -> str:
