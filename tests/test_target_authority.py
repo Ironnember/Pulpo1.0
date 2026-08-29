@@ -102,7 +102,7 @@ class TargetAuthorityTests(unittest.TestCase):
         self.assertEqual(("deny", "approval_intent_mismatch"), (decision.outcome, decision.reason))
         self.assertIsNone(decision.permit)
 
-    def test_verified_approval_replay_remains_denied(self):
+    def test_verified_approval_replay_remains_denied_with_canonical_reason(self):
         envelope = signed_envelope(
             self.kernel,
             self.intent,
@@ -124,8 +124,7 @@ class TargetAuthorityTests(unittest.TestCase):
         )
 
         self.assertEqual("allow", first.outcome)
-        self.assertEqual("deny", second.outcome)
-        self.assertIn(second.reason, {"approval_id_replayed", "approval_nonce_replayed"})
+        self.assertEqual(("deny", "approval_id_replayed"), (second.outcome, second.reason))
 
 
 if __name__ == "__main__":
