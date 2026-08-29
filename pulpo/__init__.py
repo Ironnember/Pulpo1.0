@@ -9,11 +9,14 @@ from .kernel import (
     Decision,
     GovernanceKernel,
     Intent,
+    LockedTarget,
     Policy,
     StateIntegrityError,
+    TargetResolution,
 )
 from .namecom import NameComCoreAdapter
 from .state import InMemoryKernelState, KernelState, SQLiteKernelState
+from .targets import evaluate_locked_target_with_approval
 
 __all__ = [
     "AgentGrant",
@@ -30,9 +33,12 @@ __all__ = [
     "InMemoryKernelState",
     "Intent",
     "KernelState",
+    "LockedTarget",
     "NameComCoreAdapter",
     "Policy",
     "SQLiteBudgetAccount",
     "SQLiteKernelState",
     "StateIntegrityError",
+    "TargetResolution",
+    "evaluate_locked_target_with_approval",
 ]

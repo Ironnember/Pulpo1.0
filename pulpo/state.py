@@ -146,9 +146,20 @@ class SQLiteKernelState:
 
     def approval_replay_reason(self, approval_id: str, nonce: str) -> str | None: return self._approval_replay_reason(approval_id, nonce)
     def _approval_replay_reason(self, approval_id: str, nonce: str) -> str | None:
-        if self._connection.execute("SELECT 1 FROM approvals WHERE approval_id = ?", (approval_id,)).fetchone(): return "approval_id_replayed"
-        if self._connection.execute("SELECT 1 FROM approvals WHERE nonce = ?", (nonce,)).fetchone(): return "approval_nonce_replayed"
-        return None
+        # One statement gives ID/nonce classification one SQLite read snapshot.
+        # A concurrent commit cannot appear between separate field probes and
+        # silently change the denial reason while authority remains denied.
+        row = self._connection.execute(
+            """
+            SELECT CASE
+                WHEN EXISTS (SELECT 1 FROM approvals WHERE approval_id = ?) THEN 'approval_id_replayed'
+                WHEN EXISTS (SELECT 1 FROM approvals WHERE nonce = ?) THEN 'approval_nonce_replayed'
+                ELSE NULL
+            END
+            """,
+            (approval_id, nonce),
+        ).fetchone()
+        return row[0] if row is not None else None
 
     def issue_permit(self, permit: str, intent_hash: str, decision_reason: str, timestamp_ns: int, approval: ApprovalUse | None = None) -> str | None:
         with self._connection:
