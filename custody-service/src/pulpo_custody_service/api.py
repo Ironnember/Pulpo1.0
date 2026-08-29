@@ -1,40 +1,20 @@
-"""Minimal hostile-worker HTTP surface over the trusted custody service."""
+"""Minimal hostile-worker HTTP surface over the trusted custody service.
+
+The worker may propose only a normalized domain, submit an opaque trusted
+proposal commitment with an external approval, and carry an opaque attempt
+handle. Full consequential orders are never accepted from the worker surface.
+"""
 
 from __future__ import annotations
 
 from dataclasses import asdict
 
 from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictInt
+from pydantic import BaseModel, ConfigDict, Field, StrictInt
 
 from pulpo.authority import ApprovalEnvelope
-from pulpo.commerce import DomainPurchaseOrder
 
 from .core import ApprovalChallenge, AttemptHandle, DomainCustodyService, ServiceRejected
-
-
-class OrderBody(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    request_id: str = Field(min_length=1, max_length=4_096)
-    request_hash: str = Field(min_length=64, max_length=64)
-    quote_id: str = Field(min_length=1, max_length=4_096)
-    quote_hash: str = Field(min_length=64, max_length=64)
-    principal: str = Field(min_length=1, max_length=4_096)
-    domain: str = Field(min_length=1, max_length=253)
-    registrar: str = Field(min_length=1, max_length=255)
-    purchase_price_cents: StrictInt
-    renewal_price_cents: StrictInt
-    owner_ref: str = Field(min_length=1, max_length=4_096)
-    privacy_required: StrictBool
-    prohibited_upsells: list[str] = Field(max_length=64)
-    credential_ref: str = Field(min_length=1, max_length=4_096)
-    expires_at_ns: StrictInt
-
-    def to_order(self) -> DomainPurchaseOrder:
-        values = self.model_dump()
-        values["prohibited_upsells"] = tuple(values["prohibited_upsells"])
-        return DomainPurchaseOrder(**values)
 
 
 class ApprovalBody(BaseModel):
@@ -70,16 +50,10 @@ class DomainProposalBody(BaseModel):
     domain: str = Field(min_length=3, max_length=253)
 
 
-class PrepareApprovalBody(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    order: OrderBody
-
-
 class AuthorizeBody(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    order: OrderBody
+    proposal_commitment_id: str = Field(min_length=1, max_length=4_096)
     approval: ApprovalBody | None = None
 
 
@@ -106,7 +80,6 @@ class AttemptOperationBody(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     handle: HandleBody
-    order: OrderBody
 
 
 def _handle_payload(handle: AttemptHandle) -> dict[str, object]:
@@ -156,14 +129,17 @@ def create_app(service: DomainCustodyService) -> FastAPI:
     @app.post("/v1/domain-proposals")
     def prepare_domain_proposal(body: DomainProposalBody) -> dict[str, object]:
         try:
-            proposal, challenge = service.prepare_proposal(body.domain)
+            proposal, commitment, challenge = service.prepare_proposal(body.domain)
         except (ValueError, ServiceRejected) as exc:
             raise HTTPException(status_code=403, detail="domain proposal rejected") from exc
         return {
             "schema": proposal.schema,
+            "proposal_commitment": asdict(commitment),
             "availability_hash": proposal.availability_hash,
             "observed_at_ns": proposal.observed_at_ns,
             "expires_at_ns": proposal.expires_at_ns,
+            # Read-only display material. The worker cannot submit these bytes
+            # back as authority; authorization accepts only the commitment ref.
             "request": asdict(proposal.request),
             "quote": asdict(proposal.quote),
             "order": asdict(proposal.order),
@@ -171,19 +147,11 @@ def create_app(service: DomainCustodyService) -> FastAPI:
             "authority_effect": "none",
         }
 
-    @app.post("/v1/domain-approval-challenges")
-    def prepare_approval(body: PrepareApprovalBody) -> dict[str, object]:
-        try:
-            challenge = service.prepare_approval(body.order.to_order())
-        except (ValueError, ServiceRejected) as exc:
-            raise HTTPException(status_code=403, detail="approval challenge rejected") from exc
-        return _challenge_payload(challenge)
-
     @app.post("/v1/domain-attempts")
     def authorize(body: AuthorizeBody) -> dict[str, object]:
         try:
-            handle = service.authorize(
-                body.order.to_order(),
+            handle = service.authorize_commitment(
+                body.proposal_commitment_id,
                 approval=body.approval.to_envelope() if body.approval else None,
             )
         except (ValueError, ServiceRejected) as exc:
@@ -196,7 +164,7 @@ def create_app(service: DomainCustodyService) -> FastAPI:
         if attempt_id != handle.attempt_id:
             raise HTTPException(status_code=400, detail="attempt reference mismatch")
         try:
-            claim = service.execute(handle, body.order.to_order())
+            claim = service.execute(handle)
             status = service.status(attempt_id)
         except (ValueError, ServiceRejected) as exc:
             raise HTTPException(status_code=409, detail="execution rejected") from exc
@@ -218,7 +186,7 @@ def create_app(service: DomainCustodyService) -> FastAPI:
         if attempt_id != handle.attempt_id:
             raise HTTPException(status_code=400, detail="attempt reference mismatch")
         try:
-            result = service.reconcile(handle, body.order.to_order())
+            result = service.reconcile(handle)
             status = service.status(attempt_id)
         except (ValueError, ServiceRejected) as exc:
             raise HTTPException(status_code=409, detail="reconciliation rejected") from exc
@@ -229,6 +197,7 @@ def create_app(service: DomainCustodyService) -> FastAPI:
             "attempt_state": status["state"],
             "governance_epoch": status["governance_epoch"],
             "governance_state_root": status["governance_state_root"],
+            "pending_evidence_obligations": status["pending_evidence_obligations"],
         }
 
     @app.get("/v1/domain-attempts/{attempt_id}")
