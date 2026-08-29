@@ -9,7 +9,7 @@ permissions:
   contents: read
 
 jobs:
-  test:
+  unit-tests:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -53,3 +53,147 @@ jobs:
         run: PYTHONPATH=authority-service/src:. python -W error -m unittest discover -s authority-service/tests -v
       - name: Compile independent service sources
         run: python -m compileall -q authority-service/src authority-service/tests
+
+  hostile-worker-custody:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install hostile-worker custody proof packages
+        run: python -m pip install '.[authority]' './custody-service[test]'
+      - name: Run independent custody service boundary proof
+        run: PYTHONPATH=custody-service/src:. python -W error -m unittest discover -s custody-service/tests -v
+      - name: Compile custody service sources
+        run: python -m compileall -q custody-service/src custody-service/tests
+
+  hostile-worker-container-isolation:
+    needs: hostile-worker-custody
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build custody image
+        run: docker build -f custody-service/Dockerfile -t pulpo-custody-v0:${{ github.sha }} .
+      - name: Prove worker cannot read custody state or secrets
+        shell: bash
+        run: |
+          set -euo pipefail
+          network="pulpo-v0-${GITHUB_RUN_ID}"
+          volume="pulpo-custody-v0-${GITHUB_RUN_ID}"
+          custody="pulpo-custody-v0-${GITHUB_RUN_ID}"
+          image="pulpo-custody-v0:${GITHUB_SHA}"
+
+          docker network create "$network" >/dev/null
+          docker volume create "$volume" >/dev/null
+          cleanup() {
+            docker rm -f "$custody" >/dev/null 2>&1 || true
+            docker network rm "$network" >/dev/null 2>&1 || true
+            docker volume rm "$volume" >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+
+          docker run -d \
+            --name "$custody" \
+            --network "$network" \
+            --read-only \
+            --tmpfs /tmp:rw,noexec,nosuid,size=16m \
+            --cap-drop ALL \
+            --security-opt no-new-privileges:true \
+            -v "$volume:/var/lib/pulpo:rw" \
+            -e PULPO_CUSTODY_STATE_PATH=/var/lib/pulpo/custody.sqlite3 \
+            -e PULPO_KERNEL_SECRET_HEX=1111111111111111111111111111111111111111111111111111111111111111 \
+            -e PULPO_CUSTODY_SECRET_HEX=2222222222222222222222222222222222222222222222222222222222222222 \
+            -e PULPO_AUTHORITY_PUBLIC_KEY_HEX=d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a \
+            -e PULPO_AUTHORITY_ID=authority:container-test \
+            -e PULPO_AUTHORITY_VERIFIER_ID=verifier:container-ed25519 \
+            -e PULPO_AUTHORITY_KEY_ID=key:container-v0 \
+            -e PULPO_AUTHORITY_DEPLOYMENT_ID=deployment:container-v0 \
+            -e PULPO_AUTHORITY_MAX_TTL_SECONDS=300 \
+            -e PULPO_PILOT_BUDGET_CENTS=3000 \
+            -e PULPO_OWNER_REF=owner://iron-ember/container-test \
+            -e NAMECOM_SANDBOX_USERNAME=pulpo-container-test \
+            -e NAMECOM_SANDBOX_EXECUTOR_TOKEN=executor-token-not-real \
+            -e NAMECOM_SANDBOX_OBSERVER_TOKEN=observer-token-not-real \
+            "$image" >/dev/null
+
+          # Wait for the service's own healthcheck before asserting runtime state.
+          healthy=0
+          for _ in $(seq 1 30); do
+            status="$(docker inspect -f '{{.State.Status}}' "$custody")"
+            health="$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' "$custody")"
+            if [ "$status" = "exited" ] || [ "$status" = "dead" ]; then
+              echo "custody container exited before becoming healthy" >&2
+              docker logs "$custody" >&2 || true
+              exit 1
+            fi
+            if [ "$health" = "healthy" ]; then
+              healthy=1
+              break
+            fi
+            sleep 1
+          done
+          if [ "$healthy" != "1" ]; then
+            echo "custody container did not become healthy" >&2
+            docker logs "$custody" >&2 || true
+            exit 1
+          fi
+
+          # Trusted-host assertions about the custody container itself.
+          test "$(docker inspect -f '{{.HostConfig.ReadonlyRootfs}}' "$custody")" = "true"
+          docker exec "$custody" sh -c 'test "$(id -u)" -ne 0'
+          docker exec "$custody" sh -c 'test -f /var/lib/pulpo/custody.sqlite3'
+          test -z "$(docker port "$custody")"
+
+          # Fresh hostile-worker container: no custody volume, no Docker socket,
+          # no provider/governance secrets. Only the narrow HTTP network surface.
+          docker run --rm --network "$network" python:3.11-slim python -c "
+          import os, urllib.error, urllib.request
+          forbidden = {
+              'PULPO_KERNEL_SECRET_HEX',
+              'PULPO_CUSTODY_SECRET_HEX',
+              'PULPO_AUTHORITY_PUBLIC_KEY_HEX',
+              'NAMECOM_SANDBOX_EXECUTOR_TOKEN',
+              'NAMECOM_SANDBOX_OBSERVER_TOKEN',
+          }
+          assert forbidden.isdisjoint(os.environ), sorted(forbidden.intersection(os.environ))
+          assert not os.path.exists('/var/lib/pulpo/custody.sqlite3')
+          assert not os.path.exists('/var/run/docker.sock')
+          data = urllib.request.urlopen('http://${custody}:8080/health', timeout=2).read()
+          assert b'\"authority_effect\":\"none\"' in data
+          for path in ('/docs', '/redoc', '/openapi.json'):
+              try:
+                  urllib.request.urlopen('http://${custody}:8080' + path, timeout=2)
+              except urllib.error.HTTPError as exc:
+                  assert exc.code == 404
+              else:
+                  raise AssertionError(path + ' unexpectedly exposed')
+          "
+
+  # `test` is already a protected required status on main. Keep that exact
+  # context, but make it an explicit admission gate that fails unless both
+  # hostile-worker proofs and the ordinary unit suite succeeded. `always()` is
+  # intentional: a failed/skipped dependency must become a failed required
+  # check rather than a skipped check that branch protection may accept.
+  test:
+    if: ${{ always() }}
+    needs:
+      - unit-tests
+      - hostile-worker-custody
+      - hostile-worker-container-isolation
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Enforce hostile-worker admission dependencies
+        env:
+          UNIT_RESULT: ${{ needs.unit-tests.result }}
+          CUSTODY_RESULT: ${{ needs.hostile-worker-custody.result }}
+          CONTAINER_RESULT: ${{ needs.hostile-worker-container-isolation.result }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$UNIT_RESULT" = "success"
+          test "$CUSTODY_RESULT" = "success"
+          test "$CONTAINER_RESULT" = "success"

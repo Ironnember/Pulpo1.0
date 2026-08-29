@@ -146,9 +146,6 @@ class SQLiteKernelState:
 
     def approval_replay_reason(self, approval_id: str, nonce: str) -> str | None: return self._approval_replay_reason(approval_id, nonce)
     def _approval_replay_reason(self, approval_id: str, nonce: str) -> str | None:
-        # One statement gives ID/nonce classification one SQLite read snapshot.
-        # A concurrent commit cannot appear between separate field probes and
-        # silently change the denial reason while authority remains denied.
         row = self._connection.execute(
             """
             SELECT CASE
