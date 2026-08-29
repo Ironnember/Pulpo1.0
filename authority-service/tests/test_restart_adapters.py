@@ -107,19 +107,34 @@ class AuthorityRestartAdapterTests(unittest.TestCase):
             service = self._service(
                 state,
                 DirectoryEvidenceSink(root / "evidence"),
-                tokens=iter(("request-expired", "approval-expired", "nonce-expired")),
+                tokens=iter(
+                    (
+                        "request-expired",
+                        "approval-expired",
+                        "nonce-expired",
+                        "request-pending",
+                        "approval-pending",
+                        "nonce-pending",
+                    )
+                ),
             )
-            request_id, _ = service.request_approval(self.fixture.request)
+            expired_id, _ = service.request_approval(self.fixture.request)
+            pending_id, _ = service.request_approval(self.fixture.request)
             self.clock[0] = test_service.NOW + self.fixture.request.requested_ttl_ns
-            self.assertEqual("expired", service.poll(request_id)["status"])
+            self.assertEqual("expired", service.poll(expired_id)["status"])
 
             restarted_state = SQLiteRestartState(root / "authority.sqlite3", self._credentials())
             restarted = self._service(restarted_state, DirectoryEvidenceSink(root / "evidence"))
-            self.assertEqual("expired", restarted.poll(request_id)["status"])
+            self.assertEqual("expired", restarted.poll(expired_id)["status"])
 
+            # The second request was never observed at the advanced clock, so it
+            # remains pending in durable state. The global persisted time
+            # watermark nevertheless advanced while expiring the first request.
+            # A restarted service with a regressed clock must fail closed before
+            # it can re-evaluate that still-pending authority request.
             self.clock[0] = test_service.NOW - 1
             with self.assertRaisesRegex(RuntimeError, "rollback"):
-                restarted.poll(request_id)
+                restarted.poll(pending_id)
 
     def test_evidence_written_before_failed_state_commit_converges_after_restart(self):
         with tempfile.TemporaryDirectory() as directory:
