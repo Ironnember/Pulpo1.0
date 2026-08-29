@@ -94,11 +94,26 @@ class PermitBoundEffectReconciliationTests(unittest.TestCase):
         (self.evidence / "audit.append").write_text("event\n", encoding="utf-8")
         after = capture_envelope_surfaces(self.envelope)
 
-        result = self.reconcile(before, after)
+        result = self.reconcile(
+            before,
+            after,
+            canonical_evidence_paths=(str(self.evidence / "audit.append"),),
+        )
 
         self.assertEqual(result.status, "verified")
         self.assertGreater(result.canonical_pulpo_evidence, 0)
         self.assertEqual(result.unauthorized_effects, 0)
+
+    def test_unattested_write_to_evidence_surface_is_mismatch(self):
+        before = capture_envelope_surfaces(self.envelope)
+        (self.evidence / "forged.append").write_text("child claim\n", encoding="utf-8")
+        after = capture_envelope_surfaces(self.envelope)
+
+        result = self.reconcile(before, after)
+
+        self.assertEqual(result.status, "mismatch")
+        self.assertGreater(result.protected_surface_delta, 0)
+        self.assertEqual(result.canonical_pulpo_evidence, 0)
 
     def test_observed_path_outside_envelope_is_undeclared_mismatch(self):
         before = capture_envelope_surfaces(self.envelope)
