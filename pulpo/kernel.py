@@ -190,15 +190,16 @@ class GovernanceKernel:
     def lock_target(self, target_id: str, intent: Intent, *, version: int = 1) -> LockedTarget:
         """Record an exact proposed target without granting authority."""
 
+        existing = self.get_locked_target(target_id, version=version)
+        if existing is not None:
+            if not hmac.compare_digest(self.intent_hash(existing.intent), self.intent_hash(intent)):
+                raise ValueError("target version is immutable")
+            return existing
+
         now_ns = self._trusted_now()
         if now_ns is None:
             raise RuntimeError("target_clock_invalid")
         target = LockedTarget(target_id, version, intent, now_ns)
-        existing = self.get_locked_target(target_id, version=version)
-        if existing is not None:
-            if not hmac.compare_digest(existing.target_hash, target.target_hash):
-                raise ValueError("target version is immutable")
-            return existing
         self._state.append(
             "target_locked",
             {
