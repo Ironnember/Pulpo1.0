@@ -1,0 +1,61 @@
+name: Name.com Sandbox Read-Only Readiness
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  namecom-sandbox-readonly:
+    if: ${{ github.event.pull_request.head.repo.full_name == github.repository }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Prove readiness transport rejects provider writes
+        run: python -W error -m unittest tests.test_namecom_sandbox_readiness_probe -v
+
+      - name: Run live sandbox availability preflight
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+          NAMECOM_SANDBOX_USERNAME: ${{ secrets.NAMECOM_SANDBOX_USERNAME }}
+          NAMECOM_SANDBOX_EXECUTOR_TOKEN: ${{ secrets.NAMECOM_SANDBOX_EXECUTOR_TOKEN }}
+          NAMECOM_SANDBOX_OBSERVER_TOKEN: ${{ secrets.NAMECOM_SANDBOX_OBSERVER_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/check_namecom_sandbox_readiness.py \
+            --run-id "$GITHUB_RUN_ID" \
+            > namecom-sandbox-readiness.json
+
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          value = json.loads(Path('namecom-sandbox-readiness.json').read_text())
+          assert value['environment'] == 'sandbox'
+          assert value['provider_origin'] == 'https://api.dev.name.com'
+          assert value['observer_executor_views_match'] is True
+          assert value['credential_separation_verified'] is True
+          assert value['read_only_endpoint_enforced'] is True
+          assert value['provider_write_attempted'] is False
+          assert value['permit_issued'] is False
+          assert value['authority_effect'] == 'none'
+          assert value['executor_read_calls'] >= 1
+          assert value['observer_read_calls'] >= 2
+          print(json.dumps(value, sort_keys=True, indent=2))
+          PY
+
+      - name: Preserve sanitized readiness evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: namecom-sandbox-readiness-${{ github.sha }}
+          path: namecom-sandbox-readiness.json
+          if-no-files-found: error
+          retention-days: 7
