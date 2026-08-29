@@ -1,10 +1,10 @@
 """Restart/durability acceptance adapters for the independent authority service.
 
-These adapters exist to prove the authority state machine survives process
-restart and cross-store interruption before a protected cloud state/evidence
-implementation is admitted. They are deliberately *not* production custody:
-a host that can rewrite the SQLite database or evidence directory can rewrite
-this acceptance environment.
+These adapters prove process restart, cross-store interruption, and two-instance
+serialization before a protected cloud state/evidence implementation is
+admitted. They are deliberately *not* production custody: a host that can
+rewrite the SQLite database or evidence directory can rewrite this acceptance
+environment.
 """
 
 from __future__ import annotations
@@ -66,27 +66,65 @@ class _DurableRequestState(RequestState):
 
 
 class _PersistingLock:
+    """Re-entrant process lock plus SQLite transaction lock across instances."""
+
     def __init__(self, state: "SQLiteRestartState") -> None:
         self.state = state
 
     def __enter__(self) -> "_PersistingLock":
         self.state._mutex.acquire()
-        self.state._depth += 1
-        return self
+        try:
+            if self.state._depth == 0:
+                connection = sqlite3.connect(
+                    self.state.path,
+                    timeout=self.state.sqlite_lock_timeout_seconds,
+                    isolation_level=None,
+                )
+                try:
+                    connection.execute("BEGIN IMMEDIATE")
+                    self.state._active_connection = connection
+                    self.state._reload_locked()
+                except Exception:
+                    try:
+                        connection.rollback()
+                    finally:
+                        connection.close()
+                        self.state._active_connection = None
+                    raise
+            self.state._depth += 1
+            return self
+        except Exception:
+            self.state._mutex.release()
+            raise
 
     def __exit__(self, exc_type, exc, tb) -> bool:
         try:
             self.state._depth -= 1
-            if self.state._depth == 0:
+            if self.state._depth != 0:
+                return False
+
+            connection = self.state._active_connection
+            if connection is None:
+                raise RuntimeError("durable authority transaction disappeared")
+            try:
                 if exc_type is not None:
+                    connection.rollback()
+                    self.state._reload_locked()
+                else:
                     if self.state._dirty:
-                        self.state._reload_locked()
-                elif self.state._dirty:
-                    try:
                         self.state._persist_locked()
-                    except Exception:
-                        self.state._reload_locked()
-                        raise
+                    connection.commit()
+            except Exception:
+                try:
+                    connection.rollback()
+                    self.state._reload_locked()
+                finally:
+                    connection.close()
+                    self.state._active_connection = None
+                raise
+            else:
+                connection.close()
+                self.state._active_connection = None
         finally:
             self.state._mutex.release()
         return False
@@ -141,23 +179,35 @@ class _CredentialMapping(MutableMapping[str, CredentialRecord]):
 
 
 class SQLiteRestartState(InMemoryState):
-    """Atomic single-row restart state for executable acceptance proofs only.
+    """Shared-database acceptance state, not production protected custody.
 
-    The existing AuthorityService still owns all authority decisions. This
-    adapter only makes its existing state durable. Mutations performed under the
-    service's re-entrant lock are committed as one SQLite transaction. If the
-    durable commit fails, the in-memory view is reloaded from the last committed
-    snapshot before the error is returned.
+    Every outer authority-state lock opens `BEGIN IMMEDIATE`, reloads the latest
+    committed snapshot, applies the existing AuthorityService mutation, and
+    atomically commits the replacement snapshot. Independent state objects that
+    point at the same database therefore serialize on SQLite rather than on a
+    process-local mutex. This proves the transaction contract needed from a
+    future managed state provider; it does not make a locally writable SQLite
+    file trustworthy against a hostile host.
     """
 
-    SCHEMA = "pulpo.authority-restart-state.v0"
+    SCHEMA = "pulpo.authority-restart-state.v1"
 
-    def __init__(self, path: str | Path, credentials: tuple[CredentialRecord, ...]) -> None:
+    def __init__(
+        self,
+        path: str | Path,
+        credentials: tuple[CredentialRecord, ...],
+        *,
+        sqlite_lock_timeout_seconds: float = 10.0,
+    ) -> None:
+        if sqlite_lock_timeout_seconds <= 0:
+            raise ValueError("sqlite lock timeout must be positive")
         self.path = Path(path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
+        self.sqlite_lock_timeout_seconds = sqlite_lock_timeout_seconds
         self._mutex = threading.RLock()
         self._depth = 0
         self._dirty = False
+        self._active_connection: sqlite3.Connection | None = None
         self._sequence = 0
         self._last_time_ns = 0
         self._request_values: dict[str, _DurableRequestState] = {}
@@ -231,7 +281,16 @@ class SQLiteRestartState(InMemoryState):
                 """
             )
 
+    def _connection(self) -> sqlite3.Connection | None:
+        return self._active_connection
+
     def _has_snapshot_locked(self) -> bool:
+        connection = self._connection()
+        if connection is not None:
+            row = connection.execute(
+                "SELECT 1 FROM authority_state WHERE singleton = 1"
+            ).fetchone()
+            return row is not None
         with sqlite3.connect(self.path) as connection:
             row = connection.execute(
                 "SELECT 1 FROM authority_state WHERE singleton = 1"
@@ -277,32 +336,46 @@ class SQLiteRestartState(InMemoryState):
             "requests": requests,
         }
 
-    def _persist_locked(self) -> None:
+    def _write_snapshot(self, connection: sqlite3.Connection) -> None:
         payload = _canonical(self._snapshot()).decode()
         digest = sha256(payload.encode()).hexdigest()
-        with sqlite3.connect(self.path) as connection:
-            connection.execute("BEGIN IMMEDIATE")
-            connection.execute(
-                """
-                INSERT INTO authority_state(singleton, payload, state_hash)
-                VALUES (1, ?, ?)
-                ON CONFLICT(singleton) DO UPDATE SET
-                    payload = excluded.payload,
-                    state_hash = excluded.state_hash
-                """,
-                (payload, digest),
-            )
-            connection.commit()
+        connection.execute(
+            """
+            INSERT INTO authority_state(singleton, payload, state_hash)
+            VALUES (1, ?, ?)
+            ON CONFLICT(singleton) DO UPDATE SET
+                payload = excluded.payload,
+                state_hash = excluded.state_hash
+            """,
+            (payload, digest),
+        )
         self._dirty = False
 
-    def _reload_locked(self) -> None:
+    def _persist_locked(self) -> None:
+        connection = self._connection()
+        if connection is not None:
+            self._write_snapshot(connection)
+            return
         with sqlite3.connect(self.path) as connection:
-            row = connection.execute(
-                "SELECT payload, state_hash FROM authority_state WHERE singleton = 1"
-            ).fetchone()
+            connection.execute("BEGIN IMMEDIATE")
+            self._write_snapshot(connection)
+            connection.commit()
+
+    def _read_snapshot(self, connection: sqlite3.Connection) -> tuple[str, str]:
+        row = connection.execute(
+            "SELECT payload, state_hash FROM authority_state WHERE singleton = 1"
+        ).fetchone()
         if row is None:
             raise RuntimeError("durable authority snapshot unavailable")
-        payload, expected_hash = row
+        return row[0], row[1]
+
+    def _reload_locked(self) -> None:
+        connection = self._connection()
+        if connection is not None:
+            payload, expected_hash = self._read_snapshot(connection)
+        else:
+            with sqlite3.connect(self.path) as standalone:
+                payload, expected_hash = self._read_snapshot(standalone)
         actual_hash = sha256(payload.encode()).hexdigest()
         if actual_hash != expected_hash:
             raise RuntimeError("durable authority snapshot integrity failure")
