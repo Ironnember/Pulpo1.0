@@ -13,7 +13,7 @@ set -eu
 : "${PULPO_AUTHORITY_SA_NAME:=pulpo-authority}"
 : "${PULPO_WORKER_SA_NAME:=pulpo-governed-worker}"
 : "${PULPO_KMS_KEYRING:=pulpo-authority}"
-: "${PULPO_KMS_KEY:=approval-envelope-ed25519}"
+: "${PULPO_KMS_KEY:=approval-signer}"
 : "${PULPO_EVIDENCE_BUCKET:?set globally unique PULPO_EVIDENCE_BUCKET}"
 : "${PULPO_EVIDENCE_RETENTION:=P30D}"
 : "${PULPO_APPLY:=0}"
@@ -61,10 +61,10 @@ if [ "$PULPO_APPLY" = "1" ]; then
       --keyring="$PULPO_KMS_KEYRING" \
       --location="$PULPO_GCP_REGION" \
       --purpose=asymmetric-signing \
-      --default-algorithm=ec-sign-ed25519 \
+      --default-algorithm=ec-sign-p256-sha256 \
       --protection-level=hsm
 else
-  printf '%s\n' "+ ensure HSM EC_SIGN_ED25519 key ${PULPO_KMS_KEYRING}/${PULPO_KMS_KEY}"
+  printf '%s\n' "+ ensure HSM EC_SIGN_P256_SHA256 key ${PULPO_KMS_KEYRING}/${PULPO_KMS_KEY}"
 fi
 
 run gcloud kms keys add-iam-policy-binding "$PULPO_KMS_KEY" \
@@ -98,4 +98,4 @@ printf '%s\n' "  ${WORKER_SA}"
 printf '%s\n' "  ${KEY_VERSION}"
 printf '%s\n' "  gs://${PULPO_EVIDENCE_BUCKET}"
 printf '%s\n' "  ${AUTHORITY_ORIGIN}"
-printf '%s\n' "Then retrieve the KMS public key and compute the Pulpo-pinned fingerprint before any live signing path is enabled."
+printf '%s\n' "Then retrieve the KMS public key, convert it to the uncompressed P-256 SEC1 point, and compute the Pulpo-pinned SHA-256 fingerprint before any live signing path is enabled."
