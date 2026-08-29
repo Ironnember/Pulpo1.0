@@ -131,6 +131,93 @@ A disconnected worker possessing cached permits, approvals, directives, balances
 - provider credentials are unavailable to the hostile worker;
 - worker/executor success is never accepted without independent reconciliation.
 
+## PR #83 admission invariants
+
+These are **Proposed** until their executable denial/restart proofs pass.
+
+### AUTHORIZED_OBJECT_ORIGIN
+
+> A consequential object may enter authority evaluation only by reference to an unexpired trusted `ProposalCommitment`. Reconstructing identical bytes outside that commitment does not confer provenance.
+
+The trusted Name.com sandbox proposal path is:
+
+`domain -> trusted provider observation -> exact ProposalCommitment -> independent approval -> attempt`
+
+A minimal `ProposalCommitment` binds:
+- commitment identity and digest;
+- exact order hash;
+- trusted provider availability/observation hash;
+- custody creation time;
+- expiry;
+- custody provenance needed to validate the commitment.
+
+The hostile-worker API must not accept a caller-originated full consequential order. The worker may choose the normalized domain and carry an opaque proposal reference, approval envelope, and opaque attempt handle. Full-order methods may exist only behind the trusted internal boundary.
+
+Required negative proof:
+
+> Construct a byte-identical `DomainPurchaseOrder` outside custody with no valid proposal commitment. Authorization must fail before permit issuance or budget reservation.
+
+### ACCOUNTABLE_TRANSITION
+
+> Every consequential custody mutation atomically creates a durable canonical-evidence obligation. Authority cannot advance past an unresolved obligation. Projection is restart-safe and idempotent by custody transition hash.
+
+The required transaction is:
+
+`custody mutation + EvidenceObligation(transition_hash, receipt_material) -> COMMIT`
+
+The obligation is not a second evidence ledger. It records that the existing canonical Pulpo evidence chain has not yet caught up with an already committed custody transition.
+
+Projection requirements:
+- projection target is the existing canonical Pulpo audit/evidence path;
+- projection identity is the custody `transition_hash`;
+- duplicate projection yields exactly one canonical custody-transition event;
+- a pending obligation blocks any later consequential custody transition;
+- a malformed, tampered, or transition-hash-mismatched obligation fails closed and remains pending;
+- clearing the obligation is allowed only after canonical projection succeeds.
+
+Required crash/restart proofs:
+
+1. crash before custody commit -> neither custody mutation nor evidence obligation exists;
+2. crash after custody/outbox commit but before canonical projection -> restart detects the obligation and blocks subsequent consequential advancement until projection;
+3. crash during projection -> restart retries safely;
+4. duplicate projection -> exactly one canonical custody-transition event;
+5. tampered or mismatched receipt/transition hash -> projection denied and custody remains unable to advance.
+
+## Admission ceremony path
+
+Only the strongest path may count as PR #83 admission evidence:
+
+`domain only`
+`-> custody trusted discovery/quote`
+`-> ProposalCommitment`
+`-> custody-generated authority request`
+`-> independently signed approval envelope`
+`-> authorization by proposal reference`
+`-> one custody-authorized provider transmission`
+`-> independent provider observation`
+`-> reconciliation`
+`-> restart/replay denial`
+
+Any harness that constructs its own request/quote/order, bypasses the independent approval requirement, or calls a weaker direct-order path is stale proof infrastructure and **must not count** toward admission.
+
+## PR #83 scope freeze
+
+Do not add:
+- a learning system;
+- another policy engine;
+- another custody authority abstraction;
+- another evidence ledger;
+- broader provider support;
+- unrelated model, voice, public-lab, retention, sector, or orchestration features.
+
+Only the following work is in scope before the external ceremony:
+
+1. `ProposalCommitment` provenance and worker-surface removal of arbitrary full orders;
+2. transactional evidence obligation plus restart-safe idempotent canonical projection;
+3. replacement/retirement of the stale sandbox ceremony harness;
+4. required admission checks for `hostile-worker-custody` and `hostile-worker-container-isolation`;
+5. exact-head freeze, independent review, sandbox ceremony, restart/replay, and final evidence bundle.
+
 ## Proof discipline
 
 Do not weaken this contract after observing results.
