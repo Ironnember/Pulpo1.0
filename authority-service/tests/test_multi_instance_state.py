@@ -135,8 +135,8 @@ class MultiInstanceAuthorityStateTests(unittest.TestCase):
 
             with ThreadPoolExecutor(max_workers=2) as executor:
                 futures = (
-                    executor.submit(service_a.approve, request_a, self.fixture.primary.credential_id, "assertion-a"),
-                    executor.submit(service_b.approve, request_b, self.fixture.primary.credential_id, "assertion-b"),
+                    executor.submit(approve, service_a, request_a, "assertion-a"),
+                    executor.submit(approve, service_b, request_b, "assertion-b"),
                 )
                 envelopes = [future.result(timeout=10) for future in futures]
 
