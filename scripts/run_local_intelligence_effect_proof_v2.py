@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """V2 operator-host ceremony with a disposable Codex home.
 
-This keeps the real Codex home observed as a protected surface while directing
-mutable Codex state into the already-authorized runtime island. If a file-based
-login exists, only auth.json is projected into the disposable home as a symlink;
-Seatbelt still denies writes to the real Codex home target.
+The real Codex home remains observed as a protected surface. Mutable Codex state
+is directed into the already-authorized runtime island. If file-based login
+exists, PREPARE binds only the source auth.json hash; FIRE revalidates that hash,
+stages a 0600 copy into the disposable home, and removes the staged credential in
+a finally block. No write-through path to the real Codex home is introduced.
 """
 
 from __future__ import annotations
@@ -24,17 +25,42 @@ from scripts import run_local_intelligence_effect_proof as v1
 
 
 PROFILE_NAME = "permit-bound-local-intelligence-v2-disposable-codex-home"
+AUTH_PROJECTION_MODE = "fire-staged-copy-0600"
 
 
-def prepare_runtime_codex_home(real_codex_home: Path, runtime_root: Path) -> tuple[Path, Path | None, str]:
+def prepare_runtime_codex_home(real_codex_home: Path, runtime_root: Path) -> tuple[Path, Path | None, str | None, str]:
     runtime_codex_home = (runtime_root / "codex-home").resolve()
     runtime_codex_home.mkdir(parents=True, exist_ok=False)
     auth_source = (real_codex_home / "auth.json").resolve()
-    auth_projection = runtime_codex_home / "auth.json"
     if auth_source.is_file():
-        os.symlink(auth_source, auth_projection)
-        return runtime_codex_home, auth_projection, "symlink-readonly-target"
-    return runtime_codex_home, None, "none"
+        return runtime_codex_home, auth_source, v1._sha256_file(auth_source), AUTH_PROJECTION_MODE
+    return runtime_codex_home, None, None, "none"
+
+
+def stage_runtime_auth_copy(
+    auth_source: Path | None,
+    expected_sha256: str | None,
+    runtime_codex_home: Path,
+) -> Path | None:
+    if auth_source is None:
+        if expected_sha256 is not None:
+            raise v1.ProofError("auth_source_hash_without_source")
+        return None
+    if expected_sha256 is None:
+        raise v1.ProofError("auth_source_missing_hash")
+    if not auth_source.is_file():
+        raise v1.ProofError("auth_source_missing_at_fire")
+    if v1._sha256_file(auth_source) != expected_sha256:
+        raise v1.ProofError("auth_source_changed_after_prepare")
+    staged = runtime_codex_home / "auth.json"
+    if staged.exists() or staged.is_symlink():
+        raise v1.ProofError("runtime_auth_projection_preexists")
+    shutil.copyfile(auth_source, staged)
+    os.chmod(staged, 0o600)
+    if v1._sha256_file(staged) != expected_sha256:
+        staged.unlink(missing_ok=True)
+        raise v1.ProofError("runtime_auth_projection_hash_mismatch")
+    return staged
 
 
 def v2_profile_binding(
@@ -45,12 +71,13 @@ def v2_profile_binding(
     runtime_codex_home: Path,
     real_codex_home: Path,
     auth_projection_mode: str,
+    auth_source_sha256: str | None,
 ) -> str:
     return (
         f"{PROFILE_NAME};codex_sha256={codex_sha256};"
         f"seatbelt_sha256={seatbelt_sha256};seatbelt_profile_sha256={seatbelt_profile_sha256};"
         f"runtime_codex_home={runtime_codex_home};real_codex_home={real_codex_home};"
-        f"auth_projection_mode={auth_projection_mode}"
+        f"auth_projection_mode={auth_projection_mode};auth_source_sha256={auth_source_sha256 or 'none'}"
     )
 
 
@@ -90,7 +117,9 @@ def _prepare(args) -> int:
     runtime_root.mkdir()
     (runtime_root / "log").mkdir()
     (runtime_root / "sqlite").mkdir()
-    runtime_codex_home, auth_projection, auth_projection_mode = prepare_runtime_codex_home(real_codex_home, runtime_root)
+    runtime_codex_home, auth_source, auth_source_sha256, auth_projection_mode = prepare_runtime_codex_home(
+        real_codex_home, runtime_root
+    )
     v1._clone_target(repo_root, target_worktree, args.target_sha)
 
     profile_path = control_root / "seatbelt.sb"
@@ -117,6 +146,7 @@ def _prepare(args) -> int:
         runtime_codex_home=runtime_codex_home,
         real_codex_home=real_codex_home,
         auth_projection_mode=auth_projection_mode,
+        auth_source_sha256=auth_source_sha256,
     )
     envelope = EffectEnvelope(
         executable_path=str(seatbelt),
@@ -151,7 +181,8 @@ def _prepare(args) -> int:
         "pulpo_home": str(pulpo_home),
         "codex_home": str(runtime_codex_home),
         "real_codex_home": str(real_codex_home),
-        "auth_projection": str(auth_projection) if auth_projection else None,
+        "auth_source": str(auth_source) if auth_source else None,
+        "auth_source_sha256": auth_source_sha256,
         "auth_projection_mode": auth_projection_mode,
         "codex_path": str(codex_path),
         "codex_sha256": codex_sha,
@@ -185,6 +216,7 @@ def _prepare(args) -> int:
         "runtime_codex_home": str(runtime_codex_home),
         "real_codex_home": str(real_codex_home),
         "auth_projection_mode": auth_projection_mode,
+        "auth_source_sha256": auth_source_sha256,
         "seatbelt_sha256": seatbelt_sha,
         "seatbelt_profile_sha256": seatbelt_profile_sha,
         "expires_at_ns": envelope.expires_at_ns,
@@ -193,9 +225,26 @@ def _prepare(args) -> int:
     return 0
 
 
+def _fire(args) -> int:
+    plan_path = Path(args.plan).expanduser().resolve()
+    plan = v1._load_plan(plan_path)
+    runtime_codex_home = Path(str(plan["codex_home"])).resolve()
+    auth_source_raw = plan.get("auth_source")
+    auth_source = Path(str(auth_source_raw)).resolve() if auth_source_raw else None
+    expected_auth_sha = plan.get("auth_source_sha256")
+    if expected_auth_sha is not None and not isinstance(expected_auth_sha, str):
+        raise v1.ProofError("auth_source_hash_invalid")
+    staged = stage_runtime_auth_copy(auth_source, expected_auth_sha, runtime_codex_home)
+    try:
+        return v1._fire(args)
+    finally:
+        if staged is not None:
+            staged.unlink(missing_ok=True)
+
+
 def main(argv: list[str] | None = None) -> int:
     args = v1.parse_args(argv)
-    return _prepare(args) if args.prepare else v1._fire(args)
+    return _prepare(args) if args.prepare else _fire(args)
 
 
 if __name__ == "__main__":
