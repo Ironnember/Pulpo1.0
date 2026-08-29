@@ -1,4 +1,4 @@
-name: Time Machine Differential V1
+name: Time Machine Differential V1.1
 
 on:
   pull_request:
@@ -19,10 +19,13 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Replay frozen constitutional transitions
-        run: python scripts/run_time_machine_differential.py --output time-machine-differential.json
+      - name: Replay DAG-aware constitutional transitions
+        id: replay
+        continue-on-error: true
+        run: python scripts/run_time_machine_differential_v1_1.py --output time-machine-differential.json
 
       - name: Prove canonical checkout remained unchanged
+        if: always()
         run: git diff --exit-code
 
       - name: Preserve Time Machine evidence
@@ -31,5 +34,11 @@ jobs:
         with:
           name: time-machine-differential-${{ github.sha }}
           path: time-machine-differential.json
-          if-no-files-found: warn
+          if-no-files-found: error
           retention-days: 14
+
+      - name: Enforce frozen Time Machine expectations
+        if: always()
+        env:
+          REPLAY_OUTCOME: ${{ steps.replay.outcome }}
+        run: test "$REPLAY_OUTCOME" = "success"
