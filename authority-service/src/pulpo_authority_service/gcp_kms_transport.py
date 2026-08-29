@@ -1,4 +1,4 @@
-"""Google Cloud KMS SDK transport for the pinned Ed25519 signer boundary.
+"""Google Cloud KMS SDK transport for the pinned P-256 HSM signer boundary.
 
 This module contains no Pulpo authority decision logic and no key-selection
 logic. It maps the narrow transport protocol in `kms_signer.py` onto the
@@ -68,23 +68,25 @@ class GoogleCloudKmsTransport:
             protection_level=_enum_name(response.protection_level, "public-key protection level"),
         )
 
-    def sign_data(
+    def sign_digest(
         self,
         key_version_name: str,
-        data: bytes,
-        data_crc32c: int,
+        digest: bytes,
+        digest_crc32c: int,
     ) -> KmsSignatureResult:
+        if len(digest) != 32:
+            raise ValueError("P-256 KMS digest must be exactly 32 SHA-256 bytes")
         response = self.client.asymmetric_sign(
             request={
                 "name": key_version_name,
-                "data": data,
-                "data_crc32c": data_crc32c,
+                "digest": {"sha256": digest},
+                "digest_crc32c": digest_crc32c,
             }
         )
         return KmsSignatureResult(
             name=str(response.name),
             signature=bytes(response.signature),
             signature_crc32c=_wrapped_int(response.signature_crc32c, "signature CRC32C"),
-            verified_data_crc32c=bool(response.verified_data_crc32c),
+            verified_digest_crc32c=bool(response.verified_digest_crc32c),
             protection_level=_enum_name(response.protection_level, "signature protection level"),
         )
