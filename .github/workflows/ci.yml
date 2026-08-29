@@ -119,26 +119,36 @@ jobs:
             -e NAMECOM_SANDBOX_OBSERVER_TOKEN=observer-token-not-real \
             "$image" >/dev/null
 
-          # Trusted-host assertions about the custody container itself.
-          test "$(docker inspect -f '{{.HostConfig.ReadonlyRootfs}}' "$custody")" = "true"
-          docker exec "$custody" sh -c 'test "$(id -u)" -ne 0'
-          docker exec "$custody" sh -c 'test -f /var/lib/pulpo/custody.sqlite3'
-          test -z "$(docker inspect -f '{{range .NetworkSettings.Ports}}{{println .}}{{end}}' "$custody" | tr -d '[:space:]')"
-
-          # Wait for the custody API using a fresh worker container that receives
-          # no volume, no Docker socket, and none of the custody/provider secrets.
+          # Wait for the service's own healthcheck before asserting runtime state.
           healthy=0
           for _ in $(seq 1 30); do
-            if docker run --rm --network "$network" python:3.11-slim \
-              python -c "import urllib.request; assert b'\"status\":\"ok\"' in urllib.request.urlopen('http://${custody}:8080/health', timeout=1).read()" \
-              >/dev/null 2>&1; then
+            status="$(docker inspect -f '{{.State.Status}}' "$custody")"
+            health="$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' "$custody")"
+            if [ "$status" = "exited" ] || [ "$status" = "dead" ]; then
+              echo "custody container exited before becoming healthy" >&2
+              docker logs "$custody" >&2 || true
+              exit 1
+            fi
+            if [ "$health" = "healthy" ]; then
               healthy=1
               break
             fi
             sleep 1
           done
-          test "$healthy" = "1"
+          if [ "$healthy" != "1" ]; then
+            echo "custody container did not become healthy" >&2
+            docker logs "$custody" >&2 || true
+            exit 1
+          fi
 
+          # Trusted-host assertions about the custody container itself.
+          test "$(docker inspect -f '{{.HostConfig.ReadonlyRootfs}}' "$custody")" = "true"
+          docker exec "$custody" sh -c 'test "$(id -u)" -ne 0'
+          docker exec "$custody" sh -c 'test -f /var/lib/pulpo/custody.sqlite3'
+          test -z "$(docker port "$custody")"
+
+          # Fresh hostile-worker container: no custody volume, no Docker socket,
+          # no provider/governance secrets. Only the narrow HTTP network surface.
           docker run --rm --network "$network" python:3.11-slim python -c "
           import os, urllib.error, urllib.request
           forbidden = {
