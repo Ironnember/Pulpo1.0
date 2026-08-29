@@ -28,7 +28,7 @@ def _canonical(value: object) -> bytes:
 
 
 class _DurableRequestState(RequestState):
-    _TRACKED = {"status", "envelope", "reason", "evidence_hash"}
+    _TRACKED = {"status", "envelope", "reason", "evidence_hash", "evidence_bundle"}
 
     def __init__(
         self,
@@ -40,6 +40,7 @@ class _DurableRequestState(RequestState):
         envelope: ApprovalEnvelope | None = None,
         reason: str | None = None,
         evidence_hash: str | None = None,
+        evidence_bundle: dict[str, object] | None = None,
         *,
         on_change: Callable[[], None],
     ) -> None:
@@ -53,6 +54,7 @@ class _DurableRequestState(RequestState):
             envelope,
             reason,
             evidence_hash,
+            evidence_bundle,
         )
         object.__setattr__(self, "_on_change", on_change)
 
@@ -213,6 +215,7 @@ class SQLiteRestartState(InMemoryState):
             value.envelope,
             value.reason,
             value.evidence_hash,
+            value.evidence_bundle,
             on_change=self._mark_request_changed,
         )
 
@@ -263,6 +266,7 @@ class SQLiteRestartState(InMemoryState):
                     "envelope": None if item.envelope is None else asdict(item.envelope),
                     "reason": item.reason,
                     "evidence_hash": item.evidence_hash,
+                    "evidence_bundle": item.evidence_bundle,
                 }
             )
         return {
@@ -331,6 +335,7 @@ class SQLiteRestartState(InMemoryState):
                 envelope=None if envelope_value is None else ApprovalEnvelope(**envelope_value),
                 reason=item["reason"],
                 evidence_hash=item["evidence_hash"],
+                evidence_bundle=item.get("evidence_bundle"),
                 on_change=self._mark_request_changed,
             )
             loaded_requests[loaded.request_id] = loaded
@@ -376,8 +381,9 @@ class DirectoryEvidenceSink:
         self.directory.mkdir(parents=True, exist_ok=True)
 
     def append(self, bundle: dict[str, object]) -> str:
-        encoded = _canonical(bundle) + b"\n"
-        digest = sha256(_canonical(bundle)).hexdigest()
+        canonical = _canonical(bundle)
+        encoded = canonical + b"\n"
+        digest = sha256(canonical).hexdigest()
         target = self.directory / f"{digest}.json"
         try:
             descriptor = os.open(target, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
