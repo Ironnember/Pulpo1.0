@@ -6,7 +6,7 @@ or signing key. It acts only as the hostile worker:
 
     domain
     -> custody proposal commitment + exact authority request
-    -> existing independent authority service
+    -> authenticated request/poll to independent authority service
     -> custody authorization by proposal reference
     -> one execution request
     -> independent reconciliation
@@ -20,6 +20,7 @@ from __future__ import annotations
 import argparse
 from dataclasses import asdict
 import json
+import os
 from pathlib import Path
 import sys
 import time
@@ -32,6 +33,7 @@ from pulpo.authority_client import AuthorityApprovalRequest, AuthorityClient
 
 
 MAX_RESPONSE_BYTES = 1_048_576
+MAX_WORKER_TOKEN_BYTES = 16_000
 
 
 class _NoRedirect(HTTPRedirectHandler):
@@ -57,6 +59,22 @@ def _origin(value: str) -> str:
     ):
         raise CeremonyBlocked("custody URL must be an HTTP(S) origin")
     return value.rstrip("/")
+
+
+def _worker_authorization_provider(environment_name: str):
+    if not environment_name or environment_name != environment_name.strip():
+        raise CeremonyBlocked("worker token environment variable name is invalid")
+    token = os.environ.get(environment_name, "")
+    if (
+        not token
+        or token != token.strip()
+        or any(character.isspace() for character in token)
+        or len(token.encode()) > MAX_WORKER_TOKEN_BYTES
+    ):
+        raise CeremonyBlocked(
+            f"authenticated authority worker token is unavailable in {environment_name}"
+        )
+    return lambda: f"Bearer {token}"
 
 
 def _request_json(
@@ -121,6 +139,11 @@ def main() -> int:
     parser.add_argument("--domain", required=True, help="normalized Name.com sandbox domain")
     parser.add_argument("--custody-url", default="http://127.0.0.1:8080")
     parser.add_argument("--authority-url", required=True, help="pinned HTTPS authority origin")
+    parser.add_argument(
+        "--authority-worker-token-env",
+        default="PULPO_AUTHORITY_WORKER_TOKEN",
+        help="environment variable containing the raw bearer token for authority request/poll",
+    )
     parser.add_argument("--approval-poll-attempts", type=int, default=60)
     parser.add_argument("--approval-poll-delay-seconds", type=float, default=2.0)
     parser.add_argument("--reconcile-attempts", type=int, default=10)
@@ -137,7 +160,10 @@ def main() -> int:
 
     custody_url = _origin(args.custody_url)
     opener = build_opener(_NoRedirect())
-    authority = AuthorityClient(args.authority_url)
+    authority = AuthorityClient(
+        args.authority_url,
+        authorization_provider=_worker_authorization_provider(args.authority_worker_token_env),
+    )
 
     proposal = _request_json(
         opener,
