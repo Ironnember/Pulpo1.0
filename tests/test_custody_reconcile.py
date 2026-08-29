@@ -2,7 +2,13 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from pulpo.commerce import DomainPurchaseRequest, DomainQuote, assess_quote, purchase_intent
+from pulpo.commerce import (
+    DomainPurchaseRequest,
+    DomainQuote,
+    SQLiteBudgetAccount,
+    assess_quote,
+    purchase_intent,
+)
 from pulpo.custody import SQLiteGovernanceCustody
 from pulpo.custody_domain import GovernedDomainAttemptCoordinator
 from pulpo.custody_reconcile import IndependentDomainObservation, IndependentDomainReconciler
@@ -28,6 +34,7 @@ class CustodyReconciliationTests(unittest.TestCase):
             signing_secret=b"independent-observer-custody",
             clock=lambda: NOW,
         )
+        budget = SQLiteBudgetAccount(self.path)
         state = SQLiteKernelState(self.path)
         self.addCleanup(state.close)
         kernel = GovernanceKernel(
@@ -69,11 +76,14 @@ class CustodyReconciliationTests(unittest.TestCase):
         intent = purchase_intent(order)
         target = kernel.lock_target("reconcile-domain-v0", intent)
         decision = kernel.evaluate(intent)
-        governed = GovernedDomainAttemptCoordinator(kernel, custody).authorize(
+        coordinator = GovernedDomainAttemptCoordinator(kernel, custody, budget)
+        reservation = coordinator.reserve(order)
+        governed = coordinator.authorize(
             target_id=target.target_id,
             expected_target_hash=target.target_hash,
             order=order,
             permit=decision.permit,
+            reservation_id=reservation.reservation_id,
         )
         head = custody.snapshot()
         custody.claim_attempt(
@@ -96,7 +106,7 @@ class CustodyReconciliationTests(unittest.TestCase):
             expected_state_root=head.state_root,
             attempt_id=governed.attempt_id,
         )
-        return custody, governed, order, provider_request_id
+        return custody, budget, governed, order, provider_request_id
 
     def observation(self, provider_request_id, **changes):
         values = {
@@ -107,6 +117,7 @@ class CustodyReconciliationTests(unittest.TestCase):
             "registrar": "name.com",
             "owner_ref": "owner://iron-ember",
             "registered": True,
+            "payment_id": "payment-v0",
             "charged_cents": 2_000,
             "receipt_hash": "a" * 64,
             "privacy_enabled": True,
@@ -115,13 +126,13 @@ class CustodyReconciliationTests(unittest.TestCase):
         values.update(changes)
         return IndependentDomainObservation(**values)
 
-    def test_exact_independent_observation_can_reconcile_success(self):
-        custody, governed, order, provider_request_id = self.stack()
+    def reconciler(self, custody, budget, observer_id="observer:registrar-and-dns"):
+        return IndependentDomainReconciler(custody, budget, observer_id=observer_id)
+
+    def test_exact_independent_observation_reconciles_success_and_settles_budget(self):
+        custody, budget, governed, order, provider_request_id = self.stack()
         observation = self.observation(provider_request_id)
-        result = IndependentDomainReconciler(
-            custody,
-            observer_id="observer:registrar-and-dns",
-        ).reconcile(governed, order, observation)
+        result = self.reconciler(custody, budget).reconcile(governed, order, observation)
 
         self.assertEqual(("success", "external_consequence_verified"), (result.outcome, result.reason))
         self.assertEqual(
@@ -129,38 +140,39 @@ class CustodyReconciliationTests(unittest.TestCase):
             custody.attempt(governed.attempt_id).state,
         )
         self.assertEqual("success", custody.attempt(governed.attempt_id).reconciliation_outcome)
+        self.assertIsNotNone(result.budget_reconciliation)
+        self.assertEqual(2_000, budget.spent_cents)
+        self.assertEqual(0, budget.reserved_cents)
+        self.assertEqual(1_000, budget.available_cents)
         self.assertTrue(custody.verify_receipt(result.receipt))
 
-    def test_provider_success_without_complete_external_observation_stays_unresolved(self):
-        custody, governed, order, provider_request_id = self.stack()
+    def test_provider_success_without_complete_external_observation_stays_unresolved_and_holds_budget(self):
+        custody, budget, governed, order, provider_request_id = self.stack()
         observation = self.observation(provider_request_id, owner_ref=None)
-        result = IndependentDomainReconciler(
-            custody,
-            observer_id="observer:registrar-and-dns",
-        ).reconcile(governed, order, observation)
+        result = self.reconciler(custody, budget).reconcile(governed, order, observation)
 
         self.assertEqual(("unresolved", "success_observation_incomplete"), (result.outcome, result.reason))
-        self.assertEqual(
-            SQLiteGovernanceCustody.UNRESOLVED,
-            custody.attempt(governed.attempt_id).state,
-        )
+        self.assertEqual(SQLiteGovernanceCustody.UNRESOLVED, custody.attempt(governed.attempt_id).state)
+        self.assertIsNone(result.budget_reconciliation)
+        self.assertEqual(0, budget.spent_cents)
+        self.assertEqual(2_000, budget.reserved_cents)
+        self.assertEqual(1_000, budget.available_cents)
 
-    def test_observed_substitution_is_reconciled_as_failure_not_success(self):
-        custody, governed, order, provider_request_id = self.stack()
+    def test_observed_substitution_is_failure_and_does_not_reopen_budget(self):
+        custody, budget, governed, order, provider_request_id = self.stack()
         observation = self.observation(provider_request_id, domain="wrong.example")
-        result = IndependentDomainReconciler(
-            custody,
-            observer_id="observer:registrar-and-dns",
-        ).reconcile(governed, order, observation)
+        result = self.reconciler(custody, budget).reconcile(governed, order, observation)
 
         self.assertEqual(("failure", "observed_domain_mismatch"), (result.outcome, result.reason))
         self.assertEqual(
             SQLiteGovernanceCustody.RECONCILED_FAILURE,
             custody.attempt(governed.attempt_id).state,
         )
+        self.assertIsNone(result.budget_reconciliation)
+        self.assertEqual(2_000, budget.reserved_cents)
 
     def test_not_found_lookup_cannot_be_inferred_as_known_failure(self):
-        custody, governed, order, provider_request_id = self.stack()
+        custody, budget, governed, order, provider_request_id = self.stack()
         observation = self.observation(
             provider_request_id,
             provider_request_status="not_found",
@@ -168,24 +180,22 @@ class CustodyReconciliationTests(unittest.TestCase):
             registrar=None,
             owner_ref=None,
             registered=None,
+            payment_id=None,
             charged_cents=None,
             receipt_hash=None,
             privacy_enabled=None,
             dns_state=None,
         )
-        result = IndependentDomainReconciler(
-            custody,
-            observer_id="observer:registrar-query",
-        ).reconcile(governed, order, observation)
-
-        self.assertEqual(("unresolved", "provider_request_not_found"), (result.outcome, result.reason))
-        self.assertEqual(
-            SQLiteGovernanceCustody.UNRESOLVED,
-            custody.attempt(governed.attempt_id).state,
+        result = self.reconciler(custody, budget, "observer:registrar-query").reconcile(
+            governed, order, observation
         )
 
-    def test_explicit_provider_failure_without_observed_effect_reconciles_failure(self):
-        custody, governed, order, provider_request_id = self.stack()
+        self.assertEqual(("unresolved", "provider_request_not_found"), (result.outcome, result.reason))
+        self.assertEqual(SQLiteGovernanceCustody.UNRESOLVED, custody.attempt(governed.attempt_id).state)
+        self.assertEqual(2_000, budget.reserved_cents)
+
+    def test_explicit_provider_failure_without_observed_effect_is_failure_but_budget_remains_held(self):
+        custody, budget, governed, order, provider_request_id = self.stack()
         observation = self.observation(
             provider_request_id,
             provider_request_status="failed",
@@ -193,15 +203,15 @@ class CustodyReconciliationTests(unittest.TestCase):
             registrar=None,
             owner_ref=None,
             registered=False,
+            payment_id=None,
             charged_cents=0,
             receipt_hash=None,
             privacy_enabled=None,
             dns_state=None,
         )
-        result = IndependentDomainReconciler(
-            custody,
-            observer_id="observer:registrar-query",
-        ).reconcile(governed, order, observation)
+        result = self.reconciler(custody, budget, "observer:registrar-query").reconcile(
+            governed, order, observation
+        )
 
         self.assertEqual(
             ("failure", "provider_failure_independently_observed"),
@@ -211,6 +221,8 @@ class CustodyReconciliationTests(unittest.TestCase):
             SQLiteGovernanceCustody.RECONCILED_FAILURE,
             custody.attempt(governed.attempt_id).state,
         )
+        self.assertEqual(0, budget.spent_cents)
+        self.assertEqual(2_000, budget.reserved_cents)
 
 
 if __name__ == "__main__":
