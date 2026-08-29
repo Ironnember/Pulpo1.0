@@ -12,6 +12,7 @@ from .authority import ApprovalEnvelope, _require_sha256, _require_text
 
 
 MAX_AUTHORITY_RESPONSE_BYTES = 1_048_576
+MAX_AUTHORIZATION_HEADER_BYTES = 16_384
 
 
 class _NoRedirect(HTTPRedirectHandler):
@@ -73,12 +74,19 @@ class AuthorityPoll:
 
 
 Transport = Callable[[str, str, dict[str, object] | None], dict[str, Any]]
+AuthorizationProvider = Callable[[], str]
 
 
 class AuthorityClient:
     """The complete worker-visible authority interface: request and poll."""
 
-    def __init__(self, base_url: str, *, transport: Transport | None = None) -> None:
+    def __init__(
+        self,
+        base_url: str,
+        *,
+        transport: Transport | None = None,
+        authorization_provider: AuthorizationProvider | None = None,
+    ) -> None:
         parsed = urlparse(base_url)
         if (
             parsed.scheme != "https"
@@ -91,7 +99,10 @@ class AuthorityClient:
             or parsed.fragment
         ):
             raise ValueError("authority base_url must be an HTTPS origin")
+        if transport is not None and authorization_provider is not None:
+            raise ValueError("authorization_provider applies only to the default HTTPS transport")
         self._base_url = base_url.rstrip("/")
+        self._authorization_provider = authorization_provider
         self._transport = transport or self._https_transport
         self._opener = build_opener(_NoRedirect())
 
@@ -121,6 +132,23 @@ class AuthorityClient:
             raise ValueError("authority returned an invalid reason")
         return AuthorityPoll(status, envelope, reason)
 
+    def _authorization_header(self) -> str | None:
+        if self._authorization_provider is None:
+            return None
+        try:
+            value = self._authorization_provider()
+        except Exception as exc:
+            raise RuntimeError("worker authorization unavailable") from exc
+        if (
+            not isinstance(value, str)
+            or value != value.strip()
+            or not value.startswith("Bearer ")
+            or not value[7:]
+            or len(value.encode()) > MAX_AUTHORIZATION_HEADER_BYTES
+        ):
+            raise RuntimeError("worker authorization is invalid")
+        return value
+
     def _https_transport(
         self,
         method: str,
@@ -128,11 +156,15 @@ class AuthorityClient:
         body: dict[str, object] | None,
     ) -> dict[str, Any]:
         data = None if body is None else json.dumps(body, separators=(",", ":")).encode()
+        headers = {"Accept": "application/json", "Content-Type": "application/json"}
+        authorization = self._authorization_header()
+        if authorization is not None:
+            headers["Authorization"] = authorization
         request = Request(
             f"{self._base_url}{path}",
             data=data,
             method=method,
-            headers={"Accept": "application/json", "Content-Type": "application/json"},
+            headers=headers,
         )
         with self._opener.open(request, timeout=10) as response:
             if response.status != 200:
