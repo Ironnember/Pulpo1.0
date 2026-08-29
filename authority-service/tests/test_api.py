@@ -10,6 +10,20 @@ from pulpo_authority_service.api import create_app
 from pulpo_authority_service.webauthn_adapter import PyWebAuthnVerifier
 
 
+class FakeWorkerAuthenticator:
+    def __init__(self, expected="Bearer worker-test-token", identity="worker:governed", failure=None):
+        self.expected = expected
+        self.identity = identity
+        self.failure = failure
+
+    def authenticate(self, request):
+        if self.failure is not None:
+            raise self.failure
+        if request.headers.get("authorization") != self.expected:
+            raise PermissionError("invalid worker identity")
+        return self.identity
+
+
 class AuthorityApiTests(unittest.TestCase):
     def setUp(self):
         fixture = test_service.AuthorityServiceTests(
@@ -21,9 +35,10 @@ class AuthorityApiTests(unittest.TestCase):
         self.request = fixture.request
         self.intent = fixture.intent
         self.primary = fixture.primary
-        self.client = TestClient(create_app(self.service))
+        app = create_app(self.service, worker_authenticator=FakeWorkerAuthenticator())
+        self.client = TestClient(app, headers={"Authorization": "Bearer worker-test-token"})
 
-    def test_http_surface_exposes_request_poll_and_human_ceremony(self):
+    def test_http_surface_exposes_authenticated_request_poll_and_human_ceremony(self):
         created = self.client.post("/v1/approval-requests", json=asdict(self.request))
         self.assertEqual(200, created.status_code)
         request_id = created.json()["request_id"]
@@ -47,6 +62,34 @@ class AuthorityApiTests(unittest.TestCase):
         self.assertEqual("approved", completed.json()["status"])
         self.assertEqual("approved", approved.json()["status"])
         self.assertIn("envelope", approved.json())
+
+    def test_worker_routes_fail_closed_without_explicit_authentication(self):
+        locked = TestClient(create_app(self.service))
+        self.assertEqual(401, locked.post("/v1/approval-requests", json=asdict(self.request)).status_code)
+
+        wrong = TestClient(
+            create_app(self.service, worker_authenticator=FakeWorkerAuthenticator()),
+            headers={"Authorization": "Bearer attacker"},
+        )
+        self.assertEqual(401, wrong.post("/v1/approval-requests", json=asdict(self.request)).status_code)
+
+        unavailable = TestClient(
+            create_app(
+                self.service,
+                worker_authenticator=FakeWorkerAuthenticator(failure=RuntimeError("identity unavailable")),
+            ),
+            headers={"Authorization": "Bearer worker-test-token"},
+        )
+        self.assertEqual(503, unavailable.post("/v1/approval-requests", json=asdict(self.request)).status_code)
+
+    def test_human_surface_remains_public_while_worker_surface_is_locked(self):
+        created = self.client.post("/v1/approval-requests", json=asdict(self.request))
+        request_id = created.json()["request_id"]
+        public = TestClient(create_app(self.service))
+
+        self.assertEqual(200, public.get(f"/human/approval/{request_id}").status_code)
+        self.assertEqual(200, public.post(f"/human/approval/{request_id}/challenge").status_code)
+        self.assertEqual(401, public.get(f"/v1/approval-requests/{request_id}").status_code)
 
     def test_human_page_invokes_only_the_existing_webauthn_assertion_route(self):
         created = self.client.post("/v1/approval-requests", json=asdict(self.request))
