@@ -8,6 +8,7 @@ requires-python = ">=3.11"
 pulpo-speak = "pulpo.local_speech:main"
 pulpo-listen = "pulpo.local_listen:main"
 pulpo-voice-demo = "pulpo.voice_demo:main"
+pulpo-effect-demo = "pulpo.local_effect_demo:main"
 
 [project.optional-dependencies]
 authority = ["cryptography==50.0.1"]
