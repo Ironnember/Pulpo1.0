@@ -1,0 +1,15 @@
+{
+  "schema": "pulpo.field-knowledge-source.v1",
+  "authority_effect": "none",
+  "canonical_base": "81338eed28ec32fe214c7eee086a82840ca0923f",
+  "source_pr": 41,
+  "source_head": "72f556554cf803d3fe24e84d5822514bc4e14667",
+  "unit": {
+    "id": "K5",
+    "title": "Independent effect verification after command success",
+    "claim_class": "Recorded/Inferred",
+    "derived_only_from": "PR #40 Task B outcome",
+    "content": "Provider-reported execution success retires command uncertainty, not outcome uncertainty. Before reconciliation treats a consequential external effect as complete, require independent evidence that the intended object or effect exists and matches the authorized target. If independent verification is unavailable, keep the outcome unresolved. This lesson may improve competence but has authority_effect none.",
+    "authority_effect": "none"
+  }
+}

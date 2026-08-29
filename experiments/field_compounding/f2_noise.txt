@@ -1,0 +1,1 @@
+interleaving mutation after F2 effect and before F2 transfer verification; authority_effect=none
