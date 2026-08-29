@@ -22,6 +22,7 @@ from pulpo.custody import SQLiteGovernanceCustody
 from pulpo.kernel import GovernanceKernel, Policy
 from pulpo.namecom_core import NameComCoreClient, NameComCoreConfig, NameComCoreRegistrarAdapter
 from pulpo.namecom_observer import NameComCoreObserver
+from pulpo.namecom_proposal import NameComSandboxProposalBuilder
 from pulpo.state import SQLiteKernelState
 
 from .api import create_app
@@ -29,6 +30,7 @@ from .core import DomainCustodyService
 
 
 PILOT_MAX_CENTS = 3_000
+SANDBOX_PRINCIPAL = "agent:hostile-worker-sandbox-v0"
 
 
 class RuntimeConfigError(RuntimeError):
@@ -211,6 +213,13 @@ def build_service(config: RuntimeConfig) -> DomainCustodyService:
         ),
         observer_id="observer:namecom-sandbox-custody",
         executor_id="executor:namecom-sandbox-custody",
+        proposal_builder=NameComSandboxProposalBuilder(
+            observer_client,
+            principal=SANDBOX_PRINCIPAL,
+            owner_ref=config.owner_ref,
+            credential_ref="credential://name-com/sandbox-executor",
+            clock=time.time_ns,
+        ),
     )
 
 
