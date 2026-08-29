@@ -68,3 +68,96 @@ jobs:
         run: PYTHONPATH=custody-service/src:. python -W error -m unittest discover -s custody-service/tests -v
       - name: Compile custody service sources
         run: python -m compileall -q custody-service/src custody-service/tests
+
+  hostile-worker-container-isolation:
+    needs: hostile-worker-custody
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build custody image
+        run: docker build -f custody-service/Dockerfile -t pulpo-custody-v0:${{ github.sha }} .
+      - name: Prove worker cannot read custody state or secrets
+        shell: bash
+        run: |
+          set -euo pipefail
+          network="pulpo-v0-${GITHUB_RUN_ID}"
+          volume="pulpo-custody-v0-${GITHUB_RUN_ID}"
+          custody="pulpo-custody-v0-${GITHUB_RUN_ID}"
+          image="pulpo-custody-v0:${GITHUB_SHA}"
+
+          docker network create "$network" >/dev/null
+          docker volume create "$volume" >/dev/null
+          cleanup() {
+            docker rm -f "$custody" >/dev/null 2>&1 || true
+            docker network rm "$network" >/dev/null 2>&1 || true
+            docker volume rm "$volume" >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+
+          docker run -d \
+            --name "$custody" \
+            --network "$network" \
+            --read-only \
+            --tmpfs /tmp:rw,noexec,nosuid,size=16m \
+            --cap-drop ALL \
+            --security-opt no-new-privileges:true \
+            -v "$volume:/var/lib/pulpo:rw" \
+            -e PULPO_CUSTODY_STATE_PATH=/var/lib/pulpo/custody.sqlite3 \
+            -e PULPO_KERNEL_SECRET_HEX=1111111111111111111111111111111111111111111111111111111111111111 \
+            -e PULPO_CUSTODY_SECRET_HEX=2222222222222222222222222222222222222222222222222222222222222222 \
+            -e PULPO_AUTHORITY_PUBLIC_KEY_HEX=d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a \
+            -e PULPO_AUTHORITY_ID=authority:container-test \
+            -e PULPO_AUTHORITY_VERIFIER_ID=verifier:container-ed25519 \
+            -e PULPO_AUTHORITY_KEY_ID=key:container-v0 \
+            -e PULPO_AUTHORITY_DEPLOYMENT_ID=deployment:container-v0 \
+            -e PULPO_AUTHORITY_MAX_TTL_SECONDS=300 \
+            -e PULPO_PILOT_BUDGET_CENTS=3000 \
+            -e PULPO_OWNER_REF=owner://iron-ember/container-test \
+            -e NAMECOM_SANDBOX_USERNAME=pulpo-container-test \
+            -e NAMECOM_SANDBOX_EXECUTOR_TOKEN=executor-token-not-real \
+            -e NAMECOM_SANDBOX_OBSERVER_TOKEN=observer-token-not-real \
+            "$image" >/dev/null
+
+          # Trusted-host assertions about the custody container itself.
+          test "$(docker inspect -f '{{.HostConfig.ReadonlyRootfs}}' "$custody")" = "true"
+          docker exec "$custody" sh -c 'test "$(id -u)" -ne 0'
+          docker exec "$custody" sh -c 'test -f /var/lib/pulpo/custody.sqlite3'
+          test -z "$(docker inspect -f '{{range .NetworkSettings.Ports}}{{println .}}{{end}}' "$custody" | tr -d '[:space:]')"
+
+          # Wait for the custody API using a fresh worker container that receives
+          # no volume, no Docker socket, and none of the custody/provider secrets.
+          healthy=0
+          for _ in $(seq 1 30); do
+            if docker run --rm --network "$network" python:3.11-slim \
+              python -c "import urllib.request; assert b'\"status\":\"ok\"' in urllib.request.urlopen('http://${custody}:8080/health', timeout=1).read()" \
+              >/dev/null 2>&1; then
+              healthy=1
+              break
+            fi
+            sleep 1
+          done
+          test "$healthy" = "1"
+
+          docker run --rm --network "$network" python:3.11-slim python -c "
+          import os, urllib.error, urllib.request
+          forbidden = {
+              'PULPO_KERNEL_SECRET_HEX',
+              'PULPO_CUSTODY_SECRET_HEX',
+              'PULPO_AUTHORITY_PUBLIC_KEY_HEX',
+              'NAMECOM_SANDBOX_EXECUTOR_TOKEN',
+              'NAMECOM_SANDBOX_OBSERVER_TOKEN',
+          }
+          assert forbidden.isdisjoint(os.environ), sorted(forbidden.intersection(os.environ))
+          assert not os.path.exists('/var/lib/pulpo/custody.sqlite3')
+          assert not os.path.exists('/var/run/docker.sock')
+          data = urllib.request.urlopen('http://${custody}:8080/health', timeout=2).read()
+          assert b'\"authority_effect\":\"none\"' in data
+          for path in ('/docs', '/redoc', '/openapi.json'):
+              try:
+                  urllib.request.urlopen('http://${custody}:8080' + path, timeout=2)
+              except urllib.error.HTTPError as exc:
+                  assert exc.code == 404
+              else:
+                  raise AssertionError(path + ' unexpectedly exposed')
+          "
