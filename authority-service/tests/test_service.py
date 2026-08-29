@@ -202,13 +202,28 @@ class AuthorityServiceTests(unittest.TestCase):
                     self.service.approve(request_id, self.primary.credential_id, "assertion")
                 self.assertEqual("pending", self.service.poll(request_id)["status"])
 
-    def test_evidence_failure_releases_no_envelope_or_sequence(self):
+    def test_evidence_failure_releases_no_envelope_and_recovers_without_second_assertion(self):
         request_id, _ = self.service.request_approval(self.request)
         self.service.evidence = FailingEvidenceSink()
-        with self.assertRaisesRegex(RuntimeError, "append unavailable"):
-            self.service.approve(request_id, self.primary.credential_id, "assertion")
-        self.assertEqual({"status": "pending"}, self.service.poll(request_id))
-        self.assertEqual(0, self.state.sequence)
+        with self.assertRaisesRegex(RuntimeError, "authority evidence unavailable"):
+            self.service.approve(request_id, self.primary.credential_id, "first-assertion")
+
+        record = self.state.requests[request_id]
+        self.assertEqual("evidence_pending", record.status)
+        self.assertEqual(1, self.state.sequence)
+        self.assertIsNotNone(record.envelope)
+        self.assertIsNotNone(record.evidence_bundle)
+        self.assertIsNone(record.evidence_hash)
+        self.assertEqual(1, len(self.webauthn.calls))
+
+        self.service.evidence = self.evidence
+        approved = self.service.poll(request_id)
+        self.assertEqual("approved", approved["status"])
+        self.assertIn("envelope", approved)
+        self.assertEqual(1, self.state.sequence)
+        self.assertEqual(1, len(self.evidence.bundles))
+        self.assertEqual(1, len(self.webauthn.calls))
+        self.assertIsNone(self.state.requests[request_id].evidence_bundle)
 
     def test_origin_and_rp_must_be_exact_https_boundary(self):
         with self.assertRaisesRegex(ValueError, "HTTPS"):
