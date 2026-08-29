@@ -1,13 +1,9 @@
 """Bounded credential-side executor for Hostile Worker Consequence Proof V0.
 
 This module is domain-specific and intentionally not a general execution
-gateway. It is designed to run outside the hostile worker boundary with the
-registrar credential adapter. It can perform only the exact domain order already
-bound to a custody attempt.
-
-Provider return values remain claims. Successful or failed calls always move the
-attempt toward independent reconciliation; they never become accepted
-consequence directly.
+gateway. It releases at most one provider transmission right for the exact
+custody-bound order. Provider results remain claims until independent
+reconciliation.
 """
 
 from __future__ import annotations
@@ -15,7 +11,7 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass
 from hashlib import sha256
 import json
-from typing import Any, Protocol
+from typing import Any, Callable, Protocol
 
 from .commerce import DomainPurchaseOrder, RegistrarResult
 from .custody import CustodyViolation, SQLiteGovernanceCustody
@@ -49,10 +45,7 @@ class ExternalConsequenceUnknown(RuntimeError):
 
 
 class CustodyRegistrarAdapter(Protocol):
-    """Credential-bearing registrar adapter available only to the trusted executor."""
-
-    def preflight(self, order: DomainPurchaseOrder) -> str:
-        """Return a hash of live read-only availability/price evidence or fail closed."""
+    def preflight(self, order: DomainPurchaseOrder) -> str: ...
 
     def purchase(
         self,
@@ -60,8 +53,7 @@ class CustodyRegistrarAdapter(Protocol):
         *,
         max_charge_cents: int,
         idempotency_key: str,
-    ) -> RegistrarResult:
-        """Transmit the exact bounded purchase using the custody attempt key."""
+    ) -> RegistrarResult: ...
 
 
 @dataclass(frozen=True)
@@ -85,11 +77,17 @@ class TrustedDomainExecutor:
         custody: SQLiteGovernanceCustody,
         *,
         executor_id: str,
+        evidence_projector: Callable[[], None] | None = None,
     ) -> None:
         if not executor_id:
             raise CustodyViolation("executor_id_required")
         self.custody = custody
         self.executor_id = executor_id
+        self._evidence_projector = evidence_projector
+
+    def _project_evidence(self) -> None:
+        if self._evidence_projector is not None:
+            self._evidence_projector()
 
     def _claim_or_resume(self, attempt_id: str) -> None:
         snapshot = self.custody.attempt(attempt_id)
@@ -103,14 +101,16 @@ class TrustedDomainExecutor:
                 attempt_id=attempt_id,
                 executor_id=self.executor_id,
             )
+            # The claim and its evidence obligation committed together. Do not
+            # permit preflight/transmission until canonical evidence catches up.
+            self._project_evidence()
             return
         if (
             snapshot.state == self.custody.ATTEMPT_CLAIMED
             and snapshot.executor_id == self.executor_id
         ):
-            # Crash-before-transmission recovery: resume the same attempt and
-            # same executor identity. No provider-transmission right has yet
-            # been released, so this does not manufacture a second capability.
+            # Crash-before-transmission recovery resumes the same attempt only.
+            self._project_evidence()
             return
         raise CustodyViolation("attempt_not_executable")
 
@@ -128,23 +128,12 @@ class TrustedDomainExecutor:
 
         self._claim_or_resume(governed.attempt_id)
 
-        # The last read-only provider check runs inside the trusted credential
-        # boundary. A hostile worker cannot forge its result. If it fails, no
-        # transmission right is released and the same executor may retry only
-        # this read-only preflight against the already-consumed authority.
         preflight_hash = adapter.preflight(order)
         _require_hash(preflight_hash, "provider_preflight_hash")
+        provider_request_id = f"domain:{governed.attempt_id}:preflight:{preflight_hash}"
 
-        # Bind the preflight digest into the request identity already committed
-        # by the existing custody transmission transition. This avoids creating
-        # another transition API solely for provider preflight evidence.
-        provider_request_id = (
-            f"domain:{governed.attempt_id}:preflight:{preflight_hash}"
-        )
-
-        # Release the one network right *before* calling the provider. From this
-        # point forward a crash is conservatively treated as a possibly
-        # transmitted request and may not trigger automatic retry.
+        # Release the transmission right before the network call, then require
+        # its canonical evidence projection before any external write occurs.
         head = self.custody.snapshot()
         transmission = self.custody.authorize_transmission(
             expected_epoch=head.epoch,
@@ -152,6 +141,12 @@ class TrustedDomainExecutor:
             attempt_id=governed.attempt_id,
             provider_request_id=provider_request_id,
         )
+        try:
+            self._project_evidence()
+        except Exception as exc:
+            # No provider call has occurred. The custody state is conservative
+            # and cannot advance again until the obligation is projected.
+            raise CustodyViolation("transmission_evidence_not_canonical") from exc
 
         try:
             result = adapter.purchase(
@@ -167,9 +162,10 @@ class TrustedDomainExecutor:
                     expected_state_root=current.state_root,
                     attempt_id=governed.attempt_id,
                 )
-            except CustodyViolation:
-                # The transmission receipt remains the authoritative safety
-                # boundary even if recording the secondary classification fails.
+                self._project_evidence()
+            except Exception:
+                # The already-projected transmission right remains the safety
+                # boundary. Pending evidence blocks any further authority.
                 pass
             raise ExternalConsequenceUnknown(governed.attempt_id) from exc
 
@@ -179,6 +175,13 @@ class TrustedDomainExecutor:
             expected_state_root=current.state_root,
             attempt_id=governed.attempt_id,
         )
+        try:
+            self._project_evidence()
+        except Exception as exc:
+            # Reality may already have changed; do not surface provider success
+            # when canonical accountability has not converged.
+            raise ExternalConsequenceUnknown(governed.attempt_id) from exc
+
         claim_material = {
             "schema": "pulpo.provider-attempt-claim.v0",
             "attempt_id": governed.attempt_id,
