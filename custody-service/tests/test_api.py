@@ -126,8 +126,6 @@ class CustodyServiceApiTests(unittest.TestCase):
             clock=lambda: NOW,
         )
         budget = SQLiteBudgetAccount(self.path)
-        state = SQLiteKernelState(self.path)
-        self.addCleanup(state.close)
         verifier = HmacTestVerifier() if require_approval else None
         policy = (
             Policy(
@@ -139,17 +137,27 @@ class CustodyServiceApiTests(unittest.TestCase):
             if verifier
             else Policy(frozenset({"purchase_domain"}), 3_000)
         )
-        kernel = GovernanceKernel(
-            policy,
-            secret=b"service-kernel-secret",
-            approval_verifier=verifier,
-            clock=lambda: NOW,
-            state=state,
-        )
+
+        def kernel_factory():
+            # Created inside the request thread; every request gets a normal
+            # thread-bound SQLite connection over the same durable kernel state.
+            state = SQLiteKernelState(self.path)
+            try:
+                return GovernanceKernel(
+                    policy,
+                    secret=b"service-kernel-secret",
+                    approval_verifier=verifier,
+                    clock=lambda: NOW,
+                    state=state,
+                )
+            except Exception:
+                state.close()
+                raise
+
         registrar = FakeRegistrar()
         observer = FakeObserver(custody)
         service = DomainCustodyService(
-            kernel=kernel,
+            kernel_factory=kernel_factory,
             custody=custody,
             budget=budget,
             registrar=registrar,
@@ -157,7 +165,24 @@ class CustodyServiceApiTests(unittest.TestCase):
             observer_id="observer:service-v0",
             executor_id="executor:service-v0",
         )
-        return TestClient(create_app(service)), service, registrar, observer, kernel, verifier
+
+        # This separate in-memory kernel is used only to construct test approval
+        # material. It shares policy/trust semantics but never mutates service
+        # state and is not the service authority.
+        signing_kernel = GovernanceKernel(
+            policy,
+            secret=b"service-kernel-secret",
+            approval_verifier=verifier,
+            clock=lambda: NOW,
+        )
+        return (
+            TestClient(create_app(service)),
+            service,
+            registrar,
+            observer,
+            signing_kernel,
+            verifier,
+        )
 
     def test_worker_can_use_only_narrow_authorize_execute_reconcile_surface(self):
         client, service, registrar, observer, _, _ = self.build()
@@ -237,7 +262,7 @@ class CustodyServiceApiTests(unittest.TestCase):
         self.assertEqual(1, registrar.purchase_calls)
 
     def test_approval_required_policy_rejects_missing_or_invalid_envelope_and_accepts_external_signature(self):
-        client, _, _, _, kernel, verifier = self.build(require_approval=True)
+        client, _, _, _, signing_kernel, verifier = self.build(require_approval=True)
         order = self.order()
         payload = self.order_payload(order)
 
@@ -246,7 +271,7 @@ class CustodyServiceApiTests(unittest.TestCase):
 
         intent = purchase_intent(order)
         envelope = signed_envelope(
-            kernel,
+            signing_kernel,
             intent,
             verifier,
             now_ns=NOW - 10,
@@ -262,16 +287,13 @@ class CustodyServiceApiTests(unittest.TestCase):
 
         # The service has only a verifier. A caller-modified signature cannot be
         # promoted into authority.
-        second_order = self.order()
-        # Same order is already reserved/attempted; mutate approval first to show
-        # signature verification remains fail closed before any new capability.
         bad = asdict(envelope)
         bad["approval_id"] = "service-approval-forged"
         bad["nonce"] = "service-nonce-forged"
         bad["signature"] = "0" * len(envelope.signature)
         rejected = client.post(
             "/v1/domain-attempts",
-            json={"order": self.order_payload(second_order), "approval": bad},
+            json={"order": payload, "approval": bad},
         )
         self.assertEqual(403, rejected.status_code)
 
