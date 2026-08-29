@@ -4,6 +4,9 @@ Directives constrain execution. They do not create authority, mint permits, or
 form a second policy/evidence truth. Activation and revocation are themselves
 consequential governance actions and must pass through the existing kernel's
 pinned external approval verifier before canonical directive state can change.
+
+Directive state and trusted time are kernel-owned. This module deliberately has
+no constructor injection point for an alternate directive state or clock.
 """
 
 from __future__ import annotations
@@ -11,7 +14,6 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass
 from hashlib import sha256
 import json
-from typing import Callable, Protocol
 
 from .authority import ApprovalEnvelope
 from .kernel import Decision, GovernanceKernel, Intent
@@ -76,48 +78,14 @@ class Directive:
         return None
 
 
-class DirectiveState(Protocol):
-    def activate_directive(
-        self,
-        directive: Directive,
-        authority_evidence: dict[str, object],
-        timestamp_ns: int,
-    ) -> None: ...
-
-    def revoke_directive(
-        self,
-        directive_id: str,
-        version: int,
-        authority_evidence: dict[str, object],
-        timestamp_ns: int,
-    ) -> None: ...
-
-    def directive_status(self, directive_id: str, version: int, directive_hash: str) -> str: ...
-
-    def bind_permit_to_directive(
-        self,
-        permit: str,
-        intent_hash: str,
-        binding: DirectivePermitBinding,
-        timestamp_ns: int,
-    ) -> None: ...
-
-
 class DirectiveAuthorityController:
-    """Uses the one governance kernel to authorize directive-state mutations."""
+    """Use the one governance kernel to authorize canonical directive mutations."""
 
     ACTIVATE = "activate_directive"
     REVOKE = "revoke_directive"
 
-    def __init__(
-        self,
-        kernel: GovernanceKernel,
-        state: DirectiveState,
-        clock: Callable[[], int],
-    ) -> None:
+    def __init__(self, kernel: GovernanceKernel) -> None:
         self.kernel = kernel
-        self.state = state
-        self.clock = clock
 
     @staticmethod
     def authority_intent(
@@ -157,6 +125,12 @@ class DirectiveAuthorityController:
             "intent_hash": kernel.intent_hash(authority_intent),
             "policy_hash": kernel.policy_hash,
         }
+
+    def _trusted_now(self) -> int:
+        now_ns = self.kernel._trusted_now()
+        if now_ns is None:
+            raise RuntimeError("directive_clock_invalid")
+        return now_ns
 
     def _authorize(
         self,
@@ -214,10 +188,10 @@ class DirectiveAuthorityController:
         )
         if decision.outcome != "allow":
             return decision
-        self.state.activate_directive(
+        self.kernel._state.activate_directive(
             directive,
             self._evidence(self.ACTIVATE, directive, envelope, authority_intent, self.kernel),
-            self.clock(),
+            self._trusted_now(),
         )
         return decision
 
@@ -238,25 +212,29 @@ class DirectiveAuthorityController:
         )
         if decision.outcome != "allow":
             return decision
-        self.state.revoke_directive(
+        self.kernel._state.revoke_directive(
             directive.directive_id,
             directive.version,
             self._evidence(self.REVOKE, directive, envelope, authority_intent, self.kernel),
-            self.clock(),
+            self._trusted_now(),
         )
         return decision
 
 
 class GovernedDirectiveProjection:
-    """Directive gate that binds the kernel's one-use permit to live authority state."""
+    """Bind the kernel's one-use permit to its own live directive state."""
 
-    def __init__(self, kernel: GovernanceKernel, state: DirectiveState, clock: Callable[[], int]) -> None:
+    def __init__(self, kernel: GovernanceKernel) -> None:
         self.kernel = kernel
-        self.state = state
-        self.clock = clock
+
+    def _trusted_now(self) -> int:
+        now_ns = self.kernel._trusted_now()
+        if now_ns is None:
+            raise RuntimeError("directive_clock_invalid")
+        return now_ns
 
     def evaluate(self, intent: Intent, directive: Directive) -> Decision:
-        status = self.state.directive_status(
+        status = self.kernel._state.directive_status(
             directive.directive_id,
             directive.version,
             directive.directive_hash,
@@ -264,16 +242,17 @@ class GovernedDirectiveProjection:
         digest = self.kernel.intent_hash(intent)
         if status != "active":
             return Decision("deny", status, digest)
-        failure = directive.permits(intent, self.clock())
+        now_ns = self._trusted_now()
+        failure = directive.permits(intent, now_ns)
         if failure:
             return Decision("deny", failure, digest)
 
         decision = self.kernel.evaluate(intent)
         if decision.outcome == "allow" and decision.permit is not None:
-            self.state.bind_permit_to_directive(
+            self.kernel._state.bind_permit_to_directive(
                 decision.permit,
                 digest,
                 directive.permit_binding,
-                self.clock(),
+                now_ns,
             )
         return decision
