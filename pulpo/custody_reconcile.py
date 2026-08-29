@@ -1,8 +1,9 @@
 """Independent domain observation and reconciliation for Hostile Worker V0.
 
 The hostile worker and credential-bearing executor may report claims, but neither
-can mark a consequence accepted.  This reconciler is intended to run outside the
-worker trust domain with its own observation path and identity.
+can mark a consequence accepted or settle protected budget. This reconciler is
+intended to run outside the worker trust domain with its own observation path,
+identity, and access to the existing durable commerce budget.
 """
 
 from __future__ import annotations
@@ -12,7 +13,12 @@ from hashlib import sha256
 import json
 from typing import Any
 
-from .commerce import DomainPurchaseOrder
+from .commerce import (
+    DomainPurchaseOrder,
+    PaymentEvidence,
+    Reconciliation,
+    SQLiteBudgetAccount,
+)
 from .custody import CustodyViolation, SQLiteGovernanceCustody, TransitionReceipt
 from .custody_domain import GovernedDomainAttempt
 
@@ -43,6 +49,7 @@ class IndependentDomainObservation:
     registrar: str | None
     owner_ref: str | None
     registered: bool | None
+    payment_id: str | None
     charged_cents: int | None
     receipt_hash: str | None
     privacy_enabled: bool | None
@@ -59,6 +66,8 @@ class IndependentDomainObservation:
             "unknown",
         }:
             raise CustodyViolation("provider_request_status_invalid")
+        if self.payment_id is not None and not self.payment_id:
+            raise CustodyViolation("observation_payment_id_invalid")
         if self.charged_cents is not None and self.charged_cents < 0:
             raise CustodyViolation("observation_charge_invalid")
         if self.receipt_hash is not None and not _valid_hash(self.receipt_hash):
@@ -75,20 +84,23 @@ class DomainReconciliationResult:
     reason: str
     observation_hash: str
     receipt: TransitionReceipt
+    budget_reconciliation: Reconciliation | None = None
 
 
 class IndependentDomainReconciler:
-    """Classify reality from an observer outside the hostile worker boundary."""
+    """Classify reality and settle budget from a trusted independent observer."""
 
     def __init__(
         self,
         custody: SQLiteGovernanceCustody,
+        budget: SQLiteBudgetAccount,
         *,
         observer_id: str,
     ) -> None:
         if not observer_id:
             raise CustodyViolation("observer_id_required")
         self.custody = custody
+        self.budget = budget
         self.observer_id = observer_id
 
     @staticmethod
@@ -116,13 +128,14 @@ class IndependentDomainReconciler:
                 return "unresolved", "failure_status_conflicts_with_observed_effect"
             return "failure", "provider_failure_independently_observed"
 
-        # A provider 'succeeded' status is still insufficient by itself.  Exact
-        # side-effect properties must also match the authorized order.
+        # Provider success is insufficient by itself. Exact payment and side-
+        # effect properties must match the authorized order.
         missing = (
             observation.domain is None
             or observation.registrar is None
             or observation.owner_ref is None
             or observation.registered is None
+            or observation.payment_id is None
             or observation.charged_cents is None
             or observation.receipt_hash is None
             or observation.privacy_enabled is None
@@ -163,6 +176,31 @@ class IndependentDomainReconciler:
             attempt.provider_request_id,
             observation,
         )
+
+        budget_reconciliation = None
+        if outcome == "success":
+            # Settle protected budget before canonical success. If this fails,
+            # custody remains non-success rather than accepting a consequence
+            # whose money state could not be reconciled.
+            assert observation.payment_id is not None
+            assert observation.charged_cents is not None
+            assert observation.receipt_hash is not None
+            try:
+                budget_reconciliation = self.budget.reconcile(
+                    governed.reservation_id,
+                    PaymentEvidence(
+                        observation.payment_id,
+                        observation.charged_cents,
+                        observation.receipt_hash,
+                    ),
+                )
+            except Exception as exc:
+                raise CustodyViolation(f"protected_budget_reconciliation_failed:{exc}") from exc
+
+        # Failure and unresolved outcomes deliberately keep the attempted
+        # reservation held in V0. Releasing uncertain money would recreate
+        # spend authority. A later explicitly governed no-charge release may be
+        # added only with equally strong external evidence.
         head = self.custody.snapshot()
         receipt = self.custody.reconcile_observed(
             expected_epoch=head.epoch,
@@ -177,4 +215,5 @@ class IndependentDomainReconciler:
             reason=reason,
             observation_hash=observation.observation_hash,
             receipt=receipt,
+            budget_reconciliation=budget_reconciliation,
         )
