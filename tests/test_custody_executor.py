@@ -2,7 +2,14 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from pulpo.commerce import DomainPurchaseRequest, DomainQuote, RegistrarResult, assess_quote, purchase_intent
+from pulpo.commerce import (
+    DomainPurchaseRequest,
+    DomainQuote,
+    RegistrarResult,
+    SQLiteBudgetAccount,
+    assess_quote,
+    purchase_intent,
+)
 from pulpo.custody import CustodyViolation, SQLiteGovernanceCustody
 from pulpo.custody_domain import GovernedDomainAttemptCoordinator
 from pulpo.custody_executor import ExternalConsequenceUnknown, TrustedDomainExecutor
@@ -45,9 +52,9 @@ class CustodyExecutorTests(unittest.TestCase):
 
     def order(self, domain="pulpo-hostile-executor.example"):
         request = DomainPurchaseRequest(
-            request_id="executor-request-v0",
+            request_id=f"executor-request-v0:{domain}",
             principal="agent:commerce",
-            acceptable_domains=("pulpo-hostile-executor.example", "pulpo-executor-substitute.example"),
+            acceptable_domains=(domain,),
             max_purchase_cents=3_000,
             max_renewal_cents=2_500,
             approved_registrar="name.com",
@@ -82,6 +89,7 @@ class CustodyExecutorTests(unittest.TestCase):
             signing_secret=b"trusted-executor-custody",
             clock=lambda: NOW,
         )
+        budget = SQLiteBudgetAccount(self.path)
         state = SQLiteKernelState(self.path)
         self.addCleanup(state.close)
         kernel = GovernanceKernel(
@@ -95,21 +103,23 @@ class CustodyExecutorTests(unittest.TestCase):
         target = kernel.lock_target("trusted-executor-v0", intent)
         decision = kernel.evaluate(intent)
         self.assertEqual("allow", decision.outcome)
-        governed = GovernedDomainAttemptCoordinator(kernel, custody).authorize(
+        coordinator = GovernedDomainAttemptCoordinator(kernel, custody, budget)
+        reservation = coordinator.reserve(order)
+        governed = coordinator.authorize(
             target_id=target.target_id,
             expected_target_hash=target.target_hash,
             order=order,
             permit=decision.permit,
+            reservation_id=reservation.reservation_id,
         )
-        return custody, governed, order
+        return custody, budget, governed, order
 
     def test_provider_success_is_only_a_claim_and_still_requires_reconciliation(self):
-        custody, governed, order = self.governed_attempt()
+        custody, budget, governed, order = self.governed_attempt()
         adapter = FakeCustodyRegistrar()
-        executor = TrustedDomainExecutor(custody, executor_id="executor:domain-v0")
-
-        claim = executor.execute(governed, order, adapter)
-
+        claim = TrustedDomainExecutor(custody, executor_id="executor:domain-v0").execute(
+            governed, order, adapter
+        )
         self.assertEqual(1, adapter.calls)
         self.assertEqual([governed.attempt_id], adapter.idempotency_keys)
         self.assertTrue(claim.reconciliation_required)
@@ -118,12 +128,12 @@ class CustodyExecutorTests(unittest.TestCase):
             custody.attempt(governed.attempt_id).state,
         )
         self.assertIsNone(custody.attempt(governed.attempt_id).reconciliation_outcome)
+        self.assertEqual(1_000, budget.available_cents)
 
-    def test_lost_provider_response_is_unknown_and_cannot_retry(self):
-        custody, governed, order = self.governed_attempt()
+    def test_lost_provider_response_is_unknown_and_cannot_retry_or_release_budget(self):
+        custody, budget, governed, order = self.governed_attempt()
         adapter = FakeCustodyRegistrar(fail=True)
         executor = TrustedDomainExecutor(custody, executor_id="executor:domain-v0")
-
         with self.assertRaisesRegex(ExternalConsequenceUnknown, governed.attempt_id):
             executor.execute(governed, order, adapter)
         self.assertEqual(1, adapter.calls)
@@ -131,13 +141,13 @@ class CustodyExecutorTests(unittest.TestCase):
             SQLiteGovernanceCustody.RECONCILIATION_REQUIRED,
             custody.attempt(governed.attempt_id).state,
         )
-
+        self.assertEqual(1_000, budget.available_cents)
         with self.assertRaisesRegex(CustodyViolation, "attempt_not_executable"):
             executor.execute(governed, order, adapter)
         self.assertEqual(1, adapter.calls)
 
     def test_crash_before_transmission_can_resume_same_executor_identity_only(self):
-        custody, governed, order = self.governed_attempt()
+        custody, _, governed, order = self.governed_attempt()
         head = custody.snapshot()
         custody.claim_attempt(
             expected_epoch=head.epoch,
@@ -145,22 +155,12 @@ class CustodyExecutorTests(unittest.TestCase):
             attempt_id=governed.attempt_id,
             executor_id="executor:domain-v0",
         )
-
         wrong = FakeCustodyRegistrar()
         with self.assertRaisesRegex(CustodyViolation, "attempt_not_executable"):
-            TrustedDomainExecutor(custody, executor_id="executor:other").execute(
-                governed,
-                order,
-                wrong,
-            )
+            TrustedDomainExecutor(custody, executor_id="executor:other").execute(governed, order, wrong)
         self.assertEqual(0, wrong.calls)
-
         adapter = FakeCustodyRegistrar()
-        TrustedDomainExecutor(custody, executor_id="executor:domain-v0").execute(
-            governed,
-            order,
-            adapter,
-        )
+        TrustedDomainExecutor(custody, executor_id="executor:domain-v0").execute(governed, order, adapter)
         self.assertEqual(1, adapter.calls)
         self.assertEqual(
             SQLiteGovernanceCustody.RECONCILIATION_REQUIRED,
@@ -168,7 +168,7 @@ class CustodyExecutorTests(unittest.TestCase):
         )
 
     def test_crash_after_transmission_release_never_releases_second_network_right(self):
-        custody, governed, order = self.governed_attempt()
+        custody, _, governed, order = self.governed_attempt()
         head = custody.snapshot()
         custody.claim_attempt(
             expected_epoch=head.epoch,
@@ -183,20 +183,14 @@ class CustodyExecutorTests(unittest.TestCase):
             attempt_id=governed.attempt_id,
             provider_request_id=f"domain:{governed.attempt_id}",
         )
-
         adapter = FakeCustodyRegistrar()
         with self.assertRaisesRegex(CustodyViolation, "attempt_not_executable"):
-            TrustedDomainExecutor(custody, executor_id="executor:domain-v0").execute(
-                governed,
-                order,
-                adapter,
-            )
+            TrustedDomainExecutor(custody, executor_id="executor:domain-v0").execute(governed, order, adapter)
         self.assertEqual(0, adapter.calls)
         self.assertEqual(
             SQLiteGovernanceCustody.REQUEST_TRANSMITTED,
             custody.attempt(governed.attempt_id).state,
         )
-
         head = custody.snapshot()
         custody.require_reconciliation(
             expected_epoch=head.epoch,
@@ -209,15 +203,12 @@ class CustodyExecutorTests(unittest.TestCase):
         )
 
     def test_substituted_order_never_reaches_credential_adapter(self):
-        custody, governed, _ = self.governed_attempt()
+        custody, _, governed, _ = self.governed_attempt()
         substituted = self.order("pulpo-executor-substitute.example")
         adapter = FakeCustodyRegistrar()
-
         with self.assertRaisesRegex(CustodyViolation, "executor_order_mismatch"):
             TrustedDomainExecutor(custody, executor_id="executor:domain-v0").execute(
-                governed,
-                substituted,
-                adapter,
+                governed, substituted, adapter
             )
         self.assertEqual(0, adapter.calls)
         self.assertEqual(
