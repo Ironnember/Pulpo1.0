@@ -1,0 +1,10 @@
+[package]
+name = "test_pyo3"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+pyo3 = { version = "0.22.6", features = ["extension-module"] }
