@@ -159,6 +159,55 @@ class IndependentDomainReconciler:
             return "failure", "observed_dns_state_not_accepted"
         return "success", "external_consequence_verified"
 
+    def _commit_observation(
+        self,
+        *,
+        governed: GovernedDomainAttempt,
+        prior_state: str,
+        outcome: str,
+        observation: IndependentDomainObservation,
+    ) -> TransitionReceipt:
+        """Commit first or later evidence without reopening execution rights.
+
+        `UNRESOLVED` means evidence is incomplete, not that reality can never be
+        known. Later trusted observation may move it to success/failure. No path
+        from unresolved returns to an executable state.
+        """
+
+        head = self.custody.snapshot()
+        if prior_state != self.custody.UNRESOLVED:
+            return self.custody.reconcile_observed(
+                expected_epoch=head.epoch,
+                expected_state_root=head.state_root,
+                attempt_id=governed.attempt_id,
+                outcome=outcome,
+                observation_hash=observation.observation_hash,
+                observer_id=self.observer_id,
+            )
+
+        next_state = {
+            "success": self.custody.RECONCILED_SUCCESS,
+            "failure": self.custody.RECONCILED_FAILURE,
+            "unresolved": self.custody.UNRESOLVED,
+        }[outcome]
+        return self.custody._transition_attempt(
+            expected_epoch=head.epoch,
+            expected_state_root=head.state_root,
+            attempt_id=governed.attempt_id,
+            required_states=frozenset({self.custody.UNRESOLVED}),
+            next_state=next_state,
+            payload={
+                "observer_id": self.observer_id,
+                "observation_hash": observation.observation_hash,
+                "reconciliation_outcome": outcome,
+                "later_evidence": True,
+            },
+            updates={
+                "observation_hash": observation.observation_hash,
+                "reconciliation_outcome": outcome,
+            },
+        )
+
     def reconcile(
         self,
         governed: GovernedDomainAttempt,
@@ -170,6 +219,12 @@ class IndependentDomainReconciler:
         attempt = self.custody.attempt(governed.attempt_id)
         if attempt is None or attempt.object_hash != order.order_hash:
             raise CustodyViolation("reconciliation_attempt_mismatch")
+        if attempt.state not in {
+            self.custody.REQUEST_TRANSMITTED,
+            self.custody.RECONCILIATION_REQUIRED,
+            self.custody.UNRESOLVED,
+        }:
+            raise CustodyViolation("reconciliation_state_not_open")
 
         outcome, reason = self._classify(
             order,
@@ -201,14 +256,11 @@ class IndependentDomainReconciler:
         # reservation held in V0. Releasing uncertain money would recreate
         # spend authority. A later explicitly governed no-charge release may be
         # added only with equally strong external evidence.
-        head = self.custody.snapshot()
-        receipt = self.custody.reconcile_observed(
-            expected_epoch=head.epoch,
-            expected_state_root=head.state_root,
-            attempt_id=governed.attempt_id,
+        receipt = self._commit_observation(
+            governed=governed,
+            prior_state=attempt.state,
             outcome=outcome,
-            observation_hash=observation.observation_hash,
-            observer_id=self.observer_id,
+            observation=observation,
         )
         return DomainReconciliationResult(
             outcome=outcome,
