@@ -9,7 +9,7 @@ executor, and audit projection into one explicit workflow surface.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Callable
+from typing import cast
 
 from .authority import ApprovalEnvelope
 from .authority_client import AuthorityApprovalRequest, AuthorityClient, AuthorityPoll
@@ -71,8 +71,12 @@ class PulpoOrchestrator:
 
     Intelligence may use this surface to lock an exact proposal, ask the
     independent authority service for an approval envelope, return that envelope
-    to the one governance kernel, delegate approved execution to an existing
+    to the one governance kernel, delegate approved execution to the canonical
     bounded executor, and project resulting canonical evidence.
+
+    Directive state and directive time are deliberately derived from the kernel.
+    They are not constructor injection points: the orchestrator must not be able
+    to reason about authority from a state or clock different from the kernel's.
     """
 
     def __init__(
@@ -80,15 +84,9 @@ class PulpoOrchestrator:
         kernel: GovernanceKernel,
         *,
         authority_client: AuthorityClient | None = None,
-        directive_state: DirectiveState | None = None,
-        clock: Callable[[], int] | None = None,
-        commerce_executor: DomainCommerceExecutor | None = None,
     ) -> None:
         self.kernel = kernel
         self.authority_client = authority_client
-        self.directive_state = directive_state
-        self.clock = clock
-        self.commerce_executor = commerce_executor or DomainCommerceExecutor()
 
     def lock_target(self, target_id: str, intent: Intent, *, version: int = 1) -> LockedTarget:
         """Persist one exact proposed consequence with no authority effect."""
@@ -207,8 +205,7 @@ class PulpoOrchestrator:
     ) -> Decision:
         """Delegate directive activation to the existing authority controller."""
 
-        controller = self._directive_controller()
-        return controller.activate(
+        return self._directive_controller().activate(
             directive,
             envelope,
             operator_principal=operator_principal,
@@ -225,8 +222,7 @@ class PulpoOrchestrator:
     ) -> Decision:
         """Delegate directive revocation to the existing authority controller."""
 
-        controller = self._directive_controller()
-        return controller.revoke(
+        return self._directive_controller().revoke(
             directive,
             envelope,
             operator_principal=operator_principal,
@@ -234,10 +230,13 @@ class PulpoOrchestrator:
         )
 
     def evaluate_directive(self, intent: Intent, directive: Directive) -> Decision:
-        """Apply live directive state before the one governance kernel."""
+        """Apply live canonical directive state before the one governance kernel."""
 
-        state, clock = self._directive_dependencies()
-        return GovernedDirectiveProjection(self.kernel, state, clock).evaluate(intent, directive)
+        return GovernedDirectiveProjection(
+            self.kernel,
+            self._canonical_directive_state(),
+            self._canonical_now,
+        ).evaluate(intent, directive)
 
     def execute_domain_purchase(
         self,
@@ -251,7 +250,7 @@ class PulpoOrchestrator:
     ) -> CommerceOutcome:
         """Delegate one exact purchase to the canonical bounded executor."""
 
-        return self.commerce_executor.execute(
+        return DomainCommerceExecutor().execute(
             self.kernel,
             order,
             permit,
@@ -272,13 +271,31 @@ class PulpoOrchestrator:
             audit_tip=audit[-1]["hash"] if audit else None,
         )
 
-    def _directive_dependencies(self) -> tuple[DirectiveState, Callable[[], int]]:
-        if self.directive_state is None:
-            raise OrchestrationError("directive_state_unavailable")
-        if self.clock is None:
-            raise OrchestrationError("directive_clock_unavailable")
-        return self.directive_state, self.clock
+    def _canonical_directive_state(self) -> DirectiveState:
+        """Use the kernel's state object; never accept a parallel directive truth."""
+
+        state = self.kernel._state
+        required = (
+            "activate_directive",
+            "revoke_directive",
+            "directive_status",
+            "bind_permit_to_directive",
+        )
+        if not all(callable(getattr(state, name, None)) for name in required):
+            raise OrchestrationError("canonical_directive_state_unavailable")
+        return cast(DirectiveState, state)
+
+    def _canonical_now(self) -> int:
+        """Use the kernel's trusted clock path for directive decisions."""
+
+        now_ns = self.kernel._trusted_now()
+        if now_ns is None:
+            raise OrchestrationError("canonical_clock_invalid")
+        return now_ns
 
     def _directive_controller(self) -> DirectiveAuthorityController:
-        state, clock = self._directive_dependencies()
-        return DirectiveAuthorityController(self.kernel, state, clock)
+        return DirectiveAuthorityController(
+            self.kernel,
+            self._canonical_directive_state(),
+            self._canonical_now,
+        )
