@@ -8,6 +8,7 @@ import importlib.util
 import json
 from pathlib import Path
 import subprocess
+import sys
 import tempfile
 
 
@@ -17,6 +18,7 @@ spec = importlib.util.spec_from_file_location("pulpo_time_machine_v1", BASE_PATH
 if spec is None or spec.loader is None:
     raise RuntimeError("cannot load Time Machine v1 runner")
 base = importlib.util.module_from_spec(spec)
+sys.modules[spec.name] = base
 spec.loader.exec_module(base)
 
 CURRENT = "2bad0db3675f0ea8ccdc0a1188be576f1a59e4e8"
