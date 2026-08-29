@@ -365,9 +365,14 @@ def _identity_matches(envelope: EffectEnvelope, identity: ExecutionIdentity) -> 
 def _classify_role(role: SurfaceRole) -> DeltaClassification:
     if role == "writable":
         return "authorized_runtime_effect"
-    if role == "evidence":
-        return "canonical_pulpo_evidence"
     return "protected_surface_delta"
+
+
+def _canonical_evidence_delta(path: str, evidence_paths: frozenset[str]) -> bool:
+    for evidence_path in evidence_paths:
+        if path == evidence_path or _under(evidence_path, path):
+            return True
+    return False
 
 
 def _absolute_delta_path(root: str, relative_path: str) -> str:
@@ -393,12 +398,14 @@ def reconcile_effects(
     *,
     execution_started_ns: int,
     observed_changed_paths: Iterable[str] = (),
+    canonical_evidence_paths: Iterable[str] = (),
     observation_complete: bool,
 ) -> EffectReconciliation:
     reasons: list[str] = []
     mismatch = False
     uncertain = False
     uncertainty_count = 0
+    attested_evidence_paths = frozenset(_normalize_absolute(path) for path in canonical_evidence_paths)
 
     if not _identity_matches(envelope, identity):
         mismatch = True
@@ -446,10 +453,13 @@ def reconcile_effects(
             mismatch = True
             reasons.append("snapshot_surface_mismatch")
             continue
-        classification = _classify_role(surface.role)
         for relative_path, change, old_fp, new_fp in changes:
             absolute = _absolute_delta_path(root, relative_path)
             known_paths.add(absolute)
+            if surface.role == "evidence" and _canonical_evidence_delta(absolute, attested_evidence_paths):
+                classification: DeltaClassification = "canonical_pulpo_evidence"
+            else:
+                classification = _classify_role(surface.role)
             deltas.append(
                 EffectDelta(
                     path=absolute,
@@ -472,7 +482,10 @@ def reconcile_effects(
             classification = "undeclared_effect"
             mismatch = True
         else:
-            classification = _classify_role(role)
+            if role == "evidence" and _canonical_evidence_delta(path, attested_evidence_paths):
+                classification = "canonical_pulpo_evidence"
+            else:
+                classification = _classify_role(role)
             if classification == "protected_surface_delta":
                 mismatch = True
         deltas.append(EffectDelta(path=path, change="observed", classification=classification))
