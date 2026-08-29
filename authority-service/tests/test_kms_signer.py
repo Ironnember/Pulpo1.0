@@ -6,7 +6,7 @@ import unittest
 
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import ec
-from cryptography.hazmat.primitives.asymmetric.utils import decode_dss_signature
+from cryptography.hazmat.primitives.asymmetric.utils import Prehashed
 
 from pulpo import P256ApprovalVerifier
 from pulpo_authority_service.kms_signer import (
@@ -51,7 +51,10 @@ class FakeKmsTransport:
 
     def sign_digest(self, key_version_name, digest, digest_crc32c):
         self.sign_calls.append((key_version_name, digest, digest_crc32c))
-        signature = self.private_key.sign(digest, ec.ECDSA(hashes.SHA256()))
+        signature = self.private_key.sign(
+            digest,
+            ec.ECDSA(Prehashed(hashes.SHA256())),
+        )
         result = KmsSignatureResult(
             name=KEY_VERSION,
             signature=signature,
@@ -133,14 +136,24 @@ class KmsSignerTests(unittest.TestCase):
             self._signer(fingerprint="0" * 64)
 
     def test_signature_response_identity_protection_integrity_and_crypto_fail_closed(self):
-        valid_der = self.private_key.sign(b"different", ec.ECDSA(hashes.SHA256()))
+        wrong_digest = sha256(b"different").digest()
+        valid_der_for_other_payload = self.private_key.sign(
+            wrong_digest,
+            ec.ECDSA(Prehashed(hashes.SHA256())),
+        )
         cases = (
             ({"name": KEY_VERSION + "-other"}, "pinned key version"),
             ({"protection_level": "SOFTWARE"}, "HSM protection"),
             ({"verified_digest_crc32c": False}, "digest CRC32C"),
             ({"signature_crc32c": 0}, "response failed CRC32C"),
             ({"signature": b"not-der", "signature_crc32c": crc32c(b"not-der")}, "invalid P-256 DER"),
-            ({"signature": valid_der, "signature_crc32c": crc32c(valid_der)}, "failed verification"),
+            (
+                {
+                    "signature": valid_der_for_other_payload,
+                    "signature_crc32c": crc32c(valid_der_for_other_payload),
+                },
+                "failed verification",
+            ),
         )
         for overrides, message in cases:
             with self.subTest(message=message):
