@@ -12,6 +12,7 @@ dependencies = [
 
 [project.optional-dependencies]
 test = ["httpx2==2.12.0"]
+gcp-auth = ["google-auth==2.57.0"]
 gcp-kms = ["google-cloud-kms==3.16.0"]
 gcp-storage = ["google-cloud-storage==3.13.1"]
 
