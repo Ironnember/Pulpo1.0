@@ -2,13 +2,15 @@
 
 from __future__ import annotations
 
+from dataclasses import asdict
+
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictInt
 
 from pulpo.authority import ApprovalEnvelope
 from pulpo.commerce import DomainPurchaseOrder
 
-from .core import AttemptHandle, DomainCustodyService, ServiceRejected
+from .core import ApprovalChallenge, AttemptHandle, DomainCustodyService, ServiceRejected
 
 
 class OrderBody(BaseModel):
@@ -62,6 +64,12 @@ class ApprovalBody(BaseModel):
         return ApprovalEnvelope(**self.model_dump(by_alias=True))
 
 
+class DomainProposalBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    domain: str = Field(min_length=3, max_length=253)
+
+
 class PrepareApprovalBody(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -113,6 +121,26 @@ def _handle_payload(handle: AttemptHandle) -> dict[str, object]:
     }
 
 
+def _challenge_payload(challenge: ApprovalChallenge) -> dict[str, object]:
+    return {
+        "schema": challenge.schema,
+        "target_id": challenge.target_id,
+        "target_hash": challenge.target_hash,
+        "principal": challenge.principal,
+        "action": challenge.action,
+        "resource": challenge.resource,
+        "cost": challenge.cost,
+        "session_id": challenge.session_id,
+        "intent_hash": challenge.intent_hash,
+        "policy_hash": challenge.policy_hash,
+        "deployment_id": challenge.deployment_id,
+        "requested_ttl_ns": challenge.requested_ttl_ns,
+        "approval_required": challenge.approval_required,
+        "authority_request": challenge.authority_request(),
+        "authority_effect": "none",
+    }
+
+
 def create_app(service: DomainCustodyService) -> FastAPI:
     app = FastAPI(
         title="Pulpo Hostile Worker Custody V0",
@@ -125,29 +153,31 @@ def create_app(service: DomainCustodyService) -> FastAPI:
     def health() -> dict[str, str]:
         return {"status": "ok", "authority_effect": "none"}
 
+    @app.post("/v1/domain-proposals")
+    def prepare_domain_proposal(body: DomainProposalBody) -> dict[str, object]:
+        try:
+            proposal, challenge = service.prepare_proposal(body.domain)
+        except (ValueError, ServiceRejected) as exc:
+            raise HTTPException(status_code=403, detail="domain proposal rejected") from exc
+        return {
+            "schema": proposal.schema,
+            "availability_hash": proposal.availability_hash,
+            "observed_at_ns": proposal.observed_at_ns,
+            "expires_at_ns": proposal.expires_at_ns,
+            "request": asdict(proposal.request),
+            "quote": asdict(proposal.quote),
+            "order": asdict(proposal.order),
+            "approval_challenge": _challenge_payload(challenge),
+            "authority_effect": "none",
+        }
+
     @app.post("/v1/domain-approval-challenges")
     def prepare_approval(body: PrepareApprovalBody) -> dict[str, object]:
         try:
             challenge = service.prepare_approval(body.order.to_order())
         except (ValueError, ServiceRejected) as exc:
             raise HTTPException(status_code=403, detail="approval challenge rejected") from exc
-        return {
-            "schema": challenge.schema,
-            "target_id": challenge.target_id,
-            "target_hash": challenge.target_hash,
-            "principal": challenge.principal,
-            "action": challenge.action,
-            "resource": challenge.resource,
-            "cost": challenge.cost,
-            "session_id": challenge.session_id,
-            "intent_hash": challenge.intent_hash,
-            "policy_hash": challenge.policy_hash,
-            "deployment_id": challenge.deployment_id,
-            "requested_ttl_ns": challenge.requested_ttl_ns,
-            "approval_required": challenge.approval_required,
-            "authority_request": challenge.authority_request(),
-            "authority_effect": "none",
-        }
+        return _challenge_payload(challenge)
 
     @app.post("/v1/domain-attempts")
     def authorize(body: AuthorizeBody) -> dict[str, object]:
