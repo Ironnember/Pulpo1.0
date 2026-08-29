@@ -1,6 +1,6 @@
 import tempfile
 import unittest
-from dataclasses import asdict
+from dataclasses import asdict, replace
 from pathlib import Path
 
 from fastapi.testclient import TestClient
@@ -80,11 +80,11 @@ class CustodyServiceApiTests(unittest.TestCase):
         self.addCleanup(lambda: Path(str(self.path) + "-wal").unlink(missing_ok=True))
         self.addCleanup(lambda: Path(str(self.path) + "-shm").unlink(missing_ok=True))
 
-    def order(self):
+    def order(self, suffix="v0"):
         request = DomainPurchaseRequest(
-            request_id="service-v0",
+            request_id=f"service-{suffix}",
             principal="agent:hostile-worker",
-            acceptable_domains=("pulpo-service.example",),
+            acceptable_domains=(f"pulpo-service-{suffix}.example",),
             max_purchase_cents=3_000,
             max_renewal_cents=2_500,
             approved_registrar="name.com",
@@ -94,8 +94,8 @@ class CustodyServiceApiTests(unittest.TestCase):
             expires_at_ns=NOW + 100_000,
         )
         quote = DomainQuote(
-            quote_id="service-quote-v0",
-            domain="pulpo-service.example",
+            quote_id=f"service-quote-{suffix}",
+            domain=f"pulpo-service-{suffix}.example",
             registrar="name.com",
             purchase_price_cents=2_000,
             renewal_price_cents=2_400,
@@ -112,12 +112,6 @@ class CustodyServiceApiTests(unittest.TestCase):
         )
         self.assertIsNotNone(result.order)
         return result.order
-
-    @staticmethod
-    def order_payload(order):
-        payload = asdict(order)
-        payload["prohibited_upsells"] = list(payload["prohibited_upsells"])
-        return payload
 
     def build(self, *, require_approval=False):
         custody = SQLiteGovernanceCustody(
@@ -139,8 +133,6 @@ class CustodyServiceApiTests(unittest.TestCase):
         )
 
         def kernel_factory():
-            # Created inside the request thread; every request gets a normal
-            # thread-bound SQLite connection over the same durable kernel state.
             state = SQLiteKernelState(self.path)
             try:
                 return GovernanceKernel(
@@ -165,47 +157,49 @@ class CustodyServiceApiTests(unittest.TestCase):
             observer_id="observer:service-v0",
             executor_id="executor:service-v0",
         )
-
-        # This separate in-memory kernel is used only to construct test approval
-        # material. It shares policy/trust semantics but never mutates service
-        # state and is not the service authority.
         signing_kernel = GovernanceKernel(
             policy,
             secret=b"service-kernel-secret",
             approval_verifier=verifier,
             clock=lambda: NOW,
         )
-        return (
-            TestClient(create_app(service)),
-            service,
-            registrar,
-            observer,
-            signing_kernel,
-            verifier,
+        return TestClient(create_app(service)), service, registrar, observer, signing_kernel, verifier
+
+    def commit(self, service, order):
+        return service.proposals.create(
+            order,
+            availability_hash="a" * 64,
+            created_at_ns=NOW - 100,
+            expires_at_ns=order.expires_at_ns,
         )
 
-    def test_worker_can_use_only_narrow_authorize_execute_reconcile_surface(self):
+    def test_worker_uses_proposal_reference_then_handle_only(self):
         client, service, registrar, observer, _, _ = self.build()
         order = self.order()
-        payload = self.order_payload(order)
+        commitment = self.commit(service, order)
 
-        authorized = client.post("/v1/domain-attempts", json={"order": payload})
-        self.assertEqual(200, authorized.status_code)
+        authorized = client.post(
+            "/v1/domain-attempts",
+            json={"proposal_commitment_id": commitment.commitment_id},
+        )
+        self.assertEqual(200, authorized.status_code, authorized.text)
         handle = authorized.json()
         self.assertNotIn("permit", handle)
         self.assertNotIn("secret", handle)
         self.assertNotIn("now_ns", handle)
         self.assertEqual("attempt_authorized", handle["state"])
+        self.assertEqual(0, service.evidence.pending_count())
 
-        operation = {"handle": handle, "order": payload}
+        operation = {"handle": handle}
         executed = client.post(
             f"/v1/domain-attempts/{handle['attempt_id']}/execute",
             json=operation,
         )
-        self.assertEqual(200, executed.status_code)
+        self.assertEqual(200, executed.status_code, executed.text)
         self.assertEqual("provider_claim_recorded", executed.json()["status"])
         self.assertEqual(1, registrar.preflight_calls)
         self.assertEqual(1, registrar.purchase_calls)
+        self.assertEqual(0, service.evidence.pending_count())
 
         replay = client.post(
             f"/v1/domain-attempts/{handle['attempt_id']}/execute",
@@ -218,32 +212,62 @@ class CustodyServiceApiTests(unittest.TestCase):
             f"/v1/domain-attempts/{handle['attempt_id']}/reconcile",
             json=operation,
         )
-        self.assertEqual(200, reconciled.status_code)
+        self.assertEqual(200, reconciled.status_code, reconciled.text)
         self.assertEqual("success", reconciled.json()["outcome"])
         self.assertEqual(1, observer.calls)
         self.assertEqual("reconciled_success", service.status(handle["attempt_id"])["state"])
+        self.assertEqual(0, service.evidence.pending_count())
 
-    def test_worker_supplied_clock_budget_or_custody_fields_are_rejected_by_schema(self):
-        client, _, _, _, _, _ = self.build()
+    def test_byte_identical_external_order_has_no_authority_without_commitment(self):
+        client, service, _, _, _, _ = self.build()
         order = self.order()
-        payload = self.order_payload(order)
+        external_order = asdict(order)
+        external_order["prohibited_upsells"] = list(external_order["prohibited_upsells"])
+
+        response = client.post(
+            "/v1/domain-attempts",
+            json={"order": external_order},
+        )
+        self.assertEqual(422, response.status_code)
+        self.assertEqual(0, service.budget.reserved_cents)
+        self.assertEqual(0, service.custody.snapshot().epoch)
+
+        # The former direct approval-challenge route is not part of the hostile
+        # worker surface either.
+        challenge = client.post(
+            "/v1/domain-approval-challenges",
+            json={"order": external_order},
+        )
+        self.assertEqual(404, challenge.status_code)
+
+    def test_worker_cannot_inject_order_time_budget_or_provider_fields(self):
+        client, service, _, _, _, _ = self.build()
+        commitment = self.commit(service, self.order())
         for field, value in (
+            ("order", {"domain": "attacker.example"}),
             ("now_ns", 1),
             ("budget_available_cents", 3_000),
             ("custody_epoch", 0),
             ("permit", "worker-forged"),
             ("provider_token", "worker-secret"),
         ):
-            body = {"order": {**payload, field: value}}
-            response = client.post("/v1/domain-attempts", json=body)
+            response = client.post(
+                "/v1/domain-attempts",
+                json={"proposal_commitment_id": commitment.commitment_id, field: value},
+            )
             self.assertEqual(422, response.status_code, field)
+        self.assertEqual(0, service.budget.reserved_cents)
+        self.assertEqual(0, service.custody.snapshot().epoch)
 
-    def test_copied_handle_cannot_authorize_second_execution_or_substituted_order(self):
-        client, _, registrar, _, _, _ = self.build()
+    def test_copied_handle_cannot_execute_twice_or_substitute_order_hash(self):
+        client, service, registrar, _, _, _ = self.build()
         order = self.order()
-        payload = self.order_payload(order)
-        handle = client.post("/v1/domain-attempts", json={"order": payload}).json()
-        operation = {"handle": handle, "order": payload}
+        commitment = self.commit(service, order)
+        handle = client.post(
+            "/v1/domain-attempts",
+            json={"proposal_commitment_id": commitment.commitment_id},
+        ).json()
+        operation = {"handle": handle}
         self.assertEqual(
             200,
             client.post(
@@ -252,27 +276,37 @@ class CustodyServiceApiTests(unittest.TestCase):
             ).status_code,
         )
 
-        mutated = dict(payload)
-        mutated["domain"] = "attacker.example"
+        forged = dict(handle)
+        forged["order_hash"] = "0" * 64
         response = client.post(
             f"/v1/domain-attempts/{handle['attempt_id']}/execute",
-            json={"handle": handle, "order": mutated},
+            json={"handle": forged},
         )
-        self.assertIn(response.status_code, {409, 422})
+        self.assertEqual(409, response.status_code)
         self.assertEqual(1, registrar.purchase_calls)
 
-    def test_approval_required_policy_rejects_missing_or_invalid_envelope_and_accepts_external_signature(self):
-        client, _, _, _, signing_kernel, verifier = self.build(require_approval=True)
-        order = self.order()
-        payload = self.order_payload(order)
+        full_order_smuggle = client.post(
+            f"/v1/domain-attempts/{handle['attempt_id']}/execute",
+            json={"handle": handle, "order": asdict(order)},
+        )
+        self.assertEqual(422, full_order_smuggle.status_code)
 
-        missing = client.post("/v1/domain-attempts", json={"order": payload})
+    def test_approval_required_policy_binds_signature_to_committed_order(self):
+        client, service, _, _, signing_kernel, verifier = self.build(require_approval=True)
+
+        missing_order = self.order("missing")
+        missing_commitment = self.commit(service, missing_order)
+        missing = client.post(
+            "/v1/domain-attempts",
+            json={"proposal_commitment_id": missing_commitment.commitment_id},
+        )
         self.assertEqual(403, missing.status_code)
 
-        intent = purchase_intent(order)
+        approved_order = self.order("approved")
+        approved_commitment = self.commit(service, approved_order)
         envelope = signed_envelope(
             signing_kernel,
-            intent,
+            purchase_intent(approved_order),
             verifier,
             now_ns=NOW - 10,
             approval_id="service-approval-v0",
@@ -280,20 +314,33 @@ class CustodyServiceApiTests(unittest.TestCase):
         )
         approved = client.post(
             "/v1/domain-attempts",
-            json={"order": payload, "approval": asdict(envelope)},
+            json={
+                "proposal_commitment_id": approved_commitment.commitment_id,
+                "approval": asdict(envelope),
+            },
         )
-        self.assertEqual(200, approved.status_code)
+        self.assertEqual(200, approved.status_code, approved.text)
         self.assertEqual("attempt_authorized", approved.json()["state"])
 
-        # The service has only a verifier. A caller-modified signature cannot be
-        # promoted into authority.
-        bad = asdict(envelope)
-        bad["approval_id"] = "service-approval-forged"
-        bad["nonce"] = "service-nonce-forged"
-        bad["signature"] = "0" * len(envelope.signature)
+        forged_order = self.order("forged")
+        forged_commitment = self.commit(service, forged_order)
+        bad = asdict(
+            signed_envelope(
+                signing_kernel,
+                purchase_intent(forged_order),
+                verifier,
+                now_ns=NOW - 10,
+                approval_id="service-approval-forged",
+                nonce="service-nonce-forged",
+            )
+        )
+        bad["signature"] = "0" * len(bad["signature"])
         rejected = client.post(
             "/v1/domain-attempts",
-            json={"order": payload, "approval": bad},
+            json={
+                "proposal_commitment_id": forged_commitment.commitment_id,
+                "approval": bad,
+            },
         )
         self.assertEqual(403, rejected.status_code)
 
