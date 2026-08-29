@@ -81,6 +81,10 @@ def create_app(
             raise HTTPException(status_code=401, detail="worker authentication required")
         return identity
 
+    @app.get("/health")
+    def health() -> dict[str, str]:
+        return {"status": "ok", "authority_effect": "none"}
+
     @app.post("/v1/approval-requests")
     def request_approval(body: RequestBody, request: FastAPIRequest) -> dict[str, str]:
         require_worker(request)
