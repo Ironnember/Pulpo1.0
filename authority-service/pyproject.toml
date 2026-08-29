@@ -12,6 +12,7 @@ dependencies = [
 
 [project.optional-dependencies]
 test = ["httpx2==2.12.0"]
+gcp-kms = ["google-cloud-kms==3.16.0"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
