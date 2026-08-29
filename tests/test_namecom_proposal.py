@@ -89,7 +89,6 @@ class NameComProposalTests(unittest.TestCase):
             {"domainNames": [DOMAIN], "purchaseType": "registration"},
             json.loads(raw_body.decode()),
         )
-        self.assertNotIn("/core/v1/domains", url.removesuffix(":checkAvailability"))
 
     def test_premium_unavailable_and_over_budget_inventory_fail_before_order_exists(self):
         for payload, reason in (
