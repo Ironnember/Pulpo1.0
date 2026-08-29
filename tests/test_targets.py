@@ -25,6 +25,19 @@ class TargetLockTests(unittest.TestCase):
         self.assertEqual("none", self.kernel.audit[0]["payload"]["authority_effect"])
         self.assertNotIn("permit", self.kernel.audit[0]["payload"])
 
+    def test_same_target_retry_is_idempotent_when_clock_advances(self):
+        intent = Intent("agent:builder", "write", "repo:README.md", 5, "voice-session")
+        first = self.kernel.lock_target("T-RETRY", intent)
+        audit_len = len(self.kernel.audit)
+
+        self.now += 10_000
+        retried = self.kernel.lock_target("T-RETRY", intent)
+
+        self.assertEqual(first, retried)
+        self.assertEqual(first.target_hash, retried.target_hash)
+        self.assertEqual(first.created_at_ns, retried.created_at_ns)
+        self.assertEqual(audit_len, len(self.kernel.audit))
+
     def test_exact_target_resolves_but_hash_mismatch_fails_closed(self):
         intent = Intent("agent:builder", "write", "repo:README.md", 5, "voice-session")
         target = self.kernel.lock_target("T-002", intent)
