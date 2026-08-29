@@ -23,15 +23,25 @@ jobs:
         run: python -W error -m unittest tests.test_constitutional_sequences -v
 
       - name: Kill deliberate constitutional mutations
+        id: mutations
+        continue-on-error: true
         run: python scripts/run_constitutional_mutations.py --output constitutional-survival.json
 
       - name: Prove mutation harness restored the exact tree
+        if: always()
         run: git diff --exit-code
 
       - name: Preserve constitutional survival evidence
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: constitutional-survival-${{ github.sha }}
           path: constitutional-survival.json
           if-no-files-found: error
           retention-days: 14
+
+      - name: Enforce zero surviving constitutional mutations
+        if: always()
+        env:
+          MUTATION_OUTCOME: ${{ steps.mutations.outcome }}
+        run: test "$MUTATION_OUTCOME" = "success"
