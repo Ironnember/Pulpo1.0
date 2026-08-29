@@ -11,12 +11,15 @@ from pulpo_authority_service import AuthorityConfig, AuthorityService
 from pulpo_authority_service.restart_adapters import DirectoryEvidenceSink, SQLiteRestartState
 
 
-class FailOnceSQLiteRestartState(SQLiteRestartState):
-    fail_next_persist = False
+class FailNthSQLiteRestartState(SQLiteRestartState):
+    def __init__(self, *args, **kwargs):
+        self.persist_calls = 0
+        self.fail_on_persist = None
+        super().__init__(*args, **kwargs)
 
     def _persist_locked(self):
-        if self.fail_next_persist:
-            self.fail_next_persist = False
+        self.persist_calls += 1
+        if self.fail_on_persist == self.persist_calls:
             raise RuntimeError("forced durable commit failure")
         return super()._persist_locked()
 
@@ -127,19 +130,14 @@ class AuthorityRestartAdapterTests(unittest.TestCase):
             restarted = self._service(restarted_state, DirectoryEvidenceSink(root / "evidence"))
             self.assertEqual("expired", restarted.poll(expired_id)["status"])
 
-            # The second request was never observed at the advanced clock, so it
-            # remains pending in durable state. The global persisted time
-            # watermark nevertheless advanced while expiring the first request.
-            # A restarted service with a regressed clock must fail closed before
-            # it can re-evaluate that still-pending authority request.
             self.clock[0] = test_service.NOW - 1
             with self.assertRaisesRegex(RuntimeError, "rollback"):
                 restarted.poll(pending_id)
 
-    def test_evidence_written_before_failed_state_commit_converges_after_restart(self):
+    def test_evidence_durable_final_state_commit_interrupted_resumes_after_restart(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            state = FailOnceSQLiteRestartState(root / "authority.sqlite3", self._credentials())
+            state = FailNthSQLiteRestartState(root / "authority.sqlite3", self._credentials())
             evidence = DirectoryEvidenceSink(root / "evidence")
             service = self._service(
                 state,
@@ -147,8 +145,11 @@ class AuthorityRestartAdapterTests(unittest.TestCase):
                 tokens=iter(("request-crash", "approval-crash", "nonce-crash")),
             )
             request_id, _ = service.request_approval(self.fixture.request)
-            state.fail_next_persist = True
 
+            # The next persist durably reserves evidence_pending. Fail the
+            # following persist, after the evidence object exists but before the
+            # request can become approved.
+            state.fail_on_persist = state.persist_calls + 2
             with self.assertRaisesRegex(RuntimeError, "forced durable commit failure"):
                 service.approve(
                     request_id,
@@ -156,22 +157,58 @@ class AuthorityRestartAdapterTests(unittest.TestCase):
                     "raw-assertion-json",
                 )
 
-            self.assertEqual({"status": "pending"}, service.poll(request_id))
-            self.assertEqual(0, state.sequence)
+            record = state.requests[request_id]
+            self.assertEqual("evidence_pending", record.status)
+            self.assertEqual(1, state.sequence)
+            self.assertIsNotNone(record.envelope)
+            self.assertIsNotNone(record.evidence_bundle)
+            self.assertIsNone(record.evidence_hash)
             self.assertEqual(1, len(tuple((root / "evidence").glob("*.json"))))
+            self.assertEqual(1, len(self.fixture.webauthn.calls))
 
             restarted_state = SQLiteRestartState(root / "authority.sqlite3", self._credentials())
             restarted = self._service(restarted_state, DirectoryEvidenceSink(root / "evidence"))
-            envelope = restarted.approve(
+            polled = restarted.poll(request_id)
+
+            self.assertEqual("approved", polled["status"])
+            self.assertEqual(1, restarted_state.sequence)
+            self.assertEqual(1, len(tuple((root / "evidence").glob("*.json"))))
+            self.assertEqual(1, len(self.fixture.webauthn.calls))
+            self.assertIsNone(restarted_state.requests[request_id].evidence_bundle)
+
+    def test_evidence_pending_retry_ignores_new_assertion_and_reuses_durable_payload(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            state = SQLiteRestartState(root / "authority.sqlite3", self._credentials())
+            service = self._service(
+                state,
+                test_service.FailingEvidenceSink(),
+                tokens=iter(("request-resume", "approval-resume", "nonce-resume")),
+            )
+            request_id, _ = service.request_approval(self.fixture.request)
+
+            with self.assertRaisesRegex(RuntimeError, "authority evidence unavailable"):
+                service.approve(
+                    request_id,
+                    self.fixture.primary.credential_id,
+                    "first-verified-assertion",
+                )
+            self.assertEqual(1, len(self.fixture.webauthn.calls))
+
+            service.evidence = DirectoryEvidenceSink(root / "evidence")
+            envelope = service.approve(
                 request_id,
                 self.fixture.primary.credential_id,
-                "raw-assertion-json",
+                "different-retry-assertion-must-be-ignored",
             )
 
-            self.assertEqual("approved", restarted.poll(request_id)["status"])
-            self.assertEqual(1, restarted_state.sequence)
             self.assertTrue(envelope.signature)
-            self.assertEqual(1, len(tuple((root / "evidence").glob("*.json"))))
+            self.assertEqual(1, len(self.fixture.webauthn.calls))
+            objects = tuple((root / "evidence").glob("*.json"))
+            self.assertEqual(1, len(objects))
+            evidence_text = objects[0].read_text()
+            self.assertIn("first-verified-assertion", evidence_text)
+            self.assertNotIn("different-retry-assertion-must-be-ignored", evidence_text)
 
     def test_snapshot_tamper_fails_closed_on_restart(self):
         with tempfile.TemporaryDirectory() as directory:
