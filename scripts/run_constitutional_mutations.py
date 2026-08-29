@@ -3,7 +3,8 @@
 
 This script never mutates the checked-out branch permanently. Each mutation is
 applied to one source file, one or more existing tests are run in a fresh Python
-process, and the original source bytes are restored in a finally block.
+process with an isolated bytecode cache, and the original source bytes are
+restored in a finally block.
 
 A mutation is "killed" only when the selected existing regression test fails.
 A surviving mutation means the test suite did not detect that constitutional
@@ -13,11 +14,13 @@ control being weakened and this proof fails closed.
 from __future__ import annotations
 
 import argparse
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 import json
+import os
 from pathlib import Path
 import subprocess
 import sys
+import tempfile
 from typing import Sequence
 
 
@@ -136,13 +139,21 @@ MUTATIONS: tuple[Mutation, ...] = (
 
 
 def _run_tests(root: Path, tests: Sequence[str]) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(
-        [sys.executable, "-W", "error", "-m", "unittest", *tests, "-v"],
-        cwd=root,
-        text=True,
-        capture_output=True,
-        check=False,
-    )
+    # CPython's timestamp/size bytecode cache can otherwise reuse the previous
+    # mutant when several same-sized source mutations happen within one second.
+    # Give every mutant a unique cache so the subprocess must compile exactly
+    # the source bytes currently on disk.
+    with tempfile.TemporaryDirectory(prefix="pulpo-mutation-pycache-") as cache:
+        env = os.environ.copy()
+        env["PYTHONPYCACHEPREFIX"] = cache
+        return subprocess.run(
+            [sys.executable, "-W", "error", "-m", "unittest", *tests, "-v"],
+            cwd=root,
+            env=env,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
 
 
 def run(root: Path) -> dict[str, object]:
