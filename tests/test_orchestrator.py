@@ -11,12 +11,15 @@ from pulpo.commerce import (
     assess_quote,
     purchase_intent,
 )
+from pulpo.directives import Directive, DirectiveAuthorityController
 from pulpo.kernel import GovernanceKernel, Intent, Policy
 from pulpo.orchestrator import ApprovalHandle, PulpoOrchestrator
+from pulpo.state import InMemoryKernelState
 from tests.authority_support import HmacTestVerifier, signed_envelope, trust_for
 
 
 NOW = 5_000_000
+OPERATOR = "operator:owner"
 
 
 class FakeAuthorityClient:
@@ -69,7 +72,7 @@ class FakeRegistrar:
 
 
 class OrchestratorProofTests(unittest.TestCase):
-    def governed(self, actions, approval_actions):
+    def governed(self, actions, approval_actions, *, state=None):
         verifier = HmacTestVerifier()
         kernel = GovernanceKernel(
             Policy(
@@ -81,6 +84,7 @@ class OrchestratorProofTests(unittest.TestCase):
             secret=b"orchestrator-proof",
             approval_verifier=verifier,
             clock=lambda: NOW,
+            state=state,
         )
         client = FakeAuthorityClient(kernel, verifier)
         return kernel, verifier, client, PulpoOrchestrator(kernel, authority_client=client)
@@ -143,6 +147,79 @@ class OrchestratorProofTests(unittest.TestCase):
                 self.assertIsNone(attempt.decision)
                 self.assertFalse(orchestrator.consume_authorized_target(attempt))
                 self.assertFalse(any(record["event"] == "approval_verified" for record in local_kernel.audit))
+
+    def test_orchestrator_rejects_parallel_governance_and_executor_injection(self):
+        kernel, _, client, _ = self.governed({"write"}, {"write"})
+        with self.assertRaises(TypeError):
+            PulpoOrchestrator(
+                kernel,
+                authority_client=client,
+                directive_state=InMemoryKernelState(),
+            )
+        with self.assertRaises(TypeError):
+            PulpoOrchestrator(kernel, authority_client=client, clock=lambda: NOW)
+        with self.assertRaises(TypeError):
+            PulpoOrchestrator(kernel, authority_client=client, commerce_executor=object())
+
+    def test_directive_path_uses_kernel_canonical_state_only(self):
+        state = InMemoryKernelState()
+        kernel, verifier, client, orchestrator = self.governed(
+            {"write", "activate_directive", "revoke_directive"},
+            {"activate_directive", "revoke_directive"},
+            state=state,
+        )
+        directive = Directive(
+            directive_id="orchestrator-directive",
+            version=1,
+            issuer_authority_id=verifier.authority_id,
+            principal="agent:builder",
+            allowed_actions=frozenset({"write"}),
+            resource_prefixes=("repo:",),
+            max_cost=5,
+            issued_at_ns=NOW - 1_000,
+            expires_at_ns=NOW + 10_000,
+        )
+        authority_intent = DirectiveAuthorityController.authority_intent(
+            DirectiveAuthorityController.ACTIVATE,
+            directive,
+            operator_principal=OPERATOR,
+        )
+        envelope = signed_envelope(
+            kernel,
+            authority_intent,
+            verifier,
+            now_ns=NOW - 10,
+            approval_id="approval-canonical-directive",
+            nonce="nonce-canonical-directive",
+        )
+        activation = orchestrator.activate_directive(
+            directive,
+            envelope,
+            operator_principal=OPERATOR,
+        )
+        self.assertEqual("allow", activation.outcome)
+        self.assertEqual(
+            "active",
+            state.directive_status(directive.directive_id, directive.version, directive.directive_hash),
+        )
+
+        parallel_state = InMemoryKernelState()
+        self.assertEqual(
+            "directive_not_authorized",
+            parallel_state.directive_status(
+                directive.directive_id,
+                directive.version,
+                directive.directive_hash,
+            ),
+        )
+        decision = orchestrator.evaluate_directive(
+            Intent("agent:builder", "write", "repo:canonical.txt", 1),
+            directive,
+        )
+        self.assertEqual("allow", decision.outcome)
+        self.assertIsNotNone(decision.permit)
+        self.assertEqual(0, client.polls)
+        self.assertTrue(kernel.verify_audit())
 
     def test_exact_purchase_executes_once_and_substitution_fails_before_provider(self):
         kernel, _, client, orchestrator = self.governed({"purchase_domain"}, {"purchase_domain"})
