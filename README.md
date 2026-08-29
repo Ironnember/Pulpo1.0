@@ -1,6 +1,6 @@
 # Pulpo
 
-Pulpo is a small governance kernel for agentic execution. It turns explicit intent into a deterministic decision, binds allowed work to a one-use permit, and records the result in a tamper-evident audit chain.
+Pulpo is the governance and evidence plane between AI intelligence and consequential execution. It turns explicit intent into deterministic governance, binds allowed work to narrowly scoped one-use permits, and preserves durable evidence for verification and reconciliation.
 
 This repository is the clean canonical Pulpo project. The older `Iron-Ember/pulpo` repository remains historical reference material; its accumulated plans, generated evidence, machine-specific scripts, and CI workarounds are intentionally not imported here.
 
