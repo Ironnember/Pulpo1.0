@@ -4,8 +4,8 @@
 This probe intentionally performs no registrar write. It verifies that the
 sandbox executor and observer credentials can each perform the same live
 availability check, then lets the observer credential construct one bounded
-Pulpo proposal. It never calls Create Domain, issues no permit, reserves no
-budget, and grants no authority.
+Pulpo proposal. A transport guard rejects every provider request except the
+sandbox checkAvailability endpoint.
 """
 
 from __future__ import annotations
@@ -16,14 +16,55 @@ from hashlib import sha256
 import json
 import os
 import secrets
+import sys
 from typing import Any
 
-from pulpo.namecom_core import NameComCoreClient, NameComCoreConfig, NameComViolation
+from pulpo.namecom_core import (
+    NameComCoreClient,
+    NameComCoreConfig,
+    NameComResponse,
+    NameComViolation,
+    UrllibNameComTransport,
+)
 from pulpo.namecom_proposal import NameComProposalViolation, NameComSandboxProposalBuilder
+
+
+READ_ONLY_URL = "https://api.dev.name.com/core/v1/domains:checkAvailability"
 
 
 class ReadinessBlocked(RuntimeError):
     pass
+
+
+class ReadOnlyNameComTransport:
+    """Fail closed before network I/O unless the request is availability-only."""
+
+    def __init__(self, delegate=None) -> None:
+        self.delegate = delegate or UrllibNameComTransport()
+        self.calls: list[tuple[str, str]] = []
+
+    def request(self, method, url, headers, body) -> NameComResponse:
+        if method != "POST" or url != READ_ONLY_URL:
+            raise NameComViolation("readiness_transport_forbids_provider_write")
+        if body is None:
+            raise NameComViolation("readiness_availability_body_required")
+        try:
+            payload = json.loads(body)
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise NameComViolation("readiness_availability_body_invalid") from exc
+        if (
+            not isinstance(payload, dict)
+            or set(payload) != {"domainNames", "purchaseType"}
+            or payload.get("purchaseType") != "registration"
+            or not isinstance(payload.get("domainNames"), list)
+            or len(payload["domainNames"]) != 1
+            or not isinstance(payload["domainNames"][0], str)
+        ):
+            raise NameComViolation("readiness_availability_scope_invalid")
+        if "X-Idempotency-Key" in headers:
+            raise NameComViolation("readiness_write_header_forbidden")
+        self.calls.append((method, url))
+        return self.delegate.request(method, url, headers, body)
 
 
 def _required(name: str) -> str:
@@ -38,7 +79,7 @@ def _candidate(run_id: str, suffix: str, tld: str) -> str:
     return f"pulpo-proof-{digest}.{tld}"
 
 
-def _matching_result(response: dict[str, Any], domain: str) -> dict[str, Any] | None:
+def _matching_result(response: dict[str, Any], domain: str) -> dict[str, Any]:
     results = response.get("results")
     if not isinstance(results, list):
         raise ReadinessBlocked("name.com sandbox returned invalid results")
@@ -62,8 +103,16 @@ def main() -> int:
     if executor_token == observer_token:
         raise ReadinessBlocked("executor and observer sandbox tokens must be distinct")
 
-    executor = NameComCoreClient(NameComCoreConfig(username, executor_token, environment="sandbox"))
-    observer = NameComCoreClient(NameComCoreConfig(username, observer_token, environment="sandbox"))
+    executor_transport = ReadOnlyNameComTransport()
+    observer_transport = ReadOnlyNameComTransport()
+    executor = NameComCoreClient(
+        NameComCoreConfig(username, executor_token, environment="sandbox"),
+        transport=executor_transport,
+    )
+    observer = NameComCoreClient(
+        NameComCoreConfig(username, observer_token, environment="sandbox"),
+        transport=observer_transport,
+    )
     builder = NameComSandboxProposalBuilder(
         observer,
         principal="agent:hostile-worker-sandbox-v0",
@@ -107,6 +156,9 @@ def main() -> int:
                 "order_hash": proposal.order.order_hash,
                 "observer_executor_views_match": True,
                 "credential_separation_verified": True,
+                "read_only_endpoint_enforced": True,
+                "executor_read_calls": len(executor_transport.calls),
+                "observer_read_calls": len(observer_transport.calls),
                 "provider_write_attempted": False,
                 "permit_issued": False,
                 "authority_effect": "none",
@@ -126,5 +178,5 @@ if __name__ == "__main__":
     try:
         raise SystemExit(main())
     except ReadinessBlocked as exc:
-        print(f"name.com sandbox readiness blocked: {exc}", file=os.sys.stderr)
+        print(f"name.com sandbox readiness blocked: {exc}", file=sys.stderr)
         raise SystemExit(2)
