@@ -96,12 +96,7 @@ def main() -> None:
         state=state,
     )
     client = DemoAuthorityClient(kernel, verifier)
-    orchestrator = PulpoOrchestrator(
-        kernel,
-        authority_client=client,
-        directive_state=state,
-        clock=lambda: NOW,
-    )
+    orchestrator = PulpoOrchestrator(kernel, authority_client=client)
 
     # Exact consequential target: tampered identity stops before external
     # authority is polled. Deploy is intentionally approval-gated here, while
