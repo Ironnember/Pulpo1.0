@@ -1,0 +1,48 @@
+name: Time Machine Replication V5
+
+on:
+  pull_request:
+    paths:
+      - "experiments/time_machine_v4/FROZEN_CONTRACT.md"
+      - "experiments/time_machine_v5/**"
+      - "scripts/run_time_machine_replication_v5.py"
+      - ".github/workflows/time-machine-replication-v5.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  frozen-suite-replication:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Run frozen-suite replication and placebo falsification
+        id: replication
+        continue-on-error: true
+        run: python scripts/run_time_machine_replication_v5.py time-machine-v5
+      - name: Prove tracked checkout remained unchanged
+        if: always()
+        run: git diff --exit-code
+      - name: Preserve Time Machine V5 evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: time-machine-v5-${{ github.sha }}
+          path: |
+            time-machine-v5.json
+            time-machine-v5.csv
+            time-machine-v5.md
+            time-machine-v5.svg
+          if-no-files-found: error
+          retention-days: 30
+      - name: Enforce V5 experiment validity
+        if: always()
+        env:
+          REPLICATION_OUTCOME: ${{ steps.replication.outcome }}
+        run: test "$REPLICATION_OUTCOME" = "success"
