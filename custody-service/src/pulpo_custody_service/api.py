@@ -36,7 +36,7 @@ class OrderBody(BaseModel):
 
 
 class ApprovalBody(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
     approval_id: str = Field(min_length=1, max_length=4_096)
     authority_id: str = Field(min_length=1, max_length=4_096)
@@ -52,10 +52,14 @@ class ApprovalBody(BaseModel):
     issued_at_ns: StrictInt
     expires_at_ns: StrictInt
     signature: str = Field(min_length=1, max_length=8_192)
-    schema: str = "pulpo.approval.v2"
+    approval_schema: str = Field(
+        default="pulpo.approval.v2",
+        alias="schema",
+        serialization_alias="schema",
+    )
 
     def to_envelope(self) -> ApprovalEnvelope:
-        return ApprovalEnvelope(**self.model_dump())
+        return ApprovalEnvelope(**self.model_dump(by_alias=True))
 
 
 class AuthorizeBody(BaseModel):
@@ -66,7 +70,7 @@ class AuthorizeBody(BaseModel):
 
 
 class HandleBody(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
     attempt_id: str = Field(min_length=1, max_length=4_096)
     order_hash: str = Field(min_length=64, max_length=64)
@@ -74,10 +78,14 @@ class HandleBody(BaseModel):
     reservation_id: str = Field(min_length=1, max_length=4_096)
     reserved_cents: StrictInt
     state: str = Field(min_length=1, max_length=128)
-    schema: str = "pulpo.custody-attempt-handle.v0"
+    handle_schema: str = Field(
+        default="pulpo.custody-attempt-handle.v0",
+        alias="schema",
+        serialization_alias="schema",
+    )
 
     def to_handle(self) -> AttemptHandle:
-        return AttemptHandle(**self.model_dump())
+        return AttemptHandle(**self.model_dump(by_alias=True))
 
 
 class AttemptOperationBody(BaseModel):
