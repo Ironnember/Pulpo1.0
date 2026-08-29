@@ -89,7 +89,6 @@ class SurfaceSpec:
 
 @dataclass(frozen=True)
 class EffectEnvelope:
-    permit_id: str
     executable_path: str
     executable_sha256: str
     argv: tuple[str, ...]
@@ -101,8 +100,6 @@ class EffectEnvelope:
     schema: str = "pulpo.effect-envelope.v1"
 
     def __post_init__(self) -> None:
-        if not self.permit_id:
-            raise EffectReconciliationError("permit_id_required")
         object.__setattr__(self, "executable_path", _normalize_absolute(self.executable_path))
         if len(self.executable_sha256) != 64 or any(c not in "0123456789abcdef" for c in self.executable_sha256):
             raise EffectReconciliationError("invalid_executable_sha256")
@@ -134,7 +131,6 @@ class EffectEnvelope:
     def envelope_hash(self) -> str:
         payload = {
             "schema": self.schema,
-            "permit_id": self.permit_id,
             "executable_path": self.executable_path,
             "executable_sha256": self.executable_sha256,
             "argv": list(self.argv),
@@ -148,6 +144,23 @@ class EffectEnvelope:
             ],
         }
         return _hash_json(payload)
+
+
+def bind_resource_to_effect_envelope(resource: str, envelope: EffectEnvelope) -> str:
+    """Bind an effect envelope into the existing kernel Intent.resource.
+
+    The governance kernel already signs the canonical intent hash into every
+    one-use permit. Embedding the effect-envelope hash in the resource makes
+    the existing permit cryptographically bind the exact effect class without
+    introducing a second permit system.
+    """
+
+    if not resource:
+        raise EffectReconciliationError("resource_required")
+    marker = "#pulpo-effect-envelope="
+    if marker in resource:
+        raise EffectReconciliationError("resource_already_effect_bound")
+    return f"{resource}{marker}{envelope.envelope_hash}"
 
 
 @dataclass(frozen=True)
