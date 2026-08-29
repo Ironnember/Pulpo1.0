@@ -1,12 +1,12 @@
 """Bounded credential-side executor for Hostile Worker Consequence Proof V0.
 
 This module is domain-specific and intentionally not a general execution
-Gateway.  It is designed to run outside the hostile worker boundary with the
-registrar credential adapter.  It can perform only the exact domain order
-already bound to a custody attempt.
+gateway. It is designed to run outside the hostile worker boundary with the
+registrar credential adapter. It can perform only the exact domain order already
+bound to a custody attempt.
 
-Provider return values remain claims.  Successful or failed calls always move
-the attempt toward independent reconciliation; they never become accepted
+Provider return values remain claims. Successful or failed calls always move the
+attempt toward independent reconciliation; they never become accepted
 consequence directly.
 """
 
@@ -30,6 +30,16 @@ def _hash(value: Any) -> str:
     return sha256(_canonical(value)).hexdigest()
 
 
+def _require_hash(value: str, field: str) -> None:
+    if (
+        not isinstance(value, str)
+        or len(value) != 64
+        or value != value.lower()
+        or any(character not in "0123456789abcdef" for character in value)
+    ):
+        raise CustodyViolation(f"{field}_invalid")
+
+
 class ExternalConsequenceUnknown(RuntimeError):
     """The provider request may have changed reality and requires reconciliation."""
 
@@ -40,6 +50,9 @@ class ExternalConsequenceUnknown(RuntimeError):
 
 class CustodyRegistrarAdapter(Protocol):
     """Credential-bearing registrar adapter available only to the trusted executor."""
+
+    def preflight(self, order: DomainPurchaseOrder) -> str:
+        """Return a hash of live read-only availability/price evidence or fail closed."""
 
     def purchase(
         self,
@@ -56,6 +69,7 @@ class ProviderAttemptClaim:
     attempt_id: str
     order_hash: str
     provider_request_id: str
+    preflight_hash: str
     idempotency_key: str
     result: RegistrarResult
     claim_hash: str
@@ -95,7 +109,7 @@ class TrustedDomainExecutor:
             and snapshot.executor_id == self.executor_id
         ):
             # Crash-before-transmission recovery: resume the same attempt and
-            # same executor identity.  No provider-transmission right has yet
+            # same executor identity. No provider-transmission right has yet
             # been released, so this does not manufacture a second capability.
             return
         raise CustodyViolation("attempt_not_executable")
@@ -114,11 +128,24 @@ class TrustedDomainExecutor:
 
         self._claim_or_resume(governed.attempt_id)
 
-        # Release the one network right *before* calling the provider.  From
-        # this point forward a crash is conservatively treated as a possibly
+        # The last read-only provider check runs inside the trusted credential
+        # boundary. A hostile worker cannot forge its result. If it fails, no
+        # transmission right is released and the same executor may retry only
+        # this read-only preflight against the already-consumed authority.
+        preflight_hash = adapter.preflight(order)
+        _require_hash(preflight_hash, "provider_preflight_hash")
+
+        # Bind the preflight digest into the request identity already committed
+        # by the existing custody transmission transition. This avoids creating
+        # another transition API solely for provider preflight evidence.
+        provider_request_id = (
+            f"domain:{governed.attempt_id}:preflight:{preflight_hash}"
+        )
+
+        # Release the one network right *before* calling the provider. From this
+        # point forward a crash is conservatively treated as a possibly
         # transmitted request and may not trigger automatic retry.
         head = self.custody.snapshot()
-        provider_request_id = f"domain:{governed.attempt_id}"
         transmission = self.custody.authorize_transmission(
             expected_epoch=head.epoch,
             expected_state_root=head.state_root,
@@ -157,6 +184,7 @@ class TrustedDomainExecutor:
             "attempt_id": governed.attempt_id,
             "order_hash": order.order_hash,
             "provider_request_id": provider_request_id,
+            "preflight_hash": preflight_hash,
             "idempotency_key": transmission.idempotency_key,
             "result": asdict(result),
         }
@@ -164,6 +192,7 @@ class TrustedDomainExecutor:
             attempt_id=governed.attempt_id,
             order_hash=order.order_hash,
             provider_request_id=provider_request_id,
+            preflight_hash=preflight_hash,
             idempotency_key=transmission.idempotency_key,
             result=result,
             claim_hash=_hash(claim_material),
