@@ -62,6 +62,12 @@ class ApprovalBody(BaseModel):
         return ApprovalEnvelope(**self.model_dump(by_alias=True))
 
 
+class PrepareApprovalBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    order: OrderBody
+
+
 class AuthorizeBody(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -118,6 +124,30 @@ def create_app(service: DomainCustodyService) -> FastAPI:
     @app.get("/health")
     def health() -> dict[str, str]:
         return {"status": "ok", "authority_effect": "none"}
+
+    @app.post("/v1/domain-approval-challenges")
+    def prepare_approval(body: PrepareApprovalBody) -> dict[str, object]:
+        try:
+            challenge = service.prepare_approval(body.order.to_order())
+        except (ValueError, ServiceRejected) as exc:
+            raise HTTPException(status_code=403, detail="approval challenge rejected") from exc
+        return {
+            "schema": challenge.schema,
+            "target_id": challenge.target_id,
+            "target_hash": challenge.target_hash,
+            "principal": challenge.principal,
+            "action": challenge.action,
+            "resource": challenge.resource,
+            "cost": challenge.cost,
+            "session_id": challenge.session_id,
+            "intent_hash": challenge.intent_hash,
+            "policy_hash": challenge.policy_hash,
+            "deployment_id": challenge.deployment_id,
+            "requested_ttl_ns": challenge.requested_ttl_ns,
+            "approval_required": challenge.approval_required,
+            "authority_request": challenge.authority_request(),
+            "authority_effect": "none",
+        }
 
     @app.post("/v1/domain-attempts")
     def authorize(body: AuthorizeBody) -> dict[str, object]:
