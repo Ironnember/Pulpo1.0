@@ -50,7 +50,7 @@ class AuthorityConfig:
             raise ValueError("origin must be an exact HTTPS origin")
         if parsed.hostname != self.rp_id and not parsed.hostname.endswith(f".{self.rp_id}"):
             raise ValueError("origin host must equal or be below rp_id")
-        if not self.approval_path_prefix.startswith("/") or not self.approval_path_prefix.endswith("/"):
+        if not self.appro_path_prefix.startswith("/") or not self.approval_path_prefix.endswith("/"):
             raise ValueError("approval_path_prefix must be an absolute directory path")
 
 
@@ -169,6 +169,7 @@ class RequestState:
     envelope: ApprovalEnvelope | None = None
     reason: str | None = None
     evidence_hash: str | None = None
+    evidence_bundle: dict[str, object] | None = None
 
 
 class InMemoryState:
@@ -237,39 +238,39 @@ class AuthorityService:
             raise ValueError("intent hash does not match displayed intent")
         if request.requested_ttl_ns > self.config.trust.max_approval_ttl_ns:
             raise ValueError("requested approval TTL exceeds policy")
-        now = self._trusted_now()
-        request_id = f"request:{self._random_token(16)}"
-        approval_id = f"approval:{self._random_token(16)}"
-        nonce = f"nonce:{self._random_token(16)}"
-        unsigned = ApprovalEnvelope(
-            approval_id=approval_id,
-            authority_id=self.config.trust.authority_id,
-            verifier_id=self.config.trust.verifier_id,
-            key_id=self.config.trust.key_id,
-            deployment_id=self.config.trust.deployment_id,
-            trust_hash=self.config.trust.trust_hash,
-            session_id=request.session_id,
-            principal=request.principal,
-            intent_hash=request.intent_hash,
-            policy_hash=request.policy_hash,
-            nonce=nonce,
-            issued_at_ns=now,
-            expires_at_ns=now + request.requested_ttl_ns,
-            signature="",
-        )
-        challenge = sha256(
-            _canonical(
-                {
-                    "schema": "pulpo.webauthn-challenge.v1",
-                    "purpose": "approve-exact-pulpo-envelope",
-                    "request_id": request_id,
-                    "signing_payload_hash": unsigned.signing_payload_hash,
-                    "expires_at_ns": unsigned.expires_at_ns,
-                    "service_nonce": nonce,
-                }
-            )
-        ).digest()
         with self.state.lock:
+            now = self._trusted_now()
+            request_id = f"request:{self._random_token(16)}"
+            approval_id = f"approval:{self._random_token(16)}"
+            nonce = f"nonce:{self._random_token(16)}"
+            unsigned = ApprovalEnvelope(
+                approval_id=approval_id,
+                authority_id=self.config.trust.authority_id,
+                verifier_id=self.config.trust.verifier_id,
+                key_id=self.config.trust.key_id,
+                deployment_id=self.config.trust.deployment_id,
+                trust_hash=self.config.trust.trust_hash,
+                session_id=request.session_id,
+                principal=request.principal,
+                intent_hash=request.intent_hash,
+                policy_hash=request.policy_hash,
+                nonce=nonce,
+                issued_at_ns=now,
+                expires_at_ns=now + request.requested_ttl_ns,
+                signature="",
+            )
+            challenge = sha256(
+                _canonical(
+                    {
+                        "schema": "pulpo.webauthn-challenge.v1",
+                        "purpose": "approve-exact-pulpo-envelope",
+                        "request_id": request_id,
+                        "signing_payload_hash": unsigned.signing_payload_hash,
+                        "expires_at_ns": unsigned.expires_at_ns,
+                        "service_nonce": nonce,
+                    }
+                )
+            ).digest()
             if request_id in self.state.requests:
                 raise RuntimeError("request identifier collision")
             self.state.requests[request_id] = RequestState(request_id, request, unsigned, challenge)
@@ -277,101 +278,167 @@ class AuthorityService:
         return request_id, approval_url
 
     def display(self, request_id: str) -> dict[str, object]:
-        record = self._record(request_id)
-        self._expire(record)
-        request = record.request
-        return {
-            "request_id": record.request_id,
-            "status": record.status,
-            "principal": request.principal,
-            "action": request.action,
-            "resource": request.resource,
-            "cost": request.cost,
-            "session_id": request.session_id,
-            "intent_hash": request.intent_hash,
-            "policy_hash": request.policy_hash,
-            "deployment_id": request.deployment_id,
-            "expires_at_ns": record.unsigned_envelope.expires_at_ns,
-        }
+        with self.state.lock:
+            record = self._record(request_id)
+            self._expire(record)
+            request = record.request
+            return {
+                "request_id": record.request_id,
+                "status": record.status,
+                "principal": request.principal,
+                "action": request.action,
+                "resource": request.resource,
+                "cost": request.cost,
+                "session_id": request.session_id,
+                "intent_hash": request.intent_hash,
+                "policy_hash": request.policy_hash,
+                "deployment_id": request.deployment_id,
+                "expires_at_ns": record.unsigned_envelope.expires_at_ns,
+            }
 
     def challenge(self, request_id: str) -> bytes:
-        record = self._record(request_id)
-        self._expire(record)
-        if record.status != "pending":
-            raise RuntimeError("approval request is not pending")
-        return record.challenge
-
-    def approve(self, request_id: str, credential_id: str, assertion: str) -> ApprovalEnvelope:
         with self.state.lock:
             record = self._record(request_id)
             self._expire(record)
             if record.status != "pending":
                 raise RuntimeError("approval request is not pending")
-            credential = self.state.credentials.get(credential_id)
-            if credential is None or not credential.active:
-                raise PermissionError("credential unavailable")
-            if credential.role != "primary":
-                raise PermissionError("recovery credential cannot approve")
-            if not credential.hardware_attested or credential.backup_eligible:
-                raise PermissionError("credential violates hardware policy")
-            try:
-                result = self.verifier.verify(
-                    assertion,
-                    expected_challenge=record.challenge,
-                    expected_origin=self.config.origin,
-                    expected_rp_id=self.config.rp_id,
-                    credential=credential,
+            return record.challenge
+
+    def approve(self, request_id: str, credential_id: str, assertion: str) -> ApprovalEnvelope:
+        resume_evidence = False
+        with self.state.lock:
+            record = self._record(request_id)
+            self._expire(record)
+            if record.status == "evidence_pending":
+                resume_evidence = True
+            elif record.status != "pending":
+                raise RuntimeError("approval request is not pending")
+            else:
+                credential = self.state.credentials.get(credential_id)
+                if credential is None or not credential.active:
+                    raise PermissionError("credential unavailable")
+                if credential.role != "primary":
+                    raise PermissionError("recovery credential cannot approve")
+                if not credential.hardware_attested or credential.backup_eligible:
+                    raise PermissionError("credential violates hardware policy")
+                try:
+                    result = self.verifier.verify(
+                        assertion,
+                        expected_challenge=record.challenge,
+                        expected_origin=self.config.origin,
+                        expected_rp_id=self.config.rp_id,
+                        credential=credential,
+                    )
+                except Exception as exc:
+                    raise PermissionError("WebAuthn assertion rejected") from exc
+                if result.credential_id != credential_id:
+                    raise PermissionError("credential mismatch")
+                if not result.user_present or not result.user_verified:
+                    raise PermissionError("fresh user verification required")
+                if result.backup_eligible or result.backed_up:
+                    raise PermissionError("backup-eligible credentials are prohibited")
+                if result.new_sign_count < credential.sign_count:
+                    raise PermissionError("authenticator counter rollback")
+                signature = self.signer.sign(record.unsigned_envelope.signing_bytes())
+                if (
+                    len(signature) != 128
+                    or signature != signature.lower()
+                    or any(character not in "0123456789abcdef" for character in signature)
+                ):
+                    raise RuntimeError("signer returned an invalid Ed25519 signature")
+                envelope = replace(record.unsigned_envelope, signature=signature)
+                sequence = self.state.sequence + 1
+                bundle = {
+                    "schema": "pulpo.authority-evidence.v1",
+                    "sequence": sequence,
+                    "request": asdict(record.request),
+                    "request_id": request_id,
+                    "challenge_hash": sha256(record.challenge).hexdigest(),
+                    "credential_id_hash": sha256(credential_id.encode()).hexdigest(),
+                    "assertion": assertion,
+                    "envelope": asdict(envelope),
+                }
+
+                # Persist the completed human verification, exact signed
+                # envelope, sequence reservation, authenticator counter, and
+                # exact evidence payload before touching the independent
+                # evidence store. If evidence storage or the process fails next,
+                # restart can resume from this exact payload without obtaining a
+                # second WebAuthn assertion or minting a second sequence.
+                self.state.sequence = sequence
+                self.state.credentials[credential_id] = replace(
+                    credential,
+                    sign_count=result.new_sign_count,
                 )
-            except Exception as exc:
-                raise PermissionError("WebAuthn assertion rejected") from exc
-            if result.credential_id != credential_id:
-                raise PermissionError("credential mismatch")
-            if not result.user_present or not result.user_verified:
-                raise PermissionError("fresh user verification required")
-            if result.backup_eligible or result.backed_up:
-                raise PermissionError("backup-eligible credentials are prohibited")
-            if result.new_sign_count < credential.sign_count:
-                raise PermissionError("authenticator counter rollback")
-            signature = self.signer.sign(record.unsigned_envelope.signing_bytes())
-            if (
-                len(signature) != 128
-                or signature != signature.lower()
-                or any(character not in "0123456789abcdef" for character in signature)
-            ):
-                raise RuntimeError("signer returned an invalid Ed25519 signature")
-            envelope = replace(record.unsigned_envelope, signature=signature)
-            sequence = self.state.sequence + 1
-            bundle = {
-                "schema": "pulpo.authority-evidence.v1",
-                "sequence": sequence,
-                "request": asdict(record.request),
-                "request_id": request_id,
-                "challenge_hash": sha256(record.challenge).hexdigest(),
-                "credential_id_hash": sha256(credential_id.encode()).hexdigest(),
-                "assertion": assertion,
-                "envelope": asdict(envelope),
-            }
-            evidence_hash = self.evidence.append(bundle)
-            _require_digest(evidence_hash, "evidence_hash")
-            self.state.sequence = sequence
-            self.state.credentials[credential_id] = replace(
-                credential,
-                sign_count=result.new_sign_count,
-            )
-            record.status = "approved"
-            record.envelope = envelope
-            record.evidence_hash = evidence_hash
-            return envelope
+                record.status = "evidence_pending"
+                record.envelope = envelope
+                record.evidence_bundle = bundle
+                record.evidence_hash = None
+
+        # Never release the envelope while evidence is still unresolved. This
+        # operation is idempotent for a correctly implemented append-only sink.
+        # An evidence-pending retry ignores a newly supplied assertion because
+        # the exact verified assertion and envelope are already durable.
+        if resume_evidence or record.status == "evidence_pending":
+            return self._complete_evidence(request_id)
+        raise RuntimeError("approval evidence state invalid")
 
     def poll(self, request_id: str) -> dict[str, object]:
-        record = self._record(request_id)
-        self._expire(record)
-        result: dict[str, object] = {"status": record.status}
-        if record.status == "approved" and record.envelope is not None:
-            result["envelope"] = asdict(record.envelope)
-        elif record.status in {"denied", "expired"}:
-            result["reason"] = record.reason or record.status
-        return result
+        with self.state.lock:
+            record = self._record(request_id)
+            self._expire(record)
+            status = record.status
+
+        if status == "evidence_pending":
+            self._complete_evidence(request_id)
+
+        with self.state.lock:
+            record = self._record(request_id)
+            result: dict[str, object] = {"status": record.status}
+            if record.status == "approved" and record.envelope is not None:
+                result["envelope"] = asdict(record.envelope)
+            elif record.status in {"denied", "expired"}:
+                result["reason"] = record.reason or record.status
+            return result
+
+    def _complete_evidence(self, request_id: str) -> ApprovalEnvelope:
+        with self.state.lock:
+            record = self._record(request_id)
+            if record.status == "approved":
+                if record.envelope is None or record.evidence_hash is None:
+                    raise RuntimeError("approved authority state is incomplete")
+                return record.envelope
+            if (
+                record.status != "evidence_pending"
+                or record.envelope is None
+                or record.evidence_bundle is None
+            ):
+                raise RuntimeError("approval evidence is not resumable")
+            envelope = record.envelope
+            bundle = json.loads(_canonical(record.evidence_bundle))
+
+        try:
+            evidence_hash = self.evidence.append(bundle)
+        except Exception as exc:
+            raise RuntimeError("authority evidence unavailable") from exc
+        _require_digest(evidence_hash, "evidence_hash")
+
+        with self.state.lock:
+            record = self._record(request_id)
+            if record.status == "approved":
+                if record.envelope != envelope or record.evidence_hash != evidence_hash:
+                    raise RuntimeError("approved authority evidence diverged")
+                return envelope
+            if (
+                record.status != "evidence_pending"
+                or record.envelope != envelope
+                or record.evidence_bundle != bundle
+            ):
+                raise RuntimeError("authority evidence completion raced with state change")
+            record.evidence_hash = evidence_hash
+            record.status = "approved"
+            record.evidence_bundle = None
+            return envelope
 
     def _record(self, request_id: str) -> RequestState:
         record = self.state.requests.get(request_id)
