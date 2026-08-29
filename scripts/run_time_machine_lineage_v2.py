@@ -348,7 +348,13 @@ def k09():
 
 def k10():
     from pulpo import GovernanceKernel, Intent, Policy
-    kernel = GovernanceKernel(Policy(frozenset({"write"}), 100), secret=b"tm-v2", clock=lambda: NOW)
+    try:
+        kernel = GovernanceKernel(Policy(frozenset({"write"}), 100), secret=b"tm-v2", clock=lambda: NOW)
+    except TypeError:
+        try:
+            kernel = GovernanceKernel(Policy(frozenset({"write"}), 100), secret=b"tm-v2")
+        except TypeError as exc:
+            return unavailable("target_lock_kernel_api_unavailable", type(exc).__name__)
     if not hasattr(kernel, "lock_target") or not hasattr(kernel, "evaluate_locked_target"):
         return unavailable("target_lock_control_unavailable")
     intent = Intent("agent:builder", "write", "repo:README.md", 5, "tm-v2")
