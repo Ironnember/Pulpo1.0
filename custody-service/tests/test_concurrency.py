@@ -115,13 +115,19 @@ class CustodyServiceConcurrencyTests(unittest.TestCase):
         )
         return service, custody, budget
 
-    def test_two_callers_same_exact_order_create_one_authoritative_attempt(self):
+    def test_two_callers_same_commitment_create_one_authoritative_attempt(self):
         service, custody, budget = self.service()
         order = self.order()
+        commitment = service.proposals.create(
+            order,
+            availability_hash="c" * 64,
+            created_at_ns=NOW - 100,
+            expires_at_ns=order.expires_at_ns,
+        )
 
         def authorize_once():
             try:
-                return "ok", service.authorize(order)
+                return "ok", service.authorize_commitment(commitment.commitment_id)
             except ServiceRejected as exc:
                 return "rejected", str(exc)
 
@@ -141,9 +147,10 @@ class CustodyServiceConcurrencyTests(unittest.TestCase):
         self.assertEqual(1, custody.snapshot().epoch)
         self.assertEqual(order.purchase_price_cents, budget.reserved_cents)
         self.assertEqual(1_000, budget.available_cents)
+        self.assertEqual(0, service.evidence.pending_count())
 
         with self.assertRaises(ServiceRejected):
-            service.authorize(order)
+            service.authorize_commitment(commitment.commitment_id)
         self.assertEqual(1, custody.snapshot().epoch)
         self.assertEqual(order.purchase_price_cents, budget.reserved_cents)
 
