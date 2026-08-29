@@ -146,9 +146,6 @@ class SQLiteKernelState:
 
     def approval_replay_reason(self, approval_id: str, nonce: str) -> str | None: return self._approval_replay_reason(approval_id, nonce)
     def _approval_replay_reason(self, approval_id: str, nonce: str) -> str | None:
-        # One statement gives ID/nonce classification one SQLite read snapshot.
-        # A concurrent commit cannot appear between separate field probes and
-        # silently change the denial reason while authority remains denied.
         row = self._connection.execute(
             """
             SELECT CASE
@@ -235,6 +232,6 @@ class SQLiteKernelState:
     def _append(self, event: str, payload: dict[str, Any], timestamp_ns: int) -> None:
         row = self._connection.execute("SELECT hash FROM audit ORDER BY sequence DESC LIMIT 1").fetchone(); previous = row[0] if row else "0" * 64
         record = _audit_record(previous, event, payload, timestamp_ns)
-        self._connection.execute("INSERT INTO audit (event, payload_json, previous_hash, timestamp_ns, hash) VALUES (?, ?, ?, ?, ?, ?)", (record["event"], _canonical(record["payload"]).decode(), record["previous_hash"], record["timestamp_ns"], record["hash"]))
+        self._connection.execute("INSERT INTO audit (event, payload_json, previous_hash, timestamp_ns, hash) VALUES (?, ?, ?, ?, ?)", (record["event"], _canonical(record["payload"]).decode(), record["previous_hash"], record["timestamp_ns"], record["hash"]))
 
     def close(self) -> None: self._connection.close()
