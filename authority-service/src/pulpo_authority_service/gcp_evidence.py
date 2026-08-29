@@ -53,7 +53,7 @@ class GoogleCloudLockedEvidenceSink:
         if minimum_retention_seconds <= 0:
             raise ValueError("minimum_retention_seconds must be positive")
         prefix = object_prefix.strip("/")
-        if not prefix or prefix != object_prefix.strip("/"):
+        if not prefix or object_prefix != prefix:
             raise ValueError("object_prefix must contain non-slash canonical text")
         if object_prefix != object_prefix.strip():
             raise ValueError("object_prefix must be canonical text")
