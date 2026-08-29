@@ -71,6 +71,21 @@ class NameComCoreTests(unittest.TestCase):
         self.assertIsNotNone(result.order)
         return result.order
 
+    @staticmethod
+    def availability(order, *, purchasable=True, purchase=20.0, renewal=24.0):
+        return {
+            "results": [
+                {
+                    "domainName": order.domain,
+                    "purchasable": purchasable,
+                    "premium": False,
+                    "purchasePrice": purchase,
+                    "renewalPrice": renewal,
+                    "purchaseType": "registration",
+                }
+            ]
+        }
+
     def test_sandbox_requires_test_username_and_production_requires_explicit_enable(self):
         with self.assertRaisesRegex(NameComViolation, "sandbox_username_must_end_test"):
             NameComCoreConfig("pulpo", "token", environment="sandbox")
@@ -83,6 +98,47 @@ class NameComCoreTests(unittest.TestCase):
             allow_production=True,
         )
         self.assertEqual("https://api.name.com", enabled.base_url)
+
+    def test_preflight_uses_registration_filter_and_hashes_exact_live_prices(self):
+        order = self.order()
+        transport = FakeTransport([response(self.availability(order))])
+        adapter = NameComCoreRegistrarAdapter(
+            NameComCoreClient(
+                NameComCoreConfig("pulpo-test", "sandbox-token"),
+                transport=transport,
+            )
+        )
+        evidence_hash = adapter.preflight(order)
+        self.assertEqual(64, len(evidence_hash))
+        self.assertEqual(1, len(transport.calls))
+        method, url, _, raw_body = transport.calls[0]
+        self.assertEqual("POST", method)
+        self.assertEqual(
+            "https://api.dev.name.com/core/v1/domains:checkAvailability",
+            url,
+        )
+        self.assertEqual(
+            {"domainNames": [order.domain], "purchaseType": "registration"},
+            json.loads(raw_body.decode()),
+        )
+
+    def test_preflight_rejects_price_drift_or_unavailable_domain_before_write(self):
+        order = self.order()
+        for payload, reason in (
+            (self.availability(order, purchase=20.01), "purchase_price_changed"),
+            (self.availability(order, renewal=24.01), "renewal_price_changed"),
+            (self.availability(order, purchasable=False), "not_purchasable"),
+        ):
+            transport = FakeTransport([response(payload)])
+            adapter = NameComCoreRegistrarAdapter(
+                NameComCoreClient(
+                    NameComCoreConfig("pulpo-test", "sandbox-token"),
+                    transport=transport,
+                )
+            )
+            with self.assertRaisesRegex(NameComViolation, reason):
+                adapter.preflight(order)
+            self.assertEqual(1, len(transport.calls))
 
     def test_create_domain_uses_exact_core_endpoint_basic_auth_and_idempotency_key(self):
         order = self.order()
@@ -162,7 +218,7 @@ class NameComCoreTests(unittest.TestCase):
         transport = FakeTransport(
             [
                 response({"domainName": "pulpo-namecom-v0.example", "privacyEnabled": True}),
-                response({"id": 12345, "status": "complete"}),
+                response({"id": 12345, "status": "success"}),
                 response({"orders": [{"id": 12345}], "totalCount": 1}),
             ]
         )
@@ -180,7 +236,7 @@ class NameComCoreTests(unittest.TestCase):
             [
                 "https://api.dev.name.com/core/v1/domains/pulpo-namecom-v0.example",
                 "https://api.dev.name.com/core/v1/orders/12345",
-                "https://api.dev.name.com/core/v1/orders?domainName=pulpo-namecom-v0.example",
+                "https://api.dev.name.com/core/v1/orders?domainName=pulpo-namecom-v0.example&type=registration",
             ],
             [call[1] for call in transport.calls],
         )
