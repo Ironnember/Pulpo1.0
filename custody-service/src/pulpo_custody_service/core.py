@@ -1,17 +1,14 @@
 """Narrow service facade over canonical Pulpo governance/custody components.
 
-The service owns the trusted dependencies. A hostile worker may submit an exact
-order, request the immutable approval challenge for that exact locked target,
-return a signed external approval envelope when policy requires it, and use
-opaque attempt references. It cannot inject time, budget state, permits,
-provider credentials, custody roots, or alternate executors/observers.
+The service owns the trusted dependencies. A hostile worker may propose only a
+normalized domain name, receive a custody-built exact order/approval challenge,
+return a signed external approval envelope, and use opaque attempt references.
+It cannot inject time, prices, budget state, permits, provider credentials,
+custody roots, or alternate executors/observers.
 
 The canonical SQLite kernel backend intentionally owns a normal thread-bound
-SQLite connection. A web service therefore must not keep one kernel connection
-alive across request worker threads. `kernel_factory` opens a fresh kernel/state
-session inside the current request thread while all sessions share the same
-durable database. This preserves SQLite's own thread contract rather than
-turning thread checks off.
+SQLite connection. `kernel_factory` opens a fresh kernel/state session inside
+the current request thread while all sessions share the same durable database.
 """
 
 from __future__ import annotations
@@ -37,6 +34,7 @@ from pulpo.custody_reconcile import (
 )
 from pulpo.kernel import GovernanceKernel
 from pulpo.namecom_observer import NameComCoreObserver
+from pulpo.namecom_proposal import NameComSandboxProposal, NameComSandboxProposalBuilder
 
 
 class ServiceRejected(RuntimeError):
@@ -106,6 +104,7 @@ class DomainCustodyService:
         observer: NameComCoreObserver,
         observer_id: str,
         executor_id: str,
+        proposal_builder: NameComSandboxProposalBuilder | None = None,
     ) -> None:
         if not callable(kernel_factory):
             raise ValueError("kernel_factory is required")
@@ -116,6 +115,7 @@ class DomainCustodyService:
         self.budget = budget
         self.registrar = registrar
         self.observer = observer
+        self.proposal_builder = proposal_builder
         self.executor = TrustedDomainExecutor(custody, executor_id=executor_id)
         self.reconciler = IndependentDomainReconciler(
             custody,
@@ -142,6 +142,20 @@ class DomainCustodyService:
     def _target_id(order: DomainPurchaseOrder) -> str:
         return f"custody-domain:{order.order_hash}"
 
+    def prepare_proposal(
+        self,
+        domain: str,
+    ) -> tuple[NameComSandboxProposal, ApprovalChallenge]:
+        """Capture live sandbox pricing and return one exact non-authorizing order."""
+
+        if self.proposal_builder is None:
+            raise ServiceRejected("sandbox_proposal_builder_unavailable")
+        try:
+            proposal = self.proposal_builder.propose(domain)
+        except Exception as exc:
+            raise ServiceRejected(f"sandbox_proposal_rejected:{exc}") from exc
+        return proposal, self.prepare_approval(proposal.order)
+
     def prepare_approval(self, order: DomainPurchaseOrder) -> ApprovalChallenge:
         """Lock the exact target and expose only non-authorizing approval material."""
 
@@ -166,7 +180,11 @@ class DomainCustodyService:
                 intent_hash=kernel.intent_hash(intent),
                 policy_hash=kernel.policy_hash,
                 deployment_id=trust.deployment_id if trust is not None else None,
-                requested_ttl_ns=trust.max_approval_ttl_ns if approval_required and trust is not None else None,
+                requested_ttl_ns=(
+                    trust.max_approval_ttl_ns
+                    if approval_required and trust is not None
+                    else None
+                ),
                 approval_required=approval_required,
             )
 
@@ -230,7 +248,11 @@ class DomainCustodyService:
             reservation_id=handle.reservation_id,
         )
 
-    def execute(self, handle: AttemptHandle, order: DomainPurchaseOrder) -> ProviderAttemptClaim | None:
+    def execute(
+        self,
+        handle: AttemptHandle,
+        order: DomainPurchaseOrder,
+    ) -> ProviderAttemptClaim | None:
         if order.order_hash != handle.order_hash:
             raise ServiceRejected("execute_order_mismatch")
         try:
@@ -240,7 +262,11 @@ class DomainCustodyService:
         except CustodyViolation as exc:
             raise ServiceRejected(f"execution_rejected:{exc}") from exc
 
-    def reconcile(self, handle: AttemptHandle, order: DomainPurchaseOrder) -> DomainReconciliationResult:
+    def reconcile(
+        self,
+        handle: AttemptHandle,
+        order: DomainPurchaseOrder,
+    ) -> DomainReconciliationResult:
         if order.order_hash != handle.order_hash:
             raise ServiceRejected("reconcile_order_mismatch")
         ref = self._ref(handle)
