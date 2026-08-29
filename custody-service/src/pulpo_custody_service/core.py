@@ -1,9 +1,10 @@
 """Narrow service facade over canonical Pulpo governance/custody components.
 
 The service owns the trusted dependencies. A hostile worker may submit an exact
-order, a signed external approval envelope when policy requires it, and opaque
-attempt references. It cannot inject time, budget state, permits, provider
-credentials, custody roots, or alternate executors/observers.
+order, request the immutable approval challenge for that exact locked target,
+return a signed external approval envelope when policy requires it, and use
+opaque attempt references. It cannot inject time, budget state, permits,
+provider credentials, custody roots, or alternate executors/observers.
 
 The canonical SQLite kernel backend intentionally owns a normal thread-bound
 SQLite connection. A web service therefore must not keep one kernel connection
@@ -40,6 +41,45 @@ from pulpo.namecom_observer import NameComCoreObserver
 
 class ServiceRejected(RuntimeError):
     """A request failed the canonical custody/service boundary."""
+
+
+@dataclass(frozen=True)
+class ApprovalChallenge:
+    """Exact non-authorizing request compatible with the existing authority service."""
+
+    target_id: str
+    target_hash: str
+    principal: str
+    action: str
+    resource: str
+    cost: int
+    session_id: str
+    intent_hash: str
+    policy_hash: str
+    deployment_id: str | None
+    requested_ttl_ns: int | None
+    approval_required: bool
+    schema: str = "pulpo.custody-approval-challenge.v0"
+
+    def authority_request(self) -> dict[str, object] | None:
+        """Return the exact `pulpo.authority-request.v1` payload when required."""
+
+        if not self.approval_required:
+            return None
+        assert self.deployment_id is not None
+        assert self.requested_ttl_ns is not None
+        return {
+            "principal": self.principal,
+            "action": self.action,
+            "resource": self.resource,
+            "cost": self.cost,
+            "session_id": self.session_id,
+            "intent_hash": self.intent_hash,
+            "policy_hash": self.policy_hash,
+            "deployment_id": self.deployment_id,
+            "requested_ttl_ns": self.requested_ttl_ns,
+            "schema": "pulpo.authority-request.v1",
+        }
 
 
 @dataclass(frozen=True)
@@ -93,8 +133,6 @@ class DomainCustodyService:
         try:
             yield kernel
         finally:
-            # SQLiteKernelState exposes close(); InMemoryKernelState does not.
-            # The service never gives the state object to the worker.
             state = getattr(kernel, "_state", None)
             close = getattr(state, "close", None)
             if callable(close):
@@ -103,6 +141,34 @@ class DomainCustodyService:
     @staticmethod
     def _target_id(order: DomainPurchaseOrder) -> str:
         return f"custody-domain:{order.order_hash}"
+
+    def prepare_approval(self, order: DomainPurchaseOrder) -> ApprovalChallenge:
+        """Lock the exact target and expose only non-authorizing approval material."""
+
+        with self._kernel_session() as kernel:
+            intent = purchase_intent(order)
+            target = kernel.lock_target(self._target_id(order), intent)
+            resolution = kernel.resolve_locked_target(target.target_id, target.target_hash)
+            if resolution.outcome != "match" or resolution.target is None:
+                raise ServiceRejected(f"target_rejected:{resolution.reason}")
+            approval_required = intent.action in kernel.policy.approval_actions
+            trust = kernel.policy.authority_trust
+            if approval_required and trust is None:
+                raise ServiceRejected("approval_policy_missing_trust")
+            return ApprovalChallenge(
+                target_id=target.target_id,
+                target_hash=target.target_hash,
+                principal=intent.principal,
+                action=intent.action,
+                resource=intent.resource,
+                cost=intent.cost,
+                session_id=intent.session_id,
+                intent_hash=kernel.intent_hash(intent),
+                policy_hash=kernel.policy_hash,
+                deployment_id=trust.deployment_id if trust is not None else None,
+                requested_ttl_ns=trust.max_approval_ttl_ns if approval_required and trust is not None else None,
+                approval_required=approval_required,
+            )
 
     def authorize(
         self,
@@ -113,17 +179,10 @@ class DomainCustodyService:
         """Create one attempt only through canonical kernel + protected budget."""
 
         with self._kernel_session() as kernel:
-            coordinator = GovernedDomainAttemptCoordinator(
-                kernel,
-                self.custody,
-                self.budget,
-            )
+            coordinator = GovernedDomainAttemptCoordinator(kernel, self.custody, self.budget)
             intent = purchase_intent(order)
             target = kernel.lock_target(self._target_id(order), intent)
-            resolution = kernel.resolve_locked_target(
-                target.target_id,
-                target.target_hash,
-            )
+            resolution = kernel.resolve_locked_target(target.target_id, target.target_hash)
             if resolution.outcome != "match" or resolution.target is None:
                 raise ServiceRejected(f"target_rejected:{resolution.reason}")
 
@@ -165,35 +224,23 @@ class DomainCustodyService:
             raise ServiceRejected("attempt_unknown")
         if snapshot.object_hash != handle.order_hash:
             raise ServiceRejected("attempt_handle_order_mismatch")
-        # Downstream trusted components use only these exact fields. The worker
-        # cannot upgrade them into authority; each operation rechecks custody.
         return SimpleNamespace(
             attempt_id=handle.attempt_id,
             order_hash=handle.order_hash,
             reservation_id=handle.reservation_id,
         )
 
-    def execute(
-        self,
-        handle: AttemptHandle,
-        order: DomainPurchaseOrder,
-    ) -> ProviderAttemptClaim | None:
+    def execute(self, handle: AttemptHandle, order: DomainPurchaseOrder) -> ProviderAttemptClaim | None:
         if order.order_hash != handle.order_hash:
             raise ServiceRejected("execute_order_mismatch")
         try:
             return self.executor.execute(self._ref(handle), order, self.registrar)
         except ExternalConsequenceUnknown:
-            # The caller receives no retry right. Custody already records that
-            # the consequence may have occurred and reconciliation is required.
             return None
         except CustodyViolation as exc:
             raise ServiceRejected(f"execution_rejected:{exc}") from exc
 
-    def reconcile(
-        self,
-        handle: AttemptHandle,
-        order: DomainPurchaseOrder,
-    ) -> DomainReconciliationResult:
+    def reconcile(self, handle: AttemptHandle, order: DomainPurchaseOrder) -> DomainReconciliationResult:
         if order.order_hash != handle.order_hash:
             raise ServiceRejected("reconcile_order_mismatch")
         ref = self._ref(handle)
