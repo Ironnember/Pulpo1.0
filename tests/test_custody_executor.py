@@ -18,13 +18,22 @@ from pulpo.state import SQLiteKernelState
 
 
 NOW = 11_000_000
+PREFLIGHT_HASH = "b" * 64
 
 
 class FakeCustodyRegistrar:
-    def __init__(self, *, fail=False):
+    def __init__(self, *, fail=False, preflight_fail=False):
         self.fail = fail
+        self.preflight_fail = preflight_fail
+        self.preflight_calls = 0
         self.calls = 0
         self.idempotency_keys = []
+
+    def preflight(self, order):
+        self.preflight_calls += 1
+        if self.preflight_fail:
+            raise RuntimeError("simulated price drift")
+        return PREFLIGHT_HASH
 
     def purchase(self, order, *, max_charge_cents, idempotency_key):
         self.calls += 1
@@ -120,7 +129,11 @@ class CustodyExecutorTests(unittest.TestCase):
         claim = TrustedDomainExecutor(custody, executor_id="executor:domain-v0").execute(
             governed, order, adapter
         )
+        self.assertEqual(1, adapter.preflight_calls)
         self.assertEqual(1, adapter.calls)
+        self.assertEqual(PREFLIGHT_HASH, claim.preflight_hash)
+        self.assertIn(f":preflight:{PREFLIGHT_HASH}", claim.provider_request_id)
+        self.assertEqual(claim.provider_request_id, custody.attempt(governed.attempt_id).provider_request_id)
         self.assertEqual([governed.attempt_id], adapter.idempotency_keys)
         self.assertTrue(claim.reconciliation_required)
         self.assertEqual(
@@ -130,12 +143,34 @@ class CustodyExecutorTests(unittest.TestCase):
         self.assertIsNone(custody.attempt(governed.attempt_id).reconciliation_outcome)
         self.assertEqual(1_000, budget.available_cents)
 
+    def test_preflight_failure_releases_no_network_transmission_right(self):
+        custody, _, governed, order = self.governed_attempt()
+        adapter = FakeCustodyRegistrar(preflight_fail=True)
+        executor = TrustedDomainExecutor(custody, executor_id="executor:domain-v0")
+
+        with self.assertRaisesRegex(RuntimeError, "simulated price drift"):
+            executor.execute(governed, order, adapter)
+        self.assertEqual(1, adapter.preflight_calls)
+        self.assertEqual(0, adapter.calls)
+        snapshot = custody.attempt(governed.attempt_id)
+        self.assertEqual(SQLiteGovernanceCustody.ATTEMPT_CLAIMED, snapshot.state)
+        self.assertIsNone(snapshot.provider_request_id)
+
+        # Read-only preflight can be retried by the same executor identity, but
+        # a write right has still never been released.
+        adapter.preflight_fail = False
+        claim = executor.execute(governed, order, adapter)
+        self.assertEqual(2, adapter.preflight_calls)
+        self.assertEqual(1, adapter.calls)
+        self.assertEqual(PREFLIGHT_HASH, claim.preflight_hash)
+
     def test_lost_provider_response_is_unknown_and_cannot_retry_or_release_budget(self):
         custody, budget, governed, order = self.governed_attempt()
         adapter = FakeCustodyRegistrar(fail=True)
         executor = TrustedDomainExecutor(custody, executor_id="executor:domain-v0")
         with self.assertRaisesRegex(ExternalConsequenceUnknown, governed.attempt_id):
             executor.execute(governed, order, adapter)
+        self.assertEqual(1, adapter.preflight_calls)
         self.assertEqual(1, adapter.calls)
         self.assertEqual(
             SQLiteGovernanceCustody.RECONCILIATION_REQUIRED,
@@ -158,9 +193,11 @@ class CustodyExecutorTests(unittest.TestCase):
         wrong = FakeCustodyRegistrar()
         with self.assertRaisesRegex(CustodyViolation, "attempt_not_executable"):
             TrustedDomainExecutor(custody, executor_id="executor:other").execute(governed, order, wrong)
+        self.assertEqual(0, wrong.preflight_calls)
         self.assertEqual(0, wrong.calls)
         adapter = FakeCustodyRegistrar()
         TrustedDomainExecutor(custody, executor_id="executor:domain-v0").execute(governed, order, adapter)
+        self.assertEqual(1, adapter.preflight_calls)
         self.assertEqual(1, adapter.calls)
         self.assertEqual(
             SQLiteGovernanceCustody.RECONCILIATION_REQUIRED,
@@ -181,11 +218,12 @@ class CustodyExecutorTests(unittest.TestCase):
             expected_epoch=head.epoch,
             expected_state_root=head.state_root,
             attempt_id=governed.attempt_id,
-            provider_request_id=f"domain:{governed.attempt_id}",
+            provider_request_id=f"domain:{governed.attempt_id}:preflight:{PREFLIGHT_HASH}",
         )
         adapter = FakeCustodyRegistrar()
         with self.assertRaisesRegex(CustodyViolation, "attempt_not_executable"):
             TrustedDomainExecutor(custody, executor_id="executor:domain-v0").execute(governed, order, adapter)
+        self.assertEqual(0, adapter.preflight_calls)
         self.assertEqual(0, adapter.calls)
         self.assertEqual(
             SQLiteGovernanceCustody.REQUEST_TRANSMITTED,
@@ -210,6 +248,7 @@ class CustodyExecutorTests(unittest.TestCase):
             TrustedDomainExecutor(custody, executor_id="executor:domain-v0").execute(
                 governed, substituted, adapter
             )
+        self.assertEqual(0, adapter.preflight_calls)
         self.assertEqual(0, adapter.calls)
         self.assertEqual(
             SQLiteGovernanceCustody.ATTEMPT_AUTHORIZED,
