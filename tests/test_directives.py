@@ -63,17 +63,25 @@ class DirectiveProofTests(unittest.TestCase):
 
     def activate(self, state, d):
         kernel, verifier = self.governed(state)
-        controller = DirectiveAuthorityController(kernel, state, lambda: NOW)
+        controller = DirectiveAuthorityController(kernel)
         envelope = self.approve(kernel, verifier, controller.ACTIVATE, d, "activate-1", "activate-nonce-1")
         decision = controller.activate(d, envelope, operator_principal=OPERATOR)
         self.assertEqual("allow", decision.outcome)
         return kernel, verifier, controller
 
+    def test_directive_components_reject_parallel_state_and_clock_injection(self):
+        state = InMemoryKernelState()
+        kernel, _ = self.governed(state)
+        with self.assertRaises(TypeError):
+            DirectiveAuthorityController(kernel, InMemoryKernelState(), lambda: NOW)
+        with self.assertRaises(TypeError):
+            GovernedDirectiveProjection(kernel, InMemoryKernelState(), lambda: NOW)
+
     def test_chat_or_retrieval_cannot_create_authority(self):
         state = InMemoryKernelState()
         d = directive()
         kernel, _ = self.governed(state)
-        projection = GovernedDirectiveProjection(kernel, state, lambda: NOW)
+        projection = GovernedDirectiveProjection(kernel)
         decision = projection.evaluate(Intent("agent:builder", "write", "repo:file", 1), d)
         self.assertEqual(("deny", "directive_not_authorized"), (decision.outcome, decision.reason))
 
@@ -81,7 +89,7 @@ class DirectiveProofTests(unittest.TestCase):
         state = InMemoryKernelState()
         d = directive()
         kernel, verifier = self.governed(state)
-        controller = DirectiveAuthorityController(kernel, state, lambda: NOW)
+        controller = DirectiveAuthorityController(kernel)
         intent = controller.authority_intent(controller.ACTIVATE, d, operator_principal=OPERATOR)
         valid = signed_envelope(
             kernel,
@@ -101,7 +109,7 @@ class DirectiveProofTests(unittest.TestCase):
         original = directive(max_cost=1)
         broadened = directive(max_cost=99)
         kernel, verifier = self.governed(state)
-        controller = DirectiveAuthorityController(kernel, state, lambda: NOW)
+        controller = DirectiveAuthorityController(kernel)
         envelope = self.approve(kernel, verifier, controller.ACTIVATE, original, "activate-1", "activate-nonce-1")
         decision = controller.activate(broadened, envelope, operator_principal=OPERATOR)
         self.assertEqual(("deny", "approval_intent_mismatch"), (decision.outcome, decision.reason))
@@ -111,7 +119,7 @@ class DirectiveProofTests(unittest.TestCase):
         state = InMemoryKernelState()
         d = directive()
         kernel, _, _ = self.activate(state, d)
-        projection = GovernedDirectiveProjection(kernel, state, lambda: NOW)
+        projection = GovernedDirectiveProjection(kernel)
         allowed = projection.evaluate(Intent("agent:builder", "write", "repo:file", 5), d)
         denied = projection.evaluate(Intent("agent:builder", "write", "repo:file", 6), d)
         self.assertEqual("allow", allowed.outcome)
@@ -121,7 +129,7 @@ class DirectiveProofTests(unittest.TestCase):
         state = InMemoryKernelState()
         d = directive(max_cost=1)
         kernel, _, _ = self.activate(state, d)
-        projection = GovernedDirectiveProjection(kernel, state, lambda: NOW)
+        projection = GovernedDirectiveProjection(kernel)
         decision = projection.evaluate(Intent("agent:builder", "write", "repo:file", 2), d)
         self.assertEqual("directive_budget_exceeded", decision.reason)
 
@@ -129,7 +137,7 @@ class DirectiveProofTests(unittest.TestCase):
         state = InMemoryKernelState()
         d = directive(issuer_authority_id="authority:other")
         kernel, verifier = self.governed(state)
-        controller = DirectiveAuthorityController(kernel, state, lambda: NOW)
+        controller = DirectiveAuthorityController(kernel)
         envelope = self.approve(kernel, verifier, controller.ACTIVATE, d, "activate-1", "activate-nonce-1")
         decision = controller.activate(d, envelope, operator_principal=OPERATOR)
         self.assertEqual("directive_issuer_untrusted", decision.reason)
@@ -157,7 +165,7 @@ class DirectiveProofTests(unittest.TestCase):
 
             restarted = SQLiteKernelState(handle.name)
             restarted_kernel, _ = self.governed(restarted)
-            projection = GovernedDirectiveProjection(restarted_kernel, restarted, lambda: NOW)
+            projection = GovernedDirectiveProjection(restarted_kernel)
             decision = projection.evaluate(Intent("agent:builder", "write", "repo:file", 1), d)
             self.assertEqual("directive_revoked", decision.reason)
             self.assertTrue(restarted_kernel.verify_audit())
@@ -168,7 +176,7 @@ class DirectiveProofTests(unittest.TestCase):
         original = directive()
         kernel, _, _ = self.activate(state, original)
         broadened = directive(resource_prefixes=("repo:", "shell:"), max_cost=50)
-        projection = GovernedDirectiveProjection(kernel, state, lambda: NOW)
+        projection = GovernedDirectiveProjection(kernel)
         decision = projection.evaluate(Intent("agent:builder", "write", "shell:root", 1), broadened)
         self.assertEqual("directive_version_mismatch", decision.reason)
 
@@ -176,7 +184,7 @@ class DirectiveProofTests(unittest.TestCase):
         state = InMemoryKernelState()
         d = directive()
         kernel, _, _ = self.activate(state, d)
-        projection = GovernedDirectiveProjection(kernel, state, lambda: NOW)
+        projection = GovernedDirectiveProjection(kernel)
         intent = Intent("agent:builder", "write", "repo:file", 1)
         decision = projection.evaluate(intent, d)
         self.assertEqual("allow", decision.outcome)
@@ -194,7 +202,7 @@ class DirectiveProofTests(unittest.TestCase):
         state = InMemoryKernelState()
         d = directive()
         kernel, verifier, controller = self.activate(state, d)
-        projection = GovernedDirectiveProjection(kernel, state, lambda: NOW)
+        projection = GovernedDirectiveProjection(kernel)
         intent = Intent("agent:builder", "write", "repo:file", 1)
         decision = projection.evaluate(intent, d)
         self.assertEqual("allow", decision.outcome)
@@ -221,7 +229,7 @@ class DirectiveProofTests(unittest.TestCase):
             state = SQLiteKernelState(handle.name)
             d = directive()
             kernel, verifier, controller = self.activate(state, d)
-            projection = GovernedDirectiveProjection(kernel, state, lambda: NOW)
+            projection = GovernedDirectiveProjection(kernel)
             intent = Intent("agent:builder", "write", "repo:file", 1)
             decision = projection.evaluate(intent, d)
             self.assertEqual("allow", decision.outcome)
