@@ -1,0 +1,15 @@
+[project]
+name = "pulpo-hostile-worker-custody"
+version = "0.1.0"
+description = "Narrow custody/execution boundary for Pulpo Hostile Worker Consequence Proof V0"
+requires-python = ">=3.11"
+dependencies = [
+  "fastapi==0.141.1",
+  "uvicorn==0.52.4",
+]
+
+[project.optional-dependencies]
+test = ["httpx2==2.12.0"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
