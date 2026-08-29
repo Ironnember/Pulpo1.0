@@ -9,7 +9,7 @@ permissions:
   contents: read
 
 jobs:
-  test:
+  unit-tests:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -171,3 +171,29 @@ jobs:
               else:
                   raise AssertionError(path + ' unexpectedly exposed')
           "
+
+  # `test` is already a protected required status on main. Keep that exact
+  # context, but make it an explicit admission gate that fails unless both
+  # hostile-worker proofs and the ordinary unit suite succeeded. `always()` is
+  # intentional: a failed/skipped dependency must become a failed required
+  # check rather than a skipped check that branch protection may accept.
+  test:
+    if: ${{ always() }}
+    needs:
+      - unit-tests
+      - hostile-worker-custody
+      - hostile-worker-container-isolation
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Enforce hostile-worker admission dependencies
+        env:
+          UNIT_RESULT: ${{ needs.unit-tests.result }}
+          CUSTODY_RESULT: ${{ needs.hostile-worker-custody.result }}
+          CONTAINER_RESULT: ${{ needs.hostile-worker-container-isolation.result }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$UNIT_RESULT" = "success"
+          test "$CUSTODY_RESULT" = "success"
+          test "$CONTAINER_RESULT" = "success"
