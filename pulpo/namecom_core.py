@@ -4,14 +4,15 @@ Current official name.com CORE guidance uses:
 - sandbox: https://api.dev.name.com
 - production: https://api.name.com
 - HTTP Basic Auth with username + API token;
+- POST /core/v1/domains:checkAvailability immediately before registration;
 - POST /core/v1/domains for registration;
 - X-Idempotency-Key on Create Domain;
 - GET /core/v1/domains/{domainName} and Orders APIs for reconciliation.
 
-The adapter deliberately exposes only the domain-registration operation required
-by the frozen V0 proof. Production use is disabled unless explicitly enabled at
-construction. Credential material belongs in the trusted executor process, not
-the hostile worker.
+The adapter deliberately exposes only the standard one-year domain-registration
+operation required by the frozen V0 proof. Production use is disabled unless
+explicitly enabled at construction. Credential material belongs in the trusted
+executor process, not the hostile worker.
 """
 
 from __future__ import annotations
@@ -89,8 +90,10 @@ class UrllibNameComTransport:
                 exc.read(),
             )
         except (URLError, TimeoutError, OSError) as exc:
-            # The caller must treat transport ambiguity after transmission as an
-            # unknown external consequence, never as permission to retry.
+            # The caller must treat transport ambiguity after a write
+            # transmission as an unknown external consequence, never as
+            # permission to retry. Read-only preflight may be retried by the
+            # same trusted executor because it has no provider side effect.
             raise NameComViolation("namecom_transport_unknown") from exc
 
 
@@ -172,6 +175,21 @@ class NameComCoreClient:
             raise NameComViolation(f"namecom_http_{response.status}")
         return decoded, response
 
+    def check_availability(self, domain: str) -> dict[str, Any]:
+        """Run the definitive read-only registration availability/price precheck."""
+
+        if not domain or domain != domain.lower():
+            raise NameComViolation("namecom_domain_invalid")
+        decoded, _ = self._request_json(
+            "POST",
+            "/core/v1/domains:checkAvailability",
+            payload={
+                "domainNames": [domain],
+                "purchaseType": "registration",
+            },
+        )
+        return decoded
+
     def create_domain(
         self,
         order: DomainPurchaseOrder,
@@ -219,7 +237,7 @@ class NameComCoreClient:
     def list_orders_for_domain(self, domain: str) -> dict[str, Any]:
         if not domain or domain != domain.lower():
             raise NameComViolation("namecom_domain_invalid")
-        query = urlencode({"domainName": domain})
+        query = urlencode({"domainName": domain, "type": "registration"})
         decoded, _ = self._request_json("GET", f"/core/v1/orders?{query}")
         return decoded
 
@@ -229,6 +247,46 @@ class NameComCoreRegistrarAdapter:
 
     def __init__(self, client: NameComCoreClient) -> None:
         self.client = client
+
+    def preflight(self, order: DomainPurchaseOrder) -> str:
+        """Fail closed unless live availability and exact prices still match."""
+
+        if order.registrar != "name.com":
+            raise NameComViolation("namecom_registrar_mismatch")
+        decoded = self.client.check_availability(order.domain)
+        results = decoded.get("results")
+        if not isinstance(results, list):
+            raise NameComViolation("namecom_preflight_results_invalid")
+        matches = [
+            item
+            for item in results
+            if isinstance(item, dict) and item.get("domainName") == order.domain
+        ]
+        if len(matches) != 1:
+            raise NameComViolation("namecom_preflight_domain_ambiguous")
+        result = matches[0]
+        if result.get("purchasable") is not True:
+            raise NameComViolation("namecom_preflight_not_purchasable")
+        purchase_type = result.get("purchaseType")
+        if purchase_type is not None and purchase_type != "registration":
+            raise NameComViolation("namecom_preflight_purchase_type_changed")
+        purchase_cents = _usd_to_cents(result.get("purchasePrice"))
+        renewal_cents = _usd_to_cents(result.get("renewalPrice"))
+        if purchase_cents != order.purchase_price_cents:
+            raise NameComViolation("namecom_preflight_purchase_price_changed")
+        if renewal_cents != order.renewal_price_cents:
+            raise NameComViolation("namecom_preflight_renewal_price_changed")
+        evidence = {
+            "schema": "pulpo.namecom-preflight.v0",
+            "domain": order.domain,
+            "purchasable": True,
+            "purchase_type": purchase_type or "registration",
+            "purchase_price_cents": purchase_cents,
+            "renewal_price_cents": renewal_cents,
+            "premium": bool(result.get("premium", False)),
+            "reason": result.get("reason"),
+        }
+        return sha256(_canonical(evidence)).hexdigest()
 
     def purchase(
         self,
