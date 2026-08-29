@@ -4,11 +4,14 @@ from pathlib import Path
 import tempfile
 import unittest
 
+from pulpo.kernel import GovernanceKernel, Intent, Policy
+
 from pulpo.effect_reconcile import (
     EffectEnvelope,
     EffectReconciliationError,
     ExecutionIdentity,
     SurfaceSpec,
+    bind_resource_to_effect_envelope,
     capture_envelope_surfaces,
     capture_surface,
     reconcile_effects,
@@ -31,7 +34,6 @@ class PermitBoundEffectReconciliationTests(unittest.TestCase):
         self.executable.write_bytes(b"pinned-codex")
         self.executable_hash = hashlib.sha256(self.executable.read_bytes()).hexdigest()
         self.envelope = EffectEnvelope(
-            permit_id="permit-v1",
             executable_path=str(self.executable),
             executable_sha256=self.executable_hash,
             argv=(str(self.executable), "--sandbox", "read-only"),
@@ -197,7 +199,6 @@ class PermitBoundEffectReconciliationTests(unittest.TestCase):
 
     def test_envelope_hash_is_order_independent_for_surface_declaration(self):
         reversed_envelope = EffectEnvelope(
-            permit_id=self.envelope.permit_id,
             executable_path=self.envelope.executable_path,
             executable_sha256=self.envelope.executable_sha256,
             argv=self.envelope.argv,
@@ -214,7 +215,6 @@ class PermitBoundEffectReconciliationTests(unittest.TestCase):
         nested.mkdir()
         with self.assertRaisesRegex(EffectReconciliationError, "ambiguous_overlapping_surface_roots"):
             EffectEnvelope(
-                permit_id="overlap",
                 executable_path=str(self.executable),
                 executable_sha256=self.executable_hash,
                 argv=(str(self.executable),),
@@ -235,7 +235,6 @@ class PermitBoundEffectReconciliationTests(unittest.TestCase):
         runtime.mkdir()
         (host / "protected.txt").write_text("stable\n", encoding="utf-8")
         envelope = EffectEnvelope(
-            permit_id="nested-island",
             executable_path=str(self.executable),
             executable_sha256=self.executable_hash,
             argv=(str(self.executable),),
@@ -270,6 +269,41 @@ class PermitBoundEffectReconciliationTests(unittest.TestCase):
         self.assertEqual(result.status, "verified")
         self.assertGreater(result.authorized_runtime_effects, 0)
         self.assertEqual(result.protected_surface_delta, 0)
+
+    def test_existing_one_use_permit_is_cryptographically_bound_to_effect_envelope(self):
+        alternate = EffectEnvelope(
+            executable_path=self.envelope.executable_path,
+            executable_sha256=self.envelope.executable_sha256,
+            argv=self.envelope.argv + ("--alternate",),
+            workdir=self.envelope.workdir,
+            source_sha=self.envelope.source_sha,
+            profile=self.envelope.profile,
+            expires_at_ns=self.envelope.expires_at_ns,
+            surfaces=self.envelope.surfaces,
+        )
+        resource = bind_resource_to_effect_envelope("cmd:codex-readonly", self.envelope)
+        substituted_resource = bind_resource_to_effect_envelope("cmd:codex-readonly", alternate)
+        self.assertNotEqual(resource, substituted_resource)
+
+        kernel = GovernanceKernel(Policy(allowed_actions=frozenset({"run"}), max_cost=0))
+        exact = Intent(principal="local-intelligence", action="run", resource=resource)
+        substituted = Intent(
+            principal="local-intelligence",
+            action="run",
+            resource=substituted_resource,
+        )
+        decision = kernel.evaluate(exact)
+        self.assertEqual(decision.outcome, "allow")
+        self.assertIsNotNone(decision.permit)
+
+        self.assertFalse(kernel.consume(decision.permit, substituted))
+        self.assertTrue(kernel.consume(decision.permit, exact))
+        self.assertFalse(kernel.consume(decision.permit, exact))
+
+    def test_effect_resource_cannot_be_bound_twice(self):
+        resource = bind_resource_to_effect_envelope("cmd:codex-readonly", self.envelope)
+        with self.assertRaisesRegex(EffectReconciliationError, "resource_already_effect_bound"):
+            bind_resource_to_effect_envelope(resource, self.envelope)
 
     def test_symlink_snapshot_does_not_follow_target(self):
         target = self.base / "outside-target"
