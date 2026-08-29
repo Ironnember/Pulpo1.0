@@ -23,6 +23,7 @@ jobs:
 
       - name: Run live sandbox availability preflight
         env:
+          PYTHONPATH: ${{ github.workspace }}
           NAMECOM_SANDBOX_USERNAME: ${{ secrets.NAMECOM_SANDBOX_USERNAME }}
           NAMECOM_SANDBOX_EXECUTOR_TOKEN: ${{ secrets.NAMECOM_SANDBOX_EXECUTOR_TOKEN }}
           NAMECOM_SANDBOX_OBSERVER_TOKEN: ${{ secrets.NAMECOM_SANDBOX_OBSERVER_TOKEN }}
