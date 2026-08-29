@@ -1,0 +1,306 @@
+name: Local Authority Isolation Proof
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  local-authority-process-isolation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build local authority image
+        run: docker build -f authority-service/Dockerfile -t pulpo-authority-local:${{ github.sha }} .
+
+      - name: Prove hostile worker cannot enter authority custody
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          root="${RUNNER_TEMP}/pulpo-authority-${GITHUB_RUN_ID}"
+          secrets="$root/secrets"
+          public="$root/public"
+          result="$root/worker-result"
+          mkdir -p "$secrets" "$public" "$result"
+          chmod 777 "$secrets" "$public" "$result"
+
+          worker_token='worker-only-request-token-v0'
+          worker_token_sha="$(printf '%s' "$worker_token" | sha256sum | awk '{print $1}')"
+
+          network="pulpo-authority-${GITHUB_RUN_ID}"
+          authority_volume="pulpo-authority-data-${GITHUB_RUN_ID}"
+          authority="pulpo-authority-${GITHUB_RUN_ID}"
+          image="pulpo-authority-local:${GITHUB_SHA}"
+
+          docker network create "$network" >/dev/null
+          docker volume create "$authority_volume" >/dev/null
+          cleanup() {
+            docker rm -f "$authority" >/dev/null 2>&1 || true
+            docker network rm "$network" >/dev/null 2>&1 || true
+            docker volume rm "$authority_volume" >/dev/null 2>&1 || true
+            rm -rf "$root"
+          }
+          trap cleanup EXIT
+
+          # Generate ephemeral signer/TLS material *inside the authority image*
+          # so file ownership matches the non-root authority runtime. Only the
+          # public fingerprint and TLS certificate leave the secret directory.
+          docker run --rm -i \
+            -v "$secrets:/secrets:rw" \
+            -v "$public:/public:rw" \
+            "$image" python - <<'PY'
+          from datetime import datetime, timedelta, timezone
+          from hashlib import sha256
+          from pathlib import Path
+
+          from cryptography import x509
+          from cryptography.hazmat.primitives import hashes, serialization
+          from cryptography.hazmat.primitives.asymmetric import ed25519, rsa
+          from cryptography.x509.oid import NameOID
+
+          secrets = Path('/secrets')
+          public = Path('/public')
+
+          authority_key = ed25519.Ed25519PrivateKey.generate()
+          private = authority_key.private_bytes(
+              encoding=serialization.Encoding.Raw,
+              format=serialization.PrivateFormat.Raw,
+              encryption_algorithm=serialization.NoEncryption(),
+          )
+          raw_public = authority_key.public_key().public_bytes(
+              encoding=serialization.Encoding.Raw,
+              format=serialization.PublicFormat.Raw,
+          )
+          signer_path = secrets / 'authority-private-key.hex'
+          signer_path.write_text(private.hex() + '\n', encoding='ascii')
+          signer_path.chmod(0o600)
+          (public / 'fingerprint').write_text(sha256(raw_public).hexdigest() + '\n', encoding='ascii')
+
+          tls_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+          name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, 'authority.local')])
+          now = datetime.now(timezone.utc)
+          certificate = (
+              x509.CertificateBuilder()
+              .subject_name(name)
+              .issuer_name(name)
+              .public_key(tls_key.public_key())
+              .serial_number(x509.random_serial_number())
+              .not_valid_before(now - timedelta(minutes=1))
+              .not_valid_after(now + timedelta(days=1))
+              .add_extension(x509.SubjectAlternativeName([x509.DNSName('authority.local')]), critical=False)
+              .sign(tls_key, hashes.SHA256())
+          )
+          tls_key_path = secrets / 'tls.key'
+          tls_key_path.write_bytes(
+              tls_key.private_bytes(
+                  encoding=serialization.Encoding.PEM,
+                  format=serialization.PrivateFormat.PKCS8,
+                  encryption_algorithm=serialization.NoEncryption(),
+              )
+          )
+          tls_key_path.chmod(0o600)
+          (public / 'tls.crt').write_bytes(certificate.public_bytes(serialization.Encoding.PEM))
+          PY
+          chmod 755 "$secrets" "$public" "$result"
+          fingerprint="$(tr -d '\n' < "$public/fingerprint")"
+
+          cat > "$secrets/credentials.json" <<'JSON'
+          {
+            "schema": "pulpo.local-authority-credentials.v0",
+            "credentials": [
+              {
+                "credential_id": "credential:hardware-primary",
+                "public_key_hex": "00",
+                "sign_count": 0,
+                "role": "primary",
+                "active": true,
+                "hardware_attested": true,
+                "backup_eligible": false
+              }
+            ]
+          }
+          JSON
+          chmod 644 "$secrets/credentials.json"
+
+          docker run -d \
+            --name "$authority" \
+            --network "$network" \
+            --network-alias authority.local \
+            --read-only \
+            --tmpfs /tmp:rw,noexec,nosuid,size=16m \
+            --cap-drop ALL \
+            --security-opt no-new-privileges:true \
+            -v "$authority_volume:/var/lib/pulpo/authority:rw" \
+            -v "$secrets:/run/pulpo-authority:ro" \
+            -v "$public:/public:ro" \
+            -e PULPO_AUTHORITY_ORIGIN=https://authority.local:8443 \
+            -e PULPO_AUTHORITY_RP_ID=authority.local \
+            -e PULPO_AUTHORITY_PORT=8443 \
+            -e PULPO_AUTHORITY_ID=authority:local-acceptance \
+            -e PULPO_AUTHORITY_VERIFIER_ID=verifier:local-ed25519 \
+            -e PULPO_AUTHORITY_KEY_ID=key:local-authority-v0 \
+            -e PULPO_AUTHORITY_EXPECTED_KEY_FINGERPRINT="$fingerprint" \
+            -e PULPO_AUTHORITY_DEPLOYMENT_ID=deployment:local-acceptance-v0 \
+            -e PULPO_AUTHORITY_MAX_TTL_SECONDS=300 \
+            -e PULPO_AUTHORITY_PRIVATE_KEY_PATH=/run/pulpo-authority/authority-private-key.hex \
+            -e PULPO_AUTHORITY_CREDENTIALS_PATH=/run/pulpo-authority/credentials.json \
+            -e PULPO_AUTHORITY_STATE_PATH=/var/lib/pulpo/authority/state/authority.sqlite3 \
+            -e PULPO_AUTHORITY_EVIDENCE_DIR=/var/lib/pulpo/authority/evidence \
+            -e PULPO_AUTHORITY_WORKER_TOKEN_SHA256="$worker_token_sha" \
+            -e PULPO_AUTHORITY_TLS_CERT_PATH=/public/tls.crt \
+            -e PULPO_AUTHORITY_TLS_KEY_PATH=/run/pulpo-authority/tls.key \
+            "$image" >/dev/null
+
+          healthy=0
+          for _ in $(seq 1 30); do
+            status="$(docker inspect -f '{{.State.Status}}' "$authority")"
+            health="$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' "$authority")"
+            if [ "$status" = exited ] || [ "$status" = dead ]; then
+              docker logs "$authority" >&2 || true
+              exit 1
+            fi
+            if [ "$health" = healthy ]; then
+              healthy=1
+              break
+            fi
+            sleep 1
+          done
+          test "$healthy" = 1
+
+          test "$(docker inspect -f '{{.HostConfig.ReadonlyRootfs}}' "$authority")" = true
+          docker exec "$authority" sh -c 'test "$(id -u)" -ne 0'
+          docker exec "$authority" sh -c 'test -f /var/lib/pulpo/authority/state/authority.sqlite3'
+          test -z "$(docker port "$authority")"
+
+          # A fresh hostile worker gets only its narrow request token, public TLS
+          # certificate, and its own result directory. It receives neither the
+          # authority data volume nor signer/WebAuthn material nor Docker socket.
+          docker run --rm -i \
+            --network "$network" \
+            -e WORKER_TOKEN="$worker_token" \
+            -v "$public:/public:ro" \
+            -v "$result:/result:rw" \
+            python:3.11-slim \
+            python - <<'PY'
+          import hashlib, json, os, ssl, urllib.error, urllib.parse, urllib.request
+          from pathlib import Path
+
+          assert not os.path.exists('/run/pulpo-authority/authority-private-key.hex')
+          assert not os.path.exists('/run/pulpo-authority/credentials.json')
+          assert not os.path.exists('/var/lib/pulpo/authority/state/authority.sqlite3')
+          assert not os.path.exists('/var/lib/pulpo/authority/evidence')
+          assert not os.path.exists('/var/run/docker.sock')
+
+          base = 'https://authority.local:8443'
+          context = ssl.create_default_context(cafile='/public/tls.crt')
+
+          def request(method, path, body=None, token=None):
+              data = None if body is None else json.dumps(body, separators=(',', ':')).encode()
+              headers = {'Accept': 'application/json', 'Content-Type': 'application/json'}
+              if token is not None:
+                  headers['Authorization'] = 'Bearer ' + token
+              req = urllib.request.Request(base + path, data=data, method=method, headers=headers)
+              try:
+                  with urllib.request.urlopen(req, context=context, timeout=5) as response:
+                      return response.status, json.loads(response.read())
+              except urllib.error.HTTPError as exc:
+                  return exc.code, json.loads(exc.read())
+
+          status, health = request('GET', '/health')
+          assert status == 200 and health == {'status': 'ok', 'authority_effect': 'none'}
+
+          intent = {
+              'principal': 'agent:hostile-worker',
+              'action': 'request',
+              'resource': 'domain:acceptance.example',
+              'cost': 0,
+              'session_id': 'session:local-container-proof',
+          }
+          canonical = json.dumps(intent, sort_keys=True, separators=(',', ':')).encode()
+          approval = {
+              **intent,
+              'intent_hash': hashlib.sha256(canonical).hexdigest(),
+              'policy_hash': 'a' * 64,
+              'deployment_id': 'deployment:local-acceptance-v0',
+              'requested_ttl_ns': 120_000_000_000,
+              'schema': 'pulpo.authority-request.v1',
+          }
+
+          status, _ = request('POST', '/v1/approval-requests', approval)
+          assert status == 401
+          status, _ = request('POST', '/v1/approval-requests', approval, 'wrong-token')
+          assert status == 401
+
+          token = os.environ['WORKER_TOKEN']
+          status, created = request('POST', '/v1/approval-requests', approval, token)
+          assert status == 200
+          request_id = created['request_id']
+          assert created['approval_url'].startswith(base + '/human/approval/')
+          quoted = urllib.parse.quote(request_id, safe='')
+          status, pending = request('GET', '/v1/approval-requests/' + quoted, token=token)
+          assert status == 200 and pending == {'status': 'pending'}
+
+          # Worker possession of request/poll identity does not produce approval.
+          status, _ = request(
+              'POST',
+              '/human/approval/' + quoted + '/assertion',
+              {'credential_id': 'credential:hardware-primary', 'assertion': '{'},
+              token,
+          )
+          assert status == 403
+          status, pending = request('GET', '/v1/approval-requests/' + quoted, token=token)
+          assert status == 200 and pending == {'status': 'pending'}
+
+          for path in ('/docs', '/redoc', '/openapi.json', '/v1/sign', '/v1/enroll', '/v1/recover', '/v1/rotate', '/v1/revoke'):
+              status, _ = request('GET', path, token=token)
+              assert status == 404, (path, status)
+
+          Path('/result/request_id').write_text(request_id + '\n', encoding='utf-8')
+          PY
+
+          request_id="$(tr -d '\n' < "$result/request_id")"
+          test -n "$request_id"
+
+          # Restart the exact authority process over the same authority volume.
+          docker restart "$authority" >/dev/null
+          healthy=0
+          for _ in $(seq 1 30); do
+            health="$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' "$authority")"
+            if [ "$health" = healthy ]; then
+              healthy=1
+              break
+            fi
+            sleep 1
+          done
+          test "$healthy" = 1
+
+          # The same worker can still poll the same pending request after restart,
+          # but still receives no authority custody or approval power.
+          docker run --rm -i \
+            --network "$network" \
+            -e WORKER_TOKEN="$worker_token" \
+            -e REQUEST_ID="$request_id" \
+            -v "$public:/public:ro" \
+            python:3.11-slim \
+            python - <<'PY'
+          import json, os, ssl, urllib.parse, urllib.request
+
+          assert not os.path.exists('/run/pulpo-authority/authority-private-key.hex')
+          assert not os.path.exists('/var/lib/pulpo/authority/state/authority.sqlite3')
+          context = ssl.create_default_context(cafile='/public/tls.crt')
+          request_id = urllib.parse.quote(os.environ['REQUEST_ID'], safe='')
+          request = urllib.request.Request(
+              'https://authority.local:8443/v1/approval-requests/' + request_id,
+              headers={
+                  'Accept': 'application/json',
+                  'Authorization': 'Bearer ' + os.environ['WORKER_TOKEN'],
+              },
+          )
+          with urllib.request.urlopen(request, context=context, timeout=5) as response:
+              value = json.loads(response.read())
+          assert value == {'status': 'pending'}, value
+          PY
