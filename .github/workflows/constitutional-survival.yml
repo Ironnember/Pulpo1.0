@@ -1,0 +1,47 @@
+name: Constitutional Survival Proof
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  constitutional-survival:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Run deterministic randomized state sequence
+        run: python -W error -m unittest tests.test_constitutional_sequences -v
+
+      - name: Kill deliberate constitutional mutations
+        id: mutations
+        continue-on-error: true
+        run: python scripts/run_constitutional_mutations.py --output constitutional-survival.json
+
+      - name: Prove mutation harness restored the exact tree
+        if: always()
+        run: git diff --exit-code
+
+      - name: Preserve constitutional survival evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: constitutional-survival-${{ github.sha }}
+          path: constitutional-survival.json
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Enforce zero surviving constitutional mutations
+        if: always()
+        env:
+          MUTATION_OUTCOME: ${{ steps.mutations.outcome }}
+        run: test "$MUTATION_OUTCOME" = "success"
