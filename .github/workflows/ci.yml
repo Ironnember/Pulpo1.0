@@ -53,3 +53,18 @@ jobs:
         run: PYTHONPATH=authority-service/src:. python -W error -m unittest discover -s authority-service/tests -v
       - name: Compile independent service sources
         run: python -m compileall -q authority-service/src authority-service/tests
+
+  hostile-worker-custody:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install hostile-worker custody proof packages
+        run: python -m pip install '.[authority]' './custody-service[test]'
+      - name: Run independent custody service boundary proof
+        run: PYTHONPATH=custody-service/src:. python -W error -m unittest discover -s custody-service/tests -v
+      - name: Compile custody service sources
+        run: python -m compileall -q custody-service/src custody-service/tests
