@@ -83,9 +83,9 @@ def main() -> None:
     state = InMemoryKernelState()
     verifier = HmacTestVerifier()
     policy = Policy(
-        frozenset({"write", "activate_directive", "revoke_directive"}),
+        frozenset({"deploy", "write", "activate_directive", "revoke_directive"}),
         100,
-        frozenset({"write", "activate_directive", "revoke_directive"}),
+        frozenset({"deploy", "activate_directive", "revoke_directive"}),
         authority_trust=trust_for(verifier),
     )
     kernel = GovernanceKernel(
@@ -103,9 +103,11 @@ def main() -> None:
         clock=lambda: NOW,
     )
 
-    # Exact target: tampered identity stops before external authority is polled.
-    intent = Intent("agent:builder", "write", "repo:demo.txt", 1, "session:demo")
-    target = orchestrator.lock_target("demo-write", intent)
+    # Exact consequential target: tampered identity stops before external
+    # authority is polled. Deploy is intentionally approval-gated here, while
+    # directive-scoped write remains governed by the directive + kernel path.
+    intent = Intent("agent:builder", "deploy", "repo:demo.txt", 1, "session:demo")
+    target = orchestrator.lock_target("demo-deploy", intent)
     handle = orchestrator.request_target_approval(target, requested_ttl_ns=500)
     tampered = orchestrator.authorize_target(replace(handle, target_hash="0" * 64))
     assert tampered.resolution.reason == "target_hash_mismatch"
@@ -118,8 +120,9 @@ def main() -> None:
     replay_consume = orchestrator.consume_authorized_target(approved)
     assert first_consume is True and replay_consume is False
 
-    # Directive: activation needs separate authority; revocation invalidates an
-    # already-issued directive-bound permit at execution time.
+    # Directive: activation needs separate authority; once active it constrains
+    # an otherwise policy-allowed write. Revocation then invalidates the already
+    # issued directive-bound permit at execution time.
     directive = Directive(
         directive_id="demo-directive",
         version=1,
