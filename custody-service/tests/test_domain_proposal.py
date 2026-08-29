@@ -6,7 +6,7 @@ from pathlib import Path
 
 from fastapi.testclient import TestClient
 
-from pulpo.commerce import SQLiteBudgetAccount
+from pulpo.commerce import DomainPurchaseOrder, SQLiteBudgetAccount, purchase_intent
 from pulpo.custody import SQLiteGovernanceCustody
 from pulpo.kernel import GovernanceKernel, Policy
 from pulpo.namecom_core import NameComCoreClient, NameComCoreConfig, NameComResponse
@@ -14,7 +14,7 @@ from pulpo.namecom_proposal import NameComSandboxProposalBuilder
 from pulpo.state import SQLiteKernelState
 from tests.authority_support import HmacTestVerifier, signed_envelope, trust_for
 
-from pulpo_custody_service.api import OrderBody, create_app
+from pulpo_custody_service.api import create_app
 from pulpo_custody_service.core import DomainCustodyService
 
 
@@ -125,7 +125,13 @@ class DomainProposalApiTests(unittest.TestCase):
             clock=lambda: NOW,
         )
 
-    def test_domain_only_proposal_captures_live_price_and_external_approval_request(self):
+    @staticmethod
+    def order_from_payload(payload):
+        values = dict(payload)
+        values["prohibited_upsells"] = tuple(values["prohibited_upsells"])
+        return DomainPurchaseOrder(**values)
+
+    def test_domain_only_proposal_captures_price_commitment_and_approval_request(self):
         response = self.client.post("/v1/domain-proposals", json={"domain": DOMAIN})
         self.assertEqual(200, response.status_code, response.text)
         payload = response.json()
@@ -137,6 +143,11 @@ class DomainProposalApiTests(unittest.TestCase):
         self.assertEqual("agent:hostile-worker-sandbox-v0", payload["order"]["principal"])
         self.assertEqual("owner://iron-ember/namecom-sandbox", payload["order"]["owner_ref"])
         self.assertEqual("credential://name-com/sandbox-executor", payload["order"]["credential_ref"])
+        commitment = payload["proposal_commitment"]
+        self.assertEqual("pulpo.proposal-commitment.v0", commitment["schema"])
+        self.assertEqual("ready", commitment["state"])
+        self.assertEqual(payload["availability_hash"], commitment["availability_hash"])
+        self.assertEqual(self.order_from_payload(payload["order"]).order_hash, commitment["order_hash"])
         self.assertTrue(payload["approval_challenge"]["approval_required"])
         self.assertEqual(
             payload["approval_challenge"]["intent_hash"],
@@ -151,7 +162,7 @@ class DomainProposalApiTests(unittest.TestCase):
         self.assertNotIn("domain-proposal-custody-secret", raw)
         self.assertNotIn("domain-proposal-kernel-secret", raw)
 
-    def test_worker_cannot_inject_price_owner_principal_expiry_or_provider_credentials(self):
+    def test_worker_cannot_inject_consequential_proposal_fields(self):
         injections = (
             ("purchase_price_cents", 1),
             ("renewal_price_cents", 1),
@@ -169,20 +180,18 @@ class DomainProposalApiTests(unittest.TestCase):
                 self.assertEqual(422, response.status_code)
         self.assertEqual(0, len(self.transport.calls))
 
-    def test_exact_proposal_can_receive_external_signature_then_create_one_attempt(self):
+    def test_exact_commitment_can_receive_signature_then_create_one_attempt(self):
         proposal = self.client.post(
             "/v1/domain-proposals",
             json={"domain": DOMAIN},
         ).json()
-        order = OrderBody(**proposal["order"]).to_order()
+        order = self.order_from_payload(proposal["order"])
         challenge = proposal["approval_challenge"]
+        commitment_id = proposal["proposal_commitment"]["commitment_id"]
         self.assertEqual(
             challenge["intent_hash"],
-            self.signing_kernel.intent_hash(
-                __import__("pulpo.commerce", fromlist=["purchase_intent"]).purchase_intent(order)
-            ),
+            self.signing_kernel.intent_hash(purchase_intent(order)),
         )
-        purchase_intent = __import__("pulpo.commerce", fromlist=["purchase_intent"]).purchase_intent
         envelope = signed_envelope(
             self.signing_kernel,
             purchase_intent(order),
@@ -194,7 +203,10 @@ class DomainProposalApiTests(unittest.TestCase):
 
         authorized = self.client.post(
             "/v1/domain-attempts",
-            json={"order": proposal["order"], "approval": asdict(envelope)},
+            json={
+                "proposal_commitment_id": commitment_id,
+                "approval": asdict(envelope),
+            },
         )
         self.assertEqual(200, authorized.status_code, authorized.text)
         handle = authorized.json()
@@ -203,14 +215,32 @@ class DomainProposalApiTests(unittest.TestCase):
         self.assertEqual(2_000, handle["reserved_cents"])
         self.assertEqual(2_000, self.budget.reserved_cents)
         self.assertEqual(1, self.custody.snapshot().epoch)
+        self.assertEqual(0, self.service.evidence.pending_count())
 
         replay = self.client.post(
             "/v1/domain-attempts",
-            json={"order": proposal["order"], "approval": asdict(envelope)},
+            json={
+                "proposal_commitment_id": commitment_id,
+                "approval": asdict(envelope),
+            },
         )
         self.assertEqual(403, replay.status_code)
         self.assertEqual(2_000, self.budget.reserved_cents)
         self.assertEqual(1, self.custody.snapshot().epoch)
+
+    def test_identical_display_order_cannot_replace_commitment_reference(self):
+        proposal = self.client.post(
+            "/v1/domain-proposals",
+            json={"domain": DOMAIN},
+        ).json()
+        before = self.custody.snapshot()
+        response = self.client.post(
+            "/v1/domain-attempts",
+            json={"order": proposal["order"]},
+        )
+        self.assertEqual(422, response.status_code)
+        self.assertEqual(before, self.custody.snapshot())
+        self.assertEqual(0, self.budget.reserved_cents)
 
 
 if __name__ == "__main__":
