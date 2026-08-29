@@ -1,14 +1,10 @@
 """Narrow service facade over canonical Pulpo governance/custody components.
 
-The service owns the trusted dependencies. A hostile worker may propose only a
-normalized domain name, receive a custody-built exact order/approval challenge,
-return a signed external approval envelope, and use opaque attempt references.
-It cannot inject time, prices, budget state, permits, provider credentials,
-custody roots, or alternate executors/observers.
-
-The canonical SQLite kernel backend intentionally owns a normal thread-bound
-SQLite connection. `kernel_factory` opens a fresh kernel/state session inside
-the current request thread while all sessions share the same durable database.
+The hostile worker may choose only a normalized domain, carry an opaque trusted
+proposal commitment to independent approval, and later carry an opaque attempt
+handle. It may not submit a reconstructed consequential order, authoritative
+time, prices, budget state, permits, provider credentials, custody roots, or
+alternate executors/observers.
 """
 
 from __future__ import annotations
@@ -22,19 +18,25 @@ from pulpo.authority import ApprovalEnvelope
 from pulpo.commerce import DomainPurchaseOrder, SQLiteBudgetAccount, purchase_intent
 from pulpo.custody import CustodyViolation, SQLiteGovernanceCustody
 from pulpo.custody_domain import GovernedDomainAttemptCoordinator
+from pulpo.custody_evidence import (
+    CustodyEvidenceViolation,
+    SQLiteCustodyEvidenceConvergence,
+)
 from pulpo.custody_executor import (
     CustodyRegistrarAdapter,
     ExternalConsequenceUnknown,
     ProviderAttemptClaim,
     TrustedDomainExecutor,
 )
-from pulpo.custody_reconcile import (
-    DomainReconciliationResult,
-    IndependentDomainReconciler,
-)
+from pulpo.custody_reconcile import DomainReconciliationResult, IndependentDomainReconciler
 from pulpo.kernel import GovernanceKernel
 from pulpo.namecom_observer import NameComCoreObserver
 from pulpo.namecom_proposal import NameComSandboxProposal, NameComSandboxProposalBuilder
+from pulpo.proposal_commitment import (
+    ProposalCommitment,
+    ProposalCommitmentViolation,
+    SQLiteProposalCommitments,
+)
 
 
 class ServiceRejected(RuntimeError):
@@ -43,8 +45,6 @@ class ServiceRejected(RuntimeError):
 
 @dataclass(frozen=True)
 class ApprovalChallenge:
-    """Exact non-authorizing request compatible with the existing authority service."""
-
     target_id: str
     target_hash: str
     principal: str
@@ -60,8 +60,6 @@ class ApprovalChallenge:
     schema: str = "pulpo.custody-approval-challenge.v0"
 
     def authority_request(self) -> dict[str, object] | None:
-        """Return the exact `pulpo.authority-request.v1` payload when required."""
-
         if not self.approval_required:
             return None
         assert self.deployment_id is not None
@@ -92,7 +90,7 @@ class AttemptHandle:
 
 
 class DomainCustodyService:
-    """One deployment boundary; no new policy or approval authority."""
+    """One trusted deployment boundary; no new policy or approval authority."""
 
     def __init__(
         self,
@@ -116,7 +114,18 @@ class DomainCustodyService:
         self.registrar = registrar
         self.observer = observer
         self.proposal_builder = proposal_builder
-        self.executor = TrustedDomainExecutor(custody, executor_id=executor_id)
+
+        # Ensure the existing canonical audit schema exists before installing
+        # the custody-evidence obligation trigger over the same protected path.
+        with self._kernel_session():
+            pass
+        self.proposals = SQLiteProposalCommitments(custody.path)
+        self.evidence = SQLiteCustodyEvidenceConvergence(custody)
+        self.executor = TrustedDomainExecutor(
+            custody,
+            executor_id=executor_id,
+            evidence_projector=self._project_evidence,
+        )
         self.reconciler = IndependentDomainReconciler(
             custody,
             budget,
@@ -125,8 +134,6 @@ class DomainCustodyService:
 
     @contextmanager
     def _kernel_session(self) -> Iterator[GovernanceKernel]:
-        """Open and close one request-local kernel state connection."""
-
         kernel = self._kernel_factory()
         if not isinstance(kernel, GovernanceKernel):
             raise ServiceRejected("kernel_factory_invalid")
@@ -138,6 +145,19 @@ class DomainCustodyService:
             if callable(close):
                 close()
 
+    def _project_evidence(self) -> None:
+        try:
+            self.evidence.project_all()
+        except CustodyEvidenceViolation as exc:
+            raise ServiceRejected(f"canonical_evidence_projection_failed:{exc}") from exc
+
+    def _trusted_now(self) -> int:
+        head = self.custody.snapshot()
+        try:
+            return self.custody._custody_now(head)
+        except CustodyViolation as exc:
+            raise ServiceRejected(f"custody_time_rejected:{exc}") from exc
+
     @staticmethod
     def _target_id(order: DomainPurchaseOrder) -> str:
         return f"custody-domain:{order.order_hash}"
@@ -145,19 +165,28 @@ class DomainCustodyService:
     def prepare_proposal(
         self,
         domain: str,
-    ) -> tuple[NameComSandboxProposal, ApprovalChallenge]:
-        """Capture live sandbox pricing and return one exact non-authorizing order."""
+    ) -> tuple[NameComSandboxProposal, ProposalCommitment, ApprovalChallenge]:
+        """Capture provider truth and persist one immutable non-authorizing object."""
 
         if self.proposal_builder is None:
             raise ServiceRejected("sandbox_proposal_builder_unavailable")
         try:
             proposal = self.proposal_builder.propose(domain)
+            commitment = self.proposals.create(
+                proposal.order,
+                availability_hash=proposal.availability_hash,
+                created_at_ns=proposal.observed_at_ns,
+                expires_at_ns=proposal.expires_at_ns,
+            )
+            challenge = self._prepare_approval(proposal.order)
+            return proposal, commitment, challenge
         except Exception as exc:
+            if isinstance(exc, ServiceRejected):
+                raise
             raise ServiceRejected(f"sandbox_proposal_rejected:{exc}") from exc
-        return proposal, self.prepare_approval(proposal.order)
 
-    def prepare_approval(self, order: DomainPurchaseOrder) -> ApprovalChallenge:
-        """Lock the exact target and expose only non-authorizing approval material."""
+    def _prepare_approval(self, order: DomainPurchaseOrder) -> ApprovalChallenge:
+        """Build approval material only from a custody-originated exact order."""
 
         with self._kernel_session() as kernel:
             intent = purchase_intent(order)
@@ -188,13 +217,24 @@ class DomainCustodyService:
                 approval_required=approval_required,
             )
 
-    def authorize(
+    def authorize_commitment(
         self,
-        order: DomainPurchaseOrder,
+        commitment_id: str,
         *,
         approval: ApprovalEnvelope | None = None,
     ) -> AttemptHandle:
-        """Create one attempt only through canonical kernel + protected budget."""
+        """Authorize only the exact order recovered from a trusted commitment."""
+
+        # A crash after a prior custody commit may leave an obligation pending.
+        # Canonical evidence must catch up before any new authority can advance.
+        self._project_evidence()
+        try:
+            _, order = self.proposals.claim(
+                commitment_id,
+                now_ns=self._trusted_now(),
+            )
+        except ProposalCommitmentViolation as exc:
+            raise ServiceRejected(f"proposal_provenance_rejected:{exc}") from exc
 
         with self._kernel_session() as kernel:
             coordinator = GovernedDomainAttemptCoordinator(kernel, self.custody, self.budget)
@@ -227,6 +267,9 @@ class DomainCustodyService:
             except Exception as exc:
                 raise ServiceRejected(f"custody_authorization_failed:{exc}") from exc
 
+        # The custody attempt and its evidence obligation committed together.
+        # Do not return an execution handle until canonical projection succeeds.
+        self._project_evidence()
         return AttemptHandle(
             attempt_id=governed.attempt_id,
             order_hash=governed.order_hash,
@@ -236,44 +279,48 @@ class DomainCustodyService:
             state=self.custody.ATTEMPT_AUTHORIZED,
         )
 
-    def _ref(self, handle: AttemptHandle):
+    def _ref_and_order(self, handle: AttemptHandle):
         snapshot = self.custody.attempt(handle.attempt_id)
         if snapshot is None:
             raise ServiceRejected("attempt_unknown")
         if snapshot.object_hash != handle.order_hash:
             raise ServiceRejected("attempt_handle_order_mismatch")
-        return SimpleNamespace(
-            attempt_id=handle.attempt_id,
-            order_hash=handle.order_hash,
-            reservation_id=handle.reservation_id,
+        try:
+            order = self.proposals.order_for_hash(snapshot.object_hash)
+        except ProposalCommitmentViolation as exc:
+            raise ServiceRejected(f"attempt_provenance_missing:{exc}") from exc
+        return (
+            SimpleNamespace(
+                attempt_id=handle.attempt_id,
+                order_hash=handle.order_hash,
+                reservation_id=handle.reservation_id,
+            ),
+            order,
         )
 
-    def execute(
-        self,
-        handle: AttemptHandle,
-        order: DomainPurchaseOrder,
-    ) -> ProviderAttemptClaim | None:
-        if order.order_hash != handle.order_hash:
-            raise ServiceRejected("execute_order_mismatch")
+    def execute(self, handle: AttemptHandle) -> ProviderAttemptClaim | None:
+        self._project_evidence()
+        ref, order = self._ref_and_order(handle)
         try:
-            return self.executor.execute(self._ref(handle), order, self.registrar)
+            return self.executor.execute(ref, order, self.registrar)
         except ExternalConsequenceUnknown:
             return None
-        except CustodyViolation as exc:
+        except (CustodyViolation, ServiceRejected) as exc:
+            if isinstance(exc, ServiceRejected):
+                raise
             raise ServiceRejected(f"execution_rejected:{exc}") from exc
 
-    def reconcile(
-        self,
-        handle: AttemptHandle,
-        order: DomainPurchaseOrder,
-    ) -> DomainReconciliationResult:
-        if order.order_hash != handle.order_hash:
-            raise ServiceRejected("reconcile_order_mismatch")
-        ref = self._ref(handle)
+    def reconcile(self, handle: AttemptHandle) -> DomainReconciliationResult:
+        self._project_evidence()
+        ref, order = self._ref_and_order(handle)
         try:
             observation = self.observer.observe(ref, order)
-            return self.reconciler.reconcile(ref, order, observation)
-        except CustodyViolation as exc:
+            result = self.reconciler.reconcile(ref, order, observation)
+            self._project_evidence()
+            return result
+        except (CustodyViolation, ServiceRejected) as exc:
+            if isinstance(exc, ServiceRejected):
+                raise
             raise ServiceRejected(f"reconciliation_rejected:{exc}") from exc
 
     def status(self, attempt_id: str) -> dict[str, object]:
@@ -289,4 +336,5 @@ class DomainCustodyService:
             "reconciliation_outcome": snapshot.reconciliation_outcome,
             "governance_epoch": head.epoch,
             "governance_state_root": head.state_root,
+            "pending_evidence_obligations": self.evidence.pending_count(),
         }
