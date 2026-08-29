@@ -1,6 +1,12 @@
 """Pulpo governed-execution kernel."""
 
-from .authority import ApprovalEnvelope, ApprovalVerifier, AuthorityTrust, Ed25519ApprovalVerifier
+from .authority import (
+    ApprovalEnvelope,
+    ApprovalVerifier,
+    AuthorityTrust,
+    Ed25519ApprovalVerifier,
+    P256ApprovalVerifier,
+)
 from .authority_client import AuthorityApprovalRequest, AuthorityClient, AuthorityPoll
 from .commerce import SQLiteBudgetAccount
 from .kernel import (
@@ -46,6 +52,7 @@ __all__ = [
     "LockedTarget",
     "NameComCoreAdapter",
     "OrchestrationError",
+    "P256ApprovalVerifier",
     "Policy",
     "PulpoOrchestrator",
     "SQLiteBudgetAccount",
