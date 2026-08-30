@@ -20,6 +20,7 @@ from .kernel import (
     StateIntegrityError,
     TargetResolution,
 )
+from .mcp_boundary import MCPBoundaryError, PulpoMCPProjection, create_mcp_server
 from .namecom import NameComCoreAdapter
 from .orchestrator import (
     ApprovalHandle,
@@ -50,14 +51,17 @@ __all__ = [
     "Intent",
     "KernelState",
     "LockedTarget",
+    "MCPBoundaryError",
     "NameComCoreAdapter",
     "OrchestrationError",
     "P256ApprovalVerifier",
     "Policy",
     "PulpoOrchestrator",
+    "PulpoMCPProjection",
     "SQLiteBudgetAccount",
     "SQLiteKernelState",
     "StateIntegrityError",
     "TargetResolution",
     "evaluate_locked_target_with_approval",
+    "create_mcp_server",
 ]

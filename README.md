@@ -27,6 +27,9 @@ The base dependency-free suite and optional asymmetric-authority suite prove:
   using the kernel's trusted clock.
 - transactional SQLite commerce state preserves reservations, attempted orders,
   reconciliation, and spend across restart.
+- the optional MCP projection can lock exact proposals and read canonical
+  evidence metadata without exposing approval, permits, execution, alternate
+  state, or alternate trusted time.
 
 ```bash
 python -m unittest discover -s tests -v
@@ -79,3 +82,5 @@ The restart-safe state proof and its storage boundary are in
 The governed success-and-failure learning rules are in the
 [outcome learning protocol](docs/OUTCOME_LEARNING_PROTOCOL.md), including the
 [legacy migration regression case](docs/OUTCOME_CASE_LEGACY_MIGRATION_REGRESSION.md).
+The deliberately non-authoritative MCP tool surface and the admission gate for
+future consequential tools are in [MCP boundary](docs/MCP_BOUNDARY.md).

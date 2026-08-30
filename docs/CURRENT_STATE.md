@@ -44,6 +44,15 @@ transactional SQLite budget store preserves reservation, attempted-order,
 reconciliation, receipt-hash, and spent state across restart and prevents two
 workers from over-reserving the same pilot ceiling.
 
+The optional MCP projection tests prove that an MCP client can lock one exact
+proposal and read canonical audit integrity metadata without receiving an
+approval path, permit, directive mutation, execution surface, alternate state,
+or alternate trusted clock. MCP-supplied authority claims are rejected by the
+adapter interface; an out-of-policy action remains denied by the canonical
+kernel after proposal; and target-content substitution is rejected. This does
+not prove connectivity to a third-party MCP host or admit a consequential MCP
+tool. See [the MCP boundary](MCP_BOUNDARY.md).
+
 The name.com CORE contract tests prove exact registration-only discovery,
 premium/acquisition denial, exact-cent parsing, pinned sandbox/production
 origins, opaque credential references, provider idempotency binding, sandbox
@@ -104,6 +113,7 @@ The current kernel is an in-process governance semantics proof. It does not yet 
 - protection of the SQLite state file from a hostile worker, host compromise,
   rollback to an older valid snapshot, disk failure, or unproven backup/restore;
 - an external production workload, independent evaluation, or customer outcome;
+- third-party MCP-host interoperability or a consequential MCP tool;
 - production readiness.
 
 External language may say **governance kernel with local restart-safe replay
