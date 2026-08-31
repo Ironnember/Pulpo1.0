@@ -7,6 +7,7 @@ import stat
 import subprocess
 import tempfile
 import unittest
+from unittest import mock
 
 from pulpo.git_clarity import (
     GitClarityError,
@@ -126,6 +127,84 @@ class GitClarityTests(unittest.TestCase):
                 canonical_ref="refs/heads/main",
                 expected_repository="github.com/attacker/Pulpo1.0",
             )
+
+    def test_git_environment_cannot_substitute_same_origin_repository(self):
+        attacker = Path(self.temporary.name) / "attacker" / "Pulpo1.0"
+        attacker.mkdir(parents=True)
+        subprocess.run(
+            ["git", "init", "-b", "main"],
+            cwd=attacker,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        for key, value in (
+            ("user.name", "Attacker"),
+            ("user.email", "attacker@example.invalid"),
+        ):
+            subprocess.run(
+                ["git", "config", key, value],
+                cwd=attacker,
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+        subprocess.run(
+            [
+                "git",
+                "remote",
+                "add",
+                "origin",
+                "https://github.com/Ironnember/Pulpo1.0.git",
+            ],
+            cwd=attacker,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        (attacker / "README.md").write_text("substituted object store\n", encoding="utf-8")
+        subprocess.run(
+            ["git", "add", "README.md"],
+            cwd=attacker,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        subprocess.run(
+            ["git", "commit", "-m", "attacker source"],
+            cwd=attacker,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        intended_head = self.git("rev-parse", "HEAD").stdout.strip()
+        attacker_head = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=attacker,
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+        malicious_global = Path(self.temporary.name) / "malicious.gitconfig"
+        malicious_global.write_text("[core]\n\tbare = true\n", encoding="utf-8")
+
+        hostile_environment = {
+            "GIT_DIR": str(attacker / ".git"),
+            "GIT_WORK_TREE": str(attacker),
+            "GIT_OBJECT_DIRECTORY": str(attacker / ".git" / "objects"),
+            "GIT_ALTERNATE_OBJECT_DIRECTORIES": str(attacker / ".git" / "objects"),
+            "GIT_CONFIG_GLOBAL": str(malicious_global),
+            "GIT_CONFIG_SYSTEM": str(malicious_global),
+            "GIT_CONFIG_COUNT": "1",
+            "GIT_CONFIG_KEY_0": "core.bare",
+            "GIT_CONFIG_VALUE_0": "true",
+        }
+        with mock.patch.dict(os.environ, hostile_environment):
+            report = self.collect()
+
+        self.assertEqual(intended_head, report["source"]["head"])
+        self.assertNotEqual(attacker_head, report["source"]["head"])
+        self.assertEqual(REPOSITORY_IDENTITY, report["repository"]["identity"])
 
     def test_credential_bearing_remote_is_rejected_without_echoing_secret(self):
         secret = "token-secret"

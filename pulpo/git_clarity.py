@@ -37,9 +37,18 @@ def _digest(value: object) -> str:
 
 
 def _git_environment() -> dict[str, str]:
-    environment = os.environ.copy()
+    # Git accepts repository, object-store, index, namespace, and configuration
+    # routing through GIT_* environment variables. Inheriting any of those would
+    # let the caller change the source being observed while the subprocess still
+    # runs with the requested repository as its cwd. Start from the non-Git
+    # process environment and add back only controls owned by this collector.
+    environment = {
+        key: value for key, value in os.environ.items() if not key.startswith("GIT_")
+    }
     environment.update(
         {
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "GIT_CONFIG_GLOBAL": os.devnull,
             "GIT_CONFIG_COUNT": "2",
             "GIT_CONFIG_KEY_0": "core.hooksPath",
             "GIT_CONFIG_VALUE_0": os.devnull,
