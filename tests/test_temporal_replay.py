@@ -92,6 +92,12 @@ class TemporalReplayTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             FrozenProofVector("proof", "claim", "abc", ("ci-proof",))
 
+    def test_allowed_sources_must_be_immutable_text_tuple(self):
+        with self.assertRaises(TypeError):
+            FrozenProofVector("proof", "claim", PROOF_SHA256, "ci-proof")
+        with self.assertRaises(TypeError):
+            FrozenProofVector("proof", "claim", PROOF_SHA256, ("ci-proof", 7))
+
     def test_proof_cannot_carry_authority(self):
         with self.assertRaises(ValueError):
             FrozenProofVector("proof", "claim", PROOF_SHA256, ("ci-proof",), "expand")
@@ -108,6 +114,19 @@ class TemporalReplayTests(unittest.TestCase):
                 True,
                 "expand",
             )
+
+    def test_authenticated_assertion_must_be_actual_boolean(self):
+        with self.assertRaises(TypeError):
+            evidence(OLD, authenticated="false")
+        with self.assertRaises(TypeError):
+            evidence(OLD, authenticated=1)
+
+    def test_generation_evidence_must_be_typed_immutable_tuple(self):
+        item = evidence(OLD)
+        with self.assertRaises(TypeError):
+            GenerationResult(commit_id=OLD, evidence=[item])
+        with self.assertRaises(TypeError):
+            GenerationResult(commit_id=OLD, evidence=("not-evidence",))
 
     def test_mismatched_commit_cannot_be_laundered(self):
         report = classify_temporal_replay(
@@ -187,6 +206,15 @@ class TemporalReplayTests(unittest.TestCase):
             TemporalClassification.AUTHORITY_REACTIVATION_ATTEMPT,
         )
         self.assertEqual(report.authority_effect, "none")
+
+    def test_empty_historical_authority_reference_is_rejected(self):
+        with self.assertRaises(ValueError):
+            classify_temporal_replay(
+                proof(),
+                generation(OLD, evidence(OLD)),
+                generation(NEW, evidence(NEW)),
+                historical_authority_ref="",
+            )
 
     def test_report_round_trip_is_stable_and_binds_proof(self):
         report = self.classify(EvidenceOutcome.PASS, EvidenceOutcome.PASS)
