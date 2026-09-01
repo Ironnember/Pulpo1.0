@@ -29,11 +29,18 @@ must not be exposed to intelligence, transport, UI, plugin, MCP, or distribution
 surfaces merely because the operation is called a proposal, memory update,
 metadata write, or audit event.
 
+`NO_WRITE_ROUTE != NO_WRITE_CAPABILITY`
+
+Capability possession matters independently of declared routes or methods. A
+process that retains the kernel, orchestrator, executor, state backend, or
+another canonical writer is not a read-only trust domain merely because its
+public API omits write endpoints.
+
 Ephemeral reasoning and proposal construction may remain outside the mutation
 boundary. A projection is read-only only when repeated, malformed, replayed, and
-substituted calls leave canonical state unchanged. Committing an ephemeral
-proposal into a durable target is a separate canonical mutation and must occur
-through a governed path.
+substituted calls leave canonical state unchanged and the projection itself does
+not retain a writer. Committing an ephemeral proposal into a durable target is a
+separate canonical mutation and must occur through a governed path.
 
 `KernelState` is the storage seam beneath those same steps. The default backend
 keeps the original ephemeral behavior; `SQLiteKernelState` atomically persists
@@ -85,10 +92,20 @@ push, merge, grant authority, issue permits, or append audit state. A PulpoGit
 report may be attached to an existing governed work receipt only after the
 normal kernel path authorizes that consequence.
 
-MCP follows the same rule. It may construct an exact ephemeral proposal and read
-canonical evidence metadata, but it may not lock a target or append canonical
-state. A target hash exists only after a separately governed canonical target
-commitment records the trusted lock time.
+MCP follows the same rule. The trusted Pulpo side may freeze primitive policy and
+audit metadata into an `MCPReadSnapshot`. The MCP projection and SDK server
+accept only that exact capability-free snapshot and retain no kernel,
+orchestrator, state backend, authority client, executor, policy object, clock, or
+ledger reference. Intent hashes are computed by the kernel's deterministic static
+hash function without a kernel instance. Proposal and evidence outputs are
+explicitly marked `freshness=frozen`; they cannot masquerade as live-current
+canonical state. A target hash exists only after a separately governed canonical
+target commitment records the trusted lock time.
+
+This V0 capability stripping proves the object/surface boundary, not hostile
+same-process memory isolation or a live read-only IPC transport. A future live
+MCP evidence path must prove freshness and read-only transport without returning
+a canonical writer to the MCP host.
 
 ## Security boundary
 
