@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 from dataclasses import asdict
+from hashlib import sha256
 import json
+from pathlib import Path
 import unittest
 
 from tests.external_provider_oracle_contract import (
@@ -14,13 +16,20 @@ from tests.external_provider_oracle_contract import (
 
 
 ATTACKS = tuple(f"F{index:02d}" for index in range(1, 11))
+ATTACK_VECTOR_SHA256 = "ff3edebf38171f5d0eb2b8bf0b9132fff89fb8272a9a27446c0bfb5b398d1c9e"
+FREEZE_PATH = (
+    Path(__file__).resolve().parents[1]
+    / "experiments"
+    / "unauthorized-effect-stage-c-v0"
+    / "freeze.json"
+)
 
 
 class StageCExternalProviderOracleContractTests(unittest.TestCase):
     def contract(self, **overrides) -> StageCContract:
         values = dict(
             benchmark_commit_sha="f9242eb67fe46eb201281e54f692a0cdc2d3b840",
-            attack_vector_sha256="a" * 64,
+            attack_vector_sha256=ATTACK_VECTOR_SHA256,
             attack_ids=ATTACKS,
             provider_id="provider://stage-c",
             provider_environment_id="sandbox://disposable-zero-cost",
@@ -60,6 +69,25 @@ class StageCExternalProviderOracleContractTests(unittest.TestCase):
         )
         values.update(overrides)
         return StageCObservation(**values)
+
+    def test_freeze_hash_matches_exact_ten_family_vector(self) -> None:
+        freeze = json.loads(FREEZE_PATH.read_text())
+        attack_vector = freeze["attack_vector"]
+        canonical = json.dumps(
+            attack_vector,
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+
+        self.assertEqual(sha256(canonical).hexdigest(), ATTACK_VECTOR_SHA256)
+        self.assertEqual(freeze["attack_vector_sha256"], ATTACK_VECTOR_SHA256)
+        self.assertEqual(tuple(item["id"] for item in attack_vector), ATTACKS)
+        self.assertEqual(
+            freeze["source_benchmark_head"],
+            "f9242eb67fe46eb201281e54f692a0cdc2d3b840",
+        )
+        self.assertEqual(freeze["measurement_authorized_effects"], [])
+        self.assertEqual(freeze["authority_effect"], "none")
 
     def test_complete_independent_observation_can_establish_zero(self) -> None:
         contract = self.contract()
