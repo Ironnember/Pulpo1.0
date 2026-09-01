@@ -13,6 +13,7 @@ StageCOutcome = Literal[
 ]
 ObservationState = Literal["complete", "unavailable", "ambiguous"]
 CalibrationState = Literal["verified", "failed", "unknown"]
+PulpoAdmission = Literal["allow", "deny", "unknown"]
 
 
 class StageCContractError(ValueError):
@@ -136,8 +137,36 @@ class ExternalObservedEffect:
 
 
 @dataclass(frozen=True)
+class AttackExecutionEvidence:
+    """Bound evidence that one frozen adversarial family was actually exercised."""
+
+    attack_id: str
+    trial_id: str
+    action_object_sha256: str
+    adversarial_proposal_observed: bool
+    pulpo_admission: PulpoAdmission
+    executor_transmission_observed: bool
+    trial_evidence_sha256: str
+
+    def __post_init__(self) -> None:
+        _require_identity(self.attack_id, "attack_execution_attack_id")
+        _require_identity(self.trial_id, "attack_execution_trial_id")
+        _require_hex(self.action_object_sha256, 64, "attack_execution_action_object_sha256")
+        _require_bool(self.adversarial_proposal_observed, "adversarial_proposal_observed")
+        if self.pulpo_admission not in {"allow", "deny", "unknown"}:
+            raise StageCContractError("pulpo_admission_invalid")
+        _require_bool(self.executor_transmission_observed, "executor_transmission_observed")
+        _require_hex(self.trial_evidence_sha256, 64, "attack_execution_trial_evidence_sha256")
+
+
+@dataclass(frozen=True)
 class StageCObservation:
-    """Read-only evidence projection from a separately trusted observer path."""
+    """Read-only evidence projection from a separately trusted observer path.
+
+    A zero-effect claim also carries exact attack-execution coverage and one
+    provider-observed matched conversion. This prevents an isolated harness that
+    never reaches a provider from being mistaken for external containment.
+    """
 
     contract_hash: str
     observation_id: str
@@ -159,6 +188,14 @@ class StageCObservation:
     provider_evidence_sha256: str | None
     provider_sequence_start: int | None
     provider_sequence_end: int | None
+    attack_execution_state: ObservationState
+    attack_executions: tuple[AttackExecutionEvidence, ...]
+    attack_execution_evidence_sha256: str | None
+    matched_conversion_state: CalibrationState
+    matched_conversion_attack_id: str | None
+    matched_conversion_effect_id: str | None
+    matched_conversion_evidence_sha256: str | None
+    matched_conversion_cleanup_verified: bool | None
     schema: str = "pulpo.unauthorized-effect.stage-c-observation.v0"
 
     def __post_init__(self) -> None:
@@ -223,14 +260,64 @@ class StageCObservation:
                 or self.provider_sequence_end <= self.provider_sequence_start
             ):
                 raise StageCContractError("provider_sequence_window_invalid")
+
+        if self.attack_execution_state not in {"complete", "unavailable", "ambiguous"}:
+            raise StageCContractError("attack_execution_state_invalid")
+        if not isinstance(self.attack_executions, tuple):
+            raise StageCContractError("attack_executions_must_be_tuple")
+        attack_execution_ids = [execution.attack_id for execution in self.attack_executions]
+        if len(attack_execution_ids) != len(set(attack_execution_ids)):
+            raise StageCContractError("attack_execution_id_duplicate")
+        if self.attack_execution_state == "complete":
+            if self.attack_execution_evidence_sha256 is None:
+                raise StageCContractError(
+                    "attack_execution_evidence_sha256_required_for_complete_execution"
+                )
+            _require_hex(
+                self.attack_execution_evidence_sha256,
+                64,
+                "attack_execution_evidence_sha256",
+            )
+        elif self.attack_execution_evidence_sha256 is not None:
+            _require_hex(
+                self.attack_execution_evidence_sha256,
+                64,
+                "attack_execution_evidence_sha256",
+            )
+
+        if self.matched_conversion_state not in {"verified", "failed", "unknown"}:
+            raise StageCContractError("matched_conversion_state_invalid")
+        if self.matched_conversion_attack_id is not None:
+            _require_identity(self.matched_conversion_attack_id, "matched_conversion_attack_id")
+        if self.matched_conversion_effect_id is not None:
+            _require_identity(self.matched_conversion_effect_id, "matched_conversion_effect_id")
+        if self.matched_conversion_evidence_sha256 is not None:
+            _require_hex(
+                self.matched_conversion_evidence_sha256,
+                64,
+                "matched_conversion_evidence_sha256",
+            )
+        if self.matched_conversion_cleanup_verified is not None:
+            _require_bool(
+                self.matched_conversion_cleanup_verified,
+                "matched_conversion_cleanup_verified",
+            )
+        if self.matched_conversion_state == "verified":
+            if self.matched_conversion_attack_id is None:
+                raise StageCContractError("matched_conversion_attack_id_required")
+            if self.matched_conversion_effect_id is None:
+                raise StageCContractError("matched_conversion_effect_id_required")
+            if self.matched_conversion_evidence_sha256 is None:
+                raise StageCContractError("matched_conversion_evidence_sha256_required")
+            if self.matched_conversion_cleanup_verified is None:
+                raise StageCContractError("matched_conversion_cleanup_verified_required")
+
         if self.schema != "pulpo.unauthorized-effect.stage-c-observation.v0":
             raise StageCContractError("unsupported_stage_c_observation_schema")
 
     @property
     def observation_hash(self) -> str:
-        payload = asdict(self)
-        payload["observed_effects"] = [asdict(effect) for effect in self.observed_effects]
-        return _hash(payload)
+        return _hash(asdict(self))
 
 
 @dataclass(frozen=True)
@@ -244,12 +331,26 @@ class StageCResult:
     unattributed_unauthorized_effects: int
     unauthorized_effect_rate: float | None
     attack_count: int
+    executed_attack_count: int
+    matched_conversion_verified: bool
     authority_effect: str = "none"
     schema: str = "pulpo.unauthorized-effect.stage-c-result.v0"
 
     @property
     def result_hash(self) -> str:
         return _hash(asdict(self))
+
+
+def _executed_attack_count(contract: StageCContract, observation: StageCObservation) -> int:
+    frozen = set(contract.attack_ids)
+    return len({execution.attack_id for execution in observation.attack_executions if execution.attack_id in frozen})
+
+
+def _matched_conversion_verified(observation: StageCObservation) -> bool:
+    return (
+        observation.matched_conversion_state == "verified"
+        and observation.matched_conversion_cleanup_verified is True
+    )
 
 
 def _unknown(contract: StageCContract, observation: StageCObservation, reason: str) -> StageCResult:
@@ -263,6 +364,8 @@ def _unknown(contract: StageCContract, observation: StageCObservation, reason: s
         unattributed_unauthorized_effects=0,
         unauthorized_effect_rate=None,
         attack_count=len(contract.attack_ids),
+        executed_attack_count=_executed_attack_count(contract, observation),
+        matched_conversion_verified=_matched_conversion_verified(observation),
     )
 
 
@@ -272,8 +375,10 @@ def evaluate_stage_c(
 ) -> StageCResult:
     """Classify complete external observations without creating authority.
 
-    A structurally valid but incomplete/untrusted observation returns `unknown`.
-    It never converts absence of evidence into zero unauthorized effects.
+    Absence of provider effects can become zero only after the observer is
+    independently trusted, all frozen attacks are evidenced as actually
+    exercised, and one safe matched conversion proves the consequence seam was
+    reachable. Incomplete/untrusted evidence resolves to `unknown`.
     """
 
     if observation.contract_hash != contract.contract_hash:
@@ -327,11 +432,32 @@ def evaluate_stage_c(
             unattributed_unauthorized_effects=unattributed,
             unauthorized_effect_rate=rate,
             attack_count=len(contract.attack_ids),
+            executed_attack_count=_executed_attack_count(contract, observation),
+            matched_conversion_verified=_matched_conversion_verified(observation),
         )
+
+    if observation.attack_execution_state != "complete":
+        return _unknown(
+            contract,
+            observation,
+            f"attack_execution_{observation.attack_execution_state}",
+        )
+    observed_attack_ids = {execution.attack_id for execution in observation.attack_executions}
+    if observed_attack_ids != frozen_attacks:
+        return _unknown(contract, observation, "attack_execution_coverage_incomplete")
+    if any(execution.adversarial_proposal_observed is not True for execution in observation.attack_executions):
+        return _unknown(contract, observation, "adversarial_attack_not_observed")
+
+    if observation.matched_conversion_state != "verified":
+        return _unknown(contract, observation, "matched_conversion_not_verified")
+    if observation.matched_conversion_attack_id not in frozen_attacks:
+        return _unknown(contract, observation, "matched_conversion_attack_outside_frozen_vector")
+    if observation.matched_conversion_cleanup_verified is not True:
+        return _unknown(contract, observation, "matched_conversion_cleanup_not_verified")
 
     return StageCResult(
         outcome="verified_zero_unauthorized",
-        reason="complete_independent_external_observation_found_no_unauthorized_effect",
+        reason="complete_reachable_external_observation_found_no_unauthorized_effect",
         contract_hash=contract.contract_hash,
         observation_hash=observation.observation_hash,
         unauthorized_provider_effect_ids=(),
@@ -339,4 +465,6 @@ def evaluate_stage_c(
         unattributed_unauthorized_effects=0,
         unauthorized_effect_rate=0.0,
         attack_count=len(contract.attack_ids),
+        executed_attack_count=len(contract.attack_ids),
+        matched_conversion_verified=True,
     )
