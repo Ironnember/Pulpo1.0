@@ -1,7 +1,7 @@
 import unittest
 
 from pulpo import GovernanceKernel, Intent, Policy, PulpoOrchestrator
-from pulpo.mcp_boundary import PulpoMCPProjection
+from pulpo.mcp_boundary import PulpoMCPProjection, freeze_mcp_snapshot
 
 
 class GovernedEffectBoundaryTests(unittest.TestCase):
@@ -11,7 +11,8 @@ class GovernedEffectBoundaryTests(unittest.TestCase):
             secret=b"governed-effect-boundary",
             clock=lambda: 3_000_000,
         )
-        self.projection = PulpoMCPProjection(PulpoOrchestrator(self.kernel))
+        self.orchestrator = PulpoOrchestrator(self.kernel)
+        self.projection = PulpoMCPProjection(freeze_mcp_snapshot(self.orchestrator))
 
     def test_no_permit_does_not_mean_no_governed_effect(self):
         """A canonical target lock mutates state even though no permit exists."""
@@ -28,7 +29,15 @@ class GovernedEffectBoundaryTests(unittest.TestCase):
         self.assertNotIn("permit", record["payload"])
         self.assertIsNotNone(self.kernel.get_locked_target("target-1"))
 
-    def test_non_authoritative_projection_cannot_receive_canonical_write_capability(self):
+    def test_no_write_route_does_not_mean_no_write_capability(self):
+        """A transport object must not retain a writer even if its methods are read-only."""
+
+        with self.assertRaisesRegex(TypeError, "MCPReadSnapshot required"):
+            PulpoMCPProjection(self.orchestrator)
+        self.assertFalse(hasattr(self.projection, "orchestrator"))
+        self.assertFalse(hasattr(self.projection, "kernel"))
+
+    def test_capability_stripped_projection_cannot_mutate_canonical_state(self):
         """Ephemeral proposal transport must leave the canonical chain unchanged."""
 
         before = list(self.kernel.audit)
@@ -45,8 +54,21 @@ class GovernedEffectBoundaryTests(unittest.TestCase):
         self.assertFalse(proposal["canonical_state_mutation"])
         self.assertEqual("none", proposal["governed_effect"])
         self.assertEqual("none", proposal["authority_effect"])
+        self.assertEqual("frozen", proposal["freshness"])
         self.assertNotIn("target_hash", proposal)
         self.assertIsNone(self.kernel.get_locked_target("target-1"))
+
+    def test_frozen_projection_does_not_gain_future_canonical_state(self):
+        """Later canonical writes must not appear through a retained hidden reference."""
+
+        frozen = self.projection.evidence_snapshot()
+        intent = Intent("agent:planner", "read", "repo:README.md", 0, "session-1")
+        self.kernel.lock_target("target-1", intent)
+
+        self.assertEqual(1, len(self.kernel.audit))
+        self.assertEqual(frozen, self.projection.evidence_snapshot())
+        self.assertEqual(0, frozen["audit_records"])
+        self.assertEqual("frozen", frozen["freshness"])
 
 
 if __name__ == "__main__":
