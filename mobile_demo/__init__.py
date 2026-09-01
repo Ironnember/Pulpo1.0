@@ -1,1 +1,1 @@
-"""Non-authoritative mobile projection for canonical Pulpo."""
+"""Frozen read-only mobile evidence distribution for Pulpo."""
