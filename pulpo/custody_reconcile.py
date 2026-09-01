@@ -54,6 +54,7 @@ class IndependentDomainObservation:
     receipt_hash: str | None
     privacy_enabled: bool | None
     dns_state: str | None
+    auto_renew_enabled: bool | None = None
     schema: str = "pulpo.domain-observation.v0"
 
     def __post_init__(self) -> None:
@@ -72,6 +73,8 @@ class IndependentDomainObservation:
             raise CustodyViolation("observation_charge_invalid")
         if self.receipt_hash is not None and not _valid_hash(self.receipt_hash):
             raise CustodyViolation("observation_receipt_hash_invalid")
+        if self.auto_renew_enabled is not None and type(self.auto_renew_enabled) is not bool:
+            raise CustodyViolation("observation_auto_renew_invalid")
 
     @property
     def observation_hash(self) -> str:
@@ -140,6 +143,7 @@ class IndependentDomainReconciler:
             or observation.receipt_hash is None
             or observation.privacy_enabled is None
             or observation.dns_state is None
+            or observation.auto_renew_enabled is None
         )
         if missing:
             return "unresolved", "success_observation_incomplete"
@@ -155,6 +159,8 @@ class IndependentDomainReconciler:
             return "failure", "observed_charge_exceeded_authorization"
         if order.privacy_required and observation.privacy_enabled is not True:
             return "failure", "observed_privacy_mismatch"
+        if observation.auto_renew_enabled != order.auto_renew_enabled:
+            return "failure", "observed_auto_renew_mismatch"
         if observation.dns_state not in {"registered", "configured"}:
             return "failure", "observed_dns_state_not_accepted"
         return "success", "external_consequence_verified"
