@@ -18,7 +18,9 @@ from dataclasses import asdict, dataclass
 from hashlib import sha256
 import hmac
 import json
+import os
 from pathlib import Path
+import stat
 from typing import Literal
 
 from .kernel import GovernanceKernel, StateIntegrityError
@@ -163,23 +165,70 @@ class GovernedTargetReconciliation:
 
     @staticmethod
     def _observe_file(path: str | Path) -> tuple[str, str, int]:
+        """Hash one stable regular file through a descriptor-bound observation.
+
+        The resolved path, descriptor identity, byte count, size, and metadata
+        must remain stable for the whole observation. A writer racing the read
+        therefore cannot produce completion evidence for a mixed or replaced
+        artifact snapshot.
+        """
+
         try:
             resolved = Path(path).expanduser().resolve(strict=True)
         except (OSError, RuntimeError) as exc:
             raise ValueError("artifact_not_found") from exc
-        if not resolved.is_file():
-            raise ValueError("artifact_not_file")
-        size = resolved.stat().st_size
-        if size <= 0:
-            raise ValueError("artifact_empty")
-        digest = sha256()
+
+        flags = os.O_RDONLY
+        if hasattr(os, "O_CLOEXEC"):
+            flags |= os.O_CLOEXEC
+        if hasattr(os, "O_NOFOLLOW"):
+            flags |= os.O_NOFOLLOW
         try:
-            with resolved.open("rb") as handle:
-                for chunk in iter(lambda: handle.read(1024 * 1024), b""):
-                    digest.update(chunk)
+            descriptor = os.open(resolved, flags)
+        except FileNotFoundError as exc:
+            raise ValueError("artifact_changed_during_observation") from exc
         except OSError as exc:
             raise ValueError("artifact_unreadable") from exc
-        return str(resolved), digest.hexdigest(), size
+
+        try:
+            before = os.fstat(descriptor)
+            if not stat.S_ISREG(before.st_mode):
+                raise ValueError("artifact_not_file")
+            if before.st_size <= 0:
+                raise ValueError("artifact_empty")
+
+            digest = sha256()
+            bytes_read = 0
+            try:
+                while True:
+                    chunk = os.read(descriptor, 1024 * 1024)
+                    if not chunk:
+                        break
+                    bytes_read += len(chunk)
+                    digest.update(chunk)
+                after = os.fstat(descriptor)
+                path_after = os.stat(resolved, follow_symlinks=False)
+            except OSError as exc:
+                raise ValueError("artifact_changed_during_observation") from exc
+
+            stable_descriptor = (
+                before.st_dev == after.st_dev
+                and before.st_ino == after.st_ino
+                and before.st_size == after.st_size
+                and before.st_mtime_ns == after.st_mtime_ns
+                and before.st_ctime_ns == after.st_ctime_ns
+            )
+            stable_path = (
+                after.st_dev == path_after.st_dev
+                and after.st_ino == path_after.st_ino
+                and after.st_size == path_after.st_size
+            )
+            if bytes_read != before.st_size or not stable_descriptor or not stable_path:
+                raise ValueError("artifact_changed_during_observation")
+
+            return str(resolved), digest.hexdigest(), bytes_read
+        finally:
+            os.close(descriptor)
 
     def complete_file(
         self,
