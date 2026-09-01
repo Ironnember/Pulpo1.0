@@ -1,8 +1,9 @@
 """Non-authoritative MCP projection over the canonical Pulpo orchestrator.
 
 MCP is a capability transport, not an authority source. This module exposes
-only proposal and evidence tools. It cannot evaluate policy, mint or return a
-permit, consume a permit, approve a directive, or invoke an execution surface.
+only ephemeral proposal projections and read-only evidence. It cannot mutate
+canonical state, evaluate policy, mint or return a permit, consume a permit,
+approve a directive, or invoke an execution surface.
 
 The optional MCP SDK is imported only by ``create_mcp_server`` so Pulpo's core
 kernel and its CI remain dependency-free.
@@ -10,6 +11,7 @@ kernel and its CI remain dependency-free.
 
 from __future__ import annotations
 
+from dataclasses import asdict
 from typing import Any
 
 from .kernel import Intent
@@ -21,11 +23,13 @@ class MCPBoundaryError(ValueError):
 
 
 class PulpoMCPProjection:
-    """Translate non-consequential MCP calls into the existing Pulpo path.
+    """Translate MCP calls without granting a governed mutation capability.
 
-    The projection owns no state or clock. Both come from the orchestrator's
-    canonical kernel, preventing an MCP host from supplying a parallel policy,
-    directive store, evidence chain, or trusted-time source.
+    The projection owns no state or clock. Both remain inside the orchestrator's
+    canonical kernel. Proposal construction is deliberately ephemeral: an MCP
+    caller may describe an exact candidate intent, but only a separately
+    governed mutation path may persist a target, audit event, directive, budget
+    transition, permit, or other canonical state.
     """
 
     def __init__(self, orchestrator: PulpoOrchestrator) -> None:
@@ -64,21 +68,28 @@ class PulpoMCPProjection:
         session_id: str = "default",
         version: int = 1,
     ) -> dict[str, Any]:
-        """Lock one exact proposal without requesting or granting authority."""
+        """Return one exact candidate proposal without mutating canonical state.
+
+        A target hash is intentionally absent because a canonical target does not
+        exist until Pulpo accepts a governed state transition and records the
+        trusted lock time. ``NO_PERMIT`` therefore cannot be mistaken for
+        ``NO_GOVERNED_EFFECT``: this projection performs neither.
+        """
 
         if not isinstance(target_id, str) or not target_id or target_id != target_id.strip():
             raise MCPBoundaryError("mcp_target_invalid")
         if isinstance(version, bool) or not isinstance(version, int) or version <= 0:
             raise MCPBoundaryError("mcp_target_invalid")
         intent = self._intent(principal, action, resource, cost, session_id)
-        target = self.orchestrator.lock_target(target_id, intent, version=version)
         return {
-            "schema": "pulpo.mcp-proposal.v0",
-            "target_id": target.target_id,
-            "target_version": target.version,
-            "target_hash": target.target_hash,
-            "intent_hash": self.orchestrator.kernel.intent_hash(target.intent),
+            "schema": "pulpo.mcp-proposal.v1",
+            "target_id": target_id,
+            "target_version": version,
+            "intent": asdict(intent),
+            "intent_hash": self.orchestrator.kernel.intent_hash(intent),
             "policy_hash": self.orchestrator.kernel.policy_hash,
+            "canonical_state_mutation": False,
+            "governed_effect": "none",
             "authority_effect": "none",
         }
 
@@ -92,6 +103,8 @@ class PulpoMCPProjection:
             "audit_valid": snapshot.audit_valid,
             "audit_records": snapshot.audit_records,
             "audit_tip": snapshot.audit_tip,
+            "canonical_state_mutation": False,
+            "governed_effect": "none",
             "authority_effect": "none",
         }
 
@@ -117,7 +130,7 @@ def create_mcp_server(orchestrator: PulpoOrchestrator):
         session_id: str = "default",
         version: int = 1,
     ) -> dict[str, Any]:
-        """Record one exact proposal. This tool grants no authority."""
+        """Project one exact proposal without committing canonical state."""
 
         return projection.propose_intent(
             target_id,
