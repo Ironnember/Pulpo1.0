@@ -40,13 +40,16 @@ class MobileProjectionTests(unittest.TestCase):
     def auth_headers():
         return {"Authorization": "Bearer test-token"}
 
-    def test_valid_proposal_locks_exact_target_without_permit(self):
-        response = self.client.post(
+    def post_proposal(self, payload):
+        return self.client.post(
             "/api/propose",
-            data=json.dumps(self.proposal()),
+            data=json.dumps(payload),
             content_type="application/json",
             headers=self.auth_headers(),
         )
+
+    def test_valid_proposal_locks_exact_target_without_permit(self):
+        response = self.post_proposal(self.proposal())
         self.assertEqual(200, response.status_code)
         payload = response.get_json()
         self.assertEqual("pulpo.mcp-proposal.v0", payload["schema"])
@@ -57,12 +60,7 @@ class MobileProjectionTests(unittest.TestCase):
         self.assertEqual("agent:mobile", target.intent.principal)
 
     def test_client_cannot_supply_or_replace_principal(self):
-        response = self.client.post(
-            "/api/propose",
-            data=json.dumps(self.proposal(principal="agent:attacker")),
-            content_type="application/json",
-            headers=self.auth_headers(),
-        )
+        response = self.post_proposal(self.proposal(principal="agent:attacker"))
         self.assertEqual(400, response.status_code)
         self.assertEqual("mobile_payload_invalid", response.get_json()["reason"])
         self.assertIsNone(self.kernel.get_locked_target("mobile-target"))
@@ -80,15 +78,31 @@ class MobileProjectionTests(unittest.TestCase):
         self.assertIsNone(self.kernel.get_locked_target("mobile-target"))
 
     def test_malformed_cost_fails_closed(self):
-        response = self.client.post(
-            "/api/propose",
-            data=json.dumps(self.proposal(cost=True)),
-            content_type="application/json",
-            headers=self.auth_headers(),
-        )
+        response = self.post_proposal(self.proposal(cost=True))
         self.assertEqual(400, response.status_code)
         self.assertEqual("mcp_intent_invalid", response.get_json()["reason"])
         self.assertIsNone(self.kernel.get_locked_target("mobile-target"))
+
+    def test_conflicting_target_version_is_denied_and_original_is_unchanged(self):
+        first = self.post_proposal(self.proposal(resource="repo:docs"))
+        self.assertEqual(200, first.status_code)
+        original = self.kernel.get_locked_target("mobile-target")
+        self.assertIsNotNone(original)
+        original_hash = original.target_hash
+        original_audit_count = len(self.kernel.audit)
+
+        conflict = self.post_proposal(self.proposal(resource="repo:other"))
+        self.assertEqual(409, conflict.status_code)
+        payload = conflict.get_json()
+        self.assertEqual("deny", payload["outcome"])
+        self.assertEqual("proposal_conflict", payload["reason"])
+        self.assertEqual("none", payload["authority_effect"])
+
+        after = self.kernel.get_locked_target("mobile-target")
+        self.assertIsNotNone(after)
+        self.assertEqual(original_hash, after.target_hash)
+        self.assertEqual("repo:docs", after.intent.resource)
+        self.assertEqual(original_audit_count, len(self.kernel.audit))
 
     def test_evidence_projection_is_read_only_and_has_no_permit(self):
         before = len(self.kernel.audit)
