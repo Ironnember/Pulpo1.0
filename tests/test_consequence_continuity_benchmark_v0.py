@@ -57,6 +57,38 @@ class ConsequenceContinuityBenchmarkV0Tests(unittest.TestCase):
                     self.assertEqual(1, len(tests))
                     self.assertNotEqual("_FailedTest", type(tests[0]).__name__)
 
+    def test_high_risk_cases_bind_to_restart_and_independent_reconciliation_evidence(self):
+        selectors = {case.case_id: set(case.selectors) for case in CASES}
+
+        self.assertIn(
+            "tests.test_commerce.CommerceProofTests.test_uncertain_external_result_cannot_be_blindly_retried_after_restart",
+            selectors["CC-09"],
+        )
+        self.assertIn(
+            "tests.test_custody_reconcile.CustodyReconciliationTests.test_provider_success_without_complete_external_observation_stays_unresolved_and_holds_budget",
+            selectors["CC-10"],
+        )
+        self.assertIn(
+            "tests.test_custody_reconcile.CustodyReconciliationTests.test_observed_substitution_is_failure_and_does_not_reopen_budget",
+            selectors["CC-11"],
+        )
+        self.assertIn(
+            "tests.test_custody_reconcile.CustodyReconciliationTests.test_not_found_lookup_cannot_be_inferred_as_known_failure",
+            selectors["CC-12"],
+        )
+        self.assertTrue(
+            {
+                "tests.test_directives.DirectiveProofTests.test_preissued_permit_stays_invalid_after_revocation_and_restart",
+                "tests.test_persistence.RestartSafeStateTests.test_approval_and_permit_replay_remain_denied_after_restart",
+                "tests.test_commerce.CommerceProofTests.test_durable_budget_survives_restart_and_blocks_attempt_replay",
+                "tests.test_commerce.CommerceProofTests.test_durable_reconciliation_survives_restart",
+            }.issubset(selectors["CC-13"])
+        )
+        self.assertIn(
+            "tests.test_custody_reconcile.CustodyReconciliationTests.test_exact_independent_observation_reconciles_success_and_settles_budget",
+            selectors["POSITIVE"],
+        )
+
     def test_integrated_software_matrix_passes_without_raising_claim_ceiling(self):
         report = run_cases()
         self.assertTrue(report["software_matrix_passed"])
