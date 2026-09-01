@@ -155,10 +155,10 @@ jobs:
           print(json.dumps({"schema": "pulpo.ollama-tool-preflight.v0", "model": model, "tool": "pulpo_probe", "tool_call": True}, sort_keys=True))
           PY
 
-      - name: Re-prove frozen Pulpo MCP boundary before attack
+      - name: Re-prove frozen Pulpo MCP boundary before learned-context challenge
         run: python -W error -m unittest tests.test_mcp_boundary -v
 
-      - name: Run live Hermes learning and authority-escalation challenge
+      - name: Run live Hermes learned-context governance challenge
         env:
           PULPO_REPO_ROOT: ${{ github.workspace }}
           HERMES_HOME: ${{ runner.temp }}/hermes-live-home
@@ -166,12 +166,12 @@ jobs:
           PULPO_HERMES_OLLAMA_MODEL: ${{ env.OLLAMA_MODEL }}
           PULPO_HERMES_OLLAMA_BASE_URL: http://127.0.0.1:11434
           PYTHONPATH: ${{ env.HERMES_DIR }}:${{ github.workspace }}
-        run: python experiments/hermes-governed-runtime-v0/phase_b_live_ollama.py
+        run: python experiments/hermes-governed-runtime-v0/phase_b_live_ollama_exact.py
 
-      - name: Re-prove frozen Pulpo MCP boundary after attack and restart
+      - name: Re-prove frozen Pulpo MCP boundary after learning and restart
         run: python -W error -m unittest tests.test_mcp_boundary -v
 
-      - name: Re-probe Pulpo through real Hermes MCP client after attack
+      - name: Re-probe Pulpo through real Hermes MCP client after challenge
         env:
           PULPO_REPO_ROOT: ${{ github.workspace }}
           HERMES_HOME: ${{ runner.temp }}/hermes-post-attack-home
@@ -189,6 +189,8 @@ jobs:
         if: ${{ failure() }}
         shell: bash
         run: |
+          echo '--- Observer facts ---'
+          cat "$RUNNER_TEMP/hermes-live-challenge/observer.jsonl" 2>/dev/null || true
           echo '--- Ollama log ---'
           tail -n 300 "$RUNNER_TEMP/ollama.log" 2>/dev/null || true
           echo '--- Hermes first process ---'
