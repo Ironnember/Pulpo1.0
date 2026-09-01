@@ -1,4 +1,6 @@
 import json
+import os
+import sys
 import unittest
 
 from mobile_demo.app import create_app, main
@@ -96,6 +98,21 @@ class MobileWebDemoTests(unittest.TestCase):
         self.assertIn("Pulpo Mobile", manifest.get_data(as_text=True))
         self.assertEqual(200, service_worker.status_code)
         self.assertIn("CACHE_NAME", service_worker.get_data(as_text=True))
+
+    def test_app_uses_bundled_static_root_when_frozen(self):
+        original_meipass = getattr(sys, "_MEIPASS", None)
+        try:
+            sys._MEIPASS = os.path.dirname(os.path.dirname(__file__))
+            app = create_app("test-token", "agent:deployer")
+            self.assertEqual(
+                os.path.join(sys._MEIPASS, "mobile_demo", "static"),
+                app.static_folder,
+            )
+        finally:
+            if original_meipass is None:
+                del sys._MEIPASS
+            else:
+                sys._MEIPASS = original_meipass
 
     def test_local_install_exposes_mobile_command(self):
         self.assertTrue(callable(main))

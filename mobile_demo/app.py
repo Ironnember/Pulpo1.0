@@ -1,5 +1,6 @@
 import hmac
 import os
+import sys
 import time
 
 from flask import Flask, jsonify, render_template_string, request
@@ -10,7 +11,11 @@ from pulpo.kernel import GovernanceKernel, Intent, Policy
 def create_app(auth_token: str, principal: str = "agent:phone", token_expires_at: int | None = None):
     if not auth_token or not principal:
         raise ValueError("auth_token and principal are required")
-    app = Flask(__name__, static_folder="static")
+    if hasattr(sys, "_MEIPASS"):
+      static_root = os.path.join(sys._MEIPASS, "mobile_demo", "static")
+    else:
+      static_root = os.path.join(os.path.dirname(__file__), "static")
+    app = Flask(__name__, static_folder=static_root)
     app.config["PULPO_DEMO_PRINCIPAL"] = principal
 
     policy = Policy(
