@@ -1,34 +1,79 @@
-"""Authenticated read-only mobile/PWA projection over canonical Pulpo evidence.
+"""Authenticated read-only mobile/PWA view over a frozen Pulpo evidence snapshot.
 
-This module is deliberately non-authoritative and non-mutating. It requires an
-existing ``PulpoMCPProjection`` bound to the canonical ``PulpoOrchestrator`` and
-exposes only the existing read-only evidence snapshot. It cannot propose or
-lock targets, append canonical audit state, evaluate policy, approve work, mint
-or consume permits, or invoke an executor.
+The distribution process deliberately receives no kernel, orchestrator, MCP
+projection, authority client, state backend, or executor. V0 accepts only a
+validated primitive evidence snapshot copied into a read-only source object.
 """
 
 from __future__ import annotations
 
 import hmac
+from collections.abc import Mapping
+from types import MappingProxyType
+from typing import Any
 
-from pulpo.mcp_boundary import PulpoMCPProjection
+
+class FrozenEvidenceSource:
+    """Validated immutable primitive evidence projection for distribution V0.
+
+    The source copies only the narrow evidence fields used by the UI. It retains
+    no reference to the originating Pulpo object, so the web application does
+    not receive a canonical-state mutation capability through dependency
+    injection.
+    """
+
+    __slots__ = ("__snapshot",)
+
+    def __init__(self, snapshot: Mapping[str, Any]) -> None:
+        if not isinstance(snapshot, Mapping):
+            raise TypeError("evidence snapshot mapping required")
+
+        schema = snapshot.get("schema")
+        policy_hash = snapshot.get("policy_hash")
+        audit_valid = snapshot.get("audit_valid")
+        audit_records = snapshot.get("audit_records")
+        audit_tip = snapshot.get("audit_tip")
+        authority_effect = snapshot.get("authority_effect")
+
+        if schema != "pulpo.mcp-evidence.v0":
+            raise ValueError("evidence_schema_invalid")
+        if not isinstance(policy_hash, str) or not policy_hash:
+            raise ValueError("evidence_policy_hash_invalid")
+        if not isinstance(audit_valid, bool):
+            raise ValueError("evidence_audit_valid_invalid")
+        if isinstance(audit_records, bool) or not isinstance(audit_records, int) or audit_records < 0:
+            raise ValueError("evidence_audit_records_invalid")
+        if audit_tip is not None and (not isinstance(audit_tip, str) or not audit_tip):
+            raise ValueError("evidence_audit_tip_invalid")
+        if authority_effect != "none" or "permit" in snapshot:
+            raise ValueError("evidence_authority_boundary_invalid")
+
+        self.__snapshot = MappingProxyType(
+            {
+                "schema": schema,
+                "policy_hash": policy_hash,
+                "audit_valid": audit_valid,
+                "audit_records": audit_records,
+                "audit_tip": audit_tip,
+                "authority_effect": authority_effect,
+            }
+        )
+
+    def read_evidence(self) -> dict[str, Any]:
+        """Return a copy of the validated frozen evidence payload."""
+
+        return dict(self.__snapshot)
 
 
 def create_app(
-    projection: PulpoMCPProjection,
+    evidence_source: FrozenEvidenceSource,
     *,
     auth_token: str,
 ):
-    """Create an evidence-only mobile projection over existing canonical state.
+    """Create a mobile evidence view with no canonical write-capable dependency."""
 
-    ``projection`` is required rather than constructed here so this UI cannot
-    create a second kernel, policy, state store, trusted clock, authority path,
-    or evidence ledger. The bearer token gates read access only; it is not an
-    individual identity or an authority credential.
-    """
-
-    if not isinstance(projection, PulpoMCPProjection):
-        raise TypeError("canonical PulpoMCPProjection required")
+    if not isinstance(evidence_source, FrozenEvidenceSource):
+        raise TypeError("FrozenEvidenceSource required")
     if not isinstance(auth_token, str) or not auth_token:
         raise ValueError("auth_token is required")
 
@@ -42,6 +87,13 @@ def create_app(
     def authenticated() -> bool:
         authorization = request.headers.get("Authorization", "")
         return hmac.compare_digest(authorization, f"Bearer {auth_token}")
+
+    def no_store(response):
+        response.headers["Cache-Control"] = "no-store, max-age=0"
+        response.headers["Pragma"] = "no-cache"
+        response.headers["Expires"] = "0"
+        response.headers["Vary"] = "Authorization"
+        return response
 
     @app.get("/")
     def index():
@@ -69,9 +121,9 @@ def create_app(
 <body>
   <div class="card">
     <h2>Pulpo Mobile Evidence</h2>
-    <p class="boundary">Read-only evidence projection. This surface cannot propose, lock canonical state, approve, execute, or issue permits.</p>
+    <p class="boundary">Frozen read-only evidence snapshot. This surface has no canonical-state writer, approval, execution, or permit capability.</p>
     <label>Access token<input id="token" type="password" autocomplete="off" required /></label>
-    <button id="evidence" type="button">Read evidence</button>
+    <button id="evidence" type="button">Read evidence snapshot</button>
     <div id="result" class="result">Waiting...</div>
   </div>
   <script>
@@ -79,7 +131,10 @@ def create_app(
     const result = document.getElementById('result');
     document.getElementById('evidence').addEventListener('click', async () => {
       const token = document.getElementById('token').value;
-      const response = await fetch('/api/evidence', {headers:{'Authorization':`Bearer ${token}`}});
+      const response = await fetch('/api/evidence', {
+        cache:'no-store',
+        headers:{'Authorization':`Bearer ${token}`}
+      });
       result.textContent = JSON.stringify(await response.json(), null, 2);
     });
   </script>
@@ -101,10 +156,17 @@ def create_app(
     @app.get("/api/evidence")
     def evidence():
         if not authenticated():
-            return jsonify({"outcome": "deny", "reason": "authentication_required", "authority_effect": "none"}), 401
-        result = projection.evidence_snapshot()
-        if "permit" in result:
-            raise RuntimeError("mobile projection cannot return a permit")
-        return jsonify(result), 200
+            response = jsonify(
+                {
+                    "outcome": "deny",
+                    "reason": "authentication_required",
+                    "authority_effect": "none",
+                }
+            )
+            response.status_code = 401
+            return no_store(response)
+
+        response = jsonify(evidence_source.read_evidence())
+        return no_store(response)
 
     return app
