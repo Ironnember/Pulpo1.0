@@ -58,13 +58,33 @@ live authority or write capability. Canonical Pulpo must revalidate policy,
 directive status, revocation, trusted time, and permit state before any governed
 consequence.
 
+## V0 isolated host / transport boundary
+
+The branch now adds a second boundary beyond in-process object design:
+
+1. trusted Pulpo serializes only `DirectiveMemoryReadSnapshot` plus an
+   `inspect` or `propose` request using
+   `build_directive_memory_request(...)`;
+2. the request crosses a JSON-only subprocess boundary;
+3. `skill-host/directive_memory_host.py` runs under Python isolated mode (`-I`)
+   with a scrubbed environment in the proof harness;
+4. the host imports Python standard-library modules only and has no Pulpo import;
+5. the host accepts an exact request-field allowlist and rejects injected
+   `kernel`, `authority_client`, `executor`, or `ledger` fields;
+6. the host may compare a candidate intent against frozen scope, but its output
+   continues to assert no authority and requires canonical revalidation.
+
+This converts the capability-stripping claim from only an object/API shape into a
+separate-process software boundary. It is still not evidence that the actual
+ChatGPT `@Directive Memory` runtime is deployed behind this transport.
+
 ## Adversarial proof targets
 
 The focused tests require:
 
-1. the surface rejects a kernel or `Directive` object in place of the exact
-   capability-free snapshot;
-2. the surface retains no kernel, state, controller, authority-client,
+1. the in-process surface rejects a kernel or `Directive` object in place of the
+   exact capability-free snapshot;
+2. the in-process surface retains no kernel, state, controller, authority-client,
    approval-verifier, executor, clock, or ledger attribute;
 3. repeated inspection/proposal operations leave the canonical audit and
    directive state unchanged;
@@ -74,7 +94,16 @@ The focused tests require:
 6. the surface exposes no activate/revoke/evaluate/consume/execute/write method;
 7. an active snapshot captured before revocation remains explicitly frozen and
    non-authoritative after canonical revocation and restart, while live canonical
-   evaluation denies the revoked directive.
+   evaluation denies the revoked directive;
+8. the isolated host imports only stdlib and contains no Pulpo import;
+9. trusted projection and isolated-host proposal results bind the same exact
+   intent hash and directive hash;
+10. the transport contains no kernel, authority client, verifier, executor,
+    ledger, permit, secret, or credential field;
+11. injected capability fields fail closed at the host boundary;
+12. broadening through the isolated host remains a non-authoritative failure;
+13. a stale pre-revocation JSON snapshot cannot override live canonical
+    revocation after restart.
 
 ## Authority change
 
@@ -82,29 +111,30 @@ None.
 
 This proof deliberately does not add a conversational path for directive
 activation or revocation. Existing `DirectiveAuthorityController` remains the
-only directive mutation path in this package and continues to require the pinned
-external approval verifier.
+directive mutation path in this package and continues to require pinned external
+approval authority.
 
 ## Canonical state mutations introduced or exposed
 
-None by the skill projection.
+None by the skill projection or isolated host.
 
 The trusted snapshot-freeze function reads canonical directive status and trusted
-time. It does not write canonical state. The untrusted projection receives no
-writer reference.
+time. It does not write canonical state. The untrusted projection and host receive
+no writer reference.
 
 ## Claim classification
 
-Before exact-head CI and substantive review:
+For the current draft head before exact-head CI completes:
 
-- capability-stripped skill-surface design: **Proposed**;
-- source-level absence of retained canonical writer references: **Recorded** on
-  this branch;
-- focused behavior: **Unknown** until CI executes the exact head;
-- actual ChatGPT `@Directive Memory` runtime using this module: **Unknown**;
+- capability-stripped object design: **Verified on prior branch head**;
+- JSON-only isolated-host design: **Recorded / Proposed**;
+- isolated-host focused behavior: **Unknown** until CI executes the exact head;
+- actual ChatGPT `@Directive Memory` runtime using this module/transport:
+  **Unknown**;
+- production skill-host authentication and isolation: **Unknown**;
 - production external authority binding for the live skill: **Unknown**.
 
-After exact-head CI succeeds, the focused software-boundary behavior may be
+After exact-head CI succeeds, the isolated-host software-boundary behavior may be
 classified **Verified on the branch only**. It remains noncanonical until normal
 repository admission.
 
@@ -113,14 +143,16 @@ repository admission.
 This V0 does not prove:
 
 - that the current ChatGPT `@Directive Memory` skill is implemented by this
-  module;
-- hostile same-process memory isolation;
-- a live read-only IPC transport;
+  module or host;
+- that ChatGPT's production skill runtime uses Python isolated mode or an empty
+  environment;
+- hostile host-kernel isolation outside the tested subprocess boundary;
 - production authentication for a skill host;
 - independent production human authority;
 - external-provider containment or consequence reconciliation;
 - that frozen status is current after the snapshot observation time.
 
-The next integration proof must bind the actual user-facing skill/runtime to this
-or an equivalently capability-stripped transport and show that no alternate
-persistent-memory or canonical-write capability bypasses Pulpo.
+The next decisive integration proof must bind the actual user-facing
+`@Directive Memory` runtime to this or an equivalently capability-stripped
+transport and show that no alternate persistent-memory, canonical-write,
+authority, or execution capability bypasses Pulpo.
