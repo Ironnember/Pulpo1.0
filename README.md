@@ -78,6 +78,14 @@ Tagged GitHub releases build downloadable `pulpo-mobile` executables for
 macOS, Windows, and Linux. Phones and tablets can install the same web app
 from Safari or a Chromium browser using the PWA manifest.
 
+## iPhone app
+
+The native iPhone client is in `ios/PulpoMobile.xcodeproj`. Open it in Xcode,
+set the Apple Developer team and bundle identifier, then change the API URL in
+the app to a hosted HTTPS Pulpo endpoint. Build to a device for testing, or
+archive and upload through Xcode to TestFlight and App Store Connect. The local
+Wi-Fi URL is not suitable for an App Store build.
+
 ## Boundary
 
 Pulpo currently proves governance, pinned asymmetric external-verifier contract
