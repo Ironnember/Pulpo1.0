@@ -17,6 +17,14 @@ _COMMIT_RE = re.compile(r"^[0-9a-f]{40}$")
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 
 
+def _require_nonempty_text(value: object, label: str) -> str:
+    if not isinstance(value, str):
+        raise TypeError(f"{label} must be text")
+    if not value.strip():
+        raise ValueError(f"{label} is required")
+    return value
+
+
 class EvidenceOutcome(str, Enum):
     PASS = "PASS"
     FAIL = "FAIL"
@@ -40,10 +48,16 @@ class FrozenProofVector:
     authority_effect: str = "none"
 
     def __post_init__(self) -> None:
-        if not self.proof_vector_id.strip() or not self.claim_id.strip():
-            raise ValueError("proof vector and claim identities are required")
+        _require_nonempty_text(self.proof_vector_id, "proof vector identity")
+        _require_nonempty_text(self.claim_id, "claim identity")
+        if not isinstance(self.proof_definition_sha256, str):
+            raise TypeError("proof definition SHA-256 must be text")
         if not _SHA256_RE.fullmatch(self.proof_definition_sha256):
             raise ValueError("proof definition must be bound by exact SHA-256")
+        if not isinstance(self.allowed_source_kinds, tuple):
+            raise TypeError("allowed evidence source kinds must be a tuple")
+        if any(not isinstance(item, str) for item in self.allowed_source_kinds):
+            raise TypeError("allowed evidence source kinds must contain only text")
         kinds = tuple(sorted(set(self.allowed_source_kinds)))
         if not kinds or any(not item.strip() for item in kinds):
             raise ValueError("proof vector requires explicit allowed evidence sources")
@@ -64,15 +78,17 @@ class ReplayEvidence:
     authority_effect: str = "none"
 
     def __post_init__(self) -> None:
-        if not self.evidence_id.strip():
-            raise ValueError("evidence identity is required")
+        _require_nonempty_text(self.evidence_id, "evidence identity")
+        if not isinstance(self.commit_id, str):
+            raise TypeError("evidence commit identity must be text")
         if not _COMMIT_RE.fullmatch(self.commit_id):
             raise ValueError("evidence must bind an exact 40-hex Git commit")
-        if not self.proof_vector_id.strip() or not self.claim_id.strip():
-            raise ValueError("evidence proof and claim bindings are required")
-        if not self.source_kind.strip():
-            raise ValueError("evidence source kind is required")
+        _require_nonempty_text(self.proof_vector_id, "evidence proof binding")
+        _require_nonempty_text(self.claim_id, "evidence claim binding")
+        _require_nonempty_text(self.source_kind, "evidence source kind")
         object.__setattr__(self, "outcome", EvidenceOutcome(self.outcome))
+        if type(self.authenticated) is not bool:
+            raise TypeError("authenticated evidence assertion must be a boolean")
         if self.authority_effect != "none":
             raise ValueError("temporal replay evidence cannot carry authority")
 
@@ -83,8 +99,14 @@ class GenerationResult:
     evidence: tuple[ReplayEvidence, ...]
 
     def __post_init__(self) -> None:
+        if not isinstance(self.commit_id, str):
+            raise TypeError("temporal generation commit must be text")
         if not _COMMIT_RE.fullmatch(self.commit_id):
             raise ValueError("temporal generation must be an exact 40-hex Git commit")
+        if not isinstance(self.evidence, tuple):
+            raise TypeError("generation evidence must be an immutable tuple")
+        if any(not isinstance(item, ReplayEvidence) for item in self.evidence):
+            raise TypeError("generation evidence must contain ReplayEvidence records")
 
 
 @dataclass(frozen=True)
@@ -104,12 +126,27 @@ class TemporalReplayReport:
     def __post_init__(self) -> None:
         if self.authority_effect != "none":
             raise ValueError("temporal replay reports cannot carry authority")
-        if not _COMMIT_RE.fullmatch(self.historical_commit):
+        if not isinstance(self.historical_commit, str) or not _COMMIT_RE.fullmatch(
+            self.historical_commit
+        ):
             raise ValueError("historical commit must be exact")
-        if not _COMMIT_RE.fullmatch(self.current_commit):
+        if not isinstance(self.current_commit, str) or not _COMMIT_RE.fullmatch(
+            self.current_commit
+        ):
             raise ValueError("current commit must be exact")
-        if not _SHA256_RE.fullmatch(self.proof_definition_sha256):
+        _require_nonempty_text(self.proof_vector_id, "report proof binding")
+        _require_nonempty_text(self.claim_id, "report claim binding")
+        if not isinstance(self.proof_definition_sha256, str) or not _SHA256_RE.fullmatch(
+            self.proof_definition_sha256
+        ):
             raise ValueError("report must bind the frozen proof definition")
+        for value in (self.historical_passed, self.current_passed):
+            if value is not None and type(value) is not bool:
+                raise TypeError("resolved generation outcomes must be boolean or null")
+        object.__setattr__(self, "classification", TemporalClassification(self.classification))
+        for refs in (self.historical_evidence_refs, self.current_evidence_refs):
+            if not isinstance(refs, tuple) or any(not isinstance(item, str) for item in refs):
+                raise TypeError("report evidence references must be immutable text tuples")
 
     def to_json(self) -> str:
         payload = asdict(self)
@@ -175,6 +212,9 @@ def classify_temporal_replay(
     execution callback. Supplying a historical authority reference as if it were
     relevant to current authorization is recorded as a constitutional denial.
     """
+
+    if historical_authority_ref is not None:
+        _require_nonempty_text(historical_authority_ref, "historical authority reference")
 
     historical_passed, historical_refs = _resolve_generation(proof, historical)
     current_passed, current_refs = _resolve_generation(proof, current)
