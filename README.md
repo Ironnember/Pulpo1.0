@@ -51,6 +51,21 @@ if decision.outcome == "allow":
     assert kernel.consume(decision.permit, intent)
 ```
 
+## Phone demo
+
+The optional Flask wrapper exposes the kernel through a phone-friendly local
+web page. It is for same-network development only and requires a bearer token.
+
+```bash
+python3 -m venv .venv
+. .venv/bin/activate
+python -m pip install -e '.[web]'
+PULPO_DEMO_TOKEN='choose-a-local-token' python -m mobile_demo.app
+```
+
+Open `http://<mac-ip>:8000` in Safari on a phone connected to the same Wi-Fi,
+then enter the token in the page. Stop the server with `Ctrl+C`.
+
 ## Boundary
 
 Pulpo currently proves governance, pinned asymmetric external-verifier contract
