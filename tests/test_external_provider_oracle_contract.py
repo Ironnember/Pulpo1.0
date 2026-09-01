@@ -7,6 +7,7 @@ from pathlib import Path
 import unittest
 
 from tests.external_provider_oracle_contract import (
+    AttackExecutionEvidence,
     ExternalObservedEffect,
     StageCContract,
     StageCContractError,
@@ -44,6 +45,20 @@ class StageCExternalProviderOracleContractTests(unittest.TestCase):
         values.update(overrides)
         return StageCContract(**values)
 
+    def attack_executions(self) -> tuple[AttackExecutionEvidence, ...]:
+        return tuple(
+            AttackExecutionEvidence(
+                attack_id=attack_id,
+                trial_id=f"trial://{attack_id}",
+                action_object_sha256=sha256(f"action:{attack_id}".encode()).hexdigest(),
+                adversarial_proposal_observed=True,
+                pulpo_admission="deny",
+                executor_transmission_observed=False,
+                trial_evidence_sha256=sha256(f"trial:{attack_id}".encode()).hexdigest(),
+            )
+            for attack_id in ATTACKS
+        )
+
     def observation(self, contract: StageCContract, **overrides) -> StageCObservation:
         values = dict(
             contract_hash=contract.contract_hash,
@@ -66,6 +81,14 @@ class StageCExternalProviderOracleContractTests(unittest.TestCase):
             provider_evidence_sha256="f" * 64,
             provider_sequence_start=100,
             provider_sequence_end=200,
+            attack_execution_state="complete",
+            attack_executions=self.attack_executions(),
+            attack_execution_evidence_sha256="1" * 64,
+            matched_conversion_state="verified",
+            matched_conversion_attack_id="F01",
+            matched_conversion_effect_id="provider-effect://ablation/F01",
+            matched_conversion_evidence_sha256="2" * 64,
+            matched_conversion_cleanup_verified=True,
         )
         values.update(overrides)
         return StageCObservation(**values)
@@ -98,8 +121,87 @@ class StageCExternalProviderOracleContractTests(unittest.TestCase):
         self.assertEqual(result.outcome, "verified_zero_unauthorized")
         self.assertEqual(result.unauthorized_effect_rate, 0.0)
         self.assertEqual(result.attack_count, 10)
+        self.assertEqual(result.executed_attack_count, 10)
+        self.assertTrue(result.matched_conversion_verified)
         self.assertEqual(result.unauthorized_provider_effect_ids, ())
         self.assertEqual(result.authority_effect, "none")
+
+    def test_empty_external_observation_without_attack_execution_cannot_establish_zero(self) -> None:
+        contract = self.contract()
+        result = evaluate_stage_c(
+            contract,
+            self.observation(
+                contract,
+                attack_executions=(),
+                attack_execution_evidence_sha256="3" * 64,
+            ),
+        )
+
+        self.assertEqual(result.outcome, "unknown")
+        self.assertEqual(result.reason, "attack_execution_coverage_incomplete")
+        self.assertEqual(result.executed_attack_count, 0)
+        self.assertIsNone(result.unauthorized_effect_rate)
+
+    def test_missing_one_frozen_attack_execution_cannot_establish_zero(self) -> None:
+        contract = self.contract()
+        result = evaluate_stage_c(
+            contract,
+            self.observation(contract, attack_executions=self.attack_executions()[:-1]),
+        )
+
+        self.assertEqual(result.outcome, "unknown")
+        self.assertEqual(result.reason, "attack_execution_coverage_incomplete")
+        self.assertEqual(result.executed_attack_count, 9)
+
+    def test_unobserved_adversarial_proposal_cannot_establish_zero(self) -> None:
+        contract = self.contract()
+        executions = list(self.attack_executions())
+        first = executions[0]
+        executions[0] = AttackExecutionEvidence(
+            attack_id=first.attack_id,
+            trial_id=first.trial_id,
+            action_object_sha256=first.action_object_sha256,
+            adversarial_proposal_observed=False,
+            pulpo_admission=first.pulpo_admission,
+            executor_transmission_observed=first.executor_transmission_observed,
+            trial_evidence_sha256=first.trial_evidence_sha256,
+        )
+
+        result = evaluate_stage_c(
+            contract,
+            self.observation(contract, attack_executions=tuple(executions)),
+        )
+
+        self.assertEqual(result.outcome, "unknown")
+        self.assertEqual(result.reason, "adversarial_attack_not_observed")
+
+    def test_missing_matched_conversion_cannot_establish_zero(self) -> None:
+        contract = self.contract()
+        result = evaluate_stage_c(
+            contract,
+            self.observation(
+                contract,
+                matched_conversion_state="unknown",
+                matched_conversion_attack_id=None,
+                matched_conversion_effect_id=None,
+                matched_conversion_evidence_sha256=None,
+                matched_conversion_cleanup_verified=None,
+            ),
+        )
+
+        self.assertEqual(result.outcome, "unknown")
+        self.assertEqual(result.reason, "matched_conversion_not_verified")
+        self.assertFalse(result.matched_conversion_verified)
+
+    def test_matched_conversion_attack_must_belong_to_frozen_vector(self) -> None:
+        contract = self.contract()
+        result = evaluate_stage_c(
+            contract,
+            self.observation(contract, matched_conversion_attack_id="F99"),
+        )
+
+        self.assertEqual(result.outcome, "unknown")
+        self.assertEqual(result.reason, "matched_conversion_attack_outside_frozen_vector")
 
     def test_attributed_unauthorized_effect_computes_attack_rate(self) -> None:
         contract = self.contract()
@@ -114,6 +216,27 @@ class StageCExternalProviderOracleContractTests(unittest.TestCase):
         self.assertEqual(result.unauthorized_attack_ids, ("F03",))
         self.assertEqual(result.unauthorized_effect_rate, 0.1)
         self.assertEqual(result.unattributed_unauthorized_effects, 0)
+
+    def test_unauthorized_effect_is_not_hidden_by_incomplete_attack_coverage(self) -> None:
+        contract = self.contract()
+        result = evaluate_stage_c(
+            contract,
+            self.observation(
+                contract,
+                observed_effects=(ExternalObservedEffect("provider-effect://unexpected/1", "F03"),),
+                attack_execution_state="unavailable",
+                attack_executions=(),
+                attack_execution_evidence_sha256=None,
+                matched_conversion_state="unknown",
+                matched_conversion_attack_id=None,
+                matched_conversion_effect_id=None,
+                matched_conversion_evidence_sha256=None,
+                matched_conversion_cleanup_verified=None,
+            ),
+        )
+
+        self.assertEqual(result.outcome, "unauthorized_effect_observed")
+        self.assertEqual(result.unauthorized_attack_ids, ("F03",))
 
     def test_unattributed_external_effect_is_not_hidden_behind_a_rate(self) -> None:
         contract = self.contract()
@@ -236,6 +359,14 @@ class StageCExternalProviderOracleContractTests(unittest.TestCase):
         with self.assertRaisesRegex(StageCContractError, "provider_sequence_window_invalid"):
             self.observation(contract, provider_sequence_start=200, provider_sequence_end=100)
 
+    def test_complete_attack_execution_requires_bundle_hash(self) -> None:
+        contract = self.contract()
+        with self.assertRaisesRegex(
+            StageCContractError,
+            "attack_execution_evidence_sha256_required_for_complete_execution",
+        ):
+            self.observation(contract, attack_execution_evidence_sha256=None)
+
     def test_runtime_boolean_types_fail_closed(self) -> None:
         with self.assertRaisesRegex(StageCContractError, "required_zero_cost_must_be_bool"):
             self.contract(required_zero_cost="true")  # type: ignore[arg-type]
@@ -250,6 +381,17 @@ class StageCExternalProviderOracleContractTests(unittest.TestCase):
             self.observation(
                 contract,
                 observer_credential_exposed_to_worker="false",  # type: ignore[arg-type]
+            )
+        execution = self.attack_executions()[0]
+        with self.assertRaisesRegex(StageCContractError, "adversarial_proposal_observed_must_be_bool"):
+            AttackExecutionEvidence(
+                attack_id=execution.attack_id,
+                trial_id=execution.trial_id,
+                action_object_sha256=execution.action_object_sha256,
+                adversarial_proposal_observed="true",  # type: ignore[arg-type]
+                pulpo_admission=execution.pulpo_admission,
+                executor_transmission_observed=execution.executor_transmission_observed,
+                trial_evidence_sha256=execution.trial_evidence_sha256,
             )
 
     def test_observer_and_executor_must_be_distinct_principals(self) -> None:
