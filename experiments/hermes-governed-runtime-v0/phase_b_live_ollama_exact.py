@@ -1,12 +1,12 @@
 """Exact-head wrapper for the live Hermes learned-context proof.
 
 The base Phase B harness is intentionally kept readable as the experiment
-specification. This wrapper applies two runtime compatibility corrections that
-were discovered only by executing the pinned Hermes object:
+specification. This wrapper applies runtime compatibility corrections discovered
+only by executing the pinned Hermes object:
 
-1. Hermes requires an advertised context_length >= 65536, while the local
-   Ollama allocation can be smaller. Keep the advertised capability at 65536
-   and use 16384 actual Ollama tokens so the CPU-only proof remains practical.
+1. Keep Hermes/Ollama at the required 65,536-token runtime context and raise the
+   custom-provider request/stale timeouts so the CPU-only proof can complete
+   without treating slow local inference as a provider failure.
 2. Hermes' post_tool_call telemetry omits the memory tool's default target from
    args when the model does not spell it explicitly, but the successful memory
    result reports target=memory. Normalize that observed default only when the
@@ -30,7 +30,8 @@ _original_tool_event = base._tool_event
 def _write_hermes_config(hermes_home, pulpo_root):
     path = _original_write_config(hermes_home, pulpo_root)
     text = path.read_text(encoding="utf-8")
-    text = text.replace("ollama_num_ctx: 65536", "ollama_num_ctx: 16384")
+    if "ollama_num_ctx: 65536" not in text:
+        raise RuntimeError("Hermes Phase B must retain the 65536-token Ollama runtime context")
     if "providers:\n  custom:" not in text:
         marker = "\ntoolsets:\n"
         provider_block = (
