@@ -2,6 +2,8 @@ name: Admission Hold
 
 on:
   pull_request_target:
+    branches:
+      - main
     types:
       - opened
       - reopened
@@ -22,12 +24,12 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 2
     steps:
-      # pull_request_target intentionally executes only the protected base tree.
-      # Never check out or execute pull-request head code in this workflow.
-      - name: Check out exact protected base
+      # pull_request_target intentionally checks out trusted base/default-branch
+      # code when ref is omitted. Never override this to PR-head or stale PR
+      # metadata, and never execute pull-request-head code in this workflow.
+      - name: Check out trusted protected base
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.pull_request.base.sha }}
           persist-credentials: false
 
       - uses: actions/setup-python@v5
@@ -40,4 +42,5 @@ jobs:
         run: python scripts/enforce_pr_admission_hold.py --event "$GITHUB_EVENT_PATH" --apply
 
       - name: Enforce Pulpo admission hold metadata
+        if: ${{ always() }}
         run: python scripts/check_pr_admission_hold.py --event "$GITHUB_EVENT_PATH"
