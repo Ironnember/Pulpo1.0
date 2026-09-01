@@ -111,6 +111,8 @@ class Policy:
             raise ValueError("agent principals must be unique")
         if any(not grant.allowed_actions.issubset(self.allowed_actions) for grant in self.agent_grants):
             raise ValueError("agent actions must be a subset of policy actions")
+        if not self.approval_actions.issubset(self.allowed_actions):
+            raise ValueError("approval actions must be a subset of policy actions")
         if self.approval_actions and self.authority_trust is None:
             raise ValueError("approval actions require a pinned authority trust")
         if self.authority_trust is not None and not self.approval_actions:

@@ -83,6 +83,10 @@ class GovernanceKernelTests(unittest.TestCase):
         decision = kernel.evaluate(Intent("agent:small", "read", "repo:file", 6))
         self.assertEqual(("deny", "agent_budget_exceeded"), (decision.outcome, decision.reason))
 
+    def test_approval_actions_must_be_subset_of_allowed_actions(self):
+        with self.assertRaisesRegex(ValueError, "subset"):
+            Policy(frozenset({"read"}), 10, approval_actions=frozenset({"deploy"}))
+
     def test_malformed_or_duplicate_agent_grants_are_rejected(self):
         with self.assertRaisesRegex(ValueError, "resource prefixes"):
             AgentGrant("agent:bad", frozenset({"read"}), ("",), 1)
