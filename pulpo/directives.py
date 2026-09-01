@@ -262,11 +262,16 @@ class DirectiveAuthorityController:
         )
         if decision.outcome != "allow":
             return decision
-        self.kernel._state.activate_directive(
-            directive,
-            self._evidence(self.ACTIVATE, directive, envelope, authority_intent, self.kernel),
-            self._trusted_now(),
-        )
+        try:
+            self.kernel._state.activate_directive(
+                directive,
+                self._evidence(self.ACTIVATE, directive, envelope, authority_intent, self.kernel),
+                self._trusted_now(),
+            )
+        except ValueError as exc:
+            if str(exc) == "parent directive is not active for activation":
+                return Decision("deny", "directive_parent_inactive_at_activation", decision.intent_hash)
+            raise
         return decision
 
     def revoke(
