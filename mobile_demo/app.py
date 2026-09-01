@@ -157,6 +157,10 @@ def create_app(
             )
         except MCPBoundaryError as exc:
             return jsonify({"outcome": "deny", "reason": str(exc), "authority_effect": "none"}), 400
+        except ValueError:
+            # Canonical target versions are immutable. Do not turn a conflicting
+            # mobile proposal into a new target, overwrite, or authority path.
+            return jsonify({"outcome": "deny", "reason": "proposal_conflict", "authority_effect": "none"}), 409
         if "permit" in result:
             raise RuntimeError("mobile projection cannot return a permit")
         return jsonify(result), 200
