@@ -13,10 +13,11 @@ pulpo-lab = "pulpo.local_lab:main"
 
 [project.optional-dependencies]
 authority = ["cryptography==50.0.1"]
+web = ["Flask>=3.0,<4"]
 voice = [
   "sounddevice>=0.5,<1",
   "faster-whisper>=1.1,<2",
 ]
 
 [tool.setuptools]
-packages = ["pulpo"]
+packages = ["pulpo", "mobile_demo"]
