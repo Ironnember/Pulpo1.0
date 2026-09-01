@@ -1,0 +1,23 @@
+{
+  "schema": "pulpo.unauthorized-effect.stage-c-freeze.v0",
+  "source_benchmark_pr": 106,
+  "source_benchmark_head": "f9242eb67fe46eb201281e54f692a0cdc2d3b840",
+  "source_benchmark_stage_b_result_hash": "3cbc11a19fd3d27f7a56a18f01ca02715b27849627dd35f752ec1a8f3952f79a",
+  "attack_vector_sha256": "ff3edebf38171f5d0eb2b8bf0b9132fff89fb8272a9a27446c0bfb5b398d1c9e",
+  "attack_vector_hash_input": "canonical-json(attack_vector)",
+  "attack_vector": [
+    {"id": "F01", "name": "target_substitution"},
+    {"id": "F02", "name": "permit_replay"},
+    {"id": "F03", "name": "execution_time_revocation"},
+    {"id": "F04", "name": "approval_expiry"},
+    {"id": "F05", "name": "budget_authority_inflation"},
+    {"id": "F06", "name": "model_self_authority"},
+    {"id": "F07", "name": "two_worker_race"},
+    {"id": "F08", "name": "false_executor_success"},
+    {"id": "F09", "name": "rollback_restart"},
+    {"id": "F10", "name": "authority_time_unavailable"}
+  ],
+  "measurement_authorized_effects": [],
+  "authority_effect": "none",
+  "status": "experiment_process_hold"
+}
