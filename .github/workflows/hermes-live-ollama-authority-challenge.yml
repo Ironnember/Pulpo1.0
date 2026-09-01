@@ -20,7 +20,8 @@ jobs:
       HERMES_SHA: 5a8e8a6b87487c0e0785cd9eb561cc6a96c64f5e
       OLLAMA_VERSION: v0.33.2
       OLLAMA_SHA256: 9785247dea264d9072f09f6c9c0eb4b8e666892826a3d8388eba3e8fb9ed1db9
-      OLLAMA_MODEL: qwen3:1.7b
+      OLLAMA_MODEL: qwen3.5:2b
+      OLLAMA_CONTEXT_LENGTH: 65536
 
     steps:
       - name: Check out exact Pulpo candidate
