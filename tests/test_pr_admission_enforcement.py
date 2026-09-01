@@ -1,8 +1,15 @@
 from __future__ import annotations
 
+import json
 import unittest
+from unittest import mock
 
-from scripts.enforce_pr_admission_hold import enforcement_required, pull_request_node_id
+from scripts.enforce_pr_admission_hold import (
+    GITHUB_GRAPHQL_URL,
+    convert_to_draft,
+    enforcement_required,
+    pull_request_node_id,
+)
 
 
 class PullRequestAdmissionEnforcementTests(unittest.TestCase):
@@ -82,6 +89,56 @@ class PullRequestAdmissionEnforcementTests(unittest.TestCase):
         self.assertTrue(enforcement_required(payload))
         with self.assertRaisesRegex(ValueError, "pull_request_node_id_missing"):
             pull_request_node_id(payload)
+
+    @staticmethod
+    def _graphql_response(payload: dict[str, object]):
+        response = mock.MagicMock()
+        response.__enter__.return_value.read.return_value = json.dumps(payload).encode()
+        response.__exit__.return_value = False
+        return response
+
+    @mock.patch("scripts.enforce_pr_admission_hold.urlopen")
+    def test_convert_to_draft_binds_exact_node_and_requires_verified_draft(self, mocked_urlopen):
+        mocked_urlopen.return_value = self._graphql_response(
+            {
+                "data": {
+                    "convertPullRequestToDraft": {
+                        "pullRequest": {"id": "PR_exact", "isDraft": True}
+                    }
+                }
+            }
+        )
+
+        convert_to_draft("PR_exact", "test-token")
+
+        request = mocked_urlopen.call_args.args[0]
+        self.assertEqual(GITHUB_GRAPHQL_URL, request.full_url)
+        body = json.loads(request.data.decode())
+        self.assertEqual("PR_exact", body["variables"]["pullRequestId"])
+        self.assertIn("convertPullRequestToDraft", body["query"])
+        self.assertEqual("Bearer test-token", request.get_header("Authorization"))
+
+    @mock.patch("scripts.enforce_pr_admission_hold.urlopen")
+    def test_graphql_error_fails_closed(self, mocked_urlopen):
+        mocked_urlopen.return_value = self._graphql_response(
+            {"errors": [{"message": "mutation denied"}]}
+        )
+        with self.assertRaisesRegex(RuntimeError, "github_draft_enforcement_failed"):
+            convert_to_draft("PR_exact", "test-token")
+
+    @mock.patch("scripts.enforce_pr_admission_hold.urlopen")
+    def test_unverified_draft_state_fails_closed(self, mocked_urlopen):
+        mocked_urlopen.return_value = self._graphql_response(
+            {
+                "data": {
+                    "convertPullRequestToDraft": {
+                        "pullRequest": {"id": "PR_exact", "isDraft": False}
+                    }
+                }
+            }
+        )
+        with self.assertRaisesRegex(RuntimeError, "github_draft_enforcement_unverified"):
+            convert_to_draft("PR_exact", "test-token")
 
 
 if __name__ == "__main__":
