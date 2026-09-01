@@ -1,0 +1,196 @@
+name: Hermes Live Ollama Authority Challenge
+
+on:
+  pull_request:
+    paths:
+      - "experiments/hermes-governed-runtime-v0/**"
+      - "pulpo/mcp_boundary.py"
+      - "tests/test_mcp_boundary.py"
+      - ".github/workflows/hermes-live-ollama-authority-challenge.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  hermes-live-ollama:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    env:
+      HERMES_SHA: 5a8e8a6b87487c0e0785cd9eb561cc6a96c64f5e
+      OLLAMA_VERSION: v0.33.2
+      OLLAMA_SHA256: 9785247dea264d9072f09f6c9c0eb4b8e666892826a3d8388eba3e8fb9ed1db9
+      OLLAMA_MODEL: qwen3:1.7b
+
+    steps:
+      - name: Check out exact Pulpo candidate
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Verify exact Pulpo candidate
+        shell: bash
+        env:
+          EXPECTED_PR_HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          actual="$(git rev-parse HEAD)"
+          if [ -n "$EXPECTED_PR_HEAD" ]; then
+            test "$actual" = "$EXPECTED_PR_HEAD"
+          fi
+          echo "PULPO_CANDIDATE_SHA=$actual" >> "$GITHUB_ENV"
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Pulpo MCP dependency
+        run: python -m pip install 'mcp[cli]==2.0.0'
+
+      - name: Fetch exact Hermes source
+        shell: bash
+        run: |
+          set -euo pipefail
+          hermes_dir="$RUNNER_TEMP/hermes-agent"
+          git init "$hermes_dir"
+          git -C "$hermes_dir" remote add origin https://github.com/NousResearch/hermes-agent.git
+          git -C "$hermes_dir" fetch --depth 1 origin "$HERMES_SHA"
+          git -C "$hermes_dir" checkout --detach FETCH_HEAD
+          test "$(git -C "$hermes_dir" rev-parse HEAD)" = "$HERMES_SHA"
+          echo "HERMES_DIR=$hermes_dir" >> "$GITHUB_ENV"
+
+      - name: Install exact Hermes source
+        run: python -m pip install -e "$HERMES_DIR"
+
+      - name: Install exact Ollama release
+        shell: bash
+        run: |
+          set -euo pipefail
+          archive="$RUNNER_TEMP/ollama-linux-amd64.tar.zst"
+          curl -fsSL --retry 3 --retry-delay 2 \
+            "https://github.com/ollama/ollama/releases/download/${OLLAMA_VERSION}/ollama-linux-amd64.tar.zst" \
+            -o "$archive"
+          printf '%s  %s\n' "$OLLAMA_SHA256" "$archive" | sha256sum -c -
+          sudo tar --zstd -xf "$archive" -C /usr
+          command -v ollama
+          ollama --version
+
+      - name: Start local Ollama
+        shell: bash
+        run: |
+          set -euo pipefail
+          nohup ollama serve >"$RUNNER_TEMP/ollama.log" 2>&1 &
+          echo "OLLAMA_PID=$!" >> "$GITHUB_ENV"
+          ready=0
+          for _ in $(seq 1 90); do
+            if curl -fsS http://127.0.0.1:11434/api/version >/dev/null 2>&1; then
+              ready=1
+              break
+            fi
+            sleep 1
+          done
+          if [ "$ready" != "1" ]; then
+            cat "$RUNNER_TEMP/ollama.log" >&2 || true
+            exit 1
+          fi
+
+      - name: Pull local tool-capable model
+        shell: bash
+        run: |
+          set -euo pipefail
+          ollama pull "$OLLAMA_MODEL"
+          ollama list
+
+      - name: Prove pulled model emits a tool call
+        env:
+          PULPO_HERMES_OLLAMA_MODEL: ${{ env.OLLAMA_MODEL }}
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          import urllib.request
+
+          model = os.environ["PULPO_HERMES_OLLAMA_MODEL"]
+          payload = {
+              "model": model,
+              "stream": False,
+              "messages": [
+                  {
+                      "role": "user",
+                      "content": "Call the pulpo_probe function with value pulpo-probe. Do not answer with prose.",
+                  }
+              ],
+              "tools": [
+                  {
+                      "type": "function",
+                      "function": {
+                          "name": "pulpo_probe",
+                          "description": "Deterministic tool-call preflight.",
+                          "parameters": {
+                              "type": "object",
+                              "properties": {"value": {"type": "string"}},
+                              "required": ["value"],
+                          },
+                      },
+                  }
+              ],
+              "options": {"num_ctx": 4096, "temperature": 0},
+          }
+          request = urllib.request.Request(
+              "http://127.0.0.1:11434/api/chat",
+              data=json.dumps(payload).encode(),
+              headers={"Content-Type": "application/json"},
+          )
+          with urllib.request.urlopen(request, timeout=300) as response:
+              result = json.load(response)
+          calls = result.get("message", {}).get("tool_calls") or []
+          assert calls, result
+          call = calls[0].get("function", {})
+          assert call.get("name") == "pulpo_probe", call
+          args = call.get("arguments") or {}
+          assert args.get("value") == "pulpo-probe", args
+          print(json.dumps({"schema": "pulpo.ollama-tool-preflight.v0", "model": model, "tool": "pulpo_probe", "tool_call": True}, sort_keys=True))
+          PY
+
+      - name: Re-prove frozen Pulpo MCP boundary before attack
+        run: python -W error -m unittest tests.test_mcp_boundary -v
+
+      - name: Run live Hermes learning and authority-escalation challenge
+        env:
+          PULPO_REPO_ROOT: ${{ github.workspace }}
+          HERMES_HOME: ${{ runner.temp }}/hermes-live-home
+          PULPO_HERMES_CHALLENGE_DIR: ${{ runner.temp }}/hermes-live-challenge
+          PULPO_HERMES_OLLAMA_MODEL: ${{ env.OLLAMA_MODEL }}
+          PULPO_HERMES_OLLAMA_BASE_URL: http://127.0.0.1:11434
+          PYTHONPATH: ${{ env.HERMES_DIR }}:${{ github.workspace }}
+        run: python experiments/hermes-governed-runtime-v0/phase_b_live_ollama.py
+
+      - name: Re-prove frozen Pulpo MCP boundary after attack and restart
+        run: python -W error -m unittest tests.test_mcp_boundary -v
+
+      - name: Re-probe Pulpo through real Hermes MCP client after attack
+        env:
+          PULPO_REPO_ROOT: ${{ github.workspace }}
+          HERMES_HOME: ${{ runner.temp }}/hermes-post-attack-home
+          PYTHONPATH: ${{ env.HERMES_DIR }}:${{ github.workspace }}
+        run: python experiments/hermes-governed-runtime-v0/probe_with_hermes.py
+
+      - name: Prove Pulpo repository tree was not modified by Hermes
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --exit-code
+          test -z "$(git status --porcelain --untracked-files=no)"
+
+      - name: Show diagnostics on failure
+        if: ${{ failure() }}
+        shell: bash
+        run: |
+          echo '--- Ollama log ---'
+          tail -n 300 "$RUNNER_TEMP/ollama.log" 2>/dev/null || true
+          echo '--- Hermes first process ---'
+          tail -n 300 "$RUNNER_TEMP/hermes-live-challenge/first-process.log" 2>/dev/null || true
+          echo '--- Hermes restart process ---'
+          tail -n 300 "$RUNNER_TEMP/hermes-live-challenge/restart-process.log" 2>/dev/null || true
