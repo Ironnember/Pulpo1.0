@@ -36,7 +36,7 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Force held non-draft PR back to Draft
+      - name: Quarantine held non-draft PR by closing
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: python scripts/enforce_pr_admission_hold.py --event "$GITHUB_EVENT_PATH" --apply
