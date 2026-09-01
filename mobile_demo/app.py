@@ -3,6 +3,8 @@
 The distribution process deliberately receives no kernel, orchestrator, MCP
 projection, authority client, state backend, or executor. V0 accepts only a
 validated primitive evidence snapshot copied into a read-only source object.
+The snapshot is explicitly represented as frozen; this surface does not claim
+that it is a live view of canonical state.
 """
 
 from __future__ import annotations
@@ -121,7 +123,7 @@ def create_app(
 <body>
   <div class="card">
     <h2>Pulpo Mobile Evidence</h2>
-    <p class="boundary">Frozen read-only evidence snapshot. This surface has no canonical-state writer, approval, execution, or permit capability.</p>
+    <p class="boundary">Frozen read-only evidence snapshot. Freshness is not asserted. This surface has no canonical-state writer, approval, execution, or permit capability.</p>
     <label>Access token<input id="token" type="password" autocomplete="off" required /></label>
     <button id="evidence" type="button">Read evidence snapshot</button>
     <div id="result" class="result">Waiting...</div>
@@ -166,7 +168,14 @@ def create_app(
             response.status_code = 401
             return no_store(response)
 
-        response = jsonify(evidence_source.read_evidence())
+        response = jsonify(
+            {
+                "schema": "pulpo.mobile-evidence-snapshot.v0",
+                "freshness": "not_asserted",
+                "source": evidence_source.read_evidence(),
+                "authority_effect": "none",
+            }
+        )
         return no_store(response)
 
     return app
