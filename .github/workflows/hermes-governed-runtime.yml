@@ -20,10 +20,26 @@ jobs:
       HERMES_SHA: 5a8e8a6b87487c0e0785cd9eb561cc6a96c64f5e
 
     steps:
-      - name: Check out Pulpo candidate
+      - name: Check out exact Pulpo candidate
         uses: actions/checkout@v4
         with:
           persist-credentials: false
+          # pull_request defaults to GitHub's synthetic merge ref. Pulpo proof
+          # claims bind to the exact proposed object instead, so execute the PR
+          # head itself. workflow_dispatch falls back to github.sha.
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Verify exact Pulpo candidate
+        shell: bash
+        env:
+          EXPECTED_PR_HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          actual="$(git rev-parse HEAD)"
+          if [ -n "$EXPECTED_PR_HEAD" ]; then
+            test "$actual" = "$EXPECTED_PR_HEAD"
+          fi
+          echo "PULPO_CANDIDATE_SHA=$actual" >> "$GITHUB_ENV"
 
       - name: Set up Python
         uses: actions/setup-python@v5
