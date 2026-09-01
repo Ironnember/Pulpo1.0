@@ -6,6 +6,9 @@ on:
       - "v*"
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build:
     strategy:
@@ -26,8 +29,32 @@ jobs:
       - name: Install package and bundler
         run: python -m pip install -e ".[web]" pyinstaller
       - name: Build executable
-        run: python -m PyInstaller --onefile --name ${{ matrix.artifact }} mobile_demo/app.py
+        shell: bash
+        run: |
+          if [[ "$RUNNER_OS" == "Windows" ]]; then
+            data_path="mobile_demo/static;mobile_demo/static"
+          else
+            data_path="mobile_demo/static:mobile_demo/static"
+          fi
+          python -m PyInstaller --onefile --name "${{ matrix.artifact }}" \
+            --add-data "$data_path" mobile_demo/app.py
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact }}
           path: dist/${{ matrix.artifact }}${{ runner.os == 'Windows' && '.exe' || '' }}
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          find release-assets -type f -exec chmod +x {} +
+          gh release create "${GITHUB_REF_NAME}" release-assets/*/* \
+            --generate-notes --title "Pulpo ${GITHUB_REF_NAME}"
