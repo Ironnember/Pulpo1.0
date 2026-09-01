@@ -1,0 +1,33 @@
+name: Build Pulpo Mobile Downloads
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - os: macos-latest
+            artifact: pulpo-mobile-macos
+          - os: windows-latest
+            artifact: pulpo-mobile-windows
+          - os: ubuntu-latest
+            artifact: pulpo-mobile-linux
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install package and bundler
+        run: python -m pip install -e ".[web]" pyinstaller
+      - name: Build executable
+        run: python -m PyInstaller --onefile --name ${{ matrix.artifact }} mobile_demo/app.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: dist/${{ matrix.artifact }}${{ runner.os == 'Windows' && '.exe' || '' }}

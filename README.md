@@ -74,6 +74,10 @@ For a deployed service, install `.[web-production]` and run Gunicorn with a
 TLS-terminating reverse proxy. Set `PULPO_DEMO_TLS_CERT` and
 `PULPO_DEMO_TLS_KEY` when using the built-in development server directly.
 
+Tagged GitHub releases build downloadable `pulpo-mobile` executables for
+macOS, Windows, and Linux. Phones and tablets can install the same web app
+from Safari or a Chromium browser using the PWA manifest.
+
 ## Boundary
 
 Pulpo currently proves governance, pinned asymmetric external-verifier contract

@@ -1,7 +1,7 @@
 import json
 import unittest
 
-from mobile_demo.app import create_app
+from mobile_demo.app import create_app, main
 
 
 class MobileWebDemoTests(unittest.TestCase):
@@ -88,6 +88,17 @@ class MobileWebDemoTests(unittest.TestCase):
         )
         self.assertEqual(401, response.status_code)
         self.assertEqual("authentication_required", response.get_json()["reason"])
+
+    def test_app_exposes_installable_pwa_assets(self):
+        manifest = self.client.get("/manifest.webmanifest")
+        service_worker = self.client.get("/sw.js")
+        self.assertEqual(200, manifest.status_code)
+        self.assertIn("Pulpo Mobile", manifest.get_data(as_text=True))
+        self.assertEqual(200, service_worker.status_code)
+        self.assertIn("CACHE_NAME", service_worker.get_data(as_text=True))
+
+    def test_local_install_exposes_mobile_command(self):
+        self.assertTrue(callable(main))
 
     def test_policy_endpoint_rejects_expired_token(self):
         app = create_app("test-token", "agent:deployer", token_expires_at=1)

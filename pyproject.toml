@@ -10,6 +10,7 @@ pulpo-listen = "pulpo.local_listen:main"
 pulpo-voice-demo = "pulpo.voice_demo:main"
 pulpo-effect-demo = "pulpo.local_effect_demo:main"
 pulpo-lab = "pulpo.local_lab:main"
+pulpo-mobile = "mobile_demo.app:main"
 
 [project.optional-dependencies]
 authority = ["cryptography==50.0.1"]

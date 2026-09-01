@@ -10,7 +10,7 @@ from pulpo.kernel import GovernanceKernel, Intent, Policy
 def create_app(auth_token: str, principal: str = "agent:phone", token_expires_at: int | None = None):
     if not auth_token or not principal:
         raise ValueError("auth_token and principal are required")
-    app = Flask(__name__)
+    app = Flask(__name__, static_folder="static")
     app.config["PULPO_DEMO_PRINCIPAL"] = principal
 
     policy = Policy(
@@ -27,6 +27,9 @@ def create_app(auth_token: str, principal: str = "agent:phone", token_expires_at
         <head>
           <meta charset="utf-8" />
           <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+          <meta name="theme-color" content="#0f172a" />
+          <link rel="manifest" href="/manifest.webmanifest" />
+          <link rel="apple-touch-icon" href="/static/icon.svg" />
           <title>Pulpo Mobile Demo</title>
           <style>
             body {
@@ -106,6 +109,9 @@ def create_app(auth_token: str, principal: str = "agent:phone", token_expires_at
             <div id="result" class="result">Waiting...</div>
           </div>
           <script>
+            if ('serviceWorker' in navigator) {
+              navigator.serviceWorker.register('/sw.js');
+            }
             const form = document.getElementById('decision-form');
             const result = document.getElementById('result');
             form.addEventListener('submit', async (event) => {
@@ -126,6 +132,16 @@ def create_app(auth_token: str, principal: str = "agent:phone", token_expires_at
         </body>
         </html>
         ''', principal=principal)
+
+    @app.get("/manifest.webmanifest")
+    def manifest():
+        return app.send_static_file("manifest.webmanifest")
+
+    @app.get("/sw.js")
+    def service_worker():
+        response = app.send_static_file("sw.js")
+        response.headers["Service-Worker-Allowed"] = "/"
+        return response
 
     @app.post("/api/decision")
     def decision():
@@ -179,23 +195,27 @@ def create_app(auth_token: str, principal: str = "agent:phone", token_expires_at
     return app
 
 
+def main():
+    token = os.environ.get("PULPO_DEMO_TOKEN")
+    principal = os.environ.get("PULPO_DEMO_PRINCIPAL", "agent:phone")
+    expires_at = os.environ.get("PULPO_DEMO_TOKEN_EXPIRES_AT")
+    cert = os.environ.get("PULPO_DEMO_TLS_CERT")
+    key = os.environ.get("PULPO_DEMO_TLS_KEY")
+    if not token:
+        raise SystemExit("Set PULPO_DEMO_TOKEN before starting the mobile demo")
+    if not expires_at:
+        raise SystemExit("Set PULPO_DEMO_TOKEN_EXPIRES_AT before starting the mobile demo")
+    try:
+        expires_at_seconds = int(expires_at)
+    except ValueError as exc:
+        raise SystemExit("PULPO_DEMO_TOKEN_EXPIRES_AT must be Unix seconds") from exc
+    ssl_context = (cert, key) if cert or key else None
+    if ssl_context is not None and (not cert or not key):
+        raise SystemExit("Set both PULPO_DEMO_TLS_CERT and PULPO_DEMO_TLS_KEY")
+    create_app(token, principal, expires_at_seconds).run(
+        host="0.0.0.0", port=8000, debug=False, ssl_context=ssl_context
+    )
+
+
 if __name__ == "__main__":
-  token = os.environ.get("PULPO_DEMO_TOKEN")
-  principal = os.environ.get("PULPO_DEMO_PRINCIPAL", "agent:phone")
-  expires_at = os.environ.get("PULPO_DEMO_TOKEN_EXPIRES_AT")
-  cert = os.environ.get("PULPO_DEMO_TLS_CERT")
-  key = os.environ.get("PULPO_DEMO_TLS_KEY")
-  if not token:
-    raise SystemExit("Set PULPO_DEMO_TOKEN before starting the mobile demo")
-  if not expires_at:
-    raise SystemExit("Set PULPO_DEMO_TOKEN_EXPIRES_AT before starting the mobile demo")
-  try:
-    expires_at_ns = int(expires_at)
-  except ValueError as exc:
-    raise SystemExit("PULPO_DEMO_TOKEN_EXPIRES_AT must be Unix seconds") from exc
-  ssl_context = (cert, key) if cert or key else None
-  if ssl_context is not None and (not cert or not key):
-    raise SystemExit("Set both PULPO_DEMO_TLS_CERT and PULPO_DEMO_TLS_KEY")
-  create_app(token, principal, expires_at_ns).run(
-      host="0.0.0.0", port=8000, debug=False, ssl_context=ssl_context
-  )
+    main()
