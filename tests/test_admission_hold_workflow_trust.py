@@ -29,15 +29,22 @@ class AdmissionHoldWorkflowTrustTests(unittest.TestCase):
         self.assertNotIn("contents: write", self.text)
         self.assertNotIn("actions: write", self.text)
         self.assertNotIn("checks: write", self.text)
+        self.assertNotIn("issues: write", self.text)
 
-    def test_draft_enforcement_precedes_metadata_denial(self):
+    def test_quarantine_precedes_metadata_denial(self):
         mutation = self.text.index("scripts/enforce_pr_admission_hold.py")
         check = self.text.index("scripts/check_pr_admission_hold.py")
         self.assertLess(mutation, check)
+        self.assertIn("Quarantine held non-draft PR by closing", self.text)
 
-    def test_metadata_hold_check_runs_even_if_draft_mutation_fails(self):
+    def test_metadata_hold_check_runs_even_if_quarantine_fails(self):
         marker = "- name: Enforce Pulpo admission hold metadata\n        if: ${{ always() }}"
         self.assertIn(marker, self.text)
+
+    def test_workflow_does_not_require_external_credentials(self):
+        self.assertIn("GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}", self.text)
+        self.assertNotIn("PAT", self.text)
+        self.assertNotIn("PERSONAL_ACCESS_TOKEN", self.text)
 
 
 if __name__ == "__main__":
