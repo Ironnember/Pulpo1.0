@@ -1,0 +1,46 @@
+name: Admission Hold
+
+on:
+  pull_request_target:
+    branches:
+      - main
+    types:
+      - opened
+      - reopened
+      - synchronize
+      - edited
+      - ready_for_review
+      - converted_to_draft
+      - labeled
+      - unlabeled
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  admission-hold:
+    name: admission-hold
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      # pull_request_target intentionally checks out trusted base/default-branch
+      # code when ref is omitted. Never override this to PR-head or stale PR
+      # metadata, and never execute pull-request-head code in this workflow.
+      - name: Check out trusted protected base
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Quarantine held non-draft PR by closing
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python scripts/enforce_pr_admission_hold.py --event "$GITHUB_EVENT_PATH" --apply
+
+      - name: Enforce Pulpo admission hold metadata
+        if: ${{ always() }}
+        run: python scripts/check_pr_admission_hold.py --event "$GITHUB_EVENT_PATH"

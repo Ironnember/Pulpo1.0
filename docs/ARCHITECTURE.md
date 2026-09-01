@@ -51,6 +51,14 @@ routing, and host isolation belong outside this trusted core and must earn
 inclusion through tests and evidence. The SQLite backend proves local restart
 semantics, not trusted hosting or independent storage authority.
 
+PulpoGit is a read-only evidence projection beside that kernel, not inside its
+authority path. It observes local repository identity, source refs, committed
+proposal history, and worktree path status; binds the projection to one
+deterministic hash; and explicitly records that no tests ran. It cannot fetch,
+push, merge, grant authority, issue permits, or append audit state. A PulpoGit
+report may be attached to an existing governed work receipt only after the
+normal kernel path authorizes that consequence.
+
 ## Security boundary
 
 This kernel governs authorization decisions. It is not an operating-system sandbox, network firewall, identity provider, or billing system. Those claims require separate implementations and proof.

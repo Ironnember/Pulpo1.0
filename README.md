@@ -28,6 +28,11 @@ The base dependency-free suite and optional asymmetric-authority suite prove:
 - transactional SQLite commerce state preserves reservations, attempted orders,
   reconciliation, and spend across restart.
 
+PulpoGit provides a read-only clarity projection for local source state. It
+distinguishes canonical, proposal, stale, diverged, detached, and dirty
+checkouts without inferring tests or authority. See the
+[PulpoGit clarity proof](proofs/git_clarity/README.md).
+
 ```bash
 python -m unittest discover -s tests -v
 ```

@@ -62,6 +62,7 @@ class Directive:
             directive_hash=self.directive_hash,
             issued_at_ns=self.issued_at_ns,
             expires_at_ns=self.expires_at_ns,
+            parent_directive_hash=self.parent_directive_hash,
         )
 
     def permits(self, intent: Intent, now_ns: int) -> str | None:
@@ -75,6 +76,37 @@ class Directive:
             return "directive_resource_not_allowed"
         if intent.cost > self.max_cost:
             return "directive_budget_exceeded"
+        return None
+
+    def derivation_failure(self, parent: "Directive") -> str | None:
+        """Return why this child would broaden its exact parent, if it would.
+
+        V0 deliberately permits only one derived level and preserves the same
+        governed principal and independently authenticated issuer. Cross-principal
+        delegation is a separate authority design and is not inferred here.
+        """
+
+        if self.parent_directive_hash is None:
+            return "directive_parent_required"
+        if self.parent_directive_hash != parent.directive_hash:
+            return "directive_parent_hash_mismatch"
+        if parent.parent_directive_hash is not None:
+            return "directive_parent_chain_unsupported"
+        if self.issuer_authority_id != parent.issuer_authority_id:
+            return "directive_parent_issuer_mismatch"
+        if self.principal != parent.principal:
+            return "directive_parent_principal_mismatch"
+        if not self.allowed_actions.issubset(parent.allowed_actions):
+            return "directive_parent_action_broadened"
+        if any(
+            not any(prefix.startswith(parent_prefix) for parent_prefix in parent.resource_prefixes)
+            for prefix in self.resource_prefixes
+        ):
+            return "directive_parent_resource_broadened"
+        if self.max_cost > parent.max_cost:
+            return "directive_parent_budget_broadened"
+        if self.issued_at_ns < parent.issued_at_ns or self.expires_at_ns > parent.expires_at_ns:
+            return "directive_parent_time_broadened"
         return None
 
 
@@ -119,6 +151,7 @@ class DirectiveAuthorityController:
             "directive_id": directive.directive_id,
             "directive_version": directive.version,
             "directive_hash": directive.directive_hash,
+            "parent_directive_hash": directive.parent_directive_hash,
             "authority_id": envelope.authority_id,
             "approval_id": envelope.approval_id,
             "envelope_hash": envelope.envelope_hash,
@@ -171,6 +204,38 @@ class DirectiveAuthorityController:
             return Decision("deny", "directive_authority_permit_rejected", digest), authority_intent
         return decision, authority_intent
 
+    def _derivation_decision(
+        self,
+        directive: Directive,
+        parent_directive: Directive | None,
+        *,
+        operator_principal: str,
+        session_id: str,
+    ) -> Decision | None:
+        authority_intent = self.authority_intent(
+            self.ACTIVATE,
+            directive,
+            operator_principal=operator_principal,
+            session_id=session_id,
+        )
+        digest = self.kernel.intent_hash(authority_intent)
+        if directive.parent_directive_hash is None:
+            if parent_directive is not None:
+                return Decision("deny", "directive_parent_unexpected", digest)
+            return None
+        if parent_directive is None:
+            return Decision("deny", "directive_parent_required", digest)
+        failure = directive.derivation_failure(parent_directive)
+        if failure:
+            return Decision("deny", failure, digest)
+        parent_status = self.kernel._state.directive_hash_status(parent_directive.directive_hash)
+        if parent_status != "active":
+            return Decision("deny", parent_status, digest)
+        now_ns = self._trusted_now()
+        if not (parent_directive.issued_at_ns <= now_ns < parent_directive.expires_at_ns):
+            return Decision("deny", "directive_parent_inactive", digest)
+        return None
+
     def activate(
         self,
         directive: Directive,
@@ -178,7 +243,16 @@ class DirectiveAuthorityController:
         *,
         operator_principal: str,
         session_id: str = "default",
+        parent_directive: Directive | None = None,
     ) -> Decision:
+        derivation = self._derivation_decision(
+            directive,
+            parent_directive,
+            operator_principal=operator_principal,
+            session_id=session_id,
+        )
+        if derivation is not None:
+            return derivation
         decision, authority_intent = self._authorize(
             self.ACTIVATE,
             directive,
@@ -188,11 +262,16 @@ class DirectiveAuthorityController:
         )
         if decision.outcome != "allow":
             return decision
-        self.kernel._state.activate_directive(
-            directive,
-            self._evidence(self.ACTIVATE, directive, envelope, authority_intent, self.kernel),
-            self._trusted_now(),
-        )
+        try:
+            self.kernel._state.activate_directive(
+                directive,
+                self._evidence(self.ACTIVATE, directive, envelope, authority_intent, self.kernel),
+                self._trusted_now(),
+            )
+        except ValueError as exc:
+            if str(exc) == "parent directive is not active for activation":
+                return Decision("deny", "directive_parent_inactive_at_activation", decision.intent_hash)
+            raise
         return decision
 
     def revoke(
@@ -242,6 +321,10 @@ class GovernedDirectiveProjection:
         digest = self.kernel.intent_hash(intent)
         if status != "active":
             return Decision("deny", status, digest)
+        if directive.parent_directive_hash is not None:
+            parent_status = self.kernel._state.directive_hash_status(directive.parent_directive_hash)
+            if parent_status != "active":
+                return Decision("deny", parent_status, digest)
         now_ns = self._trusted_now()
         failure = directive.permits(intent, now_ns)
         if failure:
