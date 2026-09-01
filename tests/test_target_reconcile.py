@@ -1,7 +1,9 @@
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
+import pulpo.target_reconcile as target_reconcile_module
 from pulpo import GovernanceKernel, Intent, Policy, SQLiteKernelState
 from pulpo.target_reconcile import GovernedTargetReconciliation
 
@@ -77,6 +79,27 @@ class TargetReconciliationTests(unittest.TestCase):
         self.assertEqual("none", record["payload"]["authority_effect"])
         self.assertNotIn("permit", record["payload"])
         self.assertTrue(self.kernel.verify_audit())
+
+    def test_artifact_mutation_during_observation_fails_closed(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "deck.pptx"
+            path.write_bytes(b"stable artifact")
+            original_read = target_reconcile_module.os.read
+            mutated = False
+
+            def racing_read(descriptor, count):
+                nonlocal mutated
+                if not mutated:
+                    mutated = True
+                    path.write_bytes(b"artifact changed while evidence was being observed")
+                return original_read(descriptor, count)
+
+            with mock.patch.object(target_reconcile_module.os, "read", side_effect=racing_read):
+                with self.assertRaisesRegex(ValueError, "artifact_changed_during_observation"):
+                    self.reconcile.complete_file("deck-v1", self.target.target_hash, path)
+
+        self.assertEqual("unresolved", self.reconcile.status("deck-v1", self.target.target_hash).state)
+        self.assertFalse(any(item["event"] == "target_completed" for item in self.kernel.audit))
 
     def test_same_artifact_completion_is_idempotent_but_replacement_is_denied(self):
         with tempfile.TemporaryDirectory() as directory:
