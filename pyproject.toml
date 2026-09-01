@@ -14,3 +14,6 @@ pulpo-git-clarity = "pulpo.git_clarity:main"
 
 [tool.setuptools]
 packages = ["pulpo", "mobile_demo"]
+
+[tool.setuptools.package-data]
+mobile_demo = ["static/*"]
