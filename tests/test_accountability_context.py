@@ -3,7 +3,7 @@ from __future__ import annotations
 from pulpo import GovernanceKernel, Intent, Policy
 from pulpo.accountability import AccountableContext, AccountableGovernance
 
-from .authority_support import HmacTestVerifier, signed_envelope, trust_for
+from authority_support import HmacTestVerifier, signed_envelope, trust_for
 
 
 class Clock:
