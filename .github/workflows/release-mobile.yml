@@ -50,11 +50,13 @@ jobs:
     steps:
       - uses: actions/download-artifact@v4
         with:
+          pattern: pulpo-mobile-*
+          merge-multiple: true
           path: release-assets
       - name: Publish GitHub Release
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          find release-assets -type f -exec chmod +x {} +
-          gh release create "${GITHUB_REF_NAME}" release-assets/*/* \
-            --generate-notes --title "Pulpo ${GITHUB_REF_NAME}"
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: Pulpo ${{ github.ref_name }}
+          generate_release_notes: true
+          files: release-assets/*
