@@ -31,18 +31,17 @@ Evidence precedence remains:
 
 ## Constitutional boundary
 
-Pulpo governs more than external tool execution. A governed effect includes an external consequence **or** a canonical state transition that can alter the future consequence surface.
+Pulpo governs more than external tool execution. A governed effect includes an external consequence **or** a canonical state transition or retained capability that can alter the future consequence surface.
 
-Canonical invariants now include:
+Canonical invariants include:
 
 - `NO_PERMIT != NO_GOVERNED_EFFECT`;
 - `CANONICAL_STATE_MUTATION == GOVERNED_CAPABILITY`;
 - `NO_WRITE_ROUTE != NO_WRITE_CAPABILITY`;
+- `CORRECTNESS != AUTHORITY`;
 - `authority_effect=none` does not imply `governed_effect=none`.
 
-The practical rule is that a component does not become non-authoritative merely because it cannot mint a permit. Possession of a canonical writer is itself a governed capability.
-
-The doctrine remains:
+A component does not become non-authoritative merely because it cannot mint a permit. Possession of a canonical writer is itself a governed capability.
 
 **Intelligence proposes. Governance disposes. Execution obeys. Evidence reports.**
 
@@ -89,7 +88,7 @@ PR #124 originally admitted MCP as capability/transport rather than authority, b
 1. the MCP proposal path called canonical target locking, so it could append durable canonical state without a permit; and
 2. after removing that direct route, the projection still retained the full orchestrator, meaning `NO_WRITE_ROUTE` still did not equal `NO_WRITE_CAPABILITY`.
 
-PR #134 is now canonical and closes both failures at the tested V0 object boundary.
+PR #134 is canonical and closes both failures at the tested V0 object boundary.
 
 Canonical MCP behavior now:
 
@@ -98,7 +97,7 @@ Canonical MCP behavior now:
 - it retains no kernel, orchestrator, state backend, authority client, executor, policy object, trusted clock, or ledger reference;
 - proposals are ephemeral and return no permit and no canonical target hash;
 - proposal hashing uses the kernel's deterministic static hash function without retaining a kernel instance;
-- evidence/proposal output explicitly reports `freshness=frozen`, `canonical_state_mutation=false`, `governed_effect=none`, and `authority_effect=none`;
+- evidence/proposal output explicitly reports frozen freshness and no canonical mutation/governed effect/authority effect;
 - later canonical writes cannot appear through an already-frozen MCP evidence object;
 - injection of write-capable Pulpo objects is denied by exact-type boundaries and tests.
 
@@ -106,11 +105,17 @@ This is **Verified canonical behavior** at current `main`.
 
 It does not prove hostile same-process memory isolation, live read-only IPC, authenticated remote MCP hosting, production deployment, live evidence freshness, or a complete authenticated ingress contract for every canonical-state writer.
 
-### Bounded commerce and Name.com contracts
+### Bounded commerce — verified scope and discovered auto-renew gap
 
-Canonical tests prove exact domain/registrar/owner/privacy/upsell/price/renewal constraints, the USD 30 pilot ceiling, request/quote/order binding, reservation/reconciliation semantics, provider idempotency binding, and denial of production execution when a hard provider charge cap is unavailable.
+Canonical tests and current code bind the exact domain, registrar, owner reference, privacy requirement, prohibited upsells, purchase price ceiling, renewal **price** ceiling, request/quote/order hashes, reservation/reconciliation semantics, provider idempotency, and the USD 30 pilot purchase ceiling.
 
-A separate read-only Name.com sandbox readiness proof exists. Name.com sandbox remains a credible zero-real-charge Stage-C candidate, but observer/executor principal separation, provider-side observation identity/window semantics, and credential isolation are not yet established. No Name.com registrar write or completed external purchase is established.
+A later red proof in closed-unmerged PR #138 established a material omission in current canonical bounded commerce: `DomainPurchaseRequest`, `DomainPurchaseOrder`, verification evidence, and independent observation on current `main` do **not** bind the provider-side `auto_renew_enabled` state. Existing tests can therefore remain green while a provider default could create a future renewal capability/charge outside the exact authorized object.
+
+PR #138 produced a corrective branch that bound `auto_renew_enabled` into request/order hashing, permit resource identity, provider transmission, and independent observation, and that branch passed its fresh hosted test suite. The PR was closed unmerged under the hold, so **none of that corrective behavior is canonical**.
+
+Current classification: the auto-renew omission is a **Verified canonical governed-effect defect**; the corrective implementation is **Recorded branch-local evidence**, not authority and not admitted behavior.
+
+No real registrar registration, external observer separation, or completed external purchase is established. A registrar Stage-C ceremony must not proceed through the current commerce object until this governed-effect omission is legitimately corrected and admitted.
 
 ## Recorded external infrastructure evidence
 
@@ -154,11 +159,20 @@ That branch-local proof does not establish production authentication, live-curre
 
 ## Stage-C external consequence proof
 
-PR #128 remains Draft/held at exact head `b24e1f42ec19f844fd6955d2a94127c954e31516`.
+Closed-unmerged PR #128 preserves the historical Stage-C structural evidence work. On exact tested held heads it froze the ten-family unauthorized-effect benchmark and fail-closed observation semantics, including distinct observer/executor identities and fingerprints, observer credential isolation, authenticated observation, provider calibration/cleanup, exact effect scope, complete read-only observation, and `unknown` on missing, ambiguous, unauthenticated, wrong-source, or wrong-scope evidence.
 
-Its structural contract freezes the ten-family unauthorized-effect benchmark and requires distinct observer/executor identities and principal fingerprints, observer credential isolation from the hostile worker, authenticated observer assertion, provider-side calibration and cleanup, exact effect scope, complete read-only observation, and fail-closed `unknown` when evidence is unavailable, ambiguous, unauthenticated, wrong-source, wrong-scope, or otherwise insufficient.
+Later hostile review strengthened the contract further: a zero-unauthorized-effect result could not be accepted merely from an empty observation window. It required exact execution-evidence coverage across every frozen attack family, evidence that each attack was actually exercised, a bundle commitment, and one safe reversible matched conversion proving the consequence seam was reachable.
 
-This is **Verified structural proof under hold**, not real external containment. No real external provider was mutated or independently observed by PR #128, and no external unauthorized-effect rate is established.
+Provider scans did **not** establish a completed ceremony. Name.com remained not claim-eligible because multiple tokens were not proved to create genuinely distinct provider principals. Supabase/Postgres was identified as structurally plausible because it can support distinct database principals and provider-native WAL/LSN sequence coordinates, but qualification is not execution evidence.
+
+PR #128 was made ready while its explicit process hold remained; the admitted base-controlled hold/quarantine automation closed it unmerged. Therefore there is **no active or canonical Stage-C implementation from #128**.
+
+Classification:
+
+- the exact historical structural proof records are **Recorded** and remain useful evidence;
+- real external provider containment is **Unknown / unproved**;
+- no external unauthorized-effect rate has been established;
+- no provider credential or external effect should be inferred from the structural work.
 
 ## Keel boundary
 
@@ -171,6 +185,17 @@ The intended split is unchanged:
 
 Keel remains draft/noncanonical until it verifies a real Pulpo cryptographic one-use permit and is admitted without creating a second authority, router, executor-of-record, or ledger.
 
+## Current held experiments
+
+Current held branches may provide evaluation evidence but are not canonical capability:
+
+- PR #141 proposes an accountable-context precondition before delegation/permit use;
+- PR #139 evaluates a real external Hermes runtime against Pulpo's capability-stripped MCP surface;
+- PR #137 replays historical governed-effect/capability-possession failures;
+- PR #131 evaluates a capability-stripped read-only distribution surface.
+
+Passing checks on those branches do not create admission authority or current product claims.
+
 ## Proof boundary
 
 ### Verified
@@ -181,12 +206,15 @@ Keel remains draft/noncanonical until it verifies a real Pulpo cryptographic one
 - independent collaborator review enforcement;
 - base-controlled Admission Hold workflow behavior, including legitimate PR #134 Admission Hold #65;
 - external HSM signing primitive;
-- **canonical capability-stripped MCP boundary admitted through PR #134**;
+- canonical capability-stripped MCP boundary admitted through PR #134;
+- the canonical commerce omission of provider-side auto-renew enabled state;
 - the failure lesson that no permit and no visible write route are insufficient if a component can still mutate or retain access to canonical state.
 
 ### Recorded
 
 - cloud authority project/resource evidence and historical proof records;
+- historical Stage-C structural evidence from closed-unmerged PR #128;
+- branch-local corrective auto-renew evidence from closed-unmerged PR #138;
 - Keel V0 experimental execution-boundary evidence.
 
 ### Inferred
@@ -196,8 +224,10 @@ Keel remains draft/noncanonical until it verifies a real Pulpo cryptographic one
 ### Proposed
 
 - require `admission-hold` at the repository protection layer or establish an equivalently non-spoofable protected-base rule;
+- legitimately correct and admit the auto-renew governed-effect omission before registrar execution;
 - audit every externally reachable canonical-state writer against authenticated identity, scope, replay/idempotency, revocation, resource limits, and evidence requirements;
 - establish genuinely distinct external provider observer/executor principals and credential isolation for Stage C;
+- recreate or admit a current Stage-C contract only through normal governance before any real external ceremony;
 - run one bounded zero-real-cost external Stage-C ceremony through the existing governance/reconciliation path;
 - admit a distribution surface only after exact-head substantive review and normal repository admission;
 - admit Keel only after it verifies a real Pulpo permit without acquiring authority.
@@ -225,16 +255,17 @@ Pulpo does not yet prove:
 - production throughput, latency, reliability, deployment cost, cost per governed action, false-denial rate, human-review burden, or customer ROI;
 - general correctness across arbitrary agents, providers, payment rails, or execution surfaces.
 
-Do not convert passing CI, a cloud resource, an approval, a successful executor report, an experimental distribution artifact, or market interest into authority, production-readiness, external-containment, or third-party-reproducibility claims.
+Do not convert passing CI, a cloud resource, an approval, a successful executor report, a branch-local experiment, an experimental distribution artifact, or market interest into authority, production-readiness, external-containment, or third-party-reproducibility claims.
 
 ## Next highest-value proof sequence
 
 1. Through an authorized GitHub administration/settings surface, require `admission-hold` for protected `main` or establish an equivalently non-spoofable protected rule; inspect/narrow bypass posture; preserve held-denial and ready-allow acceptance evidence; then close Issue #115.
-2. Audit all externally reachable canonical-state writers under the newly explicit governed-capability rule; remove or govern any remaining writer possession that lacks authenticated scoped authority.
-3. Reconcile investor/partner/distribution language to current canonical `ca363668...`: MCP capability stripping is now **admitted**, while production readiness, real external containment, and cold third-party reproduction remain unproved.
-4. Establish genuinely distinct external provider observer/executor principals and credential isolation for Stage C.
-5. Run exactly one disposable zero-real-cost external provider ceremony through the frozen Stage-C contract and existing reconciliation path.
-6. Preserve the complete evidence bundle and have an unrelated operator reproduce the proof cold.
-7. Finish the independent `authority.pulpo.ai` deployment/acceptance boundary and admit Keel only after its execution contract verifies a real Pulpo cryptographic permit without becoming a second authority or ledger.
+2. Correct the verified canonical commerce auto-renew governed-effect omission and admit only an exact reviewed object that binds provider renewal state into request, order, permit identity, execution, independent observation, and reconciliation.
+3. Audit all externally reachable canonical-state writers under the governed-capability rule; remove or govern any remaining writer possession that lacks authenticated scoped authority.
+4. Reconcile investor/partner/distribution language to current canonical `ca363668...`: MCP capability stripping is admitted; the commerce auto-renew defect is known; production readiness, real external containment, and cold third-party reproduction remain unproved.
+5. Establish genuinely distinct external provider observer/executor principals and credential isolation, then create/admit a current Stage-C proof contract through normal governance.
+6. Run exactly one disposable zero-real-cost external provider ceremony through the admitted Stage-C contract and existing reconciliation path.
+7. Preserve the complete evidence bundle and have an unrelated operator reproduce the proof cold.
+8. Finish the independent `authority.pulpo.ai` deployment/acceptance boundary and admit Keel only after its execution contract verifies a real Pulpo cryptographic permit without becoming a second authority or ledger.
 
-**Correctness does not create authority. Capability possession can.**
+**Models can change overnight. Authority should not.**
