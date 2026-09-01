@@ -2,6 +2,7 @@ __pycache__/
 *.py[cod]
 .venv/
 .pulpo/
+.pulpo-effect-*.txt
 dist/
 build/
 *.egg-info/
