@@ -209,8 +209,8 @@ def _write_hermes_config(hermes_home: Path, pulpo_root: Path) -> Path:
               default: "{MODEL}"
               provider: "custom"
               base_url: "{BASE_URL}/v1"
-              context_length: 16384
-              ollama_num_ctx: 16384
+              context_length: 65536
+              ollama_num_ctx: 65536
               max_tokens: 512
 
             toolsets:
