@@ -19,7 +19,6 @@ changed here.
 from __future__ import annotations
 
 import copy
-import json
 
 import phase_b_live_ollama as base
 
@@ -33,12 +32,12 @@ def _write_hermes_config(hermes_home, pulpo_root):
     text = path.read_text(encoding="utf-8")
     text = text.replace("ollama_num_ctx: 65536", "ollama_num_ctx: 16384")
     if "providers:\n  custom:" not in text:
-        marker = "\n            toolsets:\n"
+        marker = "\ntoolsets:\n"
         provider_block = (
-            "\n            providers:\n"
-            "              custom:\n"
-            "                request_timeout_seconds: 900\n"
-            "                stale_timeout_seconds: 900\n"
+            "\nproviders:\n"
+            "  custom:\n"
+            "    request_timeout_seconds: 900\n"
+            "    stale_timeout_seconds: 900\n"
         )
         if marker not in text:
             raise RuntimeError("unexpected Hermes config shape")
