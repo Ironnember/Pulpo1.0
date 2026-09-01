@@ -149,7 +149,9 @@ Its V0 draft establishes the intended split:
 - Pulpo owns authority, policy, permits, evidence, reconciliation, and governed learning;
 - Keel deterministically executes an already-authorized exact operation and returns an execution receipt that cannot self-certify reconciliation.
 
-Eight Keel V0 boundary tests pass, including replay, substitution, expiry, revocation, unknown-outcome restart, and authority-expansion denial. The current Keel CI still fails its dependency-hygiene gate because the checker classifies the package-relative `core` import as an unexpected dependency. Keel is therefore not admission-ready and no cryptographic Pulpo-permit integration is yet proved.
+Eight Keel V0 boundary tests pass, including replay, substitution, expiry, revocation, unknown-outcome restart, and authority-expansion denial. Exact head `07b975c6e7e6a7b65b1b1d2f36673ec7d6636bc5` passes Keel V0 Boundary run #4 across Python 3.11, 3.12, and 3.13, including compile and zero-production-dependency hygiene checks. The prior hygiene failure was a checker false positive on the package-relative `from .core` import and was corrected without adding a production dependency.
+
+Keel remains draft/noncanonical because it has not yet verified a real Pulpo cryptographic one-use permit or been admitted as Pulpo's execution substrate.
 
 ## Explicit nonclaims
 
@@ -176,7 +178,7 @@ Do not convert passing CI, a cloud resource, an approval, a successful executor 
    `domain -> trusted observation -> ProposalCommitment -> independent human authority -> exact permit -> isolated execution -> independent provider observation -> reconciliation -> restart/replay denial`
 
 5. Preserve the complete evidence bundle and have an unrelated operator reproduce it.
-6. Admit Keel only after its own CI is clean and its execution contract verifies a real Pulpo cryptographic permit without becoming a second authority or ledger.
+6. Admit Keel only after its execution contract verifies a real Pulpo cryptographic permit without becoming a second authority or ledger.
 
 The doctrine remains:
 
