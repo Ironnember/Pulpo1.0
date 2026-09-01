@@ -86,6 +86,7 @@ CASES: tuple[Case, ...] = (
         "At most one authoritative attempt; loser DENY",
         (
             "tests.test_custody.CustodyProofTests.test_two_workers_racing_same_head_yield_one_authorization",
+            "tests.test_custody.CustodyProofTests.test_one_attempt_can_be_claimed_by_only_one_executor",
         ),
     ),
     Case(
@@ -93,6 +94,9 @@ CASES: tuple[Case, ...] = (
         "UNKNOWN",
         (
             "tests.test_custody.CustodyProofTests.test_transmission_right_is_released_once_and_lost_response_requires_reconciliation",
+            "tests.test_custody_executor.CustodyExecutorTests.test_lost_provider_response_is_unknown_and_cannot_retry_or_release_budget",
+            "tests.test_custody_executor.CustodyExecutorTests.test_crash_after_transmission_release_never_releases_second_network_right",
+            "tests.test_commerce.CommerceProofTests.test_uncertain_external_result_cannot_be_blindly_retried_after_restart",
         ),
     ),
     Case(
@@ -100,6 +104,7 @@ CASES: tuple[Case, ...] = (
         "UNKNOWN or MISMATCH, never verified",
         (
             "tests.test_custody.CustodyProofTests.test_worker_cannot_claim_reconciled_success_without_observer_evidence",
+            "tests.test_custody_reconcile.CustodyReconciliationTests.test_provider_success_without_complete_external_observation_stays_unresolved_and_holds_budget",
         ),
     ),
     Case(
@@ -107,6 +112,7 @@ CASES: tuple[Case, ...] = (
         "MISMATCH",
         (
             "tests.test_effect_reconcile.PermitBoundEffectReconciliationTests.test_observed_path_outside_envelope_is_undeclared_mismatch",
+            "tests.test_custody_reconcile.CustodyReconciliationTests.test_observed_substitution_is_failure_and_does_not_reopen_budget",
         ),
     ),
     Case(
@@ -115,6 +121,7 @@ CASES: tuple[Case, ...] = (
         (
             "tests.test_effect_reconcile.PermitBoundEffectReconciliationTests.test_incomplete_observer_fails_closed_as_uncertain",
             "tests.test_effect_reconcile.PermitBoundEffectReconciliationTests.test_missing_surface_observation_is_uncertain",
+            "tests.test_custody_reconcile.CustodyReconciliationTests.test_not_found_lookup_cannot_be_inferred_as_known_failure",
         ),
     ),
     Case(
@@ -123,6 +130,9 @@ CASES: tuple[Case, ...] = (
         (
             "tests.test_directives.DirectiveProofTests.test_preissued_permit_stays_invalid_after_revocation_and_restart",
             "tests.test_persistence.RestartSafeStateTests.test_approval_and_permit_replay_remain_denied_after_restart",
+            "tests.test_commerce.CommerceProofTests.test_durable_budget_survives_restart_and_blocks_attempt_replay",
+            "tests.test_commerce.CommerceProofTests.test_uncertain_external_result_cannot_be_blindly_retried_after_restart",
+            "tests.test_commerce.CommerceProofTests.test_durable_reconciliation_survives_restart",
         ),
     ),
     Case(
@@ -130,6 +140,7 @@ CASES: tuple[Case, ...] = (
         "ALLOW_VERIFIED",
         (
             "tests.test_effect_reconcile.PermitBoundEffectReconciliationTests.test_writes_inside_declared_runtime_surface_are_verified",
+            "tests.test_custody_reconcile.CustodyReconciliationTests.test_exact_independent_observation_reconciles_success_and_settles_budget",
         ),
     ),
 )
