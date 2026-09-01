@@ -7,6 +7,19 @@ and evidence path.
 ## Non-negotiable invariants
 
 - Intelligence may propose authority changes; it may not grant them.
+- `NO_PERMIT != NO_GOVERNED_EFFECT`: absence of a permit or external execution
+  does not prove that no consequential governance state changed.
+- `CANONICAL_STATE_MUTATION == GOVERNED_CAPABILITY`: any interface that can
+  append, replace, reserve, revoke, lock, reconcile, or otherwise alter
+  canonical Pulpo state possesses a governed capability and must not be exposed
+  as an ungoverned intelligence or transport surface.
+- `authority_effect=none` does not imply `governed_effect=none`. A transition may
+  leave authority unchanged while still changing the future consequence
+  surface through canonical state.
+- A surface described as read-only or non-authoritative must remain
+  non-mutating under repeated, malformed, replayed, and substituted calls.
+  Ephemeral proposal construction is allowed; committing that proposal to
+  canonical state requires a separately governed transition.
 - Do not add a second router, executor, ledger, memory system, audit source, or
   authority plane.
 - No governed agent may create, read, derive, invoke, enroll, export, or
@@ -58,11 +71,13 @@ Every material pull request must state:
 
 1. the invariant or failure addressed;
 2. any authority gained, narrowed, or left unchanged;
-3. the exact success and adversarial evidence;
-4. the boundary the evidence does not prove;
-5. the claim classification;
-6. any legacy behavior source used without copying its control path;
-7. for each material reusable lesson, the applicable temporal-transfer evidence
+3. every canonical state mutation introduced or exposed and the governed
+   capability boundary that controls it;
+4. the exact success and adversarial evidence;
+5. the boundary the evidence does not prove;
+6. the claim classification;
+7. any legacy behavior source used without copying its control path;
+8. for each material reusable lesson, the applicable temporal-transfer evidence
    or an explicit statement that no relevant historical checkpoint exists.
 
 Executable behavior and adversarial tests at the exact commit outrank documents,
