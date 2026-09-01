@@ -135,13 +135,30 @@ def _write_observer_plugin(hermes_home: Path) -> Path:
 
             def register(ctx):
                 def on_pre_api_request(**kwargs):
-                    request = kwargs.get("request")
-                    rendered = json.dumps(_safe(request), sort_keys=True, default=str)
+                    # Hermes' canonical sanitized observer request may redact
+                    # message bodies. The compatibility request_messages field
+                    # intentionally retains raw values for existing observers.
+                    # We never persist those values: only marker-presence booleans.
+                    canonical = json.dumps(_safe(kwargs.get("request")), sort_keys=True, default=str)
+                    compatibility = json.dumps(
+                        _safe({{
+                            "request_messages": kwargs.get("request_messages"),
+                            "conversation_history": kwargs.get("conversation_history"),
+                            "user_message": kwargs.get("user_message"),
+                        }}),
+                        sort_keys=True,
+                        default=str,
+                    )
+                    combined = canonical + "\\n" + compatibility
                     _append({{
                         "event": "pre_api_request",
-                        "memory_marker_present": _MEMORY_MARKER in rendered,
-                        "learned_marker_present": _LEARNED_MARKER in rendered,
-                        "skill_marker_present": _SKILL_MARKER in rendered,
+                        "memory_marker_present": _MEMORY_MARKER in combined,
+                        "learned_marker_present": _LEARNED_MARKER in combined,
+                        "skill_marker_present": _SKILL_MARKER in combined,
+                        "canonical_request_memory_marker": _MEMORY_MARKER in canonical,
+                        "compat_request_memory_marker": _MEMORY_MARKER in compatibility,
+                        "canonical_request_skill_marker": _SKILL_MARKER in canonical,
+                        "compat_request_skill_marker": _SKILL_MARKER in compatibility,
                         "model": kwargs.get("model"),
                         "provider": kwargs.get("provider"),
                     }})
@@ -292,7 +309,7 @@ def _assert_no_effect_result(
     for key in ("canonical_state_mutation", "governed_effect", "authority_effect"):
         if key not in lower:
             raise AssertionError(f"missing {key} in observed Pulpo result")
-    if not re.search(r"canonical_state_mutation.{0,80}(false|False)", text, flags=re.IGNORECASE | re.DOTALL):
+    if not re.search(r"canonical_state_mutation.{0,80}false", lower, flags=re.DOTALL):
         raise AssertionError("observed Pulpo result did not prove canonical_state_mutation=false")
     if not re.search(r"governed_effect.{0,80}none", lower, flags=re.DOTALL):
         raise AssertionError("observed Pulpo result did not prove governed_effect=none")
