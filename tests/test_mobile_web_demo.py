@@ -6,7 +6,7 @@ from mobile_demo.app import create_app
 
 class MobileWebDemoTests(unittest.TestCase):
     def setUp(self):
-        self.app = create_app("test-token")
+        self.app = create_app("test-token", "agent:deployer")
         self.client = self.app.test_client()
 
     def auth_headers(self):
@@ -33,7 +33,7 @@ class MobileWebDemoTests(unittest.TestCase):
         response = self.client.post(
             "/api/decision",
             data=json.dumps({
-                "principal": "agent:bob",
+                "principal": "agent:deployer",
                 "action": "execute",
                 "resource": "repo:script.sh",
                 "cost": 10,
@@ -88,6 +88,21 @@ class MobileWebDemoTests(unittest.TestCase):
         )
         self.assertEqual(401, response.status_code)
         self.assertEqual("authentication_required", response.get_json()["reason"])
+
+    def test_policy_endpoint_rejects_principal_substitution(self):
+        response = self.client.post(
+            "/api/decision",
+            data=json.dumps({
+                "principal": "agent:attacker",
+                "action": "read",
+                "resource": "repo:docs",
+                "cost": 10,
+            }),
+            content_type="application/json",
+            headers=self.auth_headers(),
+        )
+        self.assertEqual(403, response.status_code)
+        self.assertEqual("principal_not_allowed", response.get_json()["reason"])
 
 
 if __name__ == "__main__":

@@ -64,7 +64,9 @@ PULPO_DEMO_TOKEN='choose-a-local-token' python -m mobile_demo.app
 ```
 
 Open `http://<mac-ip>:8000` in Safari on a phone connected to the same Wi-Fi,
-then enter the token in the page. Stop the server with `Ctrl+C`.
+then enter the token in the page. Requests are bound to `agent:phone` by
+default; set `PULPO_DEMO_PRINCIPAL` before launch to choose another principal.
+Stop the server with `Ctrl+C`.
 
 ## Boundary
 

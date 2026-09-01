@@ -6,10 +6,11 @@ from flask import Flask, jsonify, render_template_string, request
 from pulpo.kernel import GovernanceKernel, Intent, Policy
 
 
-def create_app(auth_token: str):
-    if not auth_token:
-        raise ValueError("auth_token is required")
+def create_app(auth_token: str, principal: str = "agent:phone"):
+    if not auth_token or not principal:
+        raise ValueError("auth_token and principal are required")
     app = Flask(__name__)
+    app.config["PULPO_DEMO_PRINCIPAL"] = principal
 
     policy = Policy(
         allowed_actions=frozenset({"deploy", "read", "write"}),
@@ -80,7 +81,7 @@ def create_app(auth_token: str):
             <h2>Pulpo Mobile Demo</h2>
             <form id="decision-form">
               <label>Principal
-                <input name="principal" value="agent:deployer" />
+                <input name="principal" value="{{ principal }}" />
               </label>
               <label>Action
                 <select name="action">
@@ -123,7 +124,7 @@ def create_app(auth_token: str):
           </script>
         </body>
         </html>
-        ''')
+        ''', principal=principal)
 
     @app.post("/api/decision")
     def decision():
@@ -142,6 +143,8 @@ def create_app(auth_token: str):
         cost = payload.get("cost", 0)
         if any(not isinstance(value, str) for value in (principal, action, resource)):
             return jsonify({"outcome": "deny", "reason": "invalid_intent", "permit": None}), 400
+        if principal != app.config["PULPO_DEMO_PRINCIPAL"]:
+          return jsonify({"outcome": "deny", "reason": "principal_not_allowed", "permit": None}), 403
         if isinstance(cost, bool) or not isinstance(cost, int):
             return jsonify({"outcome": "deny", "reason": "invalid_cost", "permit": None}), 400
 
@@ -175,6 +178,7 @@ def create_app(auth_token: str):
 
 if __name__ == "__main__":
   token = os.environ.get("PULPO_DEMO_TOKEN")
+  principal = os.environ.get("PULPO_DEMO_PRINCIPAL", "agent:phone")
   if not token:
     raise SystemExit("Set PULPO_DEMO_TOKEN before starting the mobile demo")
-  create_app(token).run(host="0.0.0.0", port=8000, debug=False)
+  create_app(token, principal).run(host="0.0.0.0", port=8000, debug=False)
