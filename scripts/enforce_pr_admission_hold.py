@@ -20,7 +20,10 @@ from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
-from scripts.check_pr_admission_hold import admission_hold_reasons
+try:
+    from scripts.check_pr_admission_hold import admission_hold_reasons
+except ModuleNotFoundError:  # direct execution from scripts/
+    from check_pr_admission_hold import admission_hold_reasons
 
 
 GITHUB_GRAPHQL_URL = "https://api.github.com/graphql"
