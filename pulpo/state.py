@@ -119,6 +119,9 @@ class InMemoryKernelState:
     def activate_directive(self, directive, authority_evidence: dict[str, object], timestamp_ns: int) -> None:
         key = (directive.directive_id, directive.version)
         if key in self._directives: raise ValueError("directive version is immutable")
+        parent_hash = getattr(directive, "parent_directive_hash", None)
+        if parent_hash is not None and self.directive_hash_status(parent_hash) != "active":
+            raise ValueError("parent directive is not active for activation")
         self._directives[key] = (directive.directive_hash, False)
         self.append("directive_activated", {"directive_id": directive.directive_id, "version": directive.version, "directive_hash": directive.directive_hash, "authority_evidence": authority_evidence}, timestamp_ns)
 
@@ -233,6 +236,11 @@ class SQLiteKernelState:
         with self._connection:
             self._connection.execute("BEGIN IMMEDIATE")
             if self._connection.execute("SELECT 1 FROM directives WHERE directive_id=? AND version=?", (directive.directive_id, directive.version)).fetchone(): raise ValueError("directive version is immutable")
+            parent_hash = getattr(directive, "parent_directive_hash", None)
+            if parent_hash is not None:
+                parent = self._connection.execute("SELECT revoked FROM directives WHERE directive_hash=?", (parent_hash,)).fetchone()
+                if parent is None or parent[0] != 0:
+                    raise ValueError("parent directive is not active for activation")
             self._connection.execute("INSERT INTO directives (directive_id, version, directive_hash) VALUES (?, ?, ?)", (directive.directive_id, directive.version, directive.directive_hash))
             self._append("directive_activated", {"directive_id": directive.directive_id, "version": directive.version, "directive_hash": directive.directive_hash, "authority_evidence": authority_evidence}, timestamp_ns)
 
