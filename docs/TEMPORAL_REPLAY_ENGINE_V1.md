@@ -39,7 +39,13 @@ The proof vector binds:
 - explicit allowed evidence-source kinds;
 - `authority_effect=none`.
 
-This prevents a replay from silently substituting a different claim or proof definition after seeing results.
+This prevents a replay report from silently substituting a different claim or proof definition while it is being evaluated.
+
+### Precommit chronology boundary
+
+`proof_definition_sha256` proves content identity only. It does **not** prove that the proof definition was committed, approved, or frozen before replay results were observed. A caller could construct a valid hash after seeing an outcome.
+
+Therefore V1 does not claim independent precommit chronology. A mature proof must bind the proof definition to separately authenticated evidence of when and under what authority it became the accepted replay vector. Until that provenance exists, “frozen” means immutable within this report contract, not independently proven to predate the observed results.
 
 ## Differential classes
 
@@ -92,14 +98,15 @@ V1 is still a structural evidence contract, not arbitrary historical execution. 
 - dependency or external-API reproducibility;
 - independent verification of the `authenticated` evidence assertion;
 - cryptographic provenance of evidence IDs;
+- proof-definition precommit chronology;
 - external host reconciliation;
 - signed differential reports;
 - deployment or rollback authority.
 
-Those require separate proofs. In particular, source authenticity must be established by a trusted evidence boundary outside this report constructor; a caller setting `authenticated=True` does not itself prove authenticity.
+Those require separate proofs. In particular, source authenticity must be established by a trusted evidence boundary outside this report constructor; a caller setting `authenticated=True` does not itself prove authenticity. Likewise, a valid proof-definition hash does not prove when that definition became authoritative for evaluation.
 
 ## Intended mature flow
 
-`exact historical state -> frozen proof -> isolated replay -> independently authenticated evidence -> exact current state replay -> deterministic differential -> Pulpo reconciliation -> learning recommendation`
+`exact historical state -> authenticated precommitted proof -> isolated replay -> independently authenticated evidence -> exact current state replay -> deterministic differential -> Pulpo reconciliation -> learning recommendation`
 
 A learning recommendation may request a present authority transition. It may not approve that transition itself.
