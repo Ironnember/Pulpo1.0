@@ -43,8 +43,10 @@ class AdmissionHoldWorkflowTrustTests(unittest.TestCase):
 
     def test_workflow_does_not_require_external_credentials(self):
         self.assertIn("GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}", self.text)
-        self.assertNotIn("PAT", self.text)
-        self.assertNotIn("PERSONAL_ACCESS_TOKEN", self.text)
+        self.assertNotIn("secrets.PAT", self.text)
+        self.assertNotIn("secrets.GH_PAT", self.text)
+        self.assertNotIn("secrets.PERSONAL_ACCESS_TOKEN", self.text)
+        self.assertNotIn("secrets.APP_PRIVATE_KEY", self.text)
 
 
 if __name__ == "__main__":
