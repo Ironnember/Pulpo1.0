@@ -19,6 +19,8 @@ jobs:
   benchmark:
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    env:
+      PYTHONPATH: .
     steps:
       - name: Check out exact PR head
         uses: actions/checkout@v4
