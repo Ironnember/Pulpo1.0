@@ -14,6 +14,7 @@ pulpo-lab = "pulpo.local_lab:main"
 [project.optional-dependencies]
 authority = ["cryptography==50.0.1"]
 web = ["Flask>=3.0,<4"]
+web-production = ["gunicorn>=23,<24"]
 voice = [
   "sounddevice>=0.5,<1",
   "faster-whisper>=1.1,<2",

@@ -1,12 +1,13 @@
 import hmac
 import os
+import time
 
 from flask import Flask, jsonify, render_template_string, request
 
 from pulpo.kernel import GovernanceKernel, Intent, Policy
 
 
-def create_app(auth_token: str, principal: str = "agent:phone"):
+def create_app(auth_token: str, principal: str = "agent:phone", token_expires_at: int | None = None):
     if not auth_token or not principal:
         raise ValueError("auth_token and principal are required")
     app = Flask(__name__)
@@ -132,6 +133,8 @@ def create_app(auth_token: str, principal: str = "agent:phone"):
         expected = f"Bearer {auth_token}"
         if not hmac.compare_digest(authorization, expected):
             return jsonify({"outcome": "deny", "reason": "authentication_required", "permit": None}), 401
+        if token_expires_at is not None and time.time() >= token_expires_at:
+          return jsonify({"outcome": "deny", "reason": "authentication_expired", "permit": None}), 401
 
         payload = request.get_json(force=True, silent=True) or {}
         if not isinstance(payload, dict):
@@ -179,6 +182,20 @@ def create_app(auth_token: str, principal: str = "agent:phone"):
 if __name__ == "__main__":
   token = os.environ.get("PULPO_DEMO_TOKEN")
   principal = os.environ.get("PULPO_DEMO_PRINCIPAL", "agent:phone")
+  expires_at = os.environ.get("PULPO_DEMO_TOKEN_EXPIRES_AT")
+  cert = os.environ.get("PULPO_DEMO_TLS_CERT")
+  key = os.environ.get("PULPO_DEMO_TLS_KEY")
   if not token:
     raise SystemExit("Set PULPO_DEMO_TOKEN before starting the mobile demo")
-  create_app(token, principal).run(host="0.0.0.0", port=8000, debug=False)
+  if not expires_at:
+    raise SystemExit("Set PULPO_DEMO_TOKEN_EXPIRES_AT before starting the mobile demo")
+  try:
+    expires_at_ns = int(expires_at)
+  except ValueError as exc:
+    raise SystemExit("PULPO_DEMO_TOKEN_EXPIRES_AT must be Unix seconds") from exc
+  ssl_context = (cert, key) if cert or key else None
+  if ssl_context is not None and (not cert or not key):
+    raise SystemExit("Set both PULPO_DEMO_TLS_CERT and PULPO_DEMO_TLS_KEY")
+  create_app(token, principal, expires_at_ns).run(
+      host="0.0.0.0", port=8000, debug=False, ssl_context=ssl_context
+  )

@@ -60,13 +60,19 @@ web page. It is for same-network development only and requires a bearer token.
 python3 -m venv .venv
 . .venv/bin/activate
 python -m pip install -e '.[web]'
-PULPO_DEMO_TOKEN='choose-a-local-token' python -m mobile_demo.app
+PULPO_DEMO_TOKEN='choose-a-local-token' \
+PULPO_DEMO_TOKEN_EXPIRES_AT='unix-seconds-in-the-future' \
+python -m mobile_demo.app
 ```
 
 Open `http://<mac-ip>:8000` in Safari on a phone connected to the same Wi-Fi,
 then enter the token in the page. Requests are bound to `agent:phone` by
 default; set `PULPO_DEMO_PRINCIPAL` before launch to choose another principal.
 Stop the server with `Ctrl+C`.
+
+For a deployed service, install `.[web-production]` and run Gunicorn with a
+TLS-terminating reverse proxy. Set `PULPO_DEMO_TLS_CERT` and
+`PULPO_DEMO_TLS_KEY` when using the built-in development server directly.
 
 ## Boundary
 

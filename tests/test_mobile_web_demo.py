@@ -89,6 +89,22 @@ class MobileWebDemoTests(unittest.TestCase):
         self.assertEqual(401, response.status_code)
         self.assertEqual("authentication_required", response.get_json()["reason"])
 
+    def test_policy_endpoint_rejects_expired_token(self):
+        app = create_app("test-token", "agent:deployer", token_expires_at=1)
+        response = app.test_client().post(
+            "/api/decision",
+            data=json.dumps({
+                "principal": "agent:deployer",
+                "action": "read",
+                "resource": "repo:docs",
+                "cost": 10,
+            }),
+            content_type="application/json",
+            headers=self.auth_headers(),
+        )
+        self.assertEqual(401, response.status_code)
+        self.assertEqual("authentication_expired", response.get_json()["reason"])
+
     def test_policy_endpoint_rejects_principal_substitution(self):
         response = self.client.post(
             "/api/decision",
