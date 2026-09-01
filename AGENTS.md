@@ -13,6 +13,11 @@ and evidence path.
   append, replace, reserve, revoke, lock, reconcile, or otherwise alter
   canonical Pulpo state possesses a governed capability and must not be exposed
   as an ungoverned intelligence or transport surface.
+- `NO_WRITE_ROUTE != NO_WRITE_CAPABILITY`: hiding a mutation behind an
+  unregistered route or unused method does not remove capability possession. A
+  transport, UI, plugin, MCP host, or distribution process must not retain a
+  kernel, orchestrator, executor, state backend, or other canonical writer merely
+  because its declared API is read-only.
 - `authority_effect=none` does not imply `governed_effect=none`. A transition may
   leave authority unchanged while still changing the future consequence
   surface through canonical state.
