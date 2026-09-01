@@ -43,7 +43,8 @@ class MCPBoundaryTests(unittest.TestCase):
                 authority="admin",
             )
 
-    def test_mcp_proposal_locks_exact_intent_without_granting_authority(self):
+    def test_mcp_proposal_is_ephemeral_and_cannot_mutate_canonical_state(self):
+        before = list(self.kernel.audit)
         result = self.projection.propose_intent(
             "target-1",
             "agent:builder",
@@ -53,57 +54,73 @@ class MCPBoundaryTests(unittest.TestCase):
             "session-1",
         )
 
+        self.assertEqual("pulpo.mcp-proposal.v1", result["schema"])
         self.assertEqual("none", result["authority_effect"])
+        self.assertEqual("none", result["governed_effect"])
+        self.assertFalse(result["canonical_state_mutation"])
         self.assertNotIn("permit", result)
-        self.assertEqual(64, len(result["target_hash"]))
-        record = self.kernel.audit[-1]
-        self.assertEqual("target_locked", record["event"])
-        self.assertEqual("none", record["payload"]["authority_effect"])
-
-        resolution, decision = self.kernel.evaluate_locked_target(
-            result["target_id"],
-            result["target_hash"],
-            version=result["target_version"],
+        self.assertNotIn("target_hash", result)
+        self.assertEqual(
+            {
+                "principal": "agent:builder",
+                "action": "write",
+                "resource": "repo:file",
+                "cost": 0,
+                "session_id": "session-1",
+            },
+            result["intent"],
         )
-        self.assertEqual("match", resolution.outcome)
-        self.assertEqual(("deny", "action_not_allowed"), (decision.outcome, decision.reason))
+        self.assertEqual(before, self.kernel.audit)
+        self.assertIsNone(self.kernel.get_locked_target("target-1"))
 
-    def test_target_substitution_and_invalid_payload_fail_closed(self):
-        self.projection.propose_intent(
+    def test_repeated_or_changed_mcp_proposals_remain_non_mutating(self):
+        first = self.projection.propose_intent(
             "target-1",
             "agent:planner",
             "read",
             "repo:file",
         )
-        with self.assertRaisesRegex(ValueError, "target version is immutable"):
-            self.projection.propose_intent(
-                "target-1",
-                "agent:planner",
-                "read",
-                "repo:other",
-            )
+        repeated = self.projection.propose_intent(
+            "target-1",
+            "agent:planner",
+            "read",
+            "repo:file",
+        )
+        changed = self.projection.propose_intent(
+            "target-1",
+            "agent:planner",
+            "read",
+            "repo:other",
+        )
+
+        self.assertEqual(first, repeated)
+        self.assertNotEqual(first["intent_hash"], changed["intent_hash"])
+        self.assertEqual([], self.kernel.audit)
+        self.assertIsNone(self.kernel.get_locked_target("target-1"))
+
+    def test_invalid_payload_fails_closed_without_state_change(self):
         with self.assertRaisesRegex(MCPBoundaryError, "mcp_intent_invalid"):
             self.projection.propose_intent("target-2", "", "read", "repo:file")
         with self.assertRaisesRegex(MCPBoundaryError, "mcp_intent_invalid"):
             self.projection.propose_intent("target-2", "agent:planner", "read", "repo:file", True)
+        with self.assertRaisesRegex(MCPBoundaryError, "mcp_target_invalid"):
+            self.projection.propose_intent("", "agent:planner", "read", "repo:file")
+
+        self.assertEqual([], self.kernel.audit)
 
     def test_evidence_tool_projects_the_existing_chain_only(self):
-        self.projection.propose_intent(
-            "target-1",
-            "agent:planner",
-            "read",
-            "repo:file",
-        )
         before = len(self.kernel.audit)
         evidence = self.projection.evidence_snapshot()
 
         self.assertTrue(evidence["audit_valid"])
         self.assertEqual(before, evidence["audit_records"])
-        self.assertEqual(self.kernel.audit[-1]["hash"], evidence["audit_tip"])
+        self.assertIsNone(evidence["audit_tip"])
         self.assertEqual(before, len(self.kernel.audit))
+        self.assertFalse(evidence["canonical_state_mutation"])
+        self.assertEqual("none", evidence["governed_effect"])
         self.assertEqual("none", evidence["authority_effect"])
 
-    def test_sdk_factory_registers_only_non_authoritative_tools(self):
+    def test_sdk_factory_registers_only_non_authoritative_non_mutating_tools(self):
         mcp_package = types.ModuleType("mcp")
         mcp_server = types.ModuleType("mcp.server")
         mcp_server.MCPServer = FakeMCPServer
@@ -126,9 +143,15 @@ class MCPBoundaryTests(unittest.TestCase):
             )
         )
         self.assertEqual("none", proposal["authority_effect"])
+        self.assertEqual("none", proposal["governed_effect"])
+        self.assertFalse(proposal["canonical_state_mutation"])
         self.assertNotIn("permit", proposal)
+        self.assertNotIn("target_hash", proposal)
+        self.assertEqual([], self.kernel.audit)
+
         evidence = asyncio.run(server.tools["pulpo_get_evidence"]())
         self.assertTrue(evidence["audit_valid"])
+        self.assertEqual([], self.kernel.audit)
 
 
 if __name__ == "__main__":
