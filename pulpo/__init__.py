@@ -1,5 +1,6 @@
 """Pulpo governed-execution kernel."""
 
+from .accountability import AccountableContext, AccountableContextObservation, AccountableGovernance
 from .authority import (
     ApprovalEnvelope,
     ApprovalVerifier,
@@ -37,6 +38,9 @@ from .target_reconcile import (
 from .targets import evaluate_locked_target_with_approval
 
 __all__ = [
+    "AccountableContext",
+    "AccountableContextObservation",
+    "AccountableGovernance",
     "AgentGrant",
     "ApprovalEnvelope",
     "ApprovalHandle",
