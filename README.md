@@ -2,6 +2,10 @@
 
 Pulpo is the governance and evidence plane between AI intelligence and consequential execution. It turns explicit intent into deterministic governance, binds allowed work to narrowly scoped one-use permits, and preserves durable evidence for verification and reconciliation.
 
+Pulpo governs consequences, not just agents. Its architectural boundary is that valid authority, a valid permit, and an executor-reported success do not by themselves prove that the authorized consequence occurred. Consequential claims must remain separate across authority, execution, independent observation, and reconciliation.
+
+`VALID_AUTHORITY + VALID_PERMIT + EXECUTION_SUCCESS != VERIFIED_CONSEQUENCE`
+
 This repository is the clean canonical Pulpo project. The older `Iron-Ember/pulpo` repository remains historical reference material; its accumulated plans, generated evidence, machine-specific scripts, and CI workarounds are intentionally not imported here.
 
 ## Proven now
@@ -63,7 +67,15 @@ semantics, local restart-safe kernel replay state, and restart-durable bounded-
 commerce state with dependency-free SQLite backends. It does not yet claim an
 independently deployed human signer, trusted verifier bootstrap, rollback-proof
 host storage, a real payment rail, network isolation, hostile-code sandboxing,
-distributed identity, or production readiness.
+distributed identity, production readiness, or general independent verification
+of arbitrary external consequences.
+
+The governing market/architecture position is recorded in
+[consequence reconciliation position](docs/CONSEQUENCE_RECONCILIATION_POSITION.md).
+It treats identity, scoped authorization, runtime enforcement, approvals,
+revocation, action binding, and audit as increasingly converged infrastructure,
+while preserving Pulpo's proof priority around independent consequence evidence,
+reconciliation, governed outcome memory, and non-self-authorizing adaptation.
 
 See [project source baseline](docs/PROJECT_SOURCE_BASELINE.md), [architecture](docs/ARCHITECTURE.md), [project governance](docs/GOVERNANCE.md),
 [current state](docs/CURRENT_STATE.md), [canonicalization](docs/CANONICALIZATION.md),
