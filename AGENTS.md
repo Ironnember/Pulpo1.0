@@ -7,6 +7,17 @@ and evidence path.
 ## Non-negotiable invariants
 
 - Intelligence may propose authority changes; it may not grant them.
+- `VALID_AUTHORITY + VALID_PERMIT + EXECUTION_SUCCESS != VERIFIED_CONSEQUENCE`:
+  authorization and executor success do not prove the authorized real-world
+  consequence occurred.
+- `EXECUTION_RECEIPT != VERIFIED_CONSEQUENCE`: a signed or trusted executor
+  receipt is evidence of an execution claim, not self-certifying proof of the
+  external consequence.
+- `EVIDENCE != AUTHORITY`: evidence, retrieval relevance, model summaries,
+  prior success, and outcome memory cannot raise authority.
+- Consequential success requires sufficient evidence for the governed claim and
+  reconciliation against authorized intent. Mismatch or insufficient evidence
+  must remain mismatch/unknown rather than being promoted to success.
 - `NO_PERMIT != NO_GOVERNED_EFFECT`: absence of a permit or external execution
   does not prove that no consequential governance state changed.
 - `CANONICAL_STATE_MUTATION == GOVERNED_CAPABILITY`: any interface that can
@@ -33,10 +44,13 @@ and evidence path.
   test fixtures, generated evidence, or governed workspace.
 - Approval must bind the exact intent, policy, deployment, verifier, key,
   session, principal, nonce, issue time, and expiry.
-- Unknown, malformed, untrusted, expired, replayed, or unavailable authority
-  fails closed through the canonical kernel.
+- Unknown, malformed, untrusted, expired, replayed, revoked, or unavailable
+  authority fails closed through the canonical kernel.
 - Evidence and public language must classify material claims as **Verified**,
   **Recorded**, **Inferred**, **Proposed**, or **Unknown**.
+
+For the consequence/evidence boundary and current market-convergence position,
+apply [docs/CONSEQUENCE_RECONCILIATION_POSITION.md](docs/CONSEQUENCE_RECONCILIATION_POSITION.md).
 
 ## Governed learning and temporal replay
 
@@ -79,11 +93,15 @@ Every material pull request must state:
 3. every canonical state mutation introduced or exposed and the governed
    capability boundary that controls it;
 4. the exact success and adversarial evidence;
-5. the boundary the evidence does not prove;
-6. the claim classification;
-7. any legacy behavior source used without copying its control path;
-8. for each material reusable lesson, the applicable temporal-transfer evidence
-   or an explicit statement that no relevant historical checkpoint exists.
+5. for consequential behavior, which evidence establishes execution versus the
+   externally observed consequence, and the resulting reconciliation state;
+6. whether any mismatch, unknown, or evidence failure can enter successful
+   outcome memory or influence authority, and why that path is safe;
+7. the boundary the evidence does not prove;
+8. the claim classification;
+9. any legacy behavior source used without copying its control path;
+10. for each material reusable lesson, the applicable temporal-transfer evidence
+    or an explicit statement that no relevant historical checkpoint exists.
 
 Executable behavior and adversarial tests at the exact commit outrank documents,
 chat summaries, screenshots, plans, prototypes, and marketing claims.

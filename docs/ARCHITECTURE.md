@@ -9,6 +9,43 @@ transitions and external side effects.
 4. Bind an allowed intent to a signed, one-use permit.
 5. Consume the permit only for that exact intent.
 6. Append every decision and consumption attempt to a tamper-evident audit chain.
+7. For consequential claims, obtain evidence sufficient to establish the relevant external state rather than relying only on executor self-report.
+8. Reconcile authorized intent, execution evidence, observed consequence, and acceptance criteria.
+9. Admit only appropriately reconciled outcomes into reusable outcome memory; learning may recommend authority changes but cannot grant them.
+
+## Consequence closure
+
+Pulpo separates authorization, execution, and consequence.
+
+`VALID_AUTHORITY + VALID_PERMIT + EXECUTION_SUCCESS != VERIFIED_CONSEQUENCE`
+
+Authority proves that an exact action was legitimately allowed under current
+policy. A permit proves that bounded execution capability was issued. An executor
+receipt may prove an invocation attempt or execution claim. None of those alone
+establishes that the authorized external consequence actually occurred.
+
+`EXECUTION_RECEIPT != VERIFIED_CONSEQUENCE`
+
+For a consequential claim, Pulpo therefore keeps three facts distinct:
+
+1. the **authority fact**: whether the exact action remained legitimately
+   authorized under the applicable identity, directive, policy, budget, scope,
+   expiry, revocation, and permit constraints;
+2. the **execution fact**: what the execution surface attempted or reported; and
+3. the **consequence fact**: what independently observable state exists after
+   the action.
+
+Reconciliation compares those facts. It must not infer consequence from prior
+authorization and must not treat an executor's own success assertion as
+independent consequence proof merely because that assertion is signed. The
+required observer independence depends on the consequence and threat model. When
+sufficient evidence is unavailable or ambiguous, preserve an unknown/evidence
+failure state. When observed state disagrees with authorized or expected state,
+preserve a reconciliation mismatch. Neither state is successful outcome memory.
+
+See [consequence reconciliation position](CONSEQUENCE_RECONCILIATION_POSITION.md)
+for the cross-project doctrine, market-convergence implications, and proof
+priority.
 
 ## Governed effects
 
