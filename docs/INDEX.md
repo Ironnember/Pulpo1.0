@@ -7,11 +7,12 @@ This index is a navigation layer. It does not create authority, admit code, or r
 ## Start here
 
 1. [`CURRENT_STATE.md`](CURRENT_STATE.md) — current claim boundary, canonical software state, open proof boundaries, and next sequence.
-2. [`CANONICALIZATION.md`](CANONICALIZATION.md) — source-of-truth and legacy-intake rules.
-3. [`REPOSITORY_MAP.md`](REPOSITORY_MAP.md) — classification of Pulpo-adjacent repositories and their permitted roles.
-4. [`ARCHITECTURE.md`](ARCHITECTURE.md) — canonical architecture and separation of intelligence, governance, and execution.
-5. [`GOVERNANCE.md`](GOVERNANCE.md) — governance rules and constitutional constraints.
-6. [`AUTHORITY.md`](AUTHORITY.md) — approval and authority boundary.
+2. [`CONTINUITY.md`](CONTINUITY.md) — dated cross-plane coordination checkpoint; context only, never authority.
+3. [`CANONICALIZATION.md`](CANONICALIZATION.md) — source-of-truth and legacy-intake rules.
+4. [`REPOSITORY_MAP.md`](REPOSITORY_MAP.md) — classification of Pulpo-adjacent repositories and their permitted roles.
+5. [`ARCHITECTURE.md`](ARCHITECTURE.md) — canonical architecture and separation of intelligence, governance, and execution.
+6. [`GOVERNANCE.md`](GOVERNANCE.md) — governance rules and constitutional constraints.
+7. [`AUTHORITY.md`](AUTHORITY.md) — approval and authority boundary.
 
 ## Current canonical references
 
@@ -25,6 +26,8 @@ These documents describe current behavior or current governance when they agree 
 - [`AGENTS_AND_PLUGINS.md`](AGENTS_AND_PLUGINS.md)
 - [`PERSISTENCE.md`](PERSISTENCE.md)
 - [`OUTCOME_LEARNING_PROTOCOL.md`](OUTCOME_LEARNING_PROTOCOL.md)
+
+`CONTINUITY.md` is intentionally excluded from the canonical-reference list because it is a dated coordination map, not a source of authority or current executable truth.
 
 ## Boundary and contract references
 
