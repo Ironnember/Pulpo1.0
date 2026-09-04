@@ -1,14 +1,18 @@
 # Pulpo Current State
 
-Status date: 2026-09-01
+Status date: 2026-09-04
 
 ## Canonical source
 
 `Ironnember/Pulpo1.0` on protected `main` is the sole source of truth for current Pulpo code, tests, architecture, governance, and forward development.
 
-At this reconciliation, protected `main` is `3fb08a20712b26746e351ceccf5a556fdf6d73de`, the merge of PR #126 after reconciliation with the admitted MCP projection on PR #124. The SHA is an inspection point, not a permanently pinned source-of-truth designation.
+At this reconciliation, protected `main` is:
 
-`Iron-Ember/pulpo`, `Ironnember/The-keel`, historical tags/releases, and other earlier or adjacent repositories remain historical or experimental evidence unless a legitimate governance transition explicitly admits behavior into canonical Pulpo.
+`83ccb8b5efbaed310712f131d5df424cbb50b211`
+
+That commit is the merge of PR #156, which removed the accidentally admitted Stage-C readiness proposal artifacts from PR #154 while preserving independently justified dependency stabilization. The SHA is an inspection point, not a permanently pinned source-of-truth designation.
+
+`Iron-Ember/pulpo`, `Ironnember/The-keel`, historical tags/releases, held branches, closed-unmerged proof branches, and other earlier or adjacent repositories remain historical or experimental evidence unless a legitimate governance transition explicitly admits behavior into canonical Pulpo.
 
 Evidence precedence remains:
 
@@ -27,7 +31,11 @@ Evidence precedence remains:
 - **Proposed** — intended next design/action, not yet proved.
 - **Unknown** — insufficient or conflicting evidence.
 
+Do not upgrade `Recorded`, `Inferred`, or `Proposed` claims through repetition.
+
 ## Verified in canonical code and CI
+
+Current canonical merge commit `83ccb8b5efbaed310712f131d5df424cbb50b211` completed CI successfully in run `33828820303`, including `test`, `authority`, `authority-service`, `hostile-worker-custody`, and `hostile-worker-container-isolation`.
 
 ### Governance kernel
 
@@ -61,7 +69,7 @@ Executable tests prove:
 - parent revocation invalidates child authority at projection and permit-consumption time, including after restart;
 - parent activity is revalidated inside the child activation mutation, closing the precheck-to-commit revocation race.
 
-Cross-principal delegation and independent delegated-operator authority minting remain unproved. Canonical code now proves parent-child non-broadening under the existing independently authenticated activation path, not a general organizational delegation hierarchy.
+Cross-principal delegation and independent delegated-operator authority minting remain unproved. Canonical code proves parent-child non-broadening under the existing independently authenticated activation path, not a general organizational delegation hierarchy.
 
 ### Hostile-worker consequence boundary
 
@@ -83,31 +91,48 @@ This proves hostile-worker containment under the tested software/container bound
 
 Canonical intent-persistence proof requires completion evidence for the exact durable target version. Chat, memory, or retrieval claims cannot manufacture completion. The file-artifact proof binds target hash, intent hash, absolute artifact path, content SHA-256, byte size, trusted observation time, and audit evidence; unresolved/completed state survives SQLite restart.
 
-Canonical contribution doctrine now also requires governed temporal replay for material reusable lessons when applicable historical checkpoints exist. Historical state/evidence may inform present learning, but historical credentials, approvals, permits, budgets, directives, policy expansions, or authority do not reactivate merely because a historical generation is replayed.
+Canonical contribution doctrine also requires governed temporal replay for material reusable lessons when applicable historical checkpoints exist. Historical state/evidence may inform present learning, but historical credentials, approvals, permits, budgets, directives, policy expansions, or authority do not reactivate merely because a historical generation is replayed.
 
-### MCP boundary — admitted behavior and discovered defect
+### MCP boundary — capability-stripped canonical behavior
 
-PR #124 admitted MCP as a capability/transport projection rather than an authority source. The admitted surface cannot inject a parallel policy, approval, directive, clock, state backend, permit, executor, retrieval score, or model summary, and it cannot directly mint or consume a permit.
+The earlier admitted MCP implementation exposed a material governed-effect defect: `PulpoMCPProjection.propose_intent()` could append canonical target/audit state even though the surface created no permit and represented itself as non-authoritative. Hostile review then identified the stronger capability-possession issue: route removal alone was insufficient while the untrusted projection retained a canonical writer/orchestrator reference.
 
-A subsequent hostile review discovered a narrower but material defect in the admitted implementation: `PulpoMCPProjection.propose_intent()` calls the canonical target-lock path, which appends a durable `target_locked` event. Therefore the admitted MCP projection can mutate canonical governance state even though it creates no permit and reports `authority_effect=none`.
-
-The correct invariant is now explicit:
+The governing invariants are now explicit:
 
 - `NO_PERMIT != NO_GOVERNED_EFFECT`;
 - `CANONICAL_STATE_MUTATION == GOVERNED_CAPABILITY`;
-- `authority_effect=none` does not imply `governed_effect=none`.
+- `NO_WRITE_ROUTE != NO_WRITE_CAPABILITY`.
 
-PR #132 at exact head `6b73e8029cc1f602c847c71734129ddf786d1625` contains a branch-local fix that makes MCP proposal construction ephemeral and non-mutating. CI #452 and Constitutional Survival #115 pass on that exact head. The fix remains Draft/held pending independent substantive review and legitimate admission, so it is **Verified on the held branch but not yet canonical**.
+PR #134, `Proof: governed-effect canonical mutation boundary v0`, was legitimately admitted as merge commit `ca3636680ca50356406519a5722444c0742afb39`. Its exact admitted object strips the MCP projection down to capability-free primitive/frozen input:
 
-### Bounded commerce and Name.com contracts
+- the MCP-side object receives no kernel, orchestrator, state backend, authority client, executor, live policy object, trusted clock, or ledger reference;
+- proposal construction is ephemeral and does not append canonical state;
+- proposals carry no permit or target hash;
+- the MCP projection uses frozen primitive metadata rather than a live canonical writer;
+- evidence/proposal outputs report frozen freshness rather than asserting live canonical state;
+- later canonical writes do not appear through an already-frozen MCP object.
 
-Canonical tests prove exact domain/registrar/owner/privacy/upsell/price/renewal constraints, the USD 30 pilot ceiling, request/quote/order binding, reservation/reconciliation semantics, provider idempotency binding, and denial of production execution when a hard provider charge cap is unavailable.
+This is **Verified canonical software-boundary behavior**. It does not prove hostile same-process memory isolation, production remote-MCP authentication, live-current evidence freshness, or arbitrary plugin/runtime containment.
 
-A separate read-only Name.com sandbox readiness proof exists. Name.com sandbox remains a credible external zero-real-charge Stage-C candidate, but observer/executor principal separation, provider-side observation identity/window semantics, and credential isolation are not yet established. No Name.com registrar write or completed external purchase is established.
+### Bounded commerce and registrar governed-effect gap
+
+Canonical tests prove exact domain/registrar/owner/privacy/upsell/price/renewal-price constraints, the USD 30 pilot ceiling, request/quote/order binding, reservation/reconciliation semantics, provider idempotency binding, and denial of production execution when a hard provider charge cap is unavailable.
+
+A current canonical defect remains: `DomainPurchaseRequest` and `DomainPurchaseOrder` bind renewal price but do **not** bind provider-side auto-renew enablement state. A provider default can therefore create a future renewal capability/charge that is not represented in the exact authorized action object.
+
+Invariant:
+
+`CANONICAL_ACTION_OMISSION != AUTHORIZED_PROVIDER_DEFAULT`
+
+PR #143 contains a branch-local correction that adds and verifies `auto_renew_enabled`, defaults the bounded pilot to `false`, binds it into the exact purchase object/hash, and requires provider observation/reconciliation to treat missing or substituted renewal state as unresolved/failure. That PR remains Draft/held and was built against older canonical base `ca3636680ca50356406519a5722444c0742afb39`; it must not be admitted as-is after subsequent canonical history.
+
+The correct next commerce action is to port the smallest authority-correct auto-renew delta onto current `main`, earn fresh exact-head evidence and substantive review, and admit it through the current repository controls before using the registrar path for Stage C.
+
+No real registrar purchase or externally observed registrar consequence is established.
 
 ## Recorded and externally verified infrastructure evidence
 
-Issue #90 is the durable deployment record for the independent authority boundary.
+Issue #90 remains the durable deployment record for the independent authority boundary.
 
 The Google Cloud authority project is recorded as:
 
@@ -151,48 +176,147 @@ Still required:
 
 Until those pass, external language must distinguish **verified external HSM signer** from **deployed independent human authority**.
 
-## Governance/admission state
+## Governance and repository admission state
 
-Protected `main` currently exposes required status contexts exactly `test`, `authority`, and `authority-service` through the branch metadata visible to this integration. `admission-hold` is not currently a protected required context.
+Repository admission is now mechanically stronger than the earlier narrative/CI-only state.
 
-PR #109 demonstrated that narrative governance is insufficient: it was merged while its body retained an explicit `DRAFT / DO NOT MERGE` authority boundary. PR #110 restored the exact prior tree without rewriting history.
+### Protected required checks
 
-The admitted base-controlled `Admission Hold` workflow now executes trusted current-base code and fails closed on GitHub draft state, explicit machine hold markers, recognized legacy hold declarations, hold title prefixes, or hold labels. After live failures exposed unsupported Draft conversion and stale-base assumptions, the admitted mitigation now quarantines an exact held non-draft PR by closing it through supported REST semantics while preserving the failing hold signal.
+GitHub protected-branch readback for `main` reports enforcement level `everyone` with the exact required contexts:
 
-Disposable canary #117 verified this defense-in-depth behavior: reopening a held non-draft PR caused the trusted current-base workflow to close it unmerged while Admission Hold failed as intended.
+- `test`;
+- `authority`;
+- `authority-service`;
+- `admission-hold`.
 
-Repository-enforced independent collaborator review is also Verified: protected merge attempts on otherwise-green exact heads have been rejected until approval from someone other than the last pusher exists.
+All four are bound to the GitHub Actions app in the visible branch-protection readback.
 
-**Issue #115 remains open.** The stronger repository-level closure is not proved because `admission-hold` is not a required protected status, repository rulesets are absent, and the full admin/bypass posture cannot be read or mutated through the currently connected integration. Do not represent the unauthorized-admission class as non-bypassably closed until the required context or equivalent protected rule and bypass posture are independently verified with held-denial and ready-allow canaries.
+### Active ruleset and bypass posture
+
+Active repository ruleset `22241311` targets `refs/heads/main` and reports:
+
+- enforcement: `active`;
+- strict required status checks;
+- ruleset-required checks: `test`, `authority`, `authority-service`;
+- one approving review required;
+- stale reviews dismissed on push;
+- last-push approval required;
+- review-thread resolution required;
+- `bypass_actors: []`;
+- `current_user_can_bypass: "never"`.
+
+The repository therefore currently uses **overlapping GitHub control surfaces**: the active ruleset requires `test`, `authority`, and `authority-service`, while protected-branch readback additionally requires `admission-hold`. Do not describe this as one consolidated ruleset.
+
+The full legacy branch-protection endpoint remains unreadable through the connected integration and returns `403 Resource not accessible by integration`. Some branch-protection-specific admin metadata therefore remains **Unknown**. This is a visibility limitation, not evidence of an observed bypass.
+
+### Admission incident and recovery
+
+PR #154, `Validation: Stage-C readiness and evidence sufficiency v0`, carried an explicit process hold but was accidentally merged after review. Passing CI did not create admission authority; the merge demonstrated that a correct workflow signal without protected repository enforcement was insufficient.
+
+PR #156 performed the authority-correct recovery. Rather than blindly reverting all of #154, it decomposed the mixed mutation and removed exactly the unauthorized Stage-C readiness artifacts while preserving independently justified AnyIO dependency stabilization.
+
+Current `main` no longer contains:
+
+- `docs/STAGE_C_READINESS.md`;
+- `pulpo/stage_c_readiness.py`;
+- `tests/test_stage_c_readiness.py`.
+
+Those Stage-C readiness artifacts are historical/proposed evidence only and are **not canonical behavior**.
+
+Recovery invariant:
+
+`MIXED_MUTATION -> DECOMPOSE_BEFORE_REMEDIATION`
+
+with:
+
+`RECOVERY_TARGET = SMALLEST_AUTHORITY_CORRECT_DELTA`
+
+### Issue #115 closure and executable admission proof
+
+Issue #115, `Require base-controlled admission-hold check on protected main`, is closed as **completed** after the repository-level control was configured and exercised.
+
+The decisive canary was PR #158 at exact head:
+
+`2f190fa86763ed4b93b90af47a4d401cd162ca51`
+
+Held-denial proof:
+
+- ordinary CI and Constitutional Survival passed on the exact head;
+- a collaborator approval existed on the exact head;
+- the explicit Pulpo hold remained present;
+- the PR was made ready without changing the code object;
+- `admission-hold` failed/quarantined the held object;
+- an exact-head squash merge attempt was rejected by GitHub and explicitly named the unsatisfied `admission-hold` requirement among the blockers;
+- canonical `main` did not move.
+
+Ready-allow proof on the **same exact head**:
+
+- the PR was reopened;
+- only the explicit hold/process-hold metadata was removed;
+- no code commit was added;
+- a fresh `admission-hold` evaluation passed;
+- CI remained green;
+- the PR became open/ready/mergeable;
+- no merge was performed.
+
+Invariant demonstrated:
+
+`SAME_OBJECT + HOLD_REMOVED -> ADMISSION_SIGNAL_OPEN`
+
+PR #158 has since been closed unmerged and retained as the evidence record.
+
+This proves repository admission for the tested path is not reducible to code correctness or an approval click:
+
+`CORRECTNESS != AUTHORITY`
+
+The claim ceiling remains repository-admission control under the tested GitHub surfaces. It is not proof of production runtime containment or external consequence correctness.
 
 ## Distribution boundary
 
 Historical `v0.1.1` remains an experimental distribution artifact and is not current canonical proof of a production product.
 
-PR #131 is a held distribution candidate that deliberately gives the mobile/PWA process no kernel, orchestrator, MCP projection, authority client, state backend, executor, or ledger reference. Its current V0 accepts only a copied `FrozenEvidenceSource`, exposes authenticated `GET /api/evidence`, rejects authority-bearing evidence, uses no-store caching semantics, and explicitly reports `freshness: not_asserted`.
+PR #131 remains a held distribution candidate that deliberately gives the mobile/PWA process no kernel, orchestrator, MCP projection, authority client, state backend, executor, or ledger reference. Its V0 accepts only a copied `FrozenEvidenceSource`, exposes authenticated `GET /api/evidence`, rejects authority-bearing evidence, uses no-store caching semantics, and explicitly reports `freshness: not_asserted`.
 
-The branch-local software proof is green, but the PR remains Draft and requires exact-head substantive review/admission. It does not prove production authentication, live-current evidence freshness, write-capable mobile governance, desktop distribution, native iOS/App Store admission, production deployment, or a canonical public release.
+The branch-local software proof may inform future distribution work, but it is not canonical admission and does not prove production authentication, live-current evidence freshness, write-capable mobile governance, desktop distribution, native iOS/App Store admission, production deployment, or a canonical public release.
 
 ## Stage-C external consequence proof
 
-PR #128 freezes a structural external-provider observation contract over the ten-family unauthorized-effect benchmark. Exact head `b24e1f42ec19f844fd6955d2a94127c954e31516` passes CI and Constitutional Survival under an active hold.
+Stage C remains **not externally proved**.
 
-The structural contract requires distinct observer/executor identities and principal fingerprints, observer credential isolation from the hostile worker, provider-side calibration and cleanup, exact frozen effect scope, complete read-only observation, and fail-closed `unknown` when evidence is unavailable, ambiguous, unauthenticated, wrong-source, wrong-scope, or otherwise insufficient.
+Historical/held structural work established a useful contract around distinct executor/observer identities, credential isolation, provider-side calibration and cleanup, exact effect scope, complete read-only observation, attack-family coverage, and fail-closed `Unknown` when evidence is unavailable, ambiguous, unauthenticated, wrong-source, stale, wrong-scope, or otherwise insufficient.
 
-This is **Verified structural proof under hold**, not real external containment. No real external provider was mutated or independently observed by PR #128, and no external unauthorized-effect rate is established.
+The accidentally admitted Stage-C readiness implementation from PR #154 has been removed by PR #156 and is not canonical. Any later Stage-C readiness/evidence-sufficiency implementation must be treated as a new proposal against current canonical state and pass current repository admission.
+
+The current consequence claim boundary is:
+
+`VALID_AUTHORITY + VALID_PERMIT + EXECUTION_SUCCESS != VERIFIED_CONSEQUENCE`
+
+Issue #153 is the next highest-value executable proof. It requires the existing Pulpo path to demonstrate:
+
+- verified match;
+- mismatch despite executor success;
+- unknown/evidence failure;
+- restart durability of mismatch/unknown without converting to success or retry authority;
+- authority freshness across revocation, expiry, substitution, replay, and non-widening constraints;
+- memory/retrieval inability to raise authority;
+- successful outcome memory only after reconciliation-supported success.
+
+That proof should extend the current authority/policy/permit/evidence/reconciliation path and must not create a second authority service, policy engine, router, executor, evidence ledger, or memory governor.
+
+Real external containment, an external unauthorized-effect rate, and third-party reproduction remain unproved.
 
 ## Keel boundary
 
-`Ironnember/The-keel` is an experimental execution-plane proof, not canonical Pulpo authority.
+`Ironnember/The-keel` remains an experimental execution-plane proof, not canonical Pulpo authority.
 
 Its V0 draft establishes the intended split:
 
 - Pulpo owns authority, policy, permits, evidence, reconciliation, and governed learning;
 - Keel deterministically executes an already-authorized exact operation and returns an execution receipt that cannot self-certify reconciliation.
 
-Eight Keel V0 boundary tests pass, including replay, substitution, expiry, revocation, unknown-outcome restart, and authority-expansion denial. Exact head `07b975c6e7e6a7b65b1b1d2f36673ec7d6636bc5` passes Keel V0 Boundary run #4 across Python 3.11, 3.12, and 3.13, including compile and zero-production-dependency hygiene checks.
+Recorded Keel V0 evidence includes replay, substitution, expiry, revocation, unknown-outcome restart, and authority-expansion denial under its stated software boundary.
 
-Keel remains draft/noncanonical because it has not yet verified a real Pulpo cryptographic one-use permit or been admitted as Pulpo's execution substrate.
+Keel remains noncanonical because it has not yet been admitted as Pulpo's execution substrate through the current repository path and a real Pulpo cryptographic one-use permit/external consequence ceremony remains unproved.
 
 ## Proof boundary
 
@@ -200,31 +324,44 @@ Keel remains draft/noncanonical because it has not yet verified a real Pulpo cry
 
 - canonical governance kernel, one-use permit, replay/restart, directive revocation, and tested hostile-worker software/container boundaries;
 - same-principal derived-directive non-broadening and parent-live/restart denial;
-- independent collaborator review enforcement and Admission Hold REST quarantine defense-in-depth;
-- external HSM signing primitive;
-- branch-local non-mutating MCP correction on #132 exact head;
-- branch-local Stage-C structural observation contract on #128 exact head.
+- capability-stripped canonical MCP projection admitted by PR #134;
+- protected `main` requires `test`, `authority`, `authority-service`, and `admission-hold` in the visible branch-protection readback;
+- active main ruleset has no bypass actors and reports `current_user_can_bypass: never`;
+- held-denial and same-head ready-allow repository-admission proofs on PR #158;
+- Issue #115 completed;
+- PR #156 removed the unauthorized Stage-C readiness artifacts while preserving the separately justified dependency stabilization;
+- external HSM signing primitive.
 
 ### Recorded
 
 - current cloud authority project/resource evidence and historical proof records referenced above;
-- Keel V0 experimental boundary evidence.
+- Keel V0 experimental boundary evidence;
+- branch-local/historical Stage-C structural evidence;
+- branch-local auto-renew corrective object on PR #143, which is not current-main admission evidence.
 
 ### Inferred
 
-- Pulpo's strongest differentiator is increasingly the continuity of independently governed authority and evidence through consequence, rather than generic agent orchestration or policy text.
+Pulpo's strongest differentiator is increasingly the continuity of independently governed authority and evidence through consequence, rather than generic agent orchestration or policy text.
+
+A useful compact framing remains:
+
+**Models can change overnight. Authority should not.**
 
 ### Proposed
 
-- admit #132 after independent substantive exact-head review;
-- make `admission-hold` repository-required or establish an equivalently non-spoofable protected-base rule and narrow bypass posture;
-- execute one bounded real external Stage-C ceremony only after observer/executor separation is independently established;
-- admit a distribution surface only after its exact candidate survives substantive review and normal repository admission.
+- execute Issue #153 consequence-reconciliation proof on the existing canonical path;
+- port the smallest auto-renew governed-effect correction from the historical #143 lineage onto current `main`, then earn fresh exact-head review/admission;
+- qualify a real bounded provider with genuinely distinct executor and observer principals/credentials before any Stage-C external ceremony;
+- reconcile/freeze the external validation contract against the then-current canonical commit;
+- execute one safe bounded external ceremony only under separately authorized consequence scope;
+- finish independent `authority.pulpo.ai` deployment/acceptance;
+- obtain cold reproduction outside the build loop.
 
 ### Unknown
 
-- final admin/bypass posture for protected `main`;
+- branch-protection-specific admin metadata hidden by the current integration's `403` response;
 - real external unauthorized-effect rate;
+- real provider observer/executor separation for the target Stage-C provider;
 - production authority-service acceptance;
 - cold third-party reproduction of the complete consequential chain;
 - production reliability, cost, throughput, false-denial rate, human-review burden, customer ROI, and arbitrary-provider correctness.
@@ -237,23 +374,24 @@ Pulpo does not yet prove:
 - physical WebAuthn founder/recovery credential control;
 - external hostile-host or hostile-custodian resistance;
 - real external-provider containment;
-- a real Name.com sandbox registration consequence through the final custody ceremony;
+- a real Name.com or other registrar consequence through the final custody ceremony;
 - independent provider observation and reconciliation of that consequence;
 - cold reproduction of the full consequential chain by an unrelated operator;
 - production throughput, latency, reliability, deployment cost, cost per governed action, false-denial rate, human-review burden, or customer ROI;
 - general correctness across arbitrary agents, providers, payment rails, or execution surfaces.
 
-Do not convert passing CI, a cloud resource, an approval, a successful executor report, an experimental distribution artifact, or market interest into authority, production-readiness, external-containment, or third-party-reproducibility claims.
+Do not convert passing CI, a cloud resource, an approval, a successful executor report, an experimental distribution artifact, a financing term, a social post, or market interest into authority, production-readiness, external-containment, valuation, compliance, or third-party-reproducibility claims.
 
 ## Next highest-value proof sequence
 
-1. Complete independent substantive review of PR #132 and admit the non-mutating MCP boundary only if the exact object survives review and normal repository admission.
-2. Through an authorized GitHub administration/settings surface, require `admission-hold` for protected `main` or establish an equivalently non-spoofable protected rule; inspect/narrow bypass posture; preserve held-denial and ready-allow acceptance evidence; then close Issue #115.
-3. Reconcile investor/partner/distribution language to this exact proof boundary: serious pre-production governance/evidence system, verified software-boundary controls and HSM signer, no claim of production readiness, real external containment, or cold third-party reproduction yet.
-4. Establish genuinely distinct external provider observer/executor principals and credential isolation for Stage C.
-5. Run exactly one disposable zero-real-cost external provider ceremony through the frozen Stage-C contract and existing reconciliation path.
-6. Preserve the complete evidence bundle and have an unrelated operator reproduce the proof cold.
-7. Finish the independent `authority.pulpo.ai` deployment/acceptance boundary and admit Keel only after its execution contract verifies a real Pulpo cryptographic permit without becoming a second authority or ledger.
+1. Execute Issue #153: prove consequence reconciliation for verified match, mismatch, unknown evidence, restart durability, authority freshness, and successful-outcome-memory gating on the existing canonical path.
+2. Restage the smallest auto-renew governed-effect correction onto current `main`; do not admit stale PR #143 as-is. Require fresh exact-head CI, Constitutional Survival, substantive review, `admission-hold`, and protected repository acceptance.
+3. Establish genuinely distinct provider executor/observer principals, credential isolation, observation-window semantics, calibration/cleanup, and exact effect scope for the selected Stage-C provider.
+4. Freeze a new Stage-C runtime/evidence contract against the then-current canonical commit. Historical PR #154 readiness code is reference material only.
+5. Reconcile any external validator SOW/protocol to that exact frozen object before signature/payment/execution authority is granted.
+6. Run exactly one safe, bounded, reversible external consequence through the existing authority -> permit -> execution -> evidence -> reconciliation path.
+7. Preserve the complete evidence bundle and obtain cold reproduction by an operator outside the build loop.
+8. Complete and acceptance-prove the independent `authority.pulpo.ai` deployment and only then expand production-facing authority claims.
 
 The doctrine remains:
 
