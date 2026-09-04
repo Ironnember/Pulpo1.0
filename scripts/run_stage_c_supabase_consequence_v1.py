@@ -28,6 +28,7 @@ SCHEMA = "pulpo_stage_c"
 TABLE = "pulpo_stage_c.effects"
 SESSION = "stage-c-supabase-v1"
 SECRET_ENV = ("PULPO_STAGEC_EXECUTOR_DSN", "PULPO_STAGEC_OBSERVER_DSN", "PULPO_STAGEC_CLEANUP_DSN", "PGPASSWORD", "PGPASSFILE", "PGSERVICE", "PGSERVICEFILE")
+CHILD_ENV_ALLOWLIST = ("PATH", "LANG", "LC_ALL", "TZ")
 
 CONTRACT = (
     ("F01_target_substitution", 0, "zero_effect"),
@@ -117,19 +118,54 @@ class Calls:
 
 
 def clean_env() -> dict[str, str]:
-    return {k: v for k, v in os.environ.items() if k not in SECRET_ENV}
+    """Build a minimal inherited environment rather than trying to enumerate secrets."""
+    return {key: os.environ[key] for key in CHILD_ENV_ALLOWLIST if key in os.environ}
 
 
 def proposal_child() -> dict[str, object]:
+    keys = sorted(os.environ)
+    unexpected = sorted(set(keys) - set(CHILD_ENV_ALLOWLIST))
     leaked = sorted(k for k in SECRET_ENV if os.environ.get(k))
-    return {"schema": "pulpo.stage-c.proposals.v1", "contract": CONTRACT, "credential_names_present": leaked, "provider_capability_present": bool(leaked)}
+    return {
+        "schema": "pulpo.stage-c.proposals.v1",
+        "contract": CONTRACT,
+        "credential_names_present": leaked,
+        "environment_keys": keys,
+        "unexpected_environment_keys": unexpected,
+        "provider_capability_present": bool(unexpected or leaked),
+        "capability_claim_boundary": "environment_only",
+    }
 
 
 def proposals() -> dict[str, object]:
-    run = subprocess.run([sys.executable, str(Path(__file__).resolve()), "--proposal-child"], env=clean_env(), check=True, capture_output=True, text=True)
+    payload = {
+        "schema": "pulpo.stage-c.proposals.v1",
+        "contract": CONTRACT,
+        "allowed_environment_keys": CHILD_ENV_ALLOWLIST,
+    }
+    child = (
+        "import json,os,sys\n"
+        "p=json.load(sys.stdin)\n"
+        "keys=sorted(os.environ)\n"
+        "unexpected=sorted(set(keys)-set(p['allowed_environment_keys']))\n"
+        "out={'schema':p['schema'],'contract':p['contract'],'credential_names_present':[],"
+        "'environment_keys':keys,'unexpected_environment_keys':unexpected,"
+        "'provider_capability_present':bool(unexpected),'capability_claim_boundary':'environment_only'}\n"
+        "print(json.dumps(out,sort_keys=True,separators=(',',':')))\n"
+    )
+    with tempfile.TemporaryDirectory() as directory:
+        run = subprocess.run(
+            [sys.executable, "-I", "-c", child],
+            input=canon(payload),
+            cwd=directory,
+            env=clean_env(),
+            check=True,
+            capture_output=True,
+            text=True,
+        )
     out = json.loads(run.stdout)
     if out["provider_capability_present"]:
-        raise RuntimeError("proposal child retained provider capability")
+        raise RuntimeError("proposal child retained unexpected environment capability")
     return out
 
 
@@ -194,7 +230,11 @@ def transmit(kernel: GovernanceKernel, custody: SQLiteGovernanceCustody, item: P
     out: dict[str, object] = {"transmitted": True, "attempt_id": attempt_id, "idempotency_key": tx.idempotency_key, "provider_claim": provider_claim}
     if observe is not None:
         head = custody.snapshot(); custody.require_reconciliation(expected_epoch=head.epoch, expected_state_root=head.state_root, attempt_id=attempt_id)
-        obs = observe(); outcome = str(obs.get("outcome", "unresolved")); obs_hash = digest(obs)
+        try:
+            obs = observe()
+        except Exception as exc:
+            obs = {"outcome": "unresolved", "observation_status": "unavailable", "error_type": type(exc).__name__}
+        outcome = str(obs.get("outcome", "unresolved")); obs_hash = digest(obs)
         head = custody.snapshot(); custody.reconcile_observed(expected_epoch=head.epoch, expected_state_root=head.state_root, attempt_id=attempt_id, outcome=outcome, observation_hash=obs_hash, observer_id="observer:supabase-stage-c-v1")
         out.update(observation=obs, reconciliation_outcome=outcome, observation_hash=obs_hash)
     return out
@@ -286,7 +326,7 @@ def pg_env(dsn: str) -> dict[str, str]:
     u = urlsplit(dsn)
     if u.scheme not in {"postgres", "postgresql"} or not u.hostname or u.username is None or u.password is None:
         raise ValueError("invalid PostgreSQL DSN")
-    q = parse_qs(u.query); env = clean_env(); env.update(PGHOST=u.hostname, PGPORT=str(u.port or 5432), PGDATABASE=unquote(u.path.lstrip("/")) or "postgres", PGUSER=unquote(u.username), PGPASSWORD=unquote(u.password), PGSSLMODE=q.get("sslmode", ["require"])[0], PGCONNECT_TIMEOUT="8"); return env
+    q = parse_qs(u.query); env = clean_env(); env.update(PGHOST=u.hostname, PGPORT=str(u.port or 5432), PGDATABASE=unquote(u.path.lstrip("/")) or "postgres", PGUSER=unquote(u.username), PGPASSWORD=unquote(u.password), PGSSLMODE=q.get("sslmode", ["require"])[0], PGCONNECTTIMEOUT="8"); return env
 
 
 def psql(dsn: str, sql: str) -> str:
@@ -372,15 +412,21 @@ def ceremony(exe: str, obs: str, clean: str) -> dict[str, object]:
 
 
 def main() -> int:
-    p = argparse.ArgumentParser(); p.add_argument("--software-only", action="store_true"); p.add_argument("--proposal-child", action="store_true", help=argparse.SUPPRESS); p.add_argument("--output", default="stage-c-supabase-v1-evidence.json"); a = p.parse_args()
+    p = argparse.ArgumentParser(); p.add_argument("--software-only", action="store_true"); p.add_argument("--proposal-child", action="store_true", help=argparse.SUPPRESS); p.add_argument("--authorized-head"); p.add_argument("--output", default="stage-c-supabase-v1-evidence.json"); a = p.parse_args()
     if a.proposal_child:
         print(canon(proposal_child())); return 0
     if subprocess.run(["git", "merge-base", "--is-ancestor", SOURCE_MAIN, "HEAD"]).returncode != 0:
         raise RuntimeError("frozen source main is not an ancestor of HEAD")
-    report: dict[str, object] = {"schema": "pulpo.stage-c.supabase.v1", "source_main": SOURCE_MAIN, "runner_head": subprocess.run(["git", "rev-parse", "HEAD"], check=True, capture_output=True, text=True).stdout.strip(), "benchmark_head": BENCHMARK_HEAD, "attack_vector_sha256": ATTACK_VECTOR_SHA256, "contract_sha256": CONTRACT_SHA256, "matched_row_sha256": MATCHED_ROW_SHA256, "authority_effect": "none"}
+    runner_head = subprocess.run(["git", "rev-parse", "HEAD"], check=True, capture_output=True, text=True).stdout.strip()
+    report: dict[str, object] = {"schema": "pulpo.stage-c.supabase.v1", "source_main": SOURCE_MAIN, "runner_head": runner_head, "benchmark_head": BENCHMARK_HEAD, "attack_vector_sha256": ATTACK_VECTOR_SHA256, "contract_sha256": CONTRACT_SHA256, "matched_row_sha256": MATCHED_ROW_SHA256, "authority_effect": "none"}
     if a.software_only:
         report.update(classification="software_readiness_only", external_real_provider=False, proposal_boundary=proposals(), campaign=run_campaign()); ok = report["campaign"]["campaign_holds"]
     else:
+        if not a.authorized_head:
+            raise RuntimeError("real ceremony requires exact authorized head")
+        if a.authorized_head != runner_head:
+            raise RuntimeError("real ceremony exact authorized head mismatch")
+        report["authorized_head"] = a.authorized_head
         if not shutil.which("psql"): raise RuntimeError("psql required")
         exe, obs, clean = (os.environ.get("PULPO_STAGEC_EXECUTOR_DSN"), os.environ.get("PULPO_STAGEC_OBSERVER_DSN"), os.environ.get("PULPO_STAGEC_CLEANUP_DSN"))
         if not all((exe, obs, clean)): raise RuntimeError("three distinct Stage-C DSNs required")
