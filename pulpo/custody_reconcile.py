@@ -348,6 +348,7 @@ class GovernedDomainOutcomeMemoryProjection:
     """
 
     EVENT = "domain_outcome_memory"
+    CUSTODY_EVIDENCE_EVENT = "custody_transition"
 
     def __init__(
         self,
@@ -468,6 +469,30 @@ class GovernedDomainOutcomeMemoryProjection:
 
         return expected_outcome, expected_reason
 
+    def _require_canonical_custody_evidence(self, receipt: TransitionReceipt) -> None:
+        if not self.kernel.verify_audit():
+            raise CustodyViolation("outcome_memory_canonical_audit_invalid")
+        matches: list[dict[str, Any]] = []
+        for record in self.kernel.audit:
+            if record.get("event") != self.CUSTODY_EVIDENCE_EVENT:
+                continue
+            payload = record.get("payload")
+            if not isinstance(payload, dict):
+                raise CustodyViolation("outcome_memory_custody_evidence_record_invalid")
+            if payload.get("transition_hash") == receipt.transition_hash:
+                matches.append(payload)
+        if not matches:
+            raise CustodyViolation("outcome_memory_custody_evidence_unprojected")
+        if len(matches) != 1:
+            raise CustodyViolation("outcome_memory_custody_evidence_ambiguous")
+        evidence = matches[0]
+        if (
+            evidence.get("schema") != "pulpo.custody-evidence-projection.v0"
+            or evidence.get("transition_hash") != receipt.transition_hash
+            or evidence.get("receipt") != asdict(receipt)
+        ):
+            raise CustodyViolation("outcome_memory_custody_evidence_mismatch")
+
     @staticmethod
     def _classification(outcome: str, reason: str) -> tuple[str, bool]:
         if outcome == "success":
@@ -484,6 +509,7 @@ class GovernedDomainOutcomeMemoryProjection:
         if not self.kernel.verify_audit():
             raise CustodyViolation("outcome_memory_canonical_audit_invalid")
         records: list[DomainOutcomeMemory] = []
+        seen_transitions: set[str] = set()
         for record in self.kernel.audit:
             if record.get("event") != self.EVENT:
                 continue
@@ -491,9 +517,13 @@ class GovernedDomainOutcomeMemoryProjection:
             if not isinstance(payload, dict) or payload.get("attempt_id") != attempt_id:
                 continue
             try:
-                records.append(DomainOutcomeMemory(**payload))
+                memory = DomainOutcomeMemory(**payload)
             except (TypeError, CustodyViolation) as exc:
                 raise CustodyViolation("outcome_memory_record_invalid") from exc
+            if memory.reconciliation_transition_hash in seen_transitions:
+                raise CustodyViolation("outcome_memory_transition_duplicate")
+            seen_transitions.add(memory.reconciliation_transition_hash)
+            records.append(memory)
         return tuple(records)
 
     def latest(self, attempt_id: str) -> DomainOutcomeMemory | None:
@@ -514,6 +544,7 @@ class GovernedDomainOutcomeMemoryProjection:
             observation,
             reconciliation,
         )
+        self._require_canonical_custody_evidence(reconciliation.receipt)
         classification, reusable = self._classification(outcome, reason)
 
         identity = {
@@ -558,11 +589,30 @@ class GovernedDomainOutcomeMemoryProjection:
             reusable=reusable,
             recorded_at_ns=self._trusted_now(),
         )
-        self.kernel._state.append(
-            self.EVENT,
-            asdict(memory),
-            memory.recorded_at_ns,
-        )
+        try:
+            existing_payload = self.kernel._state.append_unique(
+                self.EVENT,
+                "reconciliation_transition_hash",
+                reconciliation.receipt.transition_hash,
+                asdict(memory),
+                memory.recorded_at_ns,
+            )
+        except ValueError as exc:
+            raise CustodyViolation("outcome_memory_canonical_identity_ambiguous") from exc
+
+        if existing_payload is not None:
+            try:
+                existing = DomainOutcomeMemory(**existing_payload)
+            except (TypeError, CustodyViolation) as exc:
+                raise CustodyViolation("outcome_memory_record_invalid") from exc
+            if (
+                existing.reconciliation_transition_hash
+                != reconciliation.receipt.transition_hash
+                or existing.memory_id != memory_id
+            ):
+                raise CustodyViolation("outcome_memory_conflicting_replacement")
+            return existing
+
         if not self.kernel.verify_audit():
             raise CustodyViolation("outcome_memory_canonical_audit_invalid_after_append")
         return memory
