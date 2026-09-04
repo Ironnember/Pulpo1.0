@@ -1,0 +1,47 @@
+name: Time Machine Causal V4
+
+on:
+  pull_request:
+    paths:
+      - "experiments/time_machine_v4/**"
+      - "scripts/run_time_machine_causal_v4.py"
+      - ".github/workflows/time-machine-causal-v4.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  held-out-causal-transfer:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Run frozen held-out causal transfer
+        id: causal
+        continue-on-error: true
+        run: python scripts/run_time_machine_causal_v4.py time-machine-v4
+      - name: Prove tracked checkout remained unchanged
+        if: always()
+        run: git diff --exit-code
+      - name: Preserve Time Machine V4 evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: time-machine-v4-${{ github.sha }}
+          path: |
+            time-machine-v4.json
+            time-machine-v4.csv
+            time-machine-v4.md
+            time-machine-v4.svg
+          if-no-files-found: error
+          retention-days: 30
+      - name: Enforce V4 experiment validity
+        if: always()
+        env:
+          CAUSAL_OUTCOME: ${{ steps.causal.outcome }}
+        run: test "$CAUSAL_OUTCOME" = "success"
