@@ -41,7 +41,7 @@ class ModelAuthorityInvarianceV0Tests(unittest.TestCase):
             )
         kernel = GovernanceKernel(
             Policy(
-                frozenset({"write"}),
+                frozenset({"write", "deploy"}),
                 100,
                 frozenset({"write"}),
                 agent_grants=grants,
@@ -157,7 +157,7 @@ class ModelAuthorityInvarianceV0Tests(unittest.TestCase):
 
         self.assertEqual(1, len({result[2] for result in results}))
         self.assertEqual(
-            [("allow", "approved", results[0][2])] * len(self.MODELS),
+            [("allow", "verified_approval", results[0][2])] * len(self.MODELS),
             results,
         )
 
