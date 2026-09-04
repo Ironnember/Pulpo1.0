@@ -1,0 +1,32 @@
+name: Time Machine Governed Effect V6
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  governed-effect-history:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout exact PR head with full history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify frozen canonical exists
+        run: git cat-file -e ca3636680ca50356406519a5722444c0742afb39^{commit}
+
+      - name: Run governed-effect Time Machine
+        run: python scripts/run_time_machine_governed_effect_v6.py
+
+      - name: Upload evidence bundle
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: time-machine-governed-effect-v6
+          path: artifacts/time-machine-governed-effect-v6/
+          if-no-files-found: error
