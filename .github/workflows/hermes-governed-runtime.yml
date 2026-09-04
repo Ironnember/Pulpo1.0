@@ -1,0 +1,75 @@
+name: Hermes Governed Runtime Proof
+
+on:
+  pull_request:
+    paths:
+      - "experiments/hermes-governed-runtime-v0/**"
+      - "pulpo/mcp_boundary.py"
+      - "tests/test_mcp_boundary.py"
+      - ".github/workflows/hermes-governed-runtime.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  hermes-mcp-boundary:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      HERMES_SHA: 5a8e8a6b87487c0e0785cd9eb561cc6a96c64f5e
+
+    steps:
+      - name: Check out exact Pulpo candidate
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          # pull_request defaults to GitHub's synthetic merge ref. Pulpo proof
+          # claims bind to the exact proposed object instead, so execute the PR
+          # head itself. workflow_dispatch falls back to github.sha.
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Verify exact Pulpo candidate
+        shell: bash
+        env:
+          EXPECTED_PR_HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          actual="$(git rev-parse HEAD)"
+          if [ -n "$EXPECTED_PR_HEAD" ]; then
+            test "$actual" = "$EXPECTED_PR_HEAD"
+          fi
+          echo "PULPO_CANDIDATE_SHA=$actual" >> "$GITHUB_ENV"
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Pulpo MCP dependency
+        run: python -m pip install 'mcp[cli]==2.0.0'
+
+      - name: Fetch exact Hermes source
+        shell: bash
+        run: |
+          set -euo pipefail
+          hermes_dir="$RUNNER_TEMP/hermes-agent"
+          git init "$hermes_dir"
+          git -C "$hermes_dir" remote add origin https://github.com/NousResearch/hermes-agent.git
+          git -C "$hermes_dir" fetch --depth 1 origin "$HERMES_SHA"
+          git -C "$hermes_dir" checkout --detach FETCH_HEAD
+          test "$(git -C "$hermes_dir" rev-parse HEAD)" = "$HERMES_SHA"
+          echo "HERMES_DIR=$hermes_dir" >> "$GITHUB_ENV"
+
+      - name: Install exact Hermes source
+        run: python -m pip install -e "$HERMES_DIR"
+
+      - name: Re-run canonical Pulpo MCP adversarial proof
+        run: python -W error -m unittest tests.test_mcp_boundary -v
+
+      - name: Probe Pulpo through real Hermes MCP client
+        env:
+          PULPO_REPO_ROOT: ${{ github.workspace }}
+          HERMES_HOME: ${{ runner.temp }}/hermes-home
+          PYTHONPATH: ${{ env.HERMES_DIR }}:${{ github.workspace }}
+        run: python experiments/hermes-governed-runtime-v0/probe_with_hermes.py
