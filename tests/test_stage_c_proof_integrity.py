@@ -143,6 +143,12 @@ class StageCProofIntegrityTests(unittest.TestCase):
         self.assertFalse(result["provider_claim"]["authoritative"])
         self.assertEqual("unresolved", custody.reconciled["outcome"])
 
+    def test_p04_libpq_connect_timeout_uses_standard_environment_name(self):
+        runner = load_runner()
+        env = runner.pg_env("postgresql://stagec:example@db.example:5432/postgres?sslmode=require")
+        self.assertEqual("8", env["PGCONNECT_TIMEOUT"])
+        self.assertNotIn("PGCONNECTTIMEOUT", env)
+
 
 if __name__ == "__main__":
     unittest.main()
