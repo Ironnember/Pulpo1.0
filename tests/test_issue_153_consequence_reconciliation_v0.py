@@ -14,6 +14,7 @@ from pulpo.commerce import (
 )
 from pulpo.custody import CustodyViolation, SQLiteGovernanceCustody
 from pulpo.custody_domain import GovernedDomainAttemptCoordinator
+from pulpo.custody_evidence import SQLiteCustodyEvidenceConvergence
 from pulpo.custody_reconcile import (
     GovernedDomainOutcomeMemoryProjection,
     IndependentDomainObservation,
@@ -233,6 +234,29 @@ class Issue153ConsequenceReconciliationV0(unittest.TestCase):
         values.update(changes)
         return IndependentDomainObservation(**values)
 
+    def _reconcile_with_canonical_evidence(
+        self,
+        custody,
+        budget,
+        governed,
+        order,
+        observation,
+        *,
+        observer_id: str,
+    ):
+        convergence = SQLiteCustodyEvidenceConvergence(custody)
+        result = IndependentDomainReconciler(
+            custody,
+            budget,
+            observer_id=observer_id,
+        ).reconcile(governed, order, observation)
+        self.assertEqual(1, convergence.pending_count())
+        projected = convergence.project_all()
+        self.assertEqual(1, len(projected))
+        self.assertEqual(0, convergence.pending_count())
+        self.assertEqual(1, convergence.canonical_event_count(result.receipt.transition_hash))
+        return result
+
     @staticmethod
     def _directive_kernel(now_box, *, directive_id: str, max_cost: int = 2):
         verifier = HmacTestVerifier(secret=b"issue-153-freshness-authority")
@@ -268,11 +292,14 @@ class Issue153ConsequenceReconciliationV0(unittest.TestCase):
         state, kernel, custody, budget, governed, order, provider_request_id, _ = self._stack(path)
         self.addCleanup(self._safe_close, state)
         observation = self._observation(provider_request_id)
-        result = IndependentDomainReconciler(
+        result = self._reconcile_with_canonical_evidence(
             custody,
             budget,
+            governed,
+            order,
+            observation,
             observer_id="observer:issue-153",
-        ).reconcile(governed, order, observation)
+        )
 
         self.assertEqual(("success", "external_consequence_verified"), (result.outcome, result.reason))
         self.assertEqual(SQLiteGovernanceCustody.RECONCILED_SUCCESS, custody.attempt(governed.attempt_id).state)
@@ -296,11 +323,14 @@ class Issue153ConsequenceReconciliationV0(unittest.TestCase):
         state, kernel, custody, budget, governed, order, provider_request_id, _ = self._stack(path)
         self.addCleanup(self._safe_close, state)
         observation = self._observation(provider_request_id, domain="substituted.example")
-        result = IndependentDomainReconciler(
+        result = self._reconcile_with_canonical_evidence(
             custody,
             budget,
+            governed,
+            order,
+            observation,
             observer_id="observer:issue-153-mismatch",
-        ).reconcile(governed, order, observation)
+        )
 
         self.assertEqual(("failure", "observed_domain_mismatch"), (result.outcome, result.reason))
         memory = GovernedDomainOutcomeMemoryProjection(kernel, custody).record(
@@ -319,11 +349,14 @@ class Issue153ConsequenceReconciliationV0(unittest.TestCase):
         state, kernel, custody, budget, governed, order, provider_request_id, _ = self._stack(path)
         self.addCleanup(self._safe_close, state)
         observation = self._observation(provider_request_id, owner_ref=None)
-        result = IndependentDomainReconciler(
+        result = self._reconcile_with_canonical_evidence(
             custody,
             budget,
+            governed,
+            order,
+            observation,
             observer_id="observer:issue-153-unknown",
-        ).reconcile(governed, order, observation)
+        )
 
         self.assertEqual(("unresolved", "success_observation_incomplete"), (result.outcome, result.reason))
         memory = GovernedDomainOutcomeMemoryProjection(kernel, custody).record(
@@ -358,11 +391,14 @@ class Issue153ConsequenceReconciliationV0(unittest.TestCase):
                 path = self._path()
                 state, kernel, custody, budget, governed, order, provider_request_id, _ = self._stack(path)
                 observation = self._observation(provider_request_id, **changes)
-                result = IndependentDomainReconciler(
+                result = self._reconcile_with_canonical_evidence(
                     custody,
                     budget,
+                    governed,
+                    order,
+                    observation,
                     observer_id=f"observer:issue-153:{name}",
-                ).reconcile(governed, order, observation)
+                )
                 memory = GovernedDomainOutcomeMemoryProjection(kernel, custody).record(
                     governed,
                     order,
@@ -579,11 +615,14 @@ class Issue153ConsequenceReconciliationV0(unittest.TestCase):
         state, kernel, custody, budget, governed, order, provider_request_id, _ = self._stack(path)
         self.addCleanup(self._safe_close, state)
         observation = self._observation(provider_request_id)
-        result = IndependentDomainReconciler(
+        result = self._reconcile_with_canonical_evidence(
             custody,
             budget,
+            governed,
+            order,
+            observation,
             observer_id="observer:issue-153-substitution",
-        ).reconcile(governed, order, observation)
+        )
         projection = GovernedDomainOutcomeMemoryProjection(kernel, custody)
         memory = projection.record(governed, order, observation, result)
         self.assertEqual("SUCCESS_VERIFIED", memory.classification)
@@ -610,11 +649,14 @@ class Issue153ConsequenceReconciliationV0(unittest.TestCase):
             privacy_enabled=None,
             dns_state=None,
         )
-        result = IndependentDomainReconciler(
+        result = self._reconcile_with_canonical_evidence(
             custody,
             budget,
+            governed,
+            order,
+            observation,
             observer_id="observer:issue-153-provider-failure",
-        ).reconcile(governed, order, observation)
+        )
         self.assertEqual(("failure", "provider_failure_independently_observed"), (result.outcome, result.reason))
         memory = GovernedDomainOutcomeMemoryProjection(kernel, custody).record(
             governed,
@@ -630,11 +672,14 @@ class Issue153ConsequenceReconciliationV0(unittest.TestCase):
         state, kernel, custody, budget, governed, order, provider_request_id, _ = self._stack(path)
         self.addCleanup(self._safe_close, state)
         observation = self._observation(provider_request_id)
-        result = IndependentDomainReconciler(
+        result = self._reconcile_with_canonical_evidence(
             custody,
             budget,
+            governed,
+            order,
+            observation,
             observer_id="observer:issue-153-memory-authority",
-        ).reconcile(governed, order, observation)
+        )
         memory = GovernedDomainOutcomeMemoryProjection(kernel, custody).record(
             governed,
             order,
