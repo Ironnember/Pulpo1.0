@@ -208,6 +208,14 @@ def blocked(case_id: str, result: dict[str, object], calls: Calls, **details) ->
     return {"case_id": case_id, "provider_calls": len(calls.rows), "boundary_holds": len(calls.rows) == 0 and not result.get("transmitted", False), "result": result, "details": details}
 
 
+def transmit_if_allowed(kernel: GovernanceKernel, custody: SQLiteGovernanceCustody, row: dict[str, str], object_hash: str, intent: Intent, target, decision, calls: Calls, case_id: str) -> dict[str, object]:
+    """Place the real provider callback immediately behind the governance result."""
+    if decision.outcome != "allow" or not decision.permit:
+        return {"transmitted": False, "reason": decision.reason}
+    item = Prepared(row, object_hash, intent, target.target_id, target.target_hash, decision.permit, decision.intent_hash, kernel.policy_hash)
+    return transmit(kernel, custody, item, lambda: calls(row), request_id=case_id, executor_id=case_id)
+
+
 def run_campaign(*, real_insert=None, observer=None) -> dict[str, object]:
     proposal_evidence = proposals()
     authority = TestAuthority()
@@ -215,10 +223,8 @@ def run_campaign(*, real_insert=None, observer=None) -> dict[str, object]:
 
     with tempfile.TemporaryDirectory() as d:
         k, c, s, clk = context(authority, d); original = attack_row("F01-authorized"); changed = attack_row("F01_target_substitution")
-        h, exact = action(original, principal="agent:stage-c"); target = k.lock_target(f"f01:{h[:16]}", exact); env = authority.sign(k, exact, "f01", "f01n", clk.value); _, substituted = action(changed, principal="agent:stage-c"); calls = Calls(real_insert)
-        resolved = k.resolve_locked_target(target.target_id, target.target_hash)
-        r = {"transmitted": False, "reason": "target_intent_mismatch"} if resolved.target is None or resolved.target.intent != substituted else {"transmitted": k.evaluate_with_approval(substituted, env).outcome == "allow"}
-        results.append(blocked("F01_target_substitution", r, calls)); s.close()
+        original_hash, exact = action(original, principal="agent:stage-c"); target = k.lock_target(f"f01:{original_hash[:16]}", exact); env = authority.sign(k, exact, "f01", "f01n", clk.value); changed_hash, substituted = action(changed, principal="agent:stage-c"); decision = k.evaluate_with_approval(substituted, env); calls = Calls(real_insert)
+        r = transmit_if_allowed(k, c, changed, changed_hash, substituted, target, decision, calls, "f01"); results.append(blocked("F01_target_substitution", r, calls)); s.close()
 
     with tempfile.TemporaryDirectory() as d:
         k, c, s, clk = context(authority, d); row = attack_row("F02_permit_replay"); item = prepare(k, authority, clk, row, aid="f02", nonce="f02n"); assert k.consume(item.permit, item.intent); calls = Calls(real_insert); r = transmit(k, c, item, lambda: calls(row), request_id="f02", executor_id="f02"); results.append(blocked("F02_permit_replay", r, calls)); s.close()
@@ -232,13 +238,13 @@ def run_campaign(*, real_insert=None, observer=None) -> dict[str, object]:
         item = Prepared(row, h, intent, target.target_id, target.target_hash, decision.permit, decision.intent_hash, k.policy_hash); calls = Calls(real_insert); r = transmit(k, c, item, lambda: calls(row), request_id="f03", executor_id="f03"); results.append(blocked("F03_execution_time_revocation", r, calls)); s.close()
 
     with tempfile.TemporaryDirectory() as d:
-        k, c, s, clk = context(authority, d); row = attack_row("F04_approval_expiry"); h, intent = action(row, principal="agent:stage-c"); k.lock_target(f"f04:{h[:16]}", intent); env = authority.sign(k, intent, "f04", "f04n", clk.value - 2_000, ttl=1_000); decision = k.evaluate_with_approval(intent, env); calls = Calls(real_insert); results.append(blocked("F04_approval_expiry", {"transmitted": False, "reason": decision.reason}, calls)); s.close()
+        k, c, s, clk = context(authority, d); row = attack_row("F04_approval_expiry"); h, intent = action(row, principal="agent:stage-c"); target = k.lock_target(f"f04:{h[:16]}", intent); env = authority.sign(k, intent, "f04", "f04n", clk.value - 2_000, ttl=1_000); decision = k.evaluate_with_approval(intent, env); calls = Calls(real_insert); r = transmit_if_allowed(k, c, row, h, intent, target, decision, calls, "f04"); results.append(blocked("F04_approval_expiry", r, calls)); s.close()
 
     with tempfile.TemporaryDirectory() as d:
-        k, c, s, clk = context(authority, d, p=policy(authority, max_cost=1)); row = attack_row("F05_budget_authority_inflation"); h, intent = action(row, principal="agent:stage-c", cost=2); k.lock_target(f"f05:{h[:16]}", intent); decision = k.evaluate_with_approval(intent, authority.sign(k, intent, "f05", "f05n", clk.value)); calls = Calls(real_insert); results.append(blocked("F05_budget_authority_inflation", {"transmitted": False, "reason": decision.reason}, calls)); s.close()
+        k, c, s, clk = context(authority, d, p=policy(authority, max_cost=1)); row = attack_row("F05_budget_authority_inflation"); h, intent = action(row, principal="agent:stage-c", cost=2); target = k.lock_target(f"f05:{h[:16]}", intent); decision = k.evaluate_with_approval(intent, authority.sign(k, intent, "f05", "f05n", clk.value)); calls = Calls(real_insert); r = transmit_if_allowed(k, c, row, h, intent, target, decision, calls, "f05"); results.append(blocked("F05_budget_authority_inflation", r, calls)); s.close()
 
     with tempfile.TemporaryDirectory() as d:
-        k, c, s, clk = context(authority, d); row = attack_row("F06_model_self_authority"); h, intent = action(row, principal="agent:stage-c"); k.lock_target(f"f06:{h[:16]}", intent); decision = k.evaluate(intent); calls = Calls(real_insert); results.append(blocked("F06_model_self_authority", {"transmitted": False, "reason": decision.reason}, calls, model_claim="APPROVED", claim_used_as_authority=False)); s.close()
+        k, c, s, clk = context(authority, d); row = attack_row("F06_model_self_authority"); h, intent = action(row, principal="agent:stage-c"); target = k.lock_target(f"f06:{h[:16]}", intent); decision = k.evaluate(intent); calls = Calls(real_insert); r = transmit_if_allowed(k, c, row, h, intent, target, decision, calls, "f06"); results.append(blocked("F06_model_self_authority", r, calls, model_claim="APPROVED", claim_used_as_authority=False)); s.close()
 
     with tempfile.TemporaryDirectory() as d:
         k, c, s, clk = context(authority, d); row = attack_row("F07_two_worker_race"); item = prepare(k, authority, clk, row, aid="f07", nonce="f07n"); assert k.consume(item.permit, item.intent); attempt_id = claim(k, c, item, "f07"); head = c.snapshot(); calls = Calls(real_insert); barrier = threading.Barrier(2); outcomes: list[str] = []
@@ -268,7 +274,7 @@ def run_campaign(*, real_insert=None, observer=None) -> dict[str, object]:
         clk = Clock(); state_path = Path(d) / "kernel.sqlite3"; custody = SQLiteGovernanceCustody(Path(d) / "custody.sqlite3", signing_secret=secrets.token_bytes(32), clock=time.time_ns); p = policy(authority); secret = secrets.token_bytes(32); state = SQLiteKernelState(state_path); k = GovernanceKernel(p, secret=secret, approval_verifier=authority.verifier, clock=clk, state=state); row = attack_row("F09_rollback_restart"); item = prepare(k, authority, clk, row, aid="f09", nonce="f09n"); assert k.consume(item.permit, item.intent); state.close(); state2 = SQLiteKernelState(state_path); k2 = GovernanceKernel(p, secret=secret, approval_verifier=authority.verifier, clock=clk, state=state2); calls = Calls(real_insert); r = transmit(k2, custody, item, lambda: calls(row), request_id="f09", executor_id="f09"); results.append(blocked("F09_rollback_restart", r, calls, audit_valid=k2.verify_audit())); state2.close()
 
     with tempfile.TemporaryDirectory() as d:
-        clk = Clock(); k, c, s, _ = context(authority, d, clock=clk); row = attack_row("F10_authority_time_unavailable"); h, intent = action(row, principal="agent:stage-c"); k.lock_target(f"f10:{h[:16]}", intent); env = authority.sign(k, intent, "f10", "f10n", clk.value); clk.fail = True; decision = k.evaluate_with_approval(intent, env); calls = Calls(real_insert); results.append(blocked("F10_authority_time_unavailable", {"transmitted": False, "reason": decision.reason}, calls)); s.close()
+        clk = Clock(); k, c, s, _ = context(authority, d, clock=clk); row = attack_row("F10_authority_time_unavailable"); h, intent = action(row, principal="agent:stage-c"); target = k.lock_target(f"f10:{h[:16]}", intent); env = authority.sign(k, intent, "f10", "f10n", clk.value); clk.fail = True; decision = k.evaluate_with_approval(intent, env); calls = Calls(real_insert); r = transmit_if_allowed(k, c, row, h, intent, target, decision, calls, "f10"); results.append(blocked("F10_authority_time_unavailable", r, calls)); s.close()
 
     expected = {case_id: n for case_id, n, _ in CONTRACT}
     coverage = {str(x["case_id"]) for x in results}
