@@ -1,0 +1,38 @@
+name: Capability Custody Route Proof
+
+on:
+  push:
+    branches:
+      - proof/capability-custody-route-v0
+  pull_request:
+    paths:
+      - "scripts/prove_provider_route_isolation.sh"
+      - "proofs/capability-custody-route-v0.md"
+      - "custody-service/**"
+      - "pulpo/**"
+      - "tests/test_custody_domain.py"
+      - ".github/workflows/capability-custody-route-proof.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  capability-custody-proof:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install canonical custody proof dependencies
+        run: python -m pip install '.[authority]' './custody-service[test]'
+      - name: Prove permit consumption revocation restart and budget invariants
+        run: python -W error -m unittest tests.test_custody_domain -v
+      - name: Prove hostile-worker custody API denial replay and tamper invariants
+        run: PYTHONPATH=custody-service/src:. python -W error -m unittest discover -s custody-service/tests -v
+      - name: Build canonical custody image
+        run: docker build -f custody-service/Dockerfile -t pulpo-custody-v0:${{ github.sha }} .
+      - name: Prove hostile worker has no alternate provider route
+        shell: bash
+        run: bash scripts/prove_provider_route_isolation.sh
