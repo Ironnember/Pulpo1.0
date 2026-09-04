@@ -63,6 +63,14 @@ Canonical Pulpo retains the established fail-closed governance kernel, exact int
 
 Successful prior execution, model output, retrieval, conversational memory, or governed outcome memory does not independently expand authority.
 
+### Independent approval contract
+
+Canonical approval code pins public trust before governed work begins to the exact authority, verifier, key, algorithm, key fingerprint, deployment, and maximum approval TTL.
+
+Each approval envelope binds approval identity, authority, verifier, key, deployment, trust hash, session, principal, exact intent hash, exact policy hash, nonce, issued time, expiry, and signature.
+
+This is verified canonical software behavior for the approval contract. It does not prove that the complete independent `authority.pulpo.ai` service is deployed or acceptance-proven.
+
 ### Capability-stripped MCP boundary
 
 PR #134 is canonical.
@@ -117,7 +125,7 @@ Repository admission has executable evidence demonstrating that passing code and
 
 A held candidate can be denied while the same code object can later become eligible only after the separately authorized admission-state transition.
 
-During PR #161 admission, stale classic branch-protection settings requiring nonexistent Preview/Production deployments and locking `main` read-only were identified as independent blockers. They were removed through an explicitly authorized settings transition before the protected merge succeeded.
+During PR #161 admission, previously configured classic branch-protection requirements for successful Preview and Production deployments and a locked read-only `main` were verified as independent blockers. Those requirements were removed through an explicitly authorized settings transition before the protected merge succeeded.
 
 The full classic branch-protection metadata is not completely readable through the connected integration, so unobserved administration metadata should not be overclaimed.
 
@@ -145,7 +153,26 @@ No real registrar purchase or independently observed registrar consequence is es
 
 Issue #90 remains open.
 
-Recorded cloud/HSM evidence may support individual infrastructure claims, but the complete `authority.pulpo.ai` boundary has not yet been acceptance-proven as an independently deployed human-authority system.
+### Recorded external signer evidence
+
+Issue #90 durably records acceptance evidence for the exact Google Cloud HSM key version:
+
+`projects/dulcet-opus-499511-a5/locations/us-west1/keyRings/pulpo-authority/cryptoKeys/approval-signer/cryptoKeyVersions/1`
+
+Recorded metadata includes:
+
+- state: `ENABLED`;
+- algorithm: `EC_SIGN_P256_SHA256`;
+- protection level: `HSM`;
+- curve: NIST P-256 / prime256v1;
+- Pulpo canonical trust fingerprint, SHA-256 over the exact 65-byte uncompressed SEC1 public point: `b59288317ee9735a3bfd24595fd6a5d5c97476c1461b945124aded9ffd0ab127`;
+- a live KMS signature over `pulpo-independent-authority-proof-v1` that verified locally against the fetched public key.
+
+These facts are classified **Recorded** in this reconciliation because the external Google Cloud operation was not independently re-executed here.
+
+`HSM_SIGNER != DEPLOYED_INDEPENDENT_AUTHORITY`
+
+The complete `authority.pulpo.ai` boundary has not yet been acceptance-proven as an independently deployed human-authority system.
 
 Production-facing authority claims therefore remain bounded below a completed independent authority deployment.
 
@@ -170,6 +197,7 @@ PR #128 is closed unmerged structural Stage-C evidence. It does not establish an
 Canonical Pulpo currently has:
 
 - a governed kernel and one-use authority path;
+- an exact-object independent approval contract in canonical software;
 - replay/restart and directive freshness controls under the tested boundary;
 - hostile-worker software/container controls;
 - capability-stripped MCP behavior;
@@ -181,7 +209,7 @@ Canonical Pulpo currently has:
 
 ### Recorded
 
-Recorded evidence includes historical cloud/HSM work, Keel experiments, historical Stage-C structural work, and held/stale corrective branches.
+Recorded evidence includes the exact Issue #90 HSM signer acceptance record, Keel experiments, historical Stage-C structural work, and held/stale corrective branches.
 
 These are not automatically canonical or production proof.
 
@@ -227,9 +255,9 @@ Do not convert passing CI, a cloud primitive, repository approval, executor succ
 - third-party reproducibility;
 - valuation proof.
 
-The current defensible position is:
+### Inferred positioning
 
-Pulpo is a strong software-boundary governance and evidence system with mechanically demonstrated canonical admission controls and canonical consequence-reconciliation/outcome-memory behavior.
+Pulpo currently has canonical software-boundary governance, exact-object approval binding, consequence reconciliation, governed outcome memory, and mechanically exercised repository-admission controls.
 
 External consequence verification and independent production authority remain the next major proof boundary.
 
