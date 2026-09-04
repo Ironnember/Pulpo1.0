@@ -1,0 +1,48 @@
+name: Stage C Supabase Readiness
+
+on:
+  pull_request:
+    paths:
+      - "scripts/run_stage_c_supabase_consequence.py"
+      - "tests/test_stage_c_supabase_runner.py"
+      - ".github/workflows/stage-c-supabase-readiness.yml"
+      - "pulpo/**"
+      - "tests/**"
+
+permissions:
+  contents: read
+
+jobs:
+  software-readiness:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Check out exact PR head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Run Stage C software-only readiness
+        env:
+          PYTHONPATH: .
+        run: |
+          set -euo pipefail
+          python scripts/run_stage_c_supabase_consequence.py \
+            --software-only \
+            --output stage-c-supabase-software-readiness.json
+
+      - name: Upload non-provider evidence
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage-c-supabase-readiness-${{ github.event.pull_request.head.sha }}
+          path: stage-c-supabase-software-readiness.json
+          if-no-files-found: warn
+          retention-days: 30
