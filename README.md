@@ -65,6 +65,8 @@ independently deployed human signer, trusted verifier bootstrap, rollback-proof
 host storage, a real payment rail, network isolation, hostile-code sandboxing,
 distributed identity, or production readiness.
 
+Start with the [documentation index](docs/INDEX.md) and [repository map](docs/REPOSITORY_MAP.md).
+
 See [project source baseline](docs/PROJECT_SOURCE_BASELINE.md), [architecture](docs/ARCHITECTURE.md), [project governance](docs/GOVERNANCE.md),
 [current state](docs/CURRENT_STATE.md), [canonicalization](docs/CANONICALIZATION.md),
 and [agents and plugins](docs/AGENTS_AND_PLUGINS.md).
