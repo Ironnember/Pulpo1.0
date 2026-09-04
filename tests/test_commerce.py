@@ -283,7 +283,15 @@ class CommerceProofTests(unittest.TestCase):
         with self.assertRaisesRegex(CommerceViolation, "ownership_not_verified"):
             accept_delivery(order, outcome, wrong_owner)
         self.assertIsNone(outcome.verification)
-        verified = VerificationEvidence(order.domain, order.registrar, order.owner_ref, 1, True, "configured")
+        verified = VerificationEvidence(
+            order.domain,
+            order.registrar,
+            order.owner_ref,
+            1,
+            True,
+            "configured",
+            auto_renew_enabled=order.auto_renew_enabled,
+        )
         accept_delivery(order, outcome, verified)
         self.assertTrue(outcome.accepted)
         self.assertFalse(outcome.valuable)
