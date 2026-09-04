@@ -326,7 +326,7 @@ def pg_env(dsn: str) -> dict[str, str]:
     u = urlsplit(dsn)
     if u.scheme not in {"postgres", "postgresql"} or not u.hostname or u.username is None or u.password is None:
         raise ValueError("invalid PostgreSQL DSN")
-    q = parse_qs(u.query); env = clean_env(); env.update(PGHOST=u.hostname, PGPORT=str(u.port or 5432), PGDATABASE=unquote(u.path.lstrip("/")) or "postgres", PGUSER=unquote(u.username), PGPASSWORD=unquote(u.password), PGSSLMODE=q.get("sslmode", ["require"])[0], PGCONNECTTIMEOUT="8"); return env
+    q = parse_qs(u.query); env = clean_env(); env.update(PGHOST=u.hostname, PGPORT=str(u.port or 5432), PGDATABASE=unquote(u.path.lstrip("/")) or "postgres", PGUSER=unquote(u.username), PGPASSWORD=unquote(u.password), PGSSLMODE=q.get("sslmode", ["require"])[0], PGCONNECT_TIMEOUT="8"); return env
 
 
 def psql(dsn: str, sql: str) -> str:
