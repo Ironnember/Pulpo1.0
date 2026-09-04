@@ -1,0 +1,27 @@
+name: Capability Custody Route Proof
+
+on:
+  push:
+    branches:
+      - proof/capability-custody-route-v0
+  pull_request:
+    paths:
+      - "scripts/prove_provider_route_isolation.sh"
+      - "custody-service/**"
+      - "pulpo/**"
+      - ".github/workflows/capability-custody-route-proof.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  provider-route-isolation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build canonical custody image
+        run: docker build -f custody-service/Dockerfile -t pulpo-custody-v0:${{ github.sha }} .
+      - name: Prove hostile worker has no alternate provider route
+        shell: bash
+        run: bash scripts/prove_provider_route_isolation.sh
