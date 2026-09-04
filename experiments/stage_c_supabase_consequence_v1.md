@@ -15,7 +15,7 @@ V1 freezes the stronger contract: **every adversarial family is presented to the
 - current canonical source `main`: `d421fbe73732a7ed4c942928d62e80dd6bbb2057`
 - source benchmark head: `f9242eb67fe46eb201281e54f692a0cdc2d3b840`
 - original ten-family attack-vector SHA-256: `ff3edebf38171f5d0eb2b8bf0b9132fff89fb8272a9a27446c0bfb5b398d1c9e`
-- V1 consequence-seam contract SHA-256: `4eeb0da9d7ed4358f9b8a3dbd7f29deb04832677a37bd527abb32f034757ac53`
+- V1 consequence-seam contract SHA-256: `7ef5902a0481a8f6877a810040b3a1b35fc30c36b82a3c37a213ae8c31098030`
 - V1 matched-row SHA-256: `931b28fc95837ff8237561231a1067c7b989233f6a5add65370810e8afdd0dab`
 - provider project: `jvqryaqkhdnasowxycns`
 - provider table: `pulpo_stage_c.effects`
