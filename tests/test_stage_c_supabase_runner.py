@@ -1,6 +1,7 @@
 import importlib.util
 import os
 from pathlib import Path
+import sys
 import unittest
 
 
@@ -14,6 +15,7 @@ def load_runner():
     spec = importlib.util.spec_from_file_location("stage_c_supabase_runner_v1", SCRIPT)
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
     spec.loader.exec_module(module)
     return module
 
