@@ -1,0 +1,70 @@
+name: Unauthorized Effect Benchmark
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/unauthorized-effect-benchmark.yml"
+      - "experiments/holytrinity_unauthorized_effect_v0.md"
+      - "scripts/run_unauthorized_effect_benchmark.py"
+      - "scripts/run_unauthorized_effect_benchmark_twice.py"
+      - "tests/test_unauthorized_effect_oracle.py"
+      - "tests/unauthorized_effect_oracle.py"
+      - "tests/**"
+      - "pulpo/**"
+
+permissions:
+  contents: read
+
+jobs:
+  benchmark:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      PYTHONPATH: .
+    steps:
+      - name: Check out exact PR head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Record exact benchmark object
+        shell: bash
+        run: |
+          set -euo pipefail
+          actual="$(git rev-parse HEAD)"
+          expected="${{ github.event.pull_request.head.sha }}"
+          test "$actual" = "$expected"
+          printf '%s\n' "$actual" > unauthorized-effect-head-sha.txt
+
+      - name: Run Stage A software-boundary proxy
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/run_unauthorized_effect_benchmark.py > unauthorized-effect-stage-a.json
+          cat unauthorized-effect-stage-a.json
+
+      - name: Run Stage B independent local effect oracle twice
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/run_unauthorized_effect_benchmark_twice.py > unauthorized-effect-stage-b.json
+          cat unauthorized-effect-stage-b.json
+
+      - name: Upload benchmark evidence
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: unauthorized-effect-benchmark-${{ github.event.pull_request.head.sha }}
+          path: |
+            unauthorized-effect-head-sha.txt
+            unauthorized-effect-stage-a.json
+            unauthorized-effect-stage-b.json
+          if-no-files-found: warn
+          retention-days: 30
