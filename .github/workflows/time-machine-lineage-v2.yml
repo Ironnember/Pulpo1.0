@@ -1,0 +1,47 @@
+name: Time Machine Lineage V2
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  lineage-constitutional-strength:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Replay canonical first-parent constitutional lineage
+        id: lineage
+        continue-on-error: true
+        run: python scripts/run_time_machine_lineage_v2.py --output-prefix time-machine-v2
+
+      - name: Prove tracked checkout remained unchanged
+        run: git diff --exit-code
+
+      - name: Preserve Time Machine V2 evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: time-machine-v2-${{ github.sha }}
+          path: |
+            time-machine-v2.json
+            time-machine-v2.csv
+            time-machine-v2.md
+            time-machine-v2.svg
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Enforce V2 constitutional expectations
+        env:
+          LINEAGE_OUTCOME: ${{ steps.lineage.outcome }}
+        run: test "$LINEAGE_OUTCOME" = "success"

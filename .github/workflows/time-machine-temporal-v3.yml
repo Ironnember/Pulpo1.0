@@ -1,0 +1,48 @@
+name: Time Machine Temporal V3
+
+on:
+  pull_request:
+    paths:
+      - "scripts/run_time_machine_lineage_v2.py"
+      - "scripts/run_time_machine_temporal_v3.py"
+      - "experiments/time_machine_v3/**"
+      - ".github/workflows/time-machine-temporal-v3.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  temporal-constitutional-strength:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Measure constitutional strength over Git time
+        id: temporal
+        continue-on-error: true
+        run: python scripts/run_time_machine_temporal_v3.py --output-prefix time-machine-v3
+      - name: Prove tracked checkout remained unchanged
+        if: always()
+        run: git diff --exit-code
+      - name: Preserve Time Machine V3 evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: time-machine-v3-${{ github.sha }}
+          path: |
+            time-machine-v3.json
+            time-machine-v3.csv
+            time-machine-v3.md
+            time-machine-v3.svg
+          if-no-files-found: error
+          retention-days: 30
+      - name: Enforce V3 temporal expectations
+        if: always()
+        env:
+          TEMPORAL_OUTCOME: ${{ steps.temporal.outcome }}
+        run: test "$TEMPORAL_OUTCOME" = "success"

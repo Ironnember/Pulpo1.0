@@ -1,0 +1,44 @@
+name: Time Machine Differential V1.1
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  time-machine-differential:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Replay DAG-aware constitutional transitions
+        id: replay
+        continue-on-error: true
+        run: python scripts/run_time_machine_differential_v1_1.py --output time-machine-differential.json
+
+      - name: Prove canonical checkout remained unchanged
+        if: always()
+        run: git diff --exit-code
+
+      - name: Preserve Time Machine evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: time-machine-differential-${{ github.sha }}
+          path: time-machine-differential.json
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Enforce frozen Time Machine expectations
+        if: always()
+        env:
+          REPLAY_OUTCOME: ${{ steps.replay.outcome }}
+        run: test "$REPLAY_OUTCOME" = "success"
