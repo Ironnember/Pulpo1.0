@@ -29,6 +29,10 @@ TABLE = "pulpo_stage_c.effects"
 SESSION = "stage-c-supabase-v1"
 SECRET_ENV = ("PULPO_STAGEC_EXECUTOR_DSN", "PULPO_STAGEC_OBSERVER_DSN", "PULPO_STAGEC_CLEANUP_DSN", "PGPASSWORD", "PGPASSFILE", "PGSERVICE", "PGSERVICEFILE")
 CHILD_ENV_ALLOWLIST = ("PATH", "LANG", "LC_ALL", "TZ")
+# macOS injects this CoreFoundation locale marker after exec even when the
+# parent supplies an explicit environment. It is observed separately and is
+# never copied from the parent by clean_env().
+PLATFORM_INJECTED_ENV_ALLOWLIST = ("__CF_USER_TEXT_ENCODING",) if sys.platform == "darwin" else ()
 
 CONTRACT = (
     ("F01_target_substitution", 0, "zero_effect"),
@@ -124,13 +128,15 @@ def clean_env() -> dict[str, str]:
 
 def proposal_child() -> dict[str, object]:
     keys = sorted(os.environ)
-    unexpected = sorted(set(keys) - set(CHILD_ENV_ALLOWLIST))
+    platform_injected = sorted(set(keys) & set(PLATFORM_INJECTED_ENV_ALLOWLIST))
+    unexpected = sorted(set(keys) - set(CHILD_ENV_ALLOWLIST) - set(PLATFORM_INJECTED_ENV_ALLOWLIST))
     leaked = sorted(k for k in SECRET_ENV if os.environ.get(k))
     return {
         "schema": "pulpo.stage-c.proposals.v1",
         "contract": CONTRACT,
         "credential_names_present": leaked,
         "environment_keys": keys,
+        "platform_injected_environment_keys": platform_injected,
         "unexpected_environment_keys": unexpected,
         "provider_capability_present": bool(unexpected or leaked),
         "capability_claim_boundary": "environment_only",
@@ -141,15 +147,18 @@ def proposals() -> dict[str, object]:
     payload = {
         "schema": "pulpo.stage-c.proposals.v1",
         "contract": CONTRACT,
-        "allowed_environment_keys": CHILD_ENV_ALLOWLIST,
+        "allowed_environment_keys": CHILD_ENV_ALLOWLIST + PLATFORM_INJECTED_ENV_ALLOWLIST,
+        "platform_injected_environment_keys": PLATFORM_INJECTED_ENV_ALLOWLIST,
     }
     child = (
         "import json,os,sys\n"
         "p=json.load(sys.stdin)\n"
         "keys=sorted(os.environ)\n"
         "unexpected=sorted(set(keys)-set(p['allowed_environment_keys']))\n"
+        "platform_injected=sorted(set(keys)&set(p['platform_injected_environment_keys']))\n"
         "out={'schema':p['schema'],'contract':p['contract'],'credential_names_present':[],"
-        "'environment_keys':keys,'unexpected_environment_keys':unexpected,"
+        "'environment_keys':keys,'platform_injected_environment_keys':platform_injected,"
+        "'unexpected_environment_keys':unexpected,"
         "'provider_capability_present':bool(unexpected),'capability_claim_boundary':'environment_only'}\n"
         "print(json.dumps(out,sort_keys=True,separators=(',',':')))\n"
     )

@@ -85,6 +85,27 @@ class StageCProofIntegrityTests(unittest.TestCase):
                 else:
                     os.environ[name] = value
 
+    def test_p01b_platform_injected_environment_is_observed_not_inherited(self):
+        runner = load_runner()
+        name = "__CF_USER_TEXT_ENCODING"
+        original = os.environ.get(name)
+        try:
+            os.environ[name] = "attacker-controlled-parent-value"
+            self.assertNotIn(name, runner.clean_env())
+        finally:
+            if original is None:
+                os.environ.pop(name, None)
+            else:
+                os.environ[name] = original
+
+        evidence = runner.proposals()
+        self.assertFalse(evidence["provider_capability_present"])
+        self.assertEqual([], evidence["unexpected_environment_keys"])
+        if sys.platform == "darwin":
+            self.assertEqual([name], evidence["platform_injected_environment_keys"])
+        else:
+            self.assertEqual([], evidence["platform_injected_environment_keys"])
+
     def test_p02_real_ceremony_rejects_head_mismatch_before_dependency_check(self):
         runner = load_runner()
         calls = [
