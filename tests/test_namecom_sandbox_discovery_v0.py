@@ -22,27 +22,24 @@ class NameComSandboxDiscoveryV0Tests(unittest.TestCase):
             with self.assertRaisesRegex(MODULE.DiscoveryViolation, "fire_must_remain_disabled"):
                 MODULE.main()
 
-    def test_executor_and_observer_tokens_must_be_distinct(self):
+    def test_sandbox_token_is_required(self):
         env = {
             "PULPO_NAMECOM_FIRE": "0",
             "NAMECOM_SANDBOX_USERNAME": "pulpo-test",
-            "NAMECOM_SANDBOX_EXECUTOR_TOKEN": "same-token",
-            "NAMECOM_SANDBOX_OBSERVER_TOKEN": "same-token",
             "GITHUB_SHA": "f141f54401a6875860cc1295559f5796133baf10",
         }
         with patch.dict(os.environ, env, clear=True):
             with self.assertRaisesRegex(
                 MODULE.DiscoveryViolation,
-                "sandbox_executor_observer_tokens_not_distinct",
+                "namecom_sandbox_token_unavailable",
             ):
                 MODULE.main()
 
-    def test_authenticated_discovery_is_read_only_and_sanitized(self):
+    def test_authenticated_discovery_is_read_only_sanitized_and_does_not_claim_separation(self):
         env = {
             "PULPO_NAMECOM_FIRE": "0",
             "NAMECOM_SANDBOX_USERNAME": "pulpo-test",
-            "NAMECOM_SANDBOX_EXECUTOR_TOKEN": "executor-secret-value",
-            "NAMECOM_SANDBOX_OBSERVER_TOKEN": "observer-secret-value",
+            "NAMECOM_SANDBOX_TOKEN": "sandbox-secret-value",
             "GITHUB_SHA": "f141f54401a6875860cc1295559f5796133baf10",
         }
         calls = []
@@ -91,7 +88,6 @@ class NameComSandboxDiscoveryV0Tests(unittest.TestCase):
         self.assertEqual(
             [
                 ("GET", "/core/v1/hello"),
-                ("GET", "/core/v1/hello"),
                 ("POST", "/core/v1/domains:checkAvailability"),
             ],
             [(method, path) for method, path, *_ in calls],
@@ -105,14 +101,14 @@ class NameComSandboxDiscoveryV0Tests(unittest.TestCase):
         self.assertFalse(evidence["selected"]["premium"])
         self.assertEqual("registration", evidence["selected"]["purchase_type"])
         self.assertEqual(64, len(evidence["evidence_hash"]))
-        self.assertTrue(evidence["credentials"]["executor_authenticated"])
-        self.assertTrue(evidence["credentials"]["observer_authenticated"])
-        self.assertTrue(evidence["credentials"]["executor_observer_distinct"])
+        self.assertTrue(evidence["credentials"]["sandbox_authenticated"])
+        self.assertEqual("single_sandbox_token", evidence["credentials"]["credential_mode"])
+        self.assertFalse(evidence["credentials"]["executor_observer_distinct"])
+        self.assertFalse(evidence["credentials"]["distinct_credential_separation_claimed"])
         self.assertFalse(evidence["credentials"]["secret_material_recorded"])
 
         serialized = json.dumps(evidence, sort_keys=True) + stdout
-        self.assertNotIn("executor-secret-value", serialized)
-        self.assertNotIn("observer-secret-value", serialized)
+        self.assertNotIn("sandbox-secret-value", serialized)
 
 
 if __name__ == "__main__":
