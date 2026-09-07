@@ -51,6 +51,7 @@ jobs:
             -v "$PWD:/repo:ro" \
             -v "$effect_volume:/effects:rw" \
             -w /repo \
+            -e PYTHONPATH=/repo \
             python:3.11-slim \
             python tests/rwe_isolated_effect_surface_v0.py effect-service \
               --state /effects/effects.jsonl \
@@ -103,6 +104,7 @@ jobs:
             --security-opt no-new-privileges:true \
             -v "$PWD:/repo:ro" \
             -w /repo \
+            -e PYTHONPATH=/repo \
             python:3.11-slim \
             python tests/rwe_isolated_effect_surface_v0.py worker \
               --gateway-url "http://${gateway}:8080/intent" \
@@ -122,6 +124,7 @@ jobs:
             -v "$PWD:/repo:ro" \
             -v "$effect_volume:/effects:ro" \
             -w /repo \
+            -e PYTHONPATH=/repo \
             python:3.11-slim \
             python tests/rwe_isolated_effect_surface_v0.py observer \
               --state /effects/effects.jsonl
