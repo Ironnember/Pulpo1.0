@@ -5,6 +5,36 @@ import unittest
 from pulpo import ApprovalEnvelope, AuthorityApprovalRequest, AuthorityClient
 
 
+class _FakeResponse:
+    status = 200
+
+    def __init__(self, url, body):
+        self.url = url
+        self.body = body
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        return False
+
+    def geturl(self):
+        return self.url
+
+    def read(self, _limit):
+        return self.body
+
+
+class _CapturingOpener:
+    def __init__(self, response):
+        self.response = response
+        self.requests = []
+
+    def open(self, request, timeout):
+        self.requests.append((request, timeout))
+        return self.response
+
+
 class AuthorityClientTests(unittest.TestCase):
     def setUp(self):
         self.request = AuthorityApprovalRequest(
@@ -51,6 +81,68 @@ class AuthorityClientTests(unittest.TestCase):
             ],
             self.calls,
         )
+
+    def test_default_transport_adds_fresh_worker_authorization(self):
+        issued = []
+
+        def authorization_provider():
+            value = f"Bearer worker-token-{len(issued) + 1}"
+            issued.append(value)
+            return value
+
+        client = AuthorityClient(
+            "https://authority.example.com",
+            authorization_provider=authorization_provider,
+        )
+        opener = _CapturingOpener(
+            _FakeResponse(
+                "https://authority.example.com/v1/approval-requests/request%3A1",
+                b'{"status":"pending"}',
+            )
+        )
+        client._opener = opener
+
+        self.assertEqual("pending", client.poll_approval("request:1").status)
+        self.assertEqual("pending", client.poll_approval("request:1").status)
+        self.assertEqual(2, len(opener.requests))
+        self.assertEqual(
+            ["Bearer worker-token-1", "Bearer worker-token-2"],
+            [request.get_header("Authorization") for request, _ in opener.requests],
+        )
+
+    def test_worker_authorization_failure_and_invalid_framing_fail_before_http(self):
+        def unavailable():
+            raise RuntimeError("identity provider unavailable")
+
+        for provider, message in (
+            (unavailable, "worker authorization unavailable"),
+            (lambda: "worker-token", "worker authorization is invalid"),
+            (lambda: "Bearer ", "worker authorization is invalid"),
+            (lambda: " Bearer worker", "worker authorization is invalid"),
+        ):
+            with self.subTest(message=message):
+                client = AuthorityClient(
+                    "https://authority.example.com",
+                    authorization_provider=provider,
+                )
+                opener = _CapturingOpener(
+                    _FakeResponse(
+                        "https://authority.example.com/v1/approval-requests/request%3A1",
+                        b'{"status":"pending"}',
+                    )
+                )
+                client._opener = opener
+                with self.assertRaisesRegex(RuntimeError, message):
+                    client.poll_approval("request:1")
+                self.assertEqual([], opener.requests)
+
+    def test_custom_transport_cannot_silently_ignore_authorization_provider(self):
+        with self.assertRaisesRegex(ValueError, "default HTTPS transport"):
+            AuthorityClient(
+                "https://authority.example.com",
+                transport=lambda *_: {"status": "pending"},
+                authorization_provider=lambda: "Bearer worker-token",
+            )
 
     def test_approved_poll_parses_exact_envelope(self):
         envelope = ApprovalEnvelope(
