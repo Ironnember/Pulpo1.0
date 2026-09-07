@@ -1,10 +1,13 @@
 """Authenticated read-only Name.com sandbox discovery for Pulpo ceremony V0.
 
-This proof intentionally cannot register a domain. It verifies separately
-retained sandbox credentials, performs provider-native discovery only, freezes
-one disposable non-premium registration candidate below Pulpo's $30 purchase
-ceiling, and emits a sanitized evidence object for later exact-object approval.
+This proof intentionally cannot register a domain. It authenticates the single
+Name.com Development/Test credential surface available to the operator,
+performs provider-native discovery only, freezes one disposable non-premium
+registration candidate below Pulpo's $30 purchase ceiling, and emits a
+sanitized evidence object for later exact-object approval.
 
+This proof does not claim executor/observer credential separation. That
+stronger property remains a blocker for consequential execution evidence.
 No credential value or credential-derived hash is written to stdout/artifacts.
 """
 
@@ -112,24 +115,18 @@ def main() -> int:
         raise DiscoveryViolation("fire_must_remain_disabled")
 
     username = _require_secret("NAMECOM_SANDBOX_USERNAME")
-    executor_token = _require_secret("NAMECOM_SANDBOX_EXECUTOR_TOKEN")
-    observer_token = _require_secret("NAMECOM_SANDBOX_OBSERVER_TOKEN")
+    sandbox_token = _require_secret("NAMECOM_SANDBOX_TOKEN")
     if not username.endswith("-test"):
         raise DiscoveryViolation("sandbox_username_must_end_test")
-    if executor_token == observer_token:
-        raise DiscoveryViolation("sandbox_executor_observer_tokens_not_distinct")
 
-    # Authenticate both credential surfaces without printing their values.
-    executor_hello = _request_json(
-        "GET", "/core/v1/hello", username=username, token=executor_token
+    # Authenticate the observed single sandbox credential surface without
+    # printing its value. This proof intentionally makes no claim of distinct
+    # executor/observer credentials in Name.com's Development/Test environment.
+    hello = _request_json(
+        "GET", "/core/v1/hello", username=username, token=sandbox_token
     )
-    observer_hello = _request_json(
-        "GET", "/core/v1/hello", username=username, token=observer_token
-    )
-    if executor_hello.get("username") != username:
-        raise DiscoveryViolation("executor_identity_mismatch")
-    if observer_hello.get("username") != username:
-        raise DiscoveryViolation("observer_identity_mismatch")
+    if hello.get("username") != username:
+        raise DiscoveryViolation("sandbox_identity_mismatch")
 
     head = os.environ.get("GITHUB_SHA", "")
     candidates = _candidates(head)
@@ -137,7 +134,7 @@ def main() -> int:
         "POST",
         "/core/v1/domains:checkAvailability",
         username=username,
-        token=observer_token,
+        token=sandbox_token,
         payload={"domainNames": candidates, "purchaseType": "registration"},
     )
     results = discovery.get("results")
@@ -188,9 +185,10 @@ def main() -> int:
         "source_head": head,
         "purchase_ceiling_cents": PURCHASE_CEILING_CENTS,
         "credentials": {
-            "executor_authenticated": True,
-            "observer_authenticated": True,
-            "executor_observer_distinct": True,
+            "sandbox_authenticated": True,
+            "credential_mode": "single_sandbox_token",
+            "executor_observer_distinct": False,
+            "distinct_credential_separation_claimed": False,
             "secret_material_recorded": False,
         },
         "selected": selected,
@@ -209,7 +207,8 @@ def main() -> int:
         json.dumps(evidence, sort_keys=True, indent=2) + "\n", encoding="utf-8"
     )
 
-    print("namecom_sandbox_credentials=AUTHENTICATED_DISTINCT")
+    print("namecom_sandbox_credential=AUTHENTICATED")
+    print("executor_observer_credential_separation=NOT_CLAIMED")
     print(f"selected_domain={selected['domain']}")
     print(f"purchase_price_cents={selected['purchase_price_cents']}")
     print(f"renewal_price_cents={selected['renewal_price_cents']}")
