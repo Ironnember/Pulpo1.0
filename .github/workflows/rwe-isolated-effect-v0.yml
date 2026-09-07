@@ -1,0 +1,135 @@
+name: RWE Isolated Effect Surface
+
+on:
+  pull_request:
+    branches:
+      - proof/rwe-001-need-control-v0
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  isolated-effect-surface:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Compile RWE isolated-effect harness
+        run: python -m py_compile tests/rwe_isolated_effect_surface_v0.py
+
+      - name: Prove hostile worker cannot reach isolated effect surface
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          worker_net="rwe-worker-${GITHUB_RUN_ID}"
+          effect_net="rwe-effect-${GITHUB_RUN_ID}"
+          effect_volume="rwe-effects-${GITHUB_RUN_ID}"
+          effect="rwe-effect-${GITHUB_RUN_ID}"
+          gateway="rwe-gateway-${GITHUB_RUN_ID}"
+
+          docker network create --internal "$worker_net" >/dev/null
+          docker network create --internal "$effect_net" >/dev/null
+          docker volume create "$effect_volume" >/dev/null
+
+          cleanup() {
+            docker rm -f "$gateway" "$effect" >/dev/null 2>&1 || true
+            docker network rm "$worker_net" "$effect_net" >/dev/null 2>&1 || true
+            docker volume rm "$effect_volume" >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+
+          docker run -d \
+            --name "$effect" \
+            --network "$effect_net" \
+            --read-only \
+            --tmpfs /tmp:rw,noexec,nosuid,size=16m \
+            --cap-drop ALL \
+            --security-opt no-new-privileges:true \
+            -v "$PWD:/repo:ro" \
+            -v "$effect_volume:/effects:rw" \
+            -w /repo \
+            -e PYTHONPATH=/repo \
+            python:3.11-slim \
+            python tests/rwe_isolated_effect_surface_v0.py effect-service \
+              --state /effects/effects.jsonl \
+              --port 8081 >/dev/null
+
+          docker run -d \
+            --name "$gateway" \
+            --network "$worker_net" \
+            --read-only \
+            --tmpfs /tmp:rw,noexec,nosuid,size=16m \
+            --cap-drop ALL \
+            --security-opt no-new-privileges:true \
+            -v "$PWD:/repo:ro" \
+            -w /repo \
+            -e PYTHONPATH=/repo \
+            python:3.11-slim \
+            python tests/rwe_isolated_effect_surface_v0.py gateway \
+              --effect-url "http://${effect}:8081/write" \
+              --port 8080 >/dev/null
+
+          docker network connect "$effect_net" "$gateway"
+
+          healthy=0
+          for _ in $(seq 1 30); do
+            if docker exec "$effect" python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8081/health', timeout=1).read()" >/dev/null 2>&1 \
+              && docker exec "$gateway" python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health', timeout=1).read()" >/dev/null 2>&1; then
+              healthy=1
+              break
+            fi
+            sleep 1
+          done
+          if [ "$healthy" != "1" ]; then
+            echo "isolated RWE services did not become healthy" >&2
+            docker logs "$effect" >&2 || true
+            docker logs "$gateway" >&2 || true
+            exit 1
+          fi
+
+          test -z "$(docker port "$effect")"
+          test -z "$(docker port "$gateway")"
+
+          effect_ip="$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}} {{end}}' "$effect" | awk '{print $1}')"
+          test -n "$effect_ip"
+
+          docker run --rm \
+            --network "$worker_net" \
+            --read-only \
+            --tmpfs /tmp:rw,noexec,nosuid,size=16m \
+            --cap-drop ALL \
+            --security-opt no-new-privileges:true \
+            -v "$PWD:/repo:ro" \
+            -w /repo \
+            -e PYTHONPATH=/repo \
+            python:3.11-slim \
+            python tests/rwe_isolated_effect_surface_v0.py worker \
+              --gateway-url "http://${gateway}:8080/intent" \
+              --effect-host "$effect" \
+              --effect-ip "$effect_ip" \
+              --effect-port 8081
+
+          # Stop both active services before observation. The observer has no
+          # worker network and mounts only the durable effect volume read-only.
+          docker stop "$gateway" "$effect" >/dev/null
+
+          docker run --rm \
+            --read-only \
+            --tmpfs /tmp:rw,noexec,nosuid,size=16m \
+            --cap-drop ALL \
+            --security-opt no-new-privileges:true \
+            -v "$PWD:/repo:ro" \
+            -v "$effect_volume:/effects:ro" \
+            -w /repo \
+            -e PYTHONPATH=/repo \
+            python:3.11-slim \
+            python tests/rwe_isolated_effect_surface_v0.py observer \
+              --state /effects/effects.jsonl
+
+          echo "rwe_isolated_effect_surface=PASS"
+          echo "external_provider_used=NO"
+          echo "production_environment_used=NO"
+          echo "independent_trust_domain_claim=NO"
