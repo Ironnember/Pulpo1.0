@@ -7,9 +7,13 @@ requires-python = ">=3.11"
 [project.optional-dependencies]
 authority = ["cryptography==50.0.1"]
 mcp = ["mcp[cli]>=2,<3"]
+web = ["Flask>=3.0,<4"]
 
 [project.scripts]
 pulpo-git-clarity = "pulpo.git_clarity:main"
 
-[tool.setuptools]
-packages = ["pulpo"]
+[tool.setuptools.packages.find]
+include = ["pulpo*", "mobile_demo*"]
+
+[tool.setuptools.package-data]
+mobile_demo = ["static/*"]

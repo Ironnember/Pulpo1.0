@@ -21,8 +21,12 @@ jobs:
           python-version: "3.11"
       - name: Run zero-dependency tests
         run: python -W error -m unittest discover -s tests -v
+      - name: Install mobile projection dependency
+        run: python -m pip install '.[web]'
+      - name: Run mobile projection boundary tests
+        run: python -W error -m unittest tests.test_mobile_projection -v
       - name: Compile sources
-        run: python -m compileall -q pulpo tests
+        run: python -m compileall -q pulpo mobile_demo tests
       - name: Check committed whitespace
         run: git diff --check 4b825dc642cb6eb9a060e54bf8d69288fbee4904 HEAD
 
