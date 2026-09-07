@@ -2,8 +2,12 @@
 set -euo pipefail
 
 # Interactive credential-bearing runner for authenticated read-only Name.com
-# sandbox discovery. Secrets are read silently and are never accepted as CLI
-# arguments, written to disk, echoed, or committed.
+# sandbox discovery. The provider currently exposes one Development/Test token
+# surface to this account, so this proof authenticates that single credential
+# and makes no executor/observer credential-separation claim.
+#
+# Secrets are read silently and are never accepted as CLI arguments, written to
+# disk, echoed, or committed.
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$repo_root"
@@ -14,23 +18,18 @@ if [[ "${PULPO_NAMECOM_FIRE:-0}" != "0" ]]; then
 fi
 
 read -r -p "Name.com sandbox username (must end -test): " NAMECOM_SANDBOX_USERNAME
-printf "Name.com sandbox executor token: "
-IFS= read -r -s NAMECOM_SANDBOX_EXECUTOR_TOKEN
-printf "\n"
-printf "Name.com sandbox observer token: "
-IFS= read -r -s NAMECOM_SANDBOX_OBSERVER_TOKEN
+printf "Name.com sandbox Development/Test token: "
+IFS= read -r -s NAMECOM_SANDBOX_TOKEN
 printf "\n"
 
 cleanup() {
   unset NAMECOM_SANDBOX_USERNAME || true
-  unset NAMECOM_SANDBOX_EXECUTOR_TOKEN || true
-  unset NAMECOM_SANDBOX_OBSERVER_TOKEN || true
+  unset NAMECOM_SANDBOX_TOKEN || true
 }
 trap cleanup EXIT
 
 export NAMECOM_SANDBOX_USERNAME
-export NAMECOM_SANDBOX_EXECUTOR_TOKEN
-export NAMECOM_SANDBOX_OBSERVER_TOKEN
+export NAMECOM_SANDBOX_TOKEN
 export PULPO_NAMECOM_FIRE=0
 
 if [[ -z "${GITHUB_SHA:-}" ]]; then
@@ -48,3 +47,4 @@ fi
 
 printf "\nSanitized evidence artifact: %s\n" "$artifact"
 printf "No provider write was authorized or attempted by this runner.\n"
+printf "Distinct executor/observer provider credentials are not claimed by this proof.\n"
