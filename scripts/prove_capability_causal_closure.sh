@@ -5,7 +5,8 @@ run_id="${GITHUB_RUN_ID:-local-$$}"
 sha="${GITHUB_SHA:-$(git rev-parse HEAD)}"
 worker_network="pulpo-worker-causal-v0-${run_id}"
 provider_network="pulpo-provider-causal-v0-${run_id}"
-volume="pulpo-custody-causal-v0-${run_id}"
+custody_volume="pulpo-custody-state-causal-v0-${run_id}"
+provider_volume="pulpo-provider-state-causal-v0-${run_id}"
 custody="pulpo-custody-causal-v0-${run_id}"
 provider="pulpo-provider-causal-v0-${run_id}"
 relay="pulpo-relay-causal-v0-${run_id}"
@@ -158,11 +159,12 @@ PY
 
 docker network create --internal "$worker_network" >/dev/null
 docker network create --internal "$provider_network" >/dev/null
-docker volume create "$volume" >/dev/null
+docker volume create "$custody_volume" >/dev/null
+docker volume create "$provider_volume" >/dev/null
 cleanup() {
   docker rm -f "$worker" "$relay" "$custody" "$provider" >/dev/null 2>&1 || true
   docker network rm "$worker_network" "$provider_network" >/dev/null 2>&1 || true
-  docker volume rm "$volume" >/dev/null 2>&1 || true
+  docker volume rm "$custody_volume" "$provider_volume" >/dev/null 2>&1 || true
   rm -f "$provider_script" "$relay_script"
 }
 trap cleanup EXIT
@@ -174,7 +176,7 @@ docker run -d \
   --tmpfs /tmp:rw,noexec,nosuid,size=16m \
   --cap-drop ALL \
   --security-opt no-new-privileges:true \
-  -v "$volume:/state:rw" \
+  -v "$provider_volume:/state:rw" \
   -v "$provider_script:/provider.py:ro" \
   -e PROOF_PROVIDER_TOKEN="$proof_token" \
   python:3.11-slim python /provider.py >/dev/null
@@ -186,7 +188,7 @@ docker run -d \
   --tmpfs /tmp:rw,noexec,nosuid,size=16m \
   --cap-drop ALL \
   --security-opt no-new-privileges:true \
-  -v "$volume:/var/lib/pulpo:rw" \
+  -v "$custody_volume:/var/lib/pulpo:rw" \
   -e PULPO_CUSTODY_STATE_PATH=/var/lib/pulpo/custody.sqlite3 \
   -e PULPO_KERNEL_SECRET_HEX=1111111111111111111111111111111111111111111111111111111111111111 \
   -e PULPO_CUSTODY_SECRET_HEX=2222222222222222222222222222222222222222222222222222222222222222 \
@@ -250,7 +252,6 @@ docker run -d \
 relay_ready=0
 for _ in $(seq 1 20); do
   if docker exec "$custody" python -c "import urllib.request; urllib.request.urlopen('http://${relay}:8082/health', timeout=1)" >/dev/null 2>&1; then
-    # custody has both networks, but the relay is intentionally worker-facing only.
     relay_ready=1
     break
   fi
@@ -258,16 +259,13 @@ for _ in $(seq 1 20); do
 done
 test "$relay_ready" = "1"
 
-# Causal-closure sentinel: every worker-facing peer except canonical custody must
-# remain on exactly one network. The worker itself is created after this mutation check.
 assert_relay_worker_only() {
   test "$(docker inspect -f '{{len .NetworkSettings.Networks}}' "$relay")" = "1"
   test "$(docker inspect -f '{{range $name, $_ := .NetworkSettings.Networks}}{{$name}}{{end}}' "$relay")" = "$worker_network"
 }
 assert_relay_worker_only
 
-# Mutation kill: deliberately cross the relay into the provider network and prove
-# the sentinel rejects the topology before any provider effect is attempted.
+# Mutation kill: a worker-facing relay that also gains the provider network must be detected.
 docker network connect "$provider_network" "$relay"
 if assert_relay_worker_only >/dev/null 2>&1; then
   echo "causal_closure_mutation=FAIL"
@@ -289,7 +287,7 @@ test -z "$(docker port "$provider")"
 test -z "$(docker port "$relay")"
 
 # Hostile worker can reach custody and relay surfaces, but holds none of the tested secrets.
-docker exec "$worker" python - <<PY
+docker exec -i "$worker" python - <<PY
 import json
 import os
 import socket
@@ -312,7 +310,6 @@ assert b'\"authority_effect\":\"none\"' in custody
 relay_base = 'http://${relay}:8082'
 assert json.loads(urllib.request.urlopen(relay_base + '/health', timeout=2).read())['ok'] is True
 
-# Direct DNS and raw-IP provider routes must still be blocked.
 for host in ('${provider}', os.environ['PROVIDER_IP']):
     try:
         connection = socket.create_connection((host, 8081), timeout=1)
@@ -340,7 +337,7 @@ for target in ('http://${provider}:8081/effect', 'http://${provider_ip}:8081/eff
 PY
 
 # Relay itself must hold none of the tested governance/provider capabilities.
-docker exec "$relay" python - <<'PY'
+docker exec -i "$relay" python - <<'PY'
 import os
 forbidden = {
     'PULPO_KERNEL_SECRET_HEX',
@@ -353,18 +350,17 @@ forbidden = {
 assert forbidden.isdisjoint(os.environ), sorted(forbidden.intersection(os.environ))
 PY
 
-# After every hostile direct/relay attempt, provider effect count must still be zero.
-docker exec "$custody" python - <<PY
+# Every hostile direct/relay attempt must leave provider effect count at zero.
+docker exec -i "$custody" python - <<PY
 import json
 import urllib.request
 count = json.loads(urllib.request.urlopen('http://${provider}:8081/count', timeout=2).read())['count']
 assert count == 0, count
 PY
 
-# Positive control: the credential-bearing custody trust domain can reach the provider
-# and use the exact local proof capability once. This is a route/capability positive
-# control only; it is not claimed as a governed provider execution.
-docker exec "$custody" python - <<PY
+# Positive control only: the credential-bearing custody trust domain can reach and invoke
+# the local provider capability once. This does not claim governed provider execution.
+docker exec -i "$custody" python - <<PY
 import json
 import os
 import urllib.request
