@@ -1,0 +1,35 @@
+name: Provider TOCTOU Precondition Proof
+
+on:
+  push:
+    branches:
+      - proof/toctou-provider-precondition-v0
+  pull_request:
+    paths:
+      - "tests/toctou_provider_service_v0.py"
+      - "tests/test_toctou_provider_precondition_v0.py"
+      - "proofs/toctou-provider-precondition-v0.md"
+      - "pulpo/kernel.py"
+      - "pulpo/state.py"
+      - ".github/workflows/toctou-provider-precondition-v0.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  provider-toctou-proof:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Execute provider-enforced TOCTOU matrix
+        run: python -W error -m unittest tests.test_toctou_provider_precondition_v0 -v
+      - name: Compile proof service and test
+        run: python -m py_compile tests/toctou_provider_service_v0.py tests/test_toctou_provider_precondition_v0.py
+      - name: Check committed whitespace
+        run: git diff --check HEAD^
