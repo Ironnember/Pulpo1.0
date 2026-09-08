@@ -1,0 +1,42 @@
+name: Capability Causal Closure Proof
+
+on:
+  push:
+    branches:
+      - proof/capability-custody-causal-closure-v0
+  pull_request:
+    paths:
+      - "scripts/prove_capability_causal_closure.sh"
+      - "proofs/capability-custody-causal-closure-v0.md"
+      - "custody-service/**"
+      - "pulpo/**"
+      - "tests/test_custody_domain.py"
+      - ".github/workflows/capability-causal-closure-v0.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  causal-closure-proof:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install canonical custody proof dependencies
+        run: python -m pip install '.[authority]' './custody-service[test]'
+      - name: Preserve parent custody invariants
+        run: python -W error -m unittest tests.test_custody_domain -v
+      - name: Preserve parent custody-service hostile-worker invariants
+        run: PYTHONPATH=custody-service/src:. python -W error -m unittest discover -s custody-service/tests -v
+      - name: Build canonical custody image
+        run: docker build -f custody-service/Dockerfile -t pulpo-custody-v0:${{ github.sha }} .
+      - name: Prove tested indirect relay classes cannot create provider effect
+        shell: bash
+        run: bash scripts/prove_capability_causal_closure.sh
+      - name: Check committed whitespace
+        run: git diff --check HEAD^
