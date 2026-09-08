@@ -1,0 +1,33 @@
+name: Observer Independence Proof
+
+on:
+  push:
+    branches:
+      - proof/observer-independence-v0
+  pull_request:
+    paths:
+      - "tests/test_observer_independence_v0.py"
+      - "proofs/observer-independence-v0.md"
+      - ".github/workflows/observer-independence-v0.yml"
+      - "pulpo/**"
+
+permissions:
+  contents: read
+
+jobs:
+  observer-independence-proof:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Execute observer trust-domain independence fault matrix
+        run: python -W error -m unittest tests.test_observer_independence_v0 -v
+      - name: Compile proof source
+        run: python -m py_compile tests/test_observer_independence_v0.py
+      - name: Check committed whitespace
+        run: git diff --check HEAD^
