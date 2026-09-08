@@ -5,6 +5,11 @@ The Telegram bot token is collected with ``getpass`` from the operator's local
 TTY. It is never accepted as a command-line argument, environment variable,
 repository value, or printed evidence field.
 
+If a bot ID or chat ID is not supplied, the script may use Telegram's read-only
+``getMe`` / ``getUpdates`` methods locally to discover identifiers. Discovery
+prints numeric identifiers and chat type only; message text is never printed or
+forwarded to a model.
+
 This is a test handoff, not a production bot runtime and not proof of independent
 authority. The local operator explicitly confirms one exact low-risk message.
 """
@@ -18,6 +23,9 @@ from pathlib import Path
 import secrets
 import sys
 import tempfile
+from typing import Any
+from urllib import error as urllib_error
+from urllib import request as urllib_request
 
 from pulpo import AgentGrant, GovernanceKernel, Policy, SQLiteKernelState
 from pulpo.telegram import (
@@ -27,6 +35,8 @@ from pulpo.telegram import (
     TelegramSendRejected,
 )
 from pulpo_custody_service.telegram_transport import (
+    TELEGRAM_API_ORIGIN,
+    TELEGRAM_TIMEOUT_SECONDS,
     TelegramBotApiTransport,
     TelegramProviderError,
     TelegramTransportConfigError,
@@ -35,6 +45,7 @@ from pulpo_custody_service.telegram_transport import (
 
 PRINCIPAL = "agent:telegram-live-probe-v0"
 DEFAULT_MESSAGE = "Pulpo governed Telegram proof v0"
+_MAX_DISCOVERY_BYTES = 1_000_000
 
 
 def _parse_nonzero_int(value: str, *, field: str, positive: bool = False) -> int:
@@ -64,12 +75,12 @@ def _arguments() -> argparse.Namespace:
     parser.add_argument(
         "--bot-id",
         type=int,
-        help="Expected numeric Telegram bot ID. If omitted, prompt locally.",
+        help="Expected numeric Telegram bot ID. If omitted, discover locally with getMe.",
     )
     parser.add_argument(
         "--chat-id",
         type=int,
-        help="Pinned numeric private test chat ID. If omitted, prompt locally.",
+        help="Pinned numeric private test chat ID. If omitted, discover candidates with getUpdates.",
     )
     parser.add_argument(
         "--message",
@@ -77,6 +88,101 @@ def _arguments() -> argparse.Namespace:
         help="Exact plain-text test message. Defaults to a fixed Pulpo proof message.",
     )
     return parser.parse_args()
+
+
+def _telegram_read(token: str, method: str) -> Any:
+    """Call one read-only Bot API method without projecting token or user text."""
+
+    if method not in {"getMe", "getUpdates"}:
+        raise ValueError("unsupported Telegram discovery method")
+    url = f"{TELEGRAM_API_ORIGIN}/bot{token}/{method}"
+    request = urllib_request.Request(
+        url,
+        data=b"{}",
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        with urllib_request.urlopen(request, timeout=TELEGRAM_TIMEOUT_SECONDS) as response:
+            raw = response.read(_MAX_DISCOVERY_BYTES + 1)
+    except (urllib_error.HTTPError, urllib_error.URLError, TimeoutError, OSError):
+        raise TelegramProviderError("telegram local discovery request failed") from None
+    if len(raw) > _MAX_DISCOVERY_BYTES:
+        raise TelegramProviderError("telegram local discovery response exceeded limit")
+    try:
+        decoded = json.loads(raw)
+    except (UnicodeDecodeError, json.JSONDecodeError, TypeError):
+        raise TelegramProviderError("telegram local discovery response invalid") from None
+    if not isinstance(decoded, dict) or decoded.get("ok") is not True:
+        raise TelegramProviderError("telegram local discovery was rejected")
+    return decoded.get("result")
+
+
+def _discover_bot_id(token: str) -> int:
+    result = _telegram_read(token, "getMe")
+    if not isinstance(result, dict):
+        raise TelegramProviderError("telegram getMe result missing")
+    bot_id = result.get("id")
+    if isinstance(bot_id, bool) or not isinstance(bot_id, int) or bot_id <= 0:
+        raise TelegramProviderError("telegram getMe bot identity invalid")
+    return bot_id
+
+
+def _candidate_chats(token: str) -> list[tuple[int, str]]:
+    """Return unique numeric chat IDs/types from pending updates, never text."""
+
+    result = _telegram_read(token, "getUpdates")
+    if not isinstance(result, list):
+        raise TelegramProviderError("telegram getUpdates result invalid")
+    candidates: dict[int, str] = {}
+    for update in result:
+        if not isinstance(update, dict):
+            continue
+        message_objects = []
+        for key in ("message", "edited_message", "channel_post", "edited_channel_post"):
+            value = update.get(key)
+            if isinstance(value, dict):
+                message_objects.append(value)
+        callback = update.get("callback_query")
+        if isinstance(callback, dict) and isinstance(callback.get("message"), dict):
+            message_objects.append(callback["message"])
+        for message in message_objects:
+            chat = message.get("chat")
+            if not isinstance(chat, dict):
+                continue
+            chat_id = chat.get("id")
+            chat_type = chat.get("type")
+            if isinstance(chat_id, bool) or not isinstance(chat_id, int) or chat_id == 0:
+                continue
+            candidates[chat_id] = chat_type if isinstance(chat_type, str) else "unknown"
+    return sorted(candidates.items(), key=lambda item: item[0])
+
+
+def _choose_discovered_chat(token: str) -> int:
+    candidates = _candidate_chats(token)
+    if not candidates:
+        raise TelegramProviderError(
+            "no pending numeric Telegram chats found; send /start to the test bot and rerun, "
+            "or supply --chat-id locally"
+        )
+    print("\nCandidate chats from pending Telegram updates (message text is not displayed):")
+    candidate_ids = {chat_id for chat_id, _ in candidates}
+    for chat_id, chat_type in candidates:
+        print(f"  {chat_id}  type={chat_type}")
+    if len(candidates) == 1:
+        only_id = candidates[0][0]
+        typed = input(f"Use chat {only_id}? Type exactly '{only_id}' to confirm: ").strip()
+        if typed != str(only_id):
+            raise TelegramProviderError("local chat selection was not confirmed")
+        return only_id
+    while True:
+        chosen = _prompt_int(
+            "Choose one listed numeric private test chat ID: ",
+            field="chat ID",
+        )
+        if chosen in candidate_ids:
+            return chosen
+        print("chat ID was not present in the displayed pending-update candidates", file=sys.stderr)
 
 
 def _reopen_and_prove_spent(
@@ -115,39 +221,39 @@ def main() -> int:
         print("--message must be non-empty", file=sys.stderr)
         return 2
 
-    bot_id = args.bot_id or _prompt_int(
-        "Expected Telegram bot ID: ",
-        field="bot ID",
-        positive=True,
-    )
-    chat_id = args.chat_id or _prompt_int(
-        "Private numeric Telegram test chat ID: ",
-        field="chat ID",
-    )
-
-    try:
-        message = TelegramOutboundMessage(chat_id, args.message)
-    except ValueError as exc:
-        print(f"message rejected before authority: {exc}", file=sys.stderr)
-        return 2
-
     token = getpass("Telegram TEST bot token (hidden; never paste it into chat): ").strip()
     if not token:
         print("no Telegram bot token supplied", file=sys.stderr)
         return 2
 
     try:
-        transport = TelegramBotApiTransport(
-            bot_token=token,
-            expected_bot_id=bot_id,
-            allowed_chat_id=chat_id,
-        )
-    except TelegramTransportConfigError as exc:
-        print(f"custody configuration rejected: {exc}", file=sys.stderr)
+        bot_id = args.bot_id if args.bot_id is not None else _discover_bot_id(token)
+        if args.bot_id is None:
+            print(f"Discovered Telegram bot ID: {bot_id}")
+        chat_id = args.chat_id if args.chat_id is not None else _choose_discovered_chat(token)
+
+        try:
+            message = TelegramOutboundMessage(chat_id, args.message)
+        except ValueError as exc:
+            print(f"message rejected before authority: {exc}", file=sys.stderr)
+            return 2
+
+        try:
+            transport = TelegramBotApiTransport(
+                bot_token=token,
+                expected_bot_id=bot_id,
+                allowed_chat_id=chat_id,
+            )
+        except TelegramTransportConfigError as exc:
+            print(f"custody configuration rejected: {exc}", file=sys.stderr)
+            return 2
+    except TelegramProviderError as exc:
+        print(f"local Telegram discovery failed closed: {exc}", file=sys.stderr)
         return 2
     finally:
-        # Remove the additional local reference as soon as custody construction
-        # has completed. The transport retains the token privately in memory.
+        # Remove the additional local reference as soon as discovery/custody
+        # construction has completed. The transport, if constructed, retains the
+        # token privately in process memory.
         token = ""
 
     resource_prefix = f"telegram:sendMessage:{chat_id}:"
