@@ -1,0 +1,36 @@
+name: Inverted Dual Control Proof
+
+on:
+  push:
+    branches:
+      - proof/inverted-dual-control-v0
+  pull_request:
+    paths:
+      - "tests/test_inverted_dual_control_v0.py"
+      - "tests/toctou_provider_service_v0.py"
+      - "proofs/inverted-dual-control-v0.md"
+      - "pulpo/behavior_telemetry.py"
+      - "pulpo/kernel.py"
+      - "pulpo/state.py"
+      - ".github/workflows/inverted-dual-control-v0.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  inverted-dual-control-proof:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Execute inverted dual-control fault matrix
+        run: python -W error -m unittest tests.test_inverted_dual_control_v0 -v
+      - name: Compile proof sources
+        run: python -m py_compile tests/test_inverted_dual_control_v0.py tests/toctou_provider_service_v0.py pulpo/behavior_telemetry.py
+      - name: Check committed whitespace
+        run: git diff --check HEAD^
