@@ -1,5 +1,11 @@
 import asyncio
+from dataclasses import asdict
+import json
+import os
+from pathlib import Path
+import stat
 import sys
+import tempfile
 import types
 import unittest
 from unittest.mock import patch
@@ -10,6 +16,7 @@ from pulpo.mcp_boundary import (
     MCPReadSnapshot,
     PulpoMCPProjection,
     create_mcp_server,
+    export_mcp_snapshot,
     freeze_mcp_snapshot,
 )
 
@@ -148,6 +155,184 @@ class MCPBoundaryTests(unittest.TestCase):
         self.assertFalse(evidence_after["canonical_state_mutation"])
         self.assertEqual("none", evidence_after["governed_effect"])
         self.assertEqual("none", evidence_after["authority_effect"])
+
+    def test_trusted_export_is_exact_private_and_non_mutating(self):
+        before = list(self.kernel.audit)
+        with tempfile.TemporaryDirectory() as directory:
+            destination = Path(directory) / "mcp-read-snapshot.json"
+            exported = export_mcp_snapshot(self.orchestrator, destination)
+            document = json.loads(destination.read_text(encoding="utf-8"))
+            mode = stat.S_IMODE(destination.stat().st_mode)
+
+        self.assertEqual(asdict(exported), document)
+        self.assertEqual(
+            {
+                "schema",
+                "source_schema",
+                "policy_hash",
+                "audit_valid",
+                "audit_records",
+                "audit_tip",
+            },
+            set(document),
+        )
+        self.assertEqual(0o600, mode)
+        self.assertEqual(before, self.kernel.audit)
+        for forbidden in (
+            "authority",
+            "credential",
+            "executor",
+            "kernel",
+            "permit",
+            "policy",
+            "secret",
+            "state",
+        ):
+            self.assertNotIn(forbidden, document)
+
+    def test_exported_file_remains_frozen_after_canonical_mutation(self):
+        with tempfile.TemporaryDirectory() as directory:
+            destination = Path(directory) / "mcp-read-snapshot.json"
+            export_mcp_snapshot(self.orchestrator, destination)
+            frozen = destination.read_bytes()
+
+            self.kernel.lock_target(
+                "canonical-target",
+                Intent("agent:planner", "read", "repo:file", 0, "session-1"),
+            )
+
+            self.assertEqual(frozen, destination.read_bytes())
+        self.assertEqual(1, len(self.kernel.audit))
+
+    def test_export_rejects_relative_or_linked_destination(self):
+        with self.assertRaisesRegex(MCPBoundaryError, "mcp_snapshot_destination_not_absolute"):
+            export_mcp_snapshot(self.orchestrator, Path("mcp-read-snapshot.json"))
+        with self.assertRaisesRegex(MCPBoundaryError, "mcp_snapshot_destination_invalid"):
+            export_mcp_snapshot(self.orchestrator, Path("/"))
+        with self.assertRaisesRegex(MCPBoundaryError, "mcp_snapshot_destination_invalid"):
+            export_mcp_snapshot(self.orchestrator, "/tmp/snapshot\x00.json")
+
+        with tempfile.TemporaryDirectory() as directory:
+            parent = Path(directory)
+            protected = parent / "protected.json"
+            protected.write_text("unchanged", encoding="utf-8")
+            destination = parent / "mcp-read-snapshot.json"
+            destination.symlink_to(protected)
+
+            with self.assertRaisesRegex(MCPBoundaryError, "mcp_snapshot_destination_invalid"):
+                export_mcp_snapshot(self.orchestrator, destination)
+
+            self.assertEqual("unchanged", protected.read_text(encoding="utf-8"))
+        self.assertEqual([], self.kernel.audit)
+
+    @unittest.skipUnless(hasattr(os, "symlink"), "symlink support required")
+    def test_export_rejects_symlinked_parent(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            real_parent = root / "real"
+            real_parent.mkdir()
+            linked_parent = root / "linked"
+            linked_parent.symlink_to(real_parent, target_is_directory=True)
+
+            with self.assertRaisesRegex(MCPBoundaryError, "mcp_snapshot_parent_invalid"):
+                export_mcp_snapshot(self.orchestrator, linked_parent / "snapshot.json")
+
+            self.assertEqual([], list(real_parent.iterdir()))
+        self.assertEqual([], self.kernel.audit)
+
+    def test_export_rejects_parent_swapped_before_open(self):
+        with tempfile.TemporaryDirectory() as directory:
+            destination = Path(directory) / "snapshot.json"
+            opened_parent = types.SimpleNamespace(
+                st_mode=stat.S_IFDIR,
+                st_dev=-1,
+                st_ino=-1,
+            )
+
+            with patch("pulpo.mcp_boundary.os.fstat", return_value=opened_parent):
+                with self.assertRaisesRegex(MCPBoundaryError, "mcp_snapshot_parent_invalid"):
+                    export_mcp_snapshot(self.orchestrator, destination)
+
+            self.assertFalse(destination.exists())
+        self.assertEqual([], self.kernel.audit)
+
+    def test_export_reports_commit_unknown_if_parent_swapped_after_open(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            parent = root / "trusted"
+            moved_parent = root / "trusted-moved"
+            parent.mkdir()
+            destination = parent / "snapshot.json"
+            real_replace = os.replace
+
+            def swap_parent_then_replace(source, target, **kwargs):
+                parent.rename(moved_parent)
+                parent.mkdir()
+                return real_replace(source, target, **kwargs)
+
+            with patch(
+                "pulpo.mcp_boundary.os.replace",
+                side_effect=swap_parent_then_replace,
+            ):
+                with self.assertRaisesRegex(
+                    MCPBoundaryError,
+                    "mcp_snapshot_export_commit_unknown",
+                ):
+                    export_mcp_snapshot(self.orchestrator, destination)
+
+            self.assertFalse(destination.exists())
+            document = json.loads(
+                (moved_parent / "snapshot.json").read_text(encoding="utf-8")
+            )
+            self.assertEqual(asdict(self.snapshot), document)
+        self.assertEqual([], self.kernel.audit)
+
+    def test_export_reports_commit_unknown_if_directory_sync_fails(self):
+        with tempfile.TemporaryDirectory() as directory:
+            destination = Path(directory) / "snapshot.json"
+            real_fsync = os.fsync
+            calls = 0
+
+            def fail_directory_sync(descriptor):
+                nonlocal calls
+                calls += 1
+                if calls == 2:
+                    raise OSError("simulated directory sync failure")
+                return real_fsync(descriptor)
+
+            with patch(
+                "pulpo.mcp_boundary.os.fsync",
+                side_effect=fail_directory_sync,
+            ):
+                with self.assertRaisesRegex(
+                    MCPBoundaryError,
+                    "mcp_snapshot_export_commit_unknown",
+                ):
+                    export_mcp_snapshot(self.orchestrator, destination)
+
+            self.assertEqual(2, calls)
+            document = json.loads(destination.read_text(encoding="utf-8"))
+            self.assertEqual(asdict(self.snapshot), document)
+        self.assertEqual([], self.kernel.audit)
+
+    def test_export_reports_clean_failure_before_atomic_replace(self):
+        with tempfile.TemporaryDirectory() as directory:
+            parent = Path(directory)
+            destination = parent / "snapshot.json"
+
+            with patch(
+                "pulpo.mcp_boundary.os.fsync",
+                side_effect=OSError("simulated file sync failure"),
+            ):
+                with self.assertRaisesRegex(
+                    MCPBoundaryError,
+                    "mcp_snapshot_export_failed",
+                ):
+                    export_mcp_snapshot(self.orchestrator, destination)
+
+            self.assertFalse(destination.exists())
+            self.assertEqual([], list(parent.iterdir()))
+        self.assertEqual([], self.kernel.audit)
 
     def test_sdk_factory_registers_only_capability_stripped_frozen_tools(self):
         mcp_package = types.ModuleType("mcp")

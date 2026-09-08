@@ -12,6 +12,11 @@ kernel and its CI remain dependency-free.
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
+import json
+import os
+from pathlib import Path
+import secrets
+import stat
 from typing import Any
 
 from .kernel import GovernanceKernel, Intent
@@ -80,6 +85,155 @@ def freeze_mcp_snapshot(orchestrator: PulpoOrchestrator) -> MCPReadSnapshot:
         audit_tip=evidence.audit_tip,
         source_schema=evidence.schema,
     )
+
+
+def export_mcp_snapshot(
+    orchestrator: PulpoOrchestrator,
+    destination: str | os.PathLike[str],
+) -> MCPReadSnapshot:
+    """Atomically export one capability-free snapshot from trusted Pulpo.
+
+    The destination parent must already exist as an absolute, non-symlinked
+    directory. The final file is replaced atomically with owner-only
+    permissions. This function is intentionally absent from the MCP server.
+    """
+
+    if not isinstance(destination, (str, os.PathLike)) or isinstance(destination, bytes):
+        raise MCPBoundaryError("mcp_snapshot_destination_invalid")
+    target = Path(destination).expanduser()
+    if not target.is_absolute():
+        raise MCPBoundaryError("mcp_snapshot_destination_not_absolute")
+    if not target.name or "\x00" in target.name:
+        raise MCPBoundaryError("mcp_snapshot_destination_invalid")
+
+    parent = target.parent
+    directory_descriptor = -1
+    try:
+        parent_metadata = parent.lstat()
+    except OSError as exc:
+        raise MCPBoundaryError("mcp_snapshot_parent_invalid") from exc
+    if stat.S_ISLNK(parent_metadata.st_mode) or not stat.S_ISDIR(parent_metadata.st_mode):
+        raise MCPBoundaryError("mcp_snapshot_parent_invalid")
+
+    snapshot = freeze_mcp_snapshot(orchestrator)
+    payload = json.dumps(asdict(snapshot), sort_keys=True, separators=(",", ":")) + "\n"
+
+    directory_flags = os.O_RDONLY
+    directory_flags |= getattr(os, "O_CLOEXEC", 0)
+    directory_flags |= getattr(os, "O_DIRECTORY", 0)
+    directory_flags |= getattr(os, "O_NOFOLLOW", 0)
+    try:
+        directory_descriptor = os.open(parent, directory_flags)
+    except OSError as exc:
+        raise MCPBoundaryError("mcp_snapshot_parent_invalid") from exc
+    try:
+        opened_parent = os.fstat(directory_descriptor)
+    except OSError as exc:
+        os.close(directory_descriptor)
+        raise MCPBoundaryError("mcp_snapshot_parent_invalid") from exc
+    if (
+        not stat.S_ISDIR(opened_parent.st_mode)
+        or opened_parent.st_dev != parent_metadata.st_dev
+        or opened_parent.st_ino != parent_metadata.st_ino
+    ):
+        os.close(directory_descriptor)
+        raise MCPBoundaryError("mcp_snapshot_parent_invalid")
+
+    try:
+        existing = os.stat(
+            target.name,
+            dir_fd=directory_descriptor,
+            follow_symlinks=False,
+        )
+    except FileNotFoundError:
+        existing = None
+    except OSError as exc:
+        os.close(directory_descriptor)
+        raise MCPBoundaryError("mcp_snapshot_destination_invalid") from exc
+    if existing is not None and not stat.S_ISREG(existing.st_mode):
+        os.close(directory_descriptor)
+        raise MCPBoundaryError("mcp_snapshot_destination_invalid")
+
+    descriptor = -1
+    temporary = None
+    published = False
+    try:
+        open_flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+        open_flags |= getattr(os, "O_CLOEXEC", 0)
+        open_flags |= getattr(os, "O_NOFOLLOW", 0)
+        for _ in range(100):
+            candidate = f".{target.name}.{secrets.token_hex(8)}.tmp"
+            try:
+                descriptor = os.open(
+                    candidate,
+                    open_flags,
+                    0o600,
+                    dir_fd=directory_descriptor,
+                )
+            except FileExistsError:
+                continue
+            temporary = candidate
+            break
+        if descriptor < 0:
+            raise MCPBoundaryError("mcp_snapshot_export_failed")
+        os.fchmod(descriptor, 0o600)
+        with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+            descriptor = -1
+            handle.write(payload)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(
+            temporary,
+            target.name,
+            src_dir_fd=directory_descriptor,
+            dst_dir_fd=directory_descriptor,
+        )
+        temporary = None
+        published = True
+        os.fsync(directory_descriptor)
+
+        try:
+            current_parent = parent.lstat()
+            published_target = os.stat(
+                target.name,
+                dir_fd=directory_descriptor,
+                follow_symlinks=False,
+            )
+            requested_target = target.lstat()
+        except OSError as exc:
+            raise MCPBoundaryError("mcp_snapshot_export_commit_unknown") from exc
+        if (
+            stat.S_ISLNK(current_parent.st_mode)
+            or not stat.S_ISDIR(current_parent.st_mode)
+            or current_parent.st_dev != opened_parent.st_dev
+            or current_parent.st_ino != opened_parent.st_ino
+            or not stat.S_ISREG(published_target.st_mode)
+            or not stat.S_ISREG(requested_target.st_mode)
+            or published_target.st_dev != requested_target.st_dev
+            or published_target.st_ino != requested_target.st_ino
+        ):
+            raise MCPBoundaryError("mcp_snapshot_export_commit_unknown")
+    except MCPBoundaryError:
+        raise
+    except OSError as exc:
+        reason = (
+            "mcp_snapshot_export_commit_unknown"
+            if published
+            else "mcp_snapshot_export_failed"
+        )
+        raise MCPBoundaryError(reason) from exc
+    finally:
+        try:
+            if descriptor >= 0:
+                os.close(descriptor)
+            if temporary is not None:
+                try:
+                    os.unlink(temporary, dir_fd=directory_descriptor)
+                except OSError:
+                    pass
+        finally:
+            os.close(directory_descriptor)
+    return snapshot
 
 
 class PulpoMCPProjection:
