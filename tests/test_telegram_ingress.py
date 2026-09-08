@@ -1,6 +1,6 @@
 import unittest
 
-from pulpo import GovernanceKernel, Policy, PulpoOrchestrator
+from pulpo import GovernanceKernel, Intent, Policy, PulpoOrchestrator
 from pulpo.mcp_boundary import freeze_mcp_snapshot
 from pulpo.telegram_ingress import (
     TelegramIngress,
@@ -59,13 +59,10 @@ class TelegramIngressTests(unittest.TestCase):
         self.assertEqual(self.snapshot.policy_hash, evidence["evidence"]["policy_hash"])
         self.assertEqual(self.snapshot.audit_records, evidence["evidence"]["audit_records"])
 
-        self.kernel.lock_target("later-target", self.kernel.normalize_intent({
-            "principal": "agent:planner",
-            "action": "read",
-            "resource": "repo:file",
-            "cost": 0,
-            "session_id": "session-1",
-        }))
+        self.kernel.lock_target(
+            "later-target",
+            Intent("agent:planner", "read", "repo:file", 0, "session-1"),
+        )
         later = self.ingress.handle_update(update(update_id=2, text="/evidence"))
         self.assertEqual(evidence["evidence"], later["evidence"])
         self.assertEqual(1, len(self.kernel.audit))
