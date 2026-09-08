@@ -1,0 +1,30 @@
+name: External Name.com Route Custody Proof
+
+on:
+  push:
+    branches:
+      - proof/external-namecom-route-custody-v0
+  pull_request:
+    paths:
+      - "scripts/prove_namecom_external_route_isolation.sh"
+      - "proofs/external-namecom-route-custody-v0.md"
+      - "custody-service/**"
+      - "pulpo/**"
+      - ".github/workflows/external-namecom-route-custody-proof.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  external-namecom-route-custody:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build canonical custody image
+        run: docker build -f custody-service/Dockerfile -t pulpo-custody-v0:${{ github.sha }} .
+      - name: Prove external Name.com route belongs only to custody
+        shell: bash
+        env:
+          PULPO_EXTERNAL_PROVIDER_HOST: api.dev.name.com
+        run: bash scripts/prove_namecom_external_route_isolation.sh
