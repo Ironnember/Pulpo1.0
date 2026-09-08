@@ -18,11 +18,30 @@ This is a stacked experiment on top of:
 
 `scripts/telegram_live_handoff_v0.py` obtains the bot token using Python
 `getpass` from the local terminal. The token is never accepted through a CLI
-flag. It is passed directly into the custody transport in process memory and is
-not printed into the result artifact.
+flag. It is passed directly into local Telegram discovery and then the custody
+transport in process memory and is not printed into the result artifact.
 
 Do **not** paste a Telegram bot token into chat, an issue, a PR comment, a shell
 command, or a repository file.
+
+## Local identifier discovery
+
+To eliminate the need to paste or manually retrieve Telegram identifiers, the
+handoff can resolve them locally when `--bot-id` or `--chat-id` is omitted:
+
+- `getMe` resolves the numeric bot ID;
+- `getUpdates` extracts candidate numeric chat IDs and chat type only.
+
+The discovery path is hard-allowlisted to `getMe` and `getUpdates`. Message
+text, captions, names, usernames, and other update contents are neither printed
+nor returned by the candidate-chat projection.
+
+If no pending chat exists, send `/start` to the dedicated test bot and rerun.
+If the bot already has a webhook and `getUpdates` is unavailable, provide the
+known numeric private test chat ID locally using `--chat-id`.
+
+Discovery is a local provider read used for test setup. It is not authority and
+is not proof of independent observation.
 
 ## Exact effect
 
@@ -31,7 +50,7 @@ private test chat.
 
 Before the provider call, the script displays:
 
-- expected bot ID;
+- expected/discovered bot ID;
 - pinned chat ID;
 - exact message text;
 - Pulpo message hash;
@@ -123,10 +142,10 @@ independent observer architecture Pulpo ultimately targets.
 
 ## Operator prerequisite
 
-Use a dedicated Telegram **test bot** and a private test chat. The user should
-obtain the bot token locally from Telegram/BotFather and keep it out of ChatGPT.
-The numeric bot ID and private chat ID are identifiers, not bearer secrets, but
-they should still be handled with ordinary privacy hygiene.
+Use a dedicated Telegram **test bot** and a private test chat. Obtain the bot
+token locally from Telegram/BotFather and keep it out of ChatGPT. Before running
+the handoff with automatic chat discovery, open the test bot in Telegram and
+send `/start` so `getUpdates` has a candidate private chat to display.
 
 ## Admission posture
 
