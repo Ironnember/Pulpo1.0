@@ -1,0 +1,62 @@
+name: Telegram Live Handoff Preflight
+
+on:
+  push:
+    branches:
+      - experiment/telegram-live-handoff-v0
+  pull_request:
+    paths:
+      - "pulpo/telegram.py"
+      - "custody-service/src/pulpo_custody_service/telegram_transport.py"
+      - "scripts/telegram_live_handoff_v0.py"
+      - "tests/test_telegram.py"
+      - "custody-service/tests/test_telegram_transport.py"
+      - "custody-service/tests/test_telegram_live_handoff.py"
+      - "proofs/telegram-live-handoff-v0.md"
+      - ".github/workflows/telegram-live-handoff-preflight.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  telegram-live-handoff-preflight:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install custody proof package
+        run: python -m pip install './custody-service[test]'
+      - name: Re-prove Telegram governance custody and local discovery boundaries
+        run: >-
+          PYTHONPATH=custody-service/src:.
+          python -W error -m unittest
+          tests.test_telegram
+          custody-service/tests/test_telegram_transport.py
+          custody-service/tests/test_telegram_live_handoff.py
+          -v
+      - name: Compile live handoff
+        run: >-
+          PYTHONPATH=custody-service/src:.
+          python -m py_compile scripts/telegram_live_handoff_v0.py
+      - name: Prove token is not accepted as a CLI argument
+        shell: bash
+        run: |
+          set -euo pipefail
+          help_output="$(PYTHONPATH=custody-service/src:. python scripts/telegram_live_handoff_v0.py --help)"
+          if printf '%s\n' "$help_output" | grep -q -- '--token'; then
+            echo 'live handoff unexpectedly exposes a token CLI argument' >&2
+            exit 1
+          fi
+      - name: Prove live handoff does not read token from environment
+        shell: bash
+        run: |
+          set -euo pipefail
+          if grep -q 'PULPO_TELEGRAM_BOT_TOKEN' scripts/telegram_live_handoff_v0.py; then
+            echo 'live handoff unexpectedly accepts the token from environment state' >&2
+            exit 1
+          fi
+      - name: Check committed whitespace
+        run: git diff --check 4b825dc642cb6eb9a060e54bf8d69288fbee4904 HEAD
