@@ -1,0 +1,36 @@
+name: Governance Liveness Flood Proof
+
+on:
+  push:
+    branches:
+      - proof/governance-liveness-flood-v0
+  pull_request:
+    paths:
+      - "tests/test_governance_liveness_flood_v0.py"
+      - "proofs/governance-liveness-flood-v0.md"
+      - "pulpo/directives.py"
+      - "pulpo/effect_reconcile.py"
+      - "pulpo/kernel.py"
+      - "pulpo/state.py"
+      - ".github/workflows/governance-liveness-flood-v0.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  governance-liveness-proof:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Execute request-flood liveness matrix
+        run: python -W error -m unittest tests.test_governance_liveness_flood_v0 -v
+      - name: Compile proof test
+        run: python -m py_compile tests/test_governance_liveness_flood_v0.py
+      - name: Check committed whitespace
+        run: git diff --check HEAD^
