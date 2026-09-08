@@ -8,6 +8,18 @@ from .authority import (
     P256ApprovalVerifier,
 )
 from .authority_client import AuthorityApprovalRequest, AuthorityClient, AuthorityPoll
+from .behavioral_governance import (
+    AnomalySignal,
+    BaselineEvent,
+    BaselineState,
+    BehaviorChain,
+    BehavioralGovernanceError,
+    Checkpoint,
+    ContainmentDisposition,
+    ContextualBaseline,
+    DeltaEvent,
+    compare_contextual_baselines,
+)
 from .commerce import SQLiteBudgetAccount
 from .kernel import (
     AgentGrant,
@@ -45,10 +57,19 @@ __all__ = [
     "AuthorityClient",
     "AuthorityPoll",
     "ApprovalVerifier",
+    "AnomalySignal",
     "AuthorityTrust",
     "AuthorityTrustError",
     "AuthorizationAttempt",
+    "BaselineEvent",
+    "BaselineState",
+    "BehaviorChain",
+    "BehavioralGovernanceError",
+    "Checkpoint",
+    "ContainmentDisposition",
+    "ContextualBaseline",
     "Decision",
+    "DeltaEvent",
     "Ed25519ApprovalVerifier",
     "EvidenceSnapshot",
     "GovernanceKernel",
@@ -68,4 +89,5 @@ __all__ = [
     "TargetObligationStatus",
     "TargetResolution",
     "evaluate_locked_target_with_approval",
+    "compare_contextual_baselines",
 ]
