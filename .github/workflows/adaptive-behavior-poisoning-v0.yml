@@ -1,0 +1,33 @@
+name: Adaptive Behavior Poisoning Proof
+
+on:
+  push:
+    branches:
+      - proof/adaptive-behavior-poisoning-v0
+  pull_request:
+    paths:
+      - "pulpo/behavior_telemetry.py"
+      - "tests/test_adaptive_behavior_poisoning_v0.py"
+      - "proofs/adaptive-behavior-poisoning-v0.md"
+      - ".github/workflows/adaptive-behavior-poisoning-v0.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  adaptive-poisoning-proof:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Execute adaptive telemetry poisoning matrix
+        run: python -W error -m unittest tests.test_adaptive_behavior_poisoning_v0 -v
+      - name: Compile proof module and test
+        run: python -m py_compile pulpo/behavior_telemetry.py tests/test_adaptive_behavior_poisoning_v0.py
+      - name: Check committed whitespace
+        run: git diff --check HEAD^
