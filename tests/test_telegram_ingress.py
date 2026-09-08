@@ -32,11 +32,22 @@ class TelegramIngressTests(unittest.TestCase):
         )
         self.orchestrator = PulpoOrchestrator(self.kernel)
         self.snapshot = freeze_mcp_snapshot(self.orchestrator)
-        self.ingress = TelegramIngress(self.snapshot)
+        self.allowed_chat_ids = frozenset({42, 9})
+        self.ingress = TelegramIngress(
+            self.snapshot,
+            allowed_chat_ids=self.allowed_chat_ids,
+        )
 
-    def test_requires_capability_free_snapshot(self):
+    def test_requires_capability_free_snapshot_and_frozen_nonempty_allowlist(self):
         with self.assertRaisesRegex(TypeError, "MCPReadSnapshot required"):
-            TelegramIngress(self.orchestrator)
+            TelegramIngress(
+                self.orchestrator,
+                allowed_chat_ids=self.allowed_chat_ids,
+            )
+        for invalid in (frozenset(), {42}, frozenset({0}), frozenset({-1}), frozenset({True})):
+            with self.subTest(invalid=invalid):
+                with self.assertRaisesRegex(TelegramIngressError, "telegram_allowed_chats_invalid"):
+                    TelegramIngress(self.snapshot, allowed_chat_ids=invalid)
         self.assertFalse(hasattr(self.ingress, "kernel"))
         self.assertFalse(hasattr(self.ingress, "orchestrator"))
         self.assertFalse(hasattr(self.ingress, "__dict__"))
@@ -46,10 +57,47 @@ class TelegramIngressTests(unittest.TestCase):
         for text in ("/start", "/help", "/start@PulpoGovernanceBot"):
             result = self.ingress.handle_update(update(text=text))
             self.assertEqual("read", result["outcome"])
+            self.assertTrue(result["reply_allowed"])
             self.assertFalse(result["canonical_state_mutation"])
             self.assertEqual("none", result["governed_effect"])
             self.assertEqual("none", result["authority_effect"])
         self.assertEqual(before, self.kernel.audit)
+
+    def test_unallowlisted_private_chat_is_ignored_without_reply_or_projection(self):
+        before = list(self.kernel.audit)
+        result = self.ingress.handle_update(
+            update(update_id=70, text="/evidence", sender_id=77, chat_id=77)
+        )
+        self.assertEqual("ignored", result["outcome"])
+        self.assertEqual("telegram_chat_not_allowlisted", result["reason"])
+        self.assertFalse(result["reply_allowed"])
+        self.assertNotIn("text", result)
+        self.assertNotIn("evidence", result)
+        self.assertNotIn("proposal", result)
+        self.assertFalse(result["canonical_state_mutation"])
+        self.assertEqual("none", result["authority_effect"])
+        self.assertEqual(before, self.kernel.audit)
+
+    def test_private_sender_chat_identity_mismatch_is_ignored_before_command_projection(self):
+        before = list(self.kernel.audit)
+        result = self.ingress.handle_update(
+            update(update_id=71, text="/request do something", sender_id=99, chat_id=42)
+        )
+        self.assertEqual("ignored", result["outcome"])
+        self.assertEqual("telegram_sender_chat_mismatch", result["reason"])
+        self.assertFalse(result["reply_allowed"])
+        self.assertNotIn("text", result)
+        self.assertNotIn("proposal", result)
+        self.assertFalse(result["canonical_state_mutation"])
+        self.assertEqual(before, self.kernel.audit)
+
+    def test_allowlist_is_disclosure_boundary_not_authority(self):
+        result = self.ingress.handle_update(update(text="/authorize target-1"))
+        self.assertEqual("denied", result["outcome"])
+        self.assertEqual("telegram_not_authority_source", result["reason"])
+        self.assertTrue(result["reply_allowed"])
+        self.assertEqual("none", result["authority_effect"])
+        self.assertEqual([], self.kernel.audit)
 
     def test_status_and_evidence_use_only_frozen_snapshot(self):
         status = self.ingress.handle_update(update(text="/status"))
@@ -142,7 +190,7 @@ class TelegramIngressTests(unittest.TestCase):
             "schema": self.snapshot.schema,
         }
         restored = snapshot_from_document(document)
-        ingress = TelegramIngress(restored)
+        ingress = TelegramIngress(restored, allowed_chat_ids=frozenset({42}))
         result = ingress.handle_update(update(text="/request inspect current state"))
         encoded = proposal_json(result)
         self.assertIn('"authority_effect":"none"', encoded)

@@ -9,7 +9,8 @@ Tracking issue: #208
 ## Purpose
 
 Add Telegram as a bounded communication surface without allowing chat content,
-Telegram identity, bot commands, or the bot token to become Pulpo authority.
+Telegram identity, bot commands, the requester allowlist, or the bot token to
+become Pulpo authority.
 
 The governing invariant is:
 
@@ -21,12 +22,30 @@ second authority plane.
 
 ## Boundary
 
-The v0 ingress accepts only Telegram private-message updates and retains only a
-frozen `MCPReadSnapshot`. It does not retain or receive a `GovernanceKernel`,
-`PulpoOrchestrator`, canonical state backend, authority client, executor, policy
-object, trusted clock, ledger, provider credential, or Telegram bot token.
+The v0 ingress accepts only Telegram private-message updates and retains only:
 
-Allowed command surface:
+- a frozen `MCPReadSnapshot`;
+- a non-empty frozen allowlist of positive numeric private-chat IDs.
+
+It does not retain or receive a `GovernanceKernel`, `PulpoOrchestrator`,
+canonical state backend, authority client, executor, policy object, trusted
+clock, ledger, provider credential, or Telegram bot token.
+
+The chat allowlist is a disclosure and request-intake boundary only. Matching an
+allowlisted chat never upgrades Telegram identity or message content into Pulpo
+approval, authority, policy, a directive, or a permit.
+
+For an accepted private update, v0 also requires the numeric sender ID to equal
+the numeric private-chat ID. A mismatch is ignored rather than guessed. This is
+an application projection invariant, not a claim that a future webhook or
+polling transport has authenticated Telegram; provider-transport authenticity
+remains a separate deployment proof.
+
+Updates from non-allowlisted private chats or sender/chat mismatches return an
+internal `ignored` projection with `reply_allowed=false`. They expose no status,
+evidence, proposal, or reply text.
+
+Allowed command surface for an allowlisted private chat:
 
 - `/start`
 - `/status`
@@ -47,7 +66,7 @@ non-authoritative.
 
 ## Request semantics
 
-A `/request` update produces `pulpo.telegram-request.v0` with:
+A valid allowlisted `/request` update produces `pulpo.telegram-request.v0` with:
 
 - Telegram update, chat, and sender identifiers;
 - the request text;
@@ -76,62 +95,91 @@ exactly-once reply delivery across process restart.
 ## Evidence/status semantics
 
 `/status` and `/evidence` report only the frozen primitive snapshot supplied by
-trusted Pulpo. They cannot follow later canonical mutations and therefore must
-be labeled frozen rather than current live authority state.
+trusted Pulpo and only after the private-chat disclosure gate passes. They cannot
+follow later canonical mutations and therefore must be labeled frozen rather
+than current live authority state.
 
-## Secret boundary
+## Outbound reply boundary
+
+`reply_allowed=true` means only that the inbound projection considers a bounded
+reply suitable for the allowlisted requester. It is not permission to call the
+Telegram Bot API.
+
+Any live outbound reply remains an external effect and should be composed with
+the existing exact-object Telegram send/custody work rather than giving the
+proposal worker a second direct `sendMessage` route.
+
+## Secret and runtime boundary
 
 The Telegram bot token is not part of this candidate and must not enter source
 control, issue/PR text, logs, CI fixtures, generated evidence, or chat. A future
 transport runtime must obtain it from a designated runtime secret mechanism,
 fail closed if it is absent or invalid, and expose no fallback route.
 
+The live runtime must also receive its private-chat allowlist from trusted local
+or deployment configuration. Numeric identifiers may be discovered locally via
+the separately recorded Telegram live-handoff experiment, but that experiment
+is not silently imported into this candidate.
+
 ## Proof matrix in this candidate
 
 1. Capability-bearing dependencies cannot be injected into the ingress.
-2. `/start` and `/help` remain read-only.
-3. `/status` and `/evidence` use only frozen snapshot data.
-4. `/request` creates only an ephemeral non-authoritative proposal.
-5. Replaying an identical update is deterministic and non-mutating.
-6. `/approve`, `/authorize`, `/grant`, and `/permit` are denied.
-7. Plain text such as `I authorize ...` cannot create authority or a proposal.
-8. Unknown commands, wrong bot mentions, malformed senders, and non-private
-   chats fail closed without canonical mutation.
-9. Snapshot reconstruction and proposal serialization retain the no-authority,
-   no-governed-effect markers.
+2. The requester allowlist must be a non-empty immutable set of positive numeric
+   private-chat IDs.
+3. Non-allowlisted private chats are ignored without reply, evidence, or
+   proposal projection.
+4. Private sender/chat identity mismatch is ignored before command projection.
+5. Matching the allowlist does not create authority; authority-shaped commands
+   remain denied.
+6. `/start` and `/help` remain read-only.
+7. `/status` and `/evidence` use only frozen snapshot data.
+8. `/request` creates only an ephemeral non-authoritative proposal.
+9. Replaying an identical update is deterministic and non-mutating.
+10. `/approve`, `/authorize`, `/grant`, and `/permit` are denied.
+11. Plain text such as `I authorize ...` cannot create authority or a proposal.
+12. Unknown commands, wrong bot mentions, malformed senders, and non-private
+    chats fail closed without canonical mutation.
+13. Snapshot reconstruction and proposal serialization retain the no-authority,
+    no-governed-effect markers.
 
 ## Claim classification
 
-### Verified by exact-head tests only after CI succeeds
+### Verified only after exact-head executable evidence succeeds
 
-- Telegram projection behavior described by the executable tests on that exact
-  branch head.
+- Telegram projection behavior described by the tests on that exact candidate
+  head.
 
 ### Recorded
 
-- `@PulpoGovernanceBot` is the operator-supplied bot identity.
+- `@PulpoGovernanceBot` is the operator-supplied bot identity;
+- earlier same-day Telegram experiment objects exist for exact outbound message
+  gating, custody transport, and secret-safe local live handoff.
 
 ### Proposed
 
 - live Telegram transport using the private bot token;
-- deployment/runtime secret custody;
+- deployment/runtime secret and allowlist custody;
 - live `/start`, `/status`, `/request`, `/evidence`, and `/help` delivery;
-- trusted handoff of an ephemeral request into canonical Pulpo governance.
+- trusted handoff of an ephemeral request into canonical Pulpo governance;
+- composition of reply delivery through the already-proven exact-object/custody
+  pattern rather than a parallel direct send route.
 
 ### Unknown
 
 - whether the supplied Telegram bot is live and controlled by the intended
   operator until independently verified with the provider;
 - bot token custody and rotation behavior;
-- webhook or long-polling deployment behavior;
+- webhook or long-polling authentication/deployment behavior;
 - Telegram outage/retry behavior in the deployed runtime;
 - restart-safe reply deduplication;
-- end-to-end live request delivery.
+- end-to-end live request and reply delivery;
+- deployed route isolation from alternate Telegram consequence paths.
 
 ## Acceptance boundary
 
 Do not call the Telegram integration governed merely because BotFather accepts
 commands or the bot can reply. The governed claim requires executable negative
-evidence that Telegram retains no canonical write or authority capability and a
-separate live proof that the transport cannot bypass Pulpo to reach a
-consequential executor/provider.
+evidence that Telegram ingress retains no canonical write or authority
+capability, that requester disclosure fails closed, and a separate live proof
+that the transport cannot bypass Pulpo to reach a consequential executor or
+provider.

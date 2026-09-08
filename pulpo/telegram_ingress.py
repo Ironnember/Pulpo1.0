@@ -2,16 +2,20 @@
 
 Telegram is a communication surface, not an authority source. This module accepts
 Telegram update documents and projects either bounded read responses or an
-opaque request proposal. It retains only a frozen primitive Pulpo snapshot and
-never receives a kernel, orchestrator, authority client, executor, state backend,
-policy object, clock, ledger, provider credential, or bot token.
+opaque request proposal. It retains only a frozen primitive Pulpo snapshot and a
+frozen allowlist of private Telegram chat identifiers. It never receives a
+kernel, orchestrator, authority client, executor, state backend, policy object,
+clock, ledger, provider credential, or bot token.
+
+The allowlist controls disclosure and request intake only. It does not create or
+increase Pulpo authority.
 
 `TELEGRAM_MESSAGE != AUTHORITY`
 """
 
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 import hashlib
 import json
 from typing import Any, Mapping
@@ -21,7 +25,6 @@ from .mcp_boundary import MCPReadSnapshot
 
 BOT_USERNAME = "PulpoGovernanceBot"
 AUTHORITY_COMMANDS = frozenset({"approve", "authorize", "grant", "permit"})
-READ_COMMANDS = frozenset({"start", "status", "evidence", "help"})
 
 
 class TelegramIngressError(ValueError):
@@ -39,14 +42,14 @@ class TelegramMessage:
     def __post_init__(self) -> None:
         if isinstance(self.update_id, bool) or not isinstance(self.update_id, int) or self.update_id < 0:
             raise TelegramIngressError("telegram_update_id_invalid")
-        if isinstance(self.chat_id, bool) or not isinstance(self.chat_id, int):
+        if self.chat_type != "private":
+            raise TelegramIngressError("telegram_private_chat_required")
+        if isinstance(self.chat_id, bool) or not isinstance(self.chat_id, int) or self.chat_id <= 0:
             raise TelegramIngressError("telegram_chat_id_invalid")
         if isinstance(self.sender_id, bool) or not isinstance(self.sender_id, int) or self.sender_id <= 0:
             raise TelegramIngressError("telegram_sender_id_invalid")
         if not isinstance(self.text, str) or not self.text or self.text != self.text.strip():
             raise TelegramIngressError("telegram_text_invalid")
-        if self.chat_type != "private":
-            raise TelegramIngressError("telegram_private_chat_required")
 
 
 def _parse_update(update: Mapping[str, Any]) -> TelegramMessage:
@@ -100,14 +103,25 @@ def _request_id(message: TelegramMessage, request_text: str) -> str:
 
 
 class TelegramIngress:
-    """Project Telegram messages without retaining canonical write capability."""
+    """Project allowlisted Telegram messages without canonical write capability."""
 
-    __slots__ = ("_snapshot",)
+    __slots__ = ("_snapshot", "_allowed_chat_ids")
 
-    def __init__(self, snapshot: MCPReadSnapshot) -> None:
+    def __init__(
+        self,
+        snapshot: MCPReadSnapshot,
+        *,
+        allowed_chat_ids: frozenset[int],
+    ) -> None:
         if type(snapshot) is not MCPReadSnapshot:
             raise TypeError("MCPReadSnapshot required")
+        if type(allowed_chat_ids) is not frozenset or not allowed_chat_ids:
+            raise TelegramIngressError("telegram_allowed_chats_invalid")
+        for chat_id in allowed_chat_ids:
+            if isinstance(chat_id, bool) or not isinstance(chat_id, int) or chat_id <= 0:
+                raise TelegramIngressError("telegram_allowed_chats_invalid")
         self._snapshot = snapshot
+        self._allowed_chat_ids = allowed_chat_ids
 
     @staticmethod
     def _base(message: TelegramMessage, command: str | None) -> dict[str, Any]:
@@ -119,15 +133,38 @@ class TelegramIngress:
             "source_chat_id": message.chat_id,
             "source_sender_id": message.sender_id,
             "command": command,
+            "reply_allowed": True,
             "canonical_state_mutation": False,
             "governed_effect": "none",
             "authority_effect": "none",
         }
 
+    @staticmethod
+    def _ignored(message: TelegramMessage, reason: str) -> dict[str, Any]:
+        response = TelegramIngress._base(message, None)
+        response.update(
+            outcome="ignored",
+            reason=reason,
+            reply_allowed=False,
+        )
+        return response
+
     def handle_update(self, update: Mapping[str, Any]) -> dict[str, Any]:
         """Handle one Telegram update without changing canonical Pulpo state."""
 
         message = _parse_update(update)
+
+        # In a Telegram private chat the sender identity and chat identity are
+        # expected to bind to the same user. Treat disagreement as an untrusted
+        # projection rather than trying to infer identity.
+        if message.sender_id != message.chat_id:
+            return self._ignored(message, "telegram_sender_chat_mismatch")
+
+        # This allowlist is a disclosure/request-intake boundary only. Matching
+        # it never upgrades a Telegram message into approval or authority.
+        if message.chat_id not in self._allowed_chat_ids:
+            return self._ignored(message, "telegram_chat_not_allowlisted")
+
         command, argument = _command(message.text)
         response = self._base(message, command)
 
