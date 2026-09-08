@@ -11,6 +11,7 @@ on:
       - "scripts/telegram_live_handoff_v0.py"
       - "tests/test_telegram.py"
       - "custody-service/tests/test_telegram_transport.py"
+      - "custody-service/tests/test_telegram_live_handoff.py"
       - "proofs/telegram-live-handoff-v0.md"
       - ".github/workflows/telegram-live-handoff-preflight.yml"
 
@@ -28,12 +29,13 @@ jobs:
           python-version: "3.11"
       - name: Install custody proof package
         run: python -m pip install './custody-service[test]'
-      - name: Re-prove constituent Telegram governance boundaries
+      - name: Re-prove Telegram governance custody and local discovery boundaries
         run: >-
           PYTHONPATH=custody-service/src:.
           python -W error -m unittest
           tests.test_telegram
           custody-service/tests/test_telegram_transport.py
+          custody-service/tests/test_telegram_live_handoff.py
           -v
       - name: Compile live handoff
         run: >-
