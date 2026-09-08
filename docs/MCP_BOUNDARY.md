@@ -33,6 +33,26 @@ The adapter owns no state and no clock. Proposal evidence is appended to the
 existing kernel audit chain with `authority_effect: none`; the evidence tool is
 a read-only projection and creates no second ledger.
 
+## Trusted frozen-snapshot export
+
+`export_mcp_snapshot(orchestrator, destination)` is the trusted-side file
+bridge for capability-stripped consumers. It accepts the canonical
+`PulpoOrchestrator`, calls the existing `freeze_mcp_snapshot()` projection, and
+writes only the six primitive `pulpo.mcp-read-snapshot.v0` fields. The exporter
+is not registered as an MCP tool.
+
+The destination must be absolute and its immediate parent must already exist
+as a real directory rather than a symlink. A symlink or other non-regular
+destination is rejected. Creation, replacement, cleanup, and synchronization
+remain bound to one opened parent-directory descriptor. The file is written
+through a same-directory temporary file, synchronized, atomically replaced,
+and restricted to owner read/write permissions.
+
+Export does not mutate canonical Pulpo state or append a second audit event.
+The resulting file is a frozen derivative: it cannot follow later canonical
+mutations, and its presence does not prove live-current freshness, production
+authentication, independent deployment, or external consequence containment.
+
 ## Consequential-tool admission gate
 
 A future consequential MCP tool must be a narrow adapter over an existing
