@@ -156,6 +156,7 @@ def export_mcp_snapshot(
 
     descriptor = -1
     temporary = None
+    published = False
     try:
         open_flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
         open_flags |= getattr(os, "O_CLOEXEC", 0)
@@ -188,11 +189,39 @@ def export_mcp_snapshot(
             dst_dir_fd=directory_descriptor,
         )
         temporary = None
+        published = True
         os.fsync(directory_descriptor)
+
+        try:
+            current_parent = parent.lstat()
+            published_target = os.stat(
+                target.name,
+                dir_fd=directory_descriptor,
+                follow_symlinks=False,
+            )
+            requested_target = target.lstat()
+        except OSError as exc:
+            raise MCPBoundaryError("mcp_snapshot_export_commit_unknown") from exc
+        if (
+            stat.S_ISLNK(current_parent.st_mode)
+            or not stat.S_ISDIR(current_parent.st_mode)
+            or current_parent.st_dev != opened_parent.st_dev
+            or current_parent.st_ino != opened_parent.st_ino
+            or not stat.S_ISREG(published_target.st_mode)
+            or not stat.S_ISREG(requested_target.st_mode)
+            or published_target.st_dev != requested_target.st_dev
+            or published_target.st_ino != requested_target.st_ino
+        ):
+            raise MCPBoundaryError("mcp_snapshot_export_commit_unknown")
     except MCPBoundaryError:
         raise
     except OSError as exc:
-        raise MCPBoundaryError("mcp_snapshot_export_failed") from exc
+        reason = (
+            "mcp_snapshot_export_commit_unknown"
+            if published
+            else "mcp_snapshot_export_failed"
+        )
+        raise MCPBoundaryError(reason) from exc
     finally:
         try:
             if descriptor >= 0:

@@ -256,6 +256,84 @@ class MCPBoundaryTests(unittest.TestCase):
             self.assertFalse(destination.exists())
         self.assertEqual([], self.kernel.audit)
 
+    def test_export_reports_commit_unknown_if_parent_swapped_after_open(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            parent = root / "trusted"
+            moved_parent = root / "trusted-moved"
+            parent.mkdir()
+            destination = parent / "snapshot.json"
+            real_replace = os.replace
+
+            def swap_parent_then_replace(source, target, **kwargs):
+                parent.rename(moved_parent)
+                parent.mkdir()
+                return real_replace(source, target, **kwargs)
+
+            with patch(
+                "pulpo.mcp_boundary.os.replace",
+                side_effect=swap_parent_then_replace,
+            ):
+                with self.assertRaisesRegex(
+                    MCPBoundaryError,
+                    "mcp_snapshot_export_commit_unknown",
+                ):
+                    export_mcp_snapshot(self.orchestrator, destination)
+
+            self.assertFalse(destination.exists())
+            document = json.loads(
+                (moved_parent / "snapshot.json").read_text(encoding="utf-8")
+            )
+            self.assertEqual(asdict(self.snapshot), document)
+        self.assertEqual([], self.kernel.audit)
+
+    def test_export_reports_commit_unknown_if_directory_sync_fails(self):
+        with tempfile.TemporaryDirectory() as directory:
+            destination = Path(directory) / "snapshot.json"
+            real_fsync = os.fsync
+            calls = 0
+
+            def fail_directory_sync(descriptor):
+                nonlocal calls
+                calls += 1
+                if calls == 2:
+                    raise OSError("simulated directory sync failure")
+                return real_fsync(descriptor)
+
+            with patch(
+                "pulpo.mcp_boundary.os.fsync",
+                side_effect=fail_directory_sync,
+            ):
+                with self.assertRaisesRegex(
+                    MCPBoundaryError,
+                    "mcp_snapshot_export_commit_unknown",
+                ):
+                    export_mcp_snapshot(self.orchestrator, destination)
+
+            self.assertEqual(2, calls)
+            document = json.loads(destination.read_text(encoding="utf-8"))
+            self.assertEqual(asdict(self.snapshot), document)
+        self.assertEqual([], self.kernel.audit)
+
+    def test_export_reports_clean_failure_before_atomic_replace(self):
+        with tempfile.TemporaryDirectory() as directory:
+            parent = Path(directory)
+            destination = parent / "snapshot.json"
+
+            with patch(
+                "pulpo.mcp_boundary.os.fsync",
+                side_effect=OSError("simulated file sync failure"),
+            ):
+                with self.assertRaisesRegex(
+                    MCPBoundaryError,
+                    "mcp_snapshot_export_failed",
+                ):
+                    export_mcp_snapshot(self.orchestrator, destination)
+
+            self.assertFalse(destination.exists())
+            self.assertEqual([], list(parent.iterdir()))
+        self.assertEqual([], self.kernel.audit)
+
     def test_sdk_factory_registers_only_capability_stripped_frozen_tools(self):
         mcp_package = types.ModuleType("mcp")
         mcp_server = types.ModuleType("mcp.server")

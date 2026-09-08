@@ -46,7 +46,17 @@ as a real directory rather than a symlink. A symlink or other non-regular
 destination is rejected. Creation, replacement, cleanup, and synchronization
 remain bound to one opened parent-directory descriptor. The file is written
 through a same-directory temporary file, synchronized, atomically replaced,
-and restricted to owner read/write permissions.
+and restricted to owner read/write permissions. Before reporting success, the
+exporter rechecks that the requested parent path still names the opened
+directory and that the requested destination names the file published through
+that descriptor.
+
+An error before atomic replacement is reported as `mcp_snapshot_export_failed`.
+An error after replacement, including directory synchronization failure or a
+failed pathname-binding recheck, is reported as
+`mcp_snapshot_export_commit_unknown`: the caller must reconcile the destination
+before retrying because a frozen file may already exist. This status is not
+permission, verified delivery, or proof that a reader observed the snapshot.
 
 Export does not mutate canonical Pulpo state or append a second audit event.
 The resulting file is a frozen derivative: it cannot follow later canonical
