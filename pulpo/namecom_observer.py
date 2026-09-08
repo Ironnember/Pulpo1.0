@@ -1,18 +1,21 @@
 """Read-only name.com CORE observation for Hostile Worker Consequence Proof V0.
 
 This observer uses a separately constructed NameComCoreClient and never consumes
-worker- or executor-reported provider success as truth.  It combines filtered
-registration-order history with account-authenticated Get Domain state.
+worker- or executor-reported provider success as truth. It requires the durable
+custody snapshot to contain the provider-native Name.com order identifier, then
+reads that exact order and the exact domain from the provider.
 
 A successful order without a matching domain read-back is classified `unknown`,
-not failure.  name.com documents that some registries can reject asynchronously
+not failure. Name.com documents that some registries can reject asynchronously
 after initial create acceptance, and read paths can also be eventually
-consistent.  V0 therefore requires reconciliation rather than inference.
+consistent. V0 therefore requires reconciliation rather than inference.
 """
 
 from __future__ import annotations
 
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
+from hashlib import sha256
+import json
 from typing import Any
 
 from .commerce import DomainPurchaseOrder
@@ -20,6 +23,9 @@ from .custody import CustodyViolation, SQLiteGovernanceCustody
 from .custody_domain import GovernedDomainAttempt
 from .custody_reconcile import IndependentDomainObservation
 from .namecom_core import NameComCoreClient, NameComViolation
+
+
+NAMECOM_ORDER_PREFIX = "namecom-order:"
 
 
 def _usd_to_cents(value: Any) -> int | None:
@@ -38,16 +44,28 @@ def _registration_matches(order_record: dict[str, Any], domain: str) -> bool:
     items = order_record.get("orderItems")
     if not isinstance(items, list):
         return False
-    for item in items:
-        if not isinstance(item, dict):
-            continue
-        if item.get("type") == "registration" and item.get("name") == domain:
-            return True
-    return False
+    matches = [
+        item
+        for item in items
+        if isinstance(item, dict)
+        and item.get("type") == "registration"
+        and item.get("name") == domain
+    ]
+    return len(matches) == 1
+
+
+def _provider_order_id(provider_reference: str) -> int | None:
+    if not provider_reference.startswith(NAMECOM_ORDER_PREFIX):
+        return None
+    raw = provider_reference[len(NAMECOM_ORDER_PREFIX) :]
+    if not raw.isdigit():
+        return None
+    order_id = int(raw)
+    return order_id if order_id > 0 else None
 
 
 class NameComCoreObserver:
-    """Map current name.com account state into independent Pulpo observation."""
+    """Map exact provider-native Name.com state into independent observation."""
 
     def __init__(
         self,
@@ -77,19 +95,18 @@ class NameComCoreObserver:
             raise CustodyViolation("namecom_observer_domain_mismatch")
         return result
 
-    def _matching_orders(self, domain: str) -> list[dict[str, Any]]:
+    def _get_exact_order_or_none(self, order_id: int, domain: str) -> dict[str, Any] | None:
         try:
-            response = self.client.list_orders_for_domain(domain)
+            record = self.client.get_order(order_id)
         except NameComViolation as exc:
-            raise CustodyViolation(f"namecom_observer_orders_unavailable:{exc}") from exc
-        orders = response.get("orders")
-        if not isinstance(orders, list):
-            raise CustodyViolation("namecom_observer_orders_shape_invalid")
-        return [
-            item
-            for item in orders
-            if isinstance(item, dict) and _registration_matches(item, domain)
-        ]
+            if str(exc) == "namecom_http_404":
+                return None
+            raise CustodyViolation(f"namecom_observer_order_unavailable:{exc}") from exc
+        if record.get("id") != order_id:
+            raise CustodyViolation("namecom_observer_provider_order_id_mismatch")
+        if not _registration_matches(record, domain):
+            raise CustodyViolation("namecom_observer_provider_order_object_mismatch")
+        return record
 
     @staticmethod
     def _order_status(record: dict[str, Any] | None) -> str:
@@ -101,6 +118,31 @@ class NameComCoreObserver:
         if status == "failed":
             return "failed"
         return "unknown"
+
+    def _unknown_without_provider_identity(
+        self,
+        governed: GovernedDomainAttempt,
+        provider_request_id: str,
+    ) -> IndependentDomainObservation:
+        # A transmitted request without a durably captured provider-native order
+        # identifier cannot be attributed safely. Do not search by domain or
+        # manufacture identity from the local request id. No retry authority is
+        # created; reconciliation remains unresolved.
+        return IndependentDomainObservation(
+            observation_id=f"{self.observation_id_prefix}:{governed.attempt_id}",
+            provider_request_id=provider_request_id,
+            provider_request_status="unknown",
+            domain=None,
+            registrar=None,
+            owner_ref=None,
+            registered=None,
+            payment_id=None,
+            charged_cents=None,
+            receipt_hash=None,
+            privacy_enabled=None,
+            dns_state=None,
+            auto_renew_enabled=None,
+        )
 
     def observe(
         self,
@@ -115,29 +157,42 @@ class NameComCoreObserver:
         if not attempt.provider_request_id:
             raise CustodyViolation("namecom_observer_request_not_transmitted")
 
-        matches = self._matching_orders(order.domain)
-        # More than one matching registration order cannot safely be attributed
-        # to the one Pulpo attempt without an exact provider-order identifier.
-        record = matches[0] if len(matches) == 1 else None
+        provider_reference = attempt.provider_request_id
+        provider_order_id = _provider_order_id(provider_reference)
+        if provider_order_id is None:
+            return self._unknown_without_provider_identity(
+                governed,
+                provider_reference,
+            )
+
+        record = self._get_exact_order_or_none(provider_order_id, order.domain)
         status = self._order_status(record)
+        if record is None:
+            return IndependentDomainObservation(
+                observation_id=f"{self.observation_id_prefix}:{governed.attempt_id}",
+                provider_request_id=provider_reference,
+                provider_request_status="not_found",
+                domain=None,
+                registrar=None,
+                owner_ref=None,
+                registered=None,
+                payment_id=None,
+                charged_cents=None,
+                receipt_hash=None,
+                privacy_enabled=None,
+                dns_state=None,
+                auto_renew_enabled=None,
+            )
+
         domain_record = self._get_domain_or_none(order.domain)
 
         # A provider order marked success without account-visible domain state is
-        # not accepted as known failure or success.  It remains unknown pending
-        # later observation/webhook reconciliation.
+        # not accepted as known failure or success. It remains unknown pending
+        # later provider-native reconciliation.
         if status == "succeeded" and domain_record is None:
             status = "unknown"
 
-        provider_order_id = record.get("id") if record is not None else None
-        payment_id = (
-            f"namecom-order:{provider_order_id}"
-            if isinstance(provider_order_id, int) and provider_order_id > 0
-            else None
-        )
-        charged_cents = (
-            _usd_to_cents(record.get("totalCapture")) if record is not None else None
-        )
-
+        charged_cents = _usd_to_cents(record.get("totalCapture"))
         registered = domain_record is not None
         privacy_enabled = (
             domain_record.get("privacyEnabled")
@@ -151,29 +206,19 @@ class NameComCoreObserver:
             and isinstance(domain_record.get("autorenewEnabled"), bool)
             else None
         )
-        receipt_hash = None
-        if payment_id is not None and charged_cents is not None:
-            # The read-back evidence hash is not the executor's response hash.
-            # Independent reconciliation binds the provider order record itself.
-            from hashlib import sha256
-            import json
-
-            receipt_hash = sha256(
-                json.dumps(record, sort_keys=True, separators=(",", ":")).encode()
-            ).hexdigest()
+        receipt_hash = sha256(
+            json.dumps(record, sort_keys=True, separators=(",", ":")).encode()
+        ).hexdigest()
 
         return IndependentDomainObservation(
             observation_id=f"{self.observation_id_prefix}:{governed.attempt_id}",
-            provider_request_id=attempt.provider_request_id,
+            provider_request_id=provider_reference,
             provider_request_status=status,
             domain=order.domain if registered else None,
             registrar="name.com" if registered else None,
-            # Successful Get Domain under the observer's account-authenticated
-            # credential is treated as evidence of account custody for the
-            # configured opaque owner_ref. V0 does not expose contact PII.
             owner_ref=self.owner_ref if registered else None,
             registered=registered,
-            payment_id=payment_id,
+            payment_id=provider_reference,
             charged_cents=charged_cents,
             receipt_hash=receipt_hash,
             privacy_enabled=privacy_enabled,
