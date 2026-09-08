@@ -11,8 +11,8 @@ authority, policy, permit, directive, execution, memory, or evidence source.
 
 The initial adapter intentionally exposes only:
 
-- `pulpo_propose_intent`: validate and lock one exact target through the
-  canonical `PulpoOrchestrator`; and
+- `pulpo_propose_intent`: validate and project one exact intent candidate from
+  the capability-stripped frozen snapshot without a canonical write; and
 - `pulpo_get_evidence`: read integrity metadata projected from the canonical
   kernel audit chain.
 
@@ -62,6 +62,42 @@ Export does not mutate canonical Pulpo state or append a second audit event.
 The resulting file is a frozen derivative: it cannot follow later canonical
 mutations, and its presence does not prove live-current freshness, production
 authentication, independent deployment, or external consequence containment.
+
+## Governed proposal admission
+
+`MCPProposalAdmissionController` is the trusted-side handoff from one exact
+`pulpo.mcp-proposal.v2` object into the existing durable `LockedTarget` path.
+It is not registered as an MCP tool and must never be mounted in the
+capability-stripped plugin process.
+
+The handoff requires the current kernel to issue a permit for
+`admit_mcp_proposal` bound to the proposal hash and current policy hash. The
+controller then:
+
+1. rejects added fields, capability claims, malformed or oversized identities,
+   intent-hash mismatches, and stale snapshot policy;
+2. rejects an already used target identity before consuming admission
+   authority;
+3. consumes the exact admission permit once;
+4. locks the proposal's intent through the existing orchestrator and kernel;
+5. records a hash-bound admission receipt in the existing canonical audit.
+
+The proposal, snapshot, plugin text, and admission receipt cannot authorize the
+proposed action. After admission, the locked target still has to pass Pulpo's
+ordinary identity, policy, budget, approval, permit, executor, and
+reconciliation path. The admission receipt reports
+`authority_effect=none`,
+`governed_effect=canonical_target_lock_and_admission_evidence`, and
+`canonical_state_mutation=true`; the preceding audit records separately prove
+the admission permit was consumed.
+
+The software proof composes this handoff with Pulpo's existing approval,
+one-use permit, domain custody, bounded executor, independent reconciliation,
+and non-authorizing outcome-memory components using an in-process test
+authority and fake registrar. No provider is called and no credential is
+created. It does not prove that the installed plugin can invoke the trusted
+controller, that a production authority is independent, or that a real
+external consequence is contained or verified.
 
 ## Consequential-tool admission gate
 

@@ -20,6 +20,15 @@ from .kernel import (
     StateIntegrityError,
     TargetResolution,
 )
+from .mcp_admission import (
+    ADMISSION_ACTION,
+    ADMISSION_RESOURCE_PREFIX,
+    MCPProposalAdmissionController,
+    MCPProposalAdmissionError,
+    MCPProposalAdmissionReceipt,
+    ValidatedMCPProposal,
+    validate_mcp_proposal,
+)
 from .namecom import NameComCoreAdapter
 from .orchestrator import (
     ApprovalHandle,
@@ -38,6 +47,8 @@ from .targets import evaluate_locked_target_with_approval
 
 __all__ = [
     "AgentGrant",
+    "ADMISSION_ACTION",
+    "ADMISSION_RESOURCE_PREFIX",
     "ApprovalEnvelope",
     "ApprovalHandle",
     "ArtifactCompletionEvidence",
@@ -57,6 +68,9 @@ __all__ = [
     "Intent",
     "KernelState",
     "LockedTarget",
+    "MCPProposalAdmissionController",
+    "MCPProposalAdmissionError",
+    "MCPProposalAdmissionReceipt",
     "NameComCoreAdapter",
     "OrchestrationError",
     "P256ApprovalVerifier",
@@ -67,5 +81,7 @@ __all__ = [
     "StateIntegrityError",
     "TargetObligationStatus",
     "TargetResolution",
+    "ValidatedMCPProposal",
     "evaluate_locked_target_with_approval",
+    "validate_mcp_proposal",
 ]
