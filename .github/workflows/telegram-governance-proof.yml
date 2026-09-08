@@ -1,0 +1,31 @@
+name: Telegram Governance Proof
+
+on:
+  push:
+    branches:
+      - experiment/telegram-governed-bot-v0
+  pull_request:
+    paths:
+      - "pulpo/telegram.py"
+      - "tests/test_telegram.py"
+      - "proofs/telegram-governed-bot-v0.md"
+      - ".github/workflows/telegram-governance-proof.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  telegram-governance-proof:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Prove exact-message permit and denial invariants
+        run: python -W error -m unittest tests.test_telegram -v
+      - name: Compile Telegram projection and proof tests
+        run: python -m compileall -q pulpo/telegram.py tests/test_telegram.py
+      - name: Check committed whitespace
+        run: git diff --check 4b825dc642cb6eb9a060e54bf8d69288fbee4904 HEAD
