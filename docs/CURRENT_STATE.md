@@ -6,13 +6,17 @@ Status date: 2026-09-04
 
 `Ironnember/Pulpo1.0` on protected `main` is the sole source of truth for current Pulpo code, tests, architecture, governance, and forward development.
 
-At this reconciliation, protected `main` is:
+The reconciliation base immediately before PR #162 documentation admission was:
 
 `1ee8485c4599ad3266c8e90c5baad29309bc700c`
 
-This commit canonically admits PR #161, `Feature: governed outcome-memory gate v0`.
+That commit canonically admitted PR #161, `Feature: governed outcome-memory gate v0`.
 
-The SHA is an inspection point, not a permanently pinned source-of-truth designation.
+PR #162 then admitted this documentation reconciliation as:
+
+`d421fbe73732a7ed4c942928d62e80dd6bbb2057`
+
+These SHAs are exact inspection and admission points, not permanently pinned source-of-truth designations. The live protected `main` ref remains authoritative and advances only through legitimate repository admission.
 
 Historical repositories, held branches, Draft pull requests, closed-unmerged proof objects, screenshots, summaries, and experimental distribution artifacts remain evidence or reference material only unless a legitimate governance transition admits their behavior into canonical Pulpo.
 
