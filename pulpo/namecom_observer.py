@@ -145,6 +145,12 @@ class NameComCoreObserver:
             and isinstance(domain_record.get("privacyEnabled"), bool)
             else None
         )
+        auto_renew_enabled = (
+            domain_record.get("autorenewEnabled")
+            if domain_record is not None
+            and isinstance(domain_record.get("autorenewEnabled"), bool)
+            else None
+        )
         receipt_hash = None
         if payment_id is not None and charged_cents is not None:
             # The read-back evidence hash is not the executor's response hash.
@@ -172,4 +178,5 @@ class NameComCoreObserver:
             receipt_hash=receipt_hash,
             privacy_enabled=privacy_enabled,
             dns_state="registered" if registered else None,
+            auto_renew_enabled=auto_renew_enabled,
         )
