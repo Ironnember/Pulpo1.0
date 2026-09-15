@@ -19,7 +19,7 @@ from dataclasses import asdict
 from hashlib import sha256
 import json
 import os
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 import platform
 import re
 import shutil
@@ -71,7 +71,7 @@ def _toml_string(value: str) -> str:
 
 def _seatbelt_string(value: Path) -> str:
     text = str(Path(os.path.realpath(value)))
-    return text.replace("\\", "\\\\").replace('"', '\\"')
+    return text.replace('"', '\\"')
 
 
 def build_seatbelt_profile(runtime_root: Path, protected_read_roots: tuple[Path, ...] = ()) -> str:
@@ -126,10 +126,10 @@ def build_spawn_argv(seatbelt_path: Path, profile_path: Path, codex_argv: tuple[
 def sanitize_environment(source: dict[str, str], runtime_root: Path, *, codex_home: Path | None = None) -> dict[str, str]:
     keep = {"HOME", "USER", "LOGNAME", "PATH", "SHELL", "LANG", "LC_ALL", "LC_CTYPE", "TERM"}
     env = {key: value for key, value in source.items() if key in keep and value}
-    env["TMPDIR"] = str(runtime_root)
+    env["TMPDIR"] = PurePosixPath(str(runtime_root)).as_posix()
     env["PYTHONDONTWRITEBYTECODE"] = "1"
     if codex_home is not None:
-        env["CODEX_HOME"] = str(codex_home)
+        env["CODEX_HOME"] = PurePosixPath(str(codex_home)).as_posix()
     return env
 
 
