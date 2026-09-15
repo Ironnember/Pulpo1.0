@@ -76,6 +76,16 @@ class TelegramCapabilityActivationPrepTests(unittest.TestCase):
         self.provider_calls += 1
         return True
 
+    def _message_envelope(self):
+        return signed_envelope(
+            self.kernel,
+            self.send,
+            self.verifier,
+            now_ns=NOW,
+            approval_id="approval-message-1",
+            nonce="approval-message-nonce-1",
+        )
+
     def test_available_capability_without_activation_approval_creates_zero_provider_calls(self):
         decision = self.kernel.evaluate(self.activate)
         self.assertEqual(("require_approval", None), (decision.outcome, decision.permit))
@@ -135,12 +145,7 @@ class TelegramCapabilityActivationPrepTests(unittest.TestCase):
         self.assertTrue(self._release_capability(activation.permit))
         self.assertFalse(self._release_capability(activation.permit))
 
-        message_envelope = signed_envelope(
-            self.kernel,
-            self.send,
-            self.verifier,
-            now_ns=NOW,
-        )
+        message_envelope = self._message_envelope()
         message = self.kernel.evaluate_with_approval(self.send, message_envelope)
         self.assertEqual("allow", message.outcome)
         self.assertTrue(self._dispatch(message.permit))
@@ -157,13 +162,9 @@ class TelegramCapabilityActivationPrepTests(unittest.TestCase):
         activation = self.kernel.evaluate_with_approval(self.activate, activation_envelope)
         self.assertTrue(self._release_capability(activation.permit))
 
-        message_envelope = signed_envelope(
-            self.kernel,
-            self.send,
-            self.verifier,
-            now_ns=NOW,
-        )
+        message_envelope = self._message_envelope()
         message = self.kernel.evaluate_with_approval(self.send, message_envelope)
+        self.assertEqual("allow", message.outcome)
         substituted = Intent(
             PRINCIPAL,
             "telegram_send_message",
