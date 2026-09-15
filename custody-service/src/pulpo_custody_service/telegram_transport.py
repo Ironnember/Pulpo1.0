@@ -28,6 +28,17 @@ class TelegramProviderError(RuntimeError):
     pass
 
 
+class TelegramExternalRealityUnknown(TelegramProviderError):
+    """A transmission may have occurred and must not be retried automatically."""
+
+    classification = "EXTERNAL_REALITY_UNKNOWN"
+    reconciliation_required = True
+
+    def __init__(self, message_hash: str) -> None:
+        super().__init__(self.classification)
+        self.message_hash = message_hash
+
+
 def _required(name: str, environ: Mapping[str, str]) -> str:
     value = environ.get(name, "")
     if not value:
@@ -102,6 +113,8 @@ class TelegramBotApiTransport:
     def send_message(self, message: TelegramOutboundMessage) -> Mapping[str, object]:
         if not isinstance(message, TelegramOutboundMessage):
             raise TelegramProviderError("telegram message object invalid")
+        if message.bot_id != self.expected_bot_id:
+            raise TelegramProviderError("telegram bot identity is outside custody scope")
         if not isinstance(message.chat_id, int) or isinstance(message.chat_id, bool):
             raise TelegramProviderError("telegram custody v0 requires a numeric chat ID")
         if message.chat_id != self.allowed_chat_id:
@@ -122,28 +135,28 @@ class TelegramBotApiTransport:
             with urllib_request.urlopen(request, timeout=TELEGRAM_TIMEOUT_SECONDS) as response:
                 raw = response.read(_MAX_RESPONSE_BYTES + 1)
         except (urllib_error.HTTPError, urllib_error.URLError, TimeoutError, OSError):
-            raise TelegramProviderError("telegram provider request failed") from None
+            raise TelegramExternalRealityUnknown(message.message_hash) from None
 
         if len(raw) > _MAX_RESPONSE_BYTES:
-            raise TelegramProviderError("telegram provider response exceeded limit")
+            raise TelegramExternalRealityUnknown(message.message_hash)
         try:
             decoded = json.loads(raw)
         except (UnicodeDecodeError, json.JSONDecodeError, TypeError):
-            raise TelegramProviderError("telegram provider response invalid") from None
+            raise TelegramExternalRealityUnknown(message.message_hash) from None
         if not isinstance(decoded, dict) or decoded.get("ok") is not True:
             raise TelegramProviderError("telegram provider rejected request")
         result = decoded.get("result")
         if not isinstance(result, dict):
-            raise TelegramProviderError("telegram provider result missing")
+            raise TelegramExternalRealityUnknown(message.message_hash)
         chat = result.get("chat")
         if not isinstance(chat, dict) or chat.get("id") != self.allowed_chat_id:
-            raise TelegramProviderError("telegram provider destination mismatch")
+            raise TelegramExternalRealityUnknown(message.message_hash)
         message_id = result.get("message_id")
         provider_date = result.get("date")
         if isinstance(message_id, bool) or not isinstance(message_id, int) or message_id <= 0:
-            raise TelegramProviderError("telegram provider message identity invalid")
+            raise TelegramExternalRealityUnknown(message.message_hash)
         if isinstance(provider_date, bool) or not isinstance(provider_date, int) or provider_date <= 0:
-            raise TelegramProviderError("telegram provider timestamp invalid")
+            raise TelegramExternalRealityUnknown(message.message_hash)
         return {
             "provider": "telegram_bot_api",
             "method": "sendMessage",

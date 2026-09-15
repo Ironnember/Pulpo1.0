@@ -8,6 +8,7 @@ from pulpo_custody_service.telegram_transport import (
     TELEGRAM_API_ORIGIN,
     TELEGRAM_TIMEOUT_SECONDS,
     TelegramBotApiTransport,
+    TelegramExternalRealityUnknown,
     TelegramProviderError,
     TelegramTransportConfigError,
 )
@@ -54,11 +55,23 @@ class TelegramBotApiTransportTests(unittest.TestCase):
     def test_out_of_scope_chat_is_rejected_before_network(self) -> None:
         with patch("pulpo_custody_service.telegram_transport.urllib_request.urlopen", side_effect=AssertionError("network must not be called")):
             with self.assertRaisesRegex(TelegramProviderError, "outside custody scope"):
-                self.transport().send_message(TelegramOutboundMessage(999, "do not send"))
+                self.transport().send_message(
+                    TelegramOutboundMessage(123456, 999, "do not send")
+                )
+
+    def test_out_of_scope_bot_is_rejected_before_network(self) -> None:
+        with patch(
+            "pulpo_custody_service.telegram_transport.urllib_request.urlopen",
+            side_effect=AssertionError("network must not be called"),
+        ):
+            with self.assertRaisesRegex(TelegramProviderError, "bot identity"):
+                self.transport().send_message(
+                    TelegramOutboundMessage(999999, 123, "do not send")
+                )
 
     def test_send_message_shape_uses_official_https_endpoint_and_minimized_claim(self) -> None:
         captured = {}
-        message = TelegramOutboundMessage(123, "governed hello")
+        message = TelegramOutboundMessage(123456, 123, "governed hello")
 
         def fake_urlopen(request, *, timeout):
             captured["request"] = request
@@ -78,21 +91,44 @@ class TelegramBotApiTransportTests(unittest.TestCase):
         self.assertNotIn(FAKE_TOKEN, repr(claim))
         self.assertNotIn(message.text, repr(claim))
 
-    def test_network_error_is_sanitized_without_token(self) -> None:
-        with patch("pulpo_custody_service.telegram_transport.urllib_request.urlopen", side_effect=urllib_error.URLError(f"sensitive {FAKE_TOKEN}")):
-            with self.assertRaises(TelegramProviderError) as raised:
-                self.transport().send_message(TelegramOutboundMessage(123, "governed hello"))
-        self.assertEqual("telegram provider request failed", str(raised.exception))
+    def test_network_ambiguity_is_unknown_sanitized_and_not_retried(self) -> None:
+        message = TelegramOutboundMessage(123456, 123, "governed hello")
+        with patch(
+            "pulpo_custody_service.telegram_transport.urllib_request.urlopen",
+            side_effect=urllib_error.URLError(f"sensitive {FAKE_TOKEN}"),
+        ) as urlopen:
+            with self.assertRaises(TelegramExternalRealityUnknown) as raised:
+                self.transport().send_message(message)
+        self.assertEqual("EXTERNAL_REALITY_UNKNOWN", str(raised.exception))
+        self.assertEqual(message.message_hash, raised.exception.message_hash)
+        self.assertTrue(raised.exception.reconciliation_required)
+        self.assertEqual(1, urlopen.call_count)
         self.assertNotIn(FAKE_TOKEN, str(raised.exception))
 
-    def test_provider_denial_and_destination_mismatch_fail_closed(self) -> None:
-        message = TelegramOutboundMessage(123, "governed hello")
+    def test_provider_denial_is_explicit_and_destination_mismatch_is_unknown(self) -> None:
+        message = TelegramOutboundMessage(123456, 123, "governed hello")
         with patch("pulpo_custody_service.telegram_transport.urllib_request.urlopen", return_value=FakeResponse(b'{"ok":false,"description":"denied"}')):
             with self.assertRaisesRegex(TelegramProviderError, "provider rejected"):
                 self.transport().send_message(message)
         with patch("pulpo_custody_service.telegram_transport.urllib_request.urlopen", return_value=FakeResponse(provider_response(chat_id=999))):
-            with self.assertRaisesRegex(TelegramProviderError, "destination mismatch"):
+            with self.assertRaises(TelegramExternalRealityUnknown):
                 self.transport().send_message(message)
+
+    def test_malformed_success_response_is_external_reality_unknown(self) -> None:
+        message = TelegramOutboundMessage(123456, 123, "governed hello")
+        for payload in (
+            b"not-json",
+            b'{"ok":true}',
+            provider_response(message_id=0),
+            provider_response(date=0),
+        ):
+            with self.subTest(payload=payload):
+                with patch(
+                    "pulpo_custody_service.telegram_transport.urllib_request.urlopen",
+                    return_value=FakeResponse(payload),
+                ):
+                    with self.assertRaises(TelegramExternalRealityUnknown):
+                        self.transport().send_message(message)
 
 
 if __name__ == "__main__":

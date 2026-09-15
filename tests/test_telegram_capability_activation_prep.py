@@ -1,26 +1,41 @@
-import hashlib
 import unittest
 
 from pulpo import GovernanceKernel, Intent, Policy
+from pulpo.telegram import (
+    GovernedTelegramSender,
+    TelegramOutboundMessage,
+    TelegramSendRejected,
+)
 from tests.authority_support import HmacTestVerifier, signed_envelope, trust_for
 
 
 NOW = 7_100_000
 SESSION = "telegram-capability-activation-proof-1"
 PRINCIPAL = "agent:assistant"
-BOT = "telegram:bot:PulpoGovernanceBot"
-CHAT = "telegram:chat:private:424242"
+BOT_ID = 123456
+CHAT_ID = 424242
 MESSAGE = "Pulpo capability activation proof"
-MESSAGE_HASH = hashlib.sha256(MESSAGE.encode("utf-8")).hexdigest()
+
+
+class ProbeTransport:
+    def __init__(self, *, bot_id: int = BOT_ID, chat_id: int = CHAT_ID) -> None:
+        self.expected_bot_id = bot_id
+        self.allowed_chat_id = chat_id
+        self.provider_calls = 0
+
+    def send_message(self, message: TelegramOutboundMessage):
+        self.provider_calls += 1
+        return {
+            "provider": "test_probe",
+            "provider_bot_id": message.bot_id,
+            "provider_chat_id": message.chat_id,
+            "message_hash": message.message_hash,
+            "claim_class": "provider_claim",
+        }
 
 
 class TelegramCapabilityActivationPrepTests(unittest.TestCase):
-    """Pre-provider proof that capability release and message authority are distinct.
-
-    This file deliberately performs no network I/O and proves no live Telegram
-    consequence. It composes canonical capability-activation semantics with a
-    second exact authorization step for one frozen send-message object.
-    """
+    """Software-only proof that the real send gate requires two exact permits."""
 
     def setUp(self):
         self.verifier = HmacTestVerifier()
@@ -43,137 +58,230 @@ class TelegramCapabilityActivationPrepTests(unittest.TestCase):
             0,
             SESSION,
         )
-        self.activate = Intent(
-            PRINCIPAL,
-            "activate_capability",
-            f"{BOT}:{CHAT}:capability:sendMessage",
-            0,
-            SESSION,
-        )
-        self.send = Intent(
-            PRINCIPAL,
-            "telegram_send_message",
-            f"{BOT}:{CHAT}:sha256:{MESSAGE_HASH}",
-            0,
-            SESSION,
-        )
-        self.capability_released = False
-        self.provider_calls = 0
+        self.message = TelegramOutboundMessage(BOT_ID, CHAT_ID, MESSAGE)
+        self.transport = ProbeTransport()
+        self.sender = GovernedTelegramSender(self.kernel, self.transport)
 
-    def _release_capability(self, permit, intent=None):
-        target = self.activate if intent is None else intent
-        if not self.kernel.consume(permit, target):
-            return False
-        self.capability_released = True
-        return True
-
-    def _dispatch(self, permit, intent=None):
-        target = self.send if intent is None else intent
-        if not self.capability_released:
-            return False
-        if not self.kernel.consume(permit, target):
-            return False
-        self.provider_calls += 1
-        return True
-
-    def _message_envelope(self):
-        return signed_envelope(
+    def _approve_activation(
+        self,
+        message: TelegramOutboundMessage | None = None,
+        *,
+        approval_id: str = "approval-activation-1",
+        nonce: str = "approval-activation-nonce-1",
+    ):
+        target = self.message if message is None else message
+        intent = target.activation_intent(principal=PRINCIPAL, session_id=SESSION)
+        envelope = signed_envelope(
             self.kernel,
-            self.send,
+            intent,
             self.verifier,
             now_ns=NOW,
-            approval_id="approval-message-1",
-            nonce="approval-message-nonce-1",
+            approval_id=approval_id,
+            nonce=nonce,
         )
+        return self.kernel.evaluate_with_approval(intent, envelope)
+
+    def _approve_message(
+        self,
+        message: TelegramOutboundMessage | None = None,
+        *,
+        approval_id: str = "approval-message-1",
+        nonce: str = "approval-message-nonce-1",
+    ):
+        target = self.message if message is None else message
+        intent = target.intent(principal=PRINCIPAL, session_id=SESSION)
+        envelope = signed_envelope(
+            self.kernel,
+            intent,
+            self.verifier,
+            now_ns=NOW,
+            approval_id=approval_id,
+            nonce=nonce,
+        )
+        return self.kernel.evaluate_with_approval(intent, envelope)
 
     def test_available_capability_without_activation_approval_creates_zero_provider_calls(self):
-        decision = self.kernel.evaluate(self.activate)
+        decision = self.sender.evaluate_activation(
+            self.message,
+            principal=PRINCIPAL,
+            session_id=SESSION,
+        )
         self.assertEqual(("require_approval", None), (decision.outcome, decision.permit))
-        self.assertFalse(self.capability_released)
-        self.assertEqual(0, self.provider_calls)
+        self.assertEqual(0, self.transport.provider_calls)
 
     def test_read_permission_cannot_release_telegram_send_capability(self):
         read_decision = self.kernel.evaluate(self.read)
+        message_decision = self._approve_message()
         self.assertEqual("allow", read_decision.outcome)
-        self.assertFalse(self._release_capability(read_decision.permit))
-        self.assertFalse(self.capability_released)
-        self.assertEqual(0, self.provider_calls)
+        with self.assertRaisesRegex(TelegramSendRejected, "activation permit rejected"):
+            self.sender.execute(
+                self.message,
+                activation_permit=read_decision.permit,
+                message_permit=message_decision.permit,
+                principal=PRINCIPAL,
+                session_id=SESSION,
+            )
+        self.assertEqual(0, self.transport.provider_calls)
+
+    def test_message_authorization_without_activation_cannot_reach_provider(self):
+        message_decision = self._approve_message()
+        with self.assertRaisesRegex(TelegramSendRejected, "activation permit missing"):
+            self.sender.execute(
+                self.message,
+                activation_permit="",
+                message_permit=message_decision.permit,
+                principal=PRINCIPAL,
+                session_id=SESSION,
+            )
+        self.assertEqual(0, self.transport.provider_calls)
 
     def test_exact_activation_does_not_authorize_message_send(self):
-        activation_envelope = signed_envelope(
-            self.kernel,
-            self.activate,
-            self.verifier,
-            now_ns=NOW,
-        )
-        activation = self.kernel.evaluate_with_approval(self.activate, activation_envelope)
+        activation = self._approve_activation()
         self.assertEqual("allow", activation.outcome)
-        self.assertTrue(self._release_capability(activation.permit))
+        with self.assertRaisesRegex(TelegramSendRejected, "message permit missing"):
+            self.sender.execute(
+                self.message,
+                activation_permit=activation.permit,
+                message_permit="",
+                principal=PRINCIPAL,
+                session_id=SESSION,
+            )
+        self.assertEqual(0, self.transport.provider_calls)
 
-        message_decision = self.kernel.evaluate(self.send)
-        self.assertEqual(("require_approval", None), (message_decision.outcome, message_decision.permit))
-        self.assertEqual(0, self.provider_calls)
-
-    def test_activation_retarget_is_denied(self):
-        activation_envelope = signed_envelope(
-            self.kernel,
-            self.activate,
-            self.verifier,
-            now_ns=NOW,
+    def test_exact_activation_and_message_permits_allow_one_provider_call(self):
+        activation = self._approve_activation()
+        message = self._approve_message()
+        claim = self.sender.execute(
+            self.message,
+            activation_permit=activation.permit,
+            message_permit=message.permit,
+            principal=PRINCIPAL,
+            session_id=SESSION,
         )
-        activation = self.kernel.evaluate_with_approval(self.activate, activation_envelope)
-        self.assertEqual("allow", activation.outcome)
-        substituted = Intent(
-            PRINCIPAL,
-            "activate_capability",
-            f"{BOT}:telegram:chat:private:999999:capability:sendMessage",
-            0,
-            SESSION,
-        )
-        self.assertFalse(self._release_capability(activation.permit, substituted))
-        self.assertFalse(self.capability_released)
-        self.assertEqual(0, self.provider_calls)
+        self.assertEqual("provider_claim", claim["claim_class"])
+        self.assertEqual(BOT_ID, claim["provider_bot_id"])
+        self.assertEqual(1, self.transport.provider_calls)
 
-    def test_exact_activation_and_exact_message_authorization_allow_one_dispatch(self):
-        activation_envelope = signed_envelope(
-            self.kernel,
-            self.activate,
-            self.verifier,
-            now_ns=NOW,
-        )
-        activation = self.kernel.evaluate_with_approval(self.activate, activation_envelope)
-        self.assertTrue(self._release_capability(activation.permit))
-        self.assertFalse(self._release_capability(activation.permit))
+        with self.assertRaisesRegex(TelegramSendRejected, "activation permit rejected"):
+            self.sender.execute(
+                self.message,
+                activation_permit=activation.permit,
+                message_permit=message.permit,
+                principal=PRINCIPAL,
+                session_id=SESSION,
+            )
+        self.assertEqual(1, self.transport.provider_calls)
 
-        message_envelope = self._message_envelope()
-        message = self.kernel.evaluate_with_approval(self.send, message_envelope)
-        self.assertEqual("allow", message.outcome)
-        self.assertTrue(self._dispatch(message.permit))
-        self.assertFalse(self._dispatch(message.permit))
-        self.assertEqual(1, self.provider_calls)
-
-    def test_message_authorization_cannot_be_retargeted(self):
-        activation_envelope = signed_envelope(
-            self.kernel,
-            self.activate,
-            self.verifier,
-            now_ns=NOW,
+    def test_activation_permit_cannot_be_retargeted(self):
+        activation = self._approve_activation()
+        substituted = TelegramOutboundMessage(BOT_ID, 999999, MESSAGE)
+        message = self._approve_message(
+            substituted,
+            approval_id="approval-message-retarget-1",
+            nonce="approval-message-retarget-nonce-1",
         )
-        activation = self.kernel.evaluate_with_approval(self.activate, activation_envelope)
-        self.assertTrue(self._release_capability(activation.permit))
+        transport = ProbeTransport(chat_id=999999)
+        sender = GovernedTelegramSender(self.kernel, transport)
+        with self.assertRaisesRegex(TelegramSendRejected, "activation permit rejected"):
+            sender.execute(
+                substituted,
+                activation_permit=activation.permit,
+                message_permit=message.permit,
+                principal=PRINCIPAL,
+                session_id=SESSION,
+            )
+        self.assertEqual(0, transport.provider_calls)
 
-        message_envelope = self._message_envelope()
-        message = self.kernel.evaluate_with_approval(self.send, message_envelope)
-        self.assertEqual("allow", message.outcome)
-        substituted = Intent(
-            PRINCIPAL,
-            "telegram_send_message",
-            f"{BOT}:{CHAT}:sha256:{hashlib.sha256(b'other text').hexdigest()}",
-            0,
-            SESSION,
+    def test_activation_permit_cannot_be_retargeted_to_another_bot(self):
+        activation = self._approve_activation()
+        substituted = TelegramOutboundMessage(654321, CHAT_ID, MESSAGE)
+        message = self._approve_message(
+            substituted,
+            approval_id="approval-message-bot-retarget-1",
+            nonce="approval-message-bot-retarget-nonce-1",
         )
-        self.assertFalse(self._dispatch(message.permit, substituted))
-        self.assertEqual(0, self.provider_calls)
+        transport = ProbeTransport(bot_id=654321)
+        sender = GovernedTelegramSender(self.kernel, transport)
+        with self.assertRaisesRegex(TelegramSendRejected, "activation permit rejected"):
+            sender.execute(
+                substituted,
+                activation_permit=activation.permit,
+                message_permit=message.permit,
+                principal=PRINCIPAL,
+                session_id=SESSION,
+            )
+        self.assertEqual(0, transport.provider_calls)
+
+    def test_message_permit_cannot_be_retargeted(self):
+        original_message = self._approve_message()
+        substituted = TelegramOutboundMessage(BOT_ID, CHAT_ID, "other text")
+        activation = self._approve_activation(
+            substituted,
+            approval_id="approval-activation-retarget-1",
+            nonce="approval-activation-retarget-nonce-1",
+        )
+        with self.assertRaisesRegex(TelegramSendRejected, "message permit rejected"):
+            self.sender.execute(
+                substituted,
+                activation_permit=activation.permit,
+                message_permit=original_message.permit,
+                principal=PRINCIPAL,
+                session_id=SESSION,
+            )
+        self.assertEqual(0, self.transport.provider_calls)
+
+    def test_message_permit_cannot_be_retargeted_to_another_bot(self):
+        original_message = self._approve_message()
+        substituted = TelegramOutboundMessage(654321, CHAT_ID, MESSAGE)
+        activation = self._approve_activation(
+            substituted,
+            approval_id="approval-activation-message-bot-retarget-1",
+            nonce="approval-activation-message-bot-retarget-nonce-1",
+        )
+        transport = ProbeTransport(bot_id=654321)
+        sender = GovernedTelegramSender(self.kernel, transport)
+        with self.assertRaisesRegex(TelegramSendRejected, "message permit rejected"):
+            sender.execute(
+                substituted,
+                activation_permit=activation.permit,
+                message_permit=original_message.permit,
+                principal=PRINCIPAL,
+                session_id=SESSION,
+            )
+        self.assertEqual(0, transport.provider_calls)
+
+    def test_transport_identity_mismatch_is_rejected_before_permit_consumption(self):
+        substituted = TelegramOutboundMessage(654321, CHAT_ID, MESSAGE)
+        activation = self._approve_activation(
+            substituted,
+            approval_id="approval-activation-bot-mismatch-1",
+            nonce="approval-activation-bot-mismatch-nonce-1",
+        )
+        message = self._approve_message(
+            substituted,
+            approval_id="approval-message-bot-mismatch-1",
+            nonce="approval-message-bot-mismatch-nonce-1",
+        )
+        with self.assertRaisesRegex(TelegramSendRejected, "bot identity mismatch"):
+            self.sender.execute(
+                substituted,
+                activation_permit=activation.permit,
+                message_permit=message.permit,
+                principal=PRINCIPAL,
+                session_id=SESSION,
+            )
+        self.assertEqual(0, self.transport.provider_calls)
+
+        matching_transport = ProbeTransport(bot_id=654321)
+        matching_sender = GovernedTelegramSender(self.kernel, matching_transport)
+        matching_sender.execute(
+            substituted,
+            activation_permit=activation.permit,
+            message_permit=message.permit,
+            principal=PRINCIPAL,
+            session_id=SESSION,
+        )
+        self.assertEqual(1, matching_transport.provider_calls)
 
 
 if __name__ == "__main__":

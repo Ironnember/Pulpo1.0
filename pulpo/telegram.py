@@ -15,6 +15,7 @@ from typing import Any, Mapping, Protocol
 from .kernel import Decision, GovernanceKernel, Intent
 
 
+TELEGRAM_ACTIVATE_ACTION = "activate_capability"
 TELEGRAM_SEND_ACTION = "telegram_send_message"
 
 
@@ -42,15 +43,23 @@ def _normalize_chat_id(chat_id: int | str) -> int | str:
         raise ValueError("telegram string chat_id must be numeric or start with @") from exc
 
 
+def _normalize_bot_id(bot_id: int) -> int:
+    if isinstance(bot_id, bool) or not isinstance(bot_id, int) or bot_id <= 0:
+        raise ValueError("telegram bot_id must be a positive integer")
+    return bot_id
+
+
 @dataclass(frozen=True)
 class TelegramOutboundMessage:
     """Exact outbound Telegram consequence object for plain sendMessage v0."""
 
+    bot_id: int
     chat_id: int | str
     text: str
     schema: str = "pulpo.telegram-send-message.v0"
 
     def __post_init__(self) -> None:
+        object.__setattr__(self, "bot_id", _normalize_bot_id(self.bot_id))
         object.__setattr__(self, "chat_id", _normalize_chat_id(self.chat_id))
         if self.schema != "pulpo.telegram-send-message.v0":
             raise ValueError("unsupported telegram message schema")
@@ -64,8 +73,24 @@ class TelegramOutboundMessage:
         return sha256(_canonical(asdict(self))).hexdigest()
 
     @property
+    def activation_resource(self) -> str:
+        return f"telegram:bot:{self.bot_id}:chat:{self.chat_id}:capability:sendMessage"
+
+    @property
     def resource(self) -> str:
-        return f"telegram:sendMessage:{self.chat_id}:{self.message_hash}"
+        return (
+            f"telegram:bot:{self.bot_id}:chat:{self.chat_id}:"
+            f"sendMessage:sha256:{self.message_hash}"
+        )
+
+    def activation_intent(self, *, principal: str, session_id: str) -> Intent:
+        return Intent(
+            principal=principal,
+            action=TELEGRAM_ACTIVATE_ACTION,
+            resource=self.activation_resource,
+            cost=0,
+            session_id=session_id,
+        )
 
     def intent(self, *, principal: str, session_id: str) -> Intent:
         return Intent(
@@ -78,6 +103,9 @@ class TelegramOutboundMessage:
 
 
 class TelegramTransport(Protocol):
+    expected_bot_id: int
+    allowed_chat_id: int
+
     def send_message(self, message: TelegramOutboundMessage) -> Mapping[str, object]: ...
 
 
@@ -86,26 +114,53 @@ class TelegramSendRejected(RuntimeError):
 
 
 class GovernedTelegramSender:
-    """Execution gate that consumes one exact message permit before transport."""
+    """Execution gate that consumes exact activation and message permits."""
 
     def __init__(self, kernel: GovernanceKernel, transport: TelegramTransport) -> None:
         self._kernel = kernel
         self._transport = transport
 
+    def evaluate_activation(
+        self,
+        message: TelegramOutboundMessage,
+        *,
+        principal: str,
+        session_id: str,
+    ) -> Decision:
+        return self._kernel.evaluate(
+            message.activation_intent(principal=principal, session_id=session_id)
+        )
+
     def evaluate(self, message: TelegramOutboundMessage, *, principal: str, session_id: str) -> Decision:
         return self._kernel.evaluate(message.intent(principal=principal, session_id=session_id))
+
+    def _validate_transport_scope(self, message: TelegramOutboundMessage) -> None:
+        if getattr(self._transport, "expected_bot_id", None) != message.bot_id:
+            raise TelegramSendRejected("telegram transport bot identity mismatch")
+        if getattr(self._transport, "allowed_chat_id", None) != message.chat_id:
+            raise TelegramSendRejected("telegram transport destination mismatch")
 
     def execute(
         self,
         message: TelegramOutboundMessage,
         *,
-        permit: str,
+        activation_permit: str,
+        message_permit: str,
         principal: str,
         session_id: str,
     ) -> Mapping[str, object]:
-        intent = message.intent(principal=principal, session_id=session_id)
-        if not isinstance(permit, str) or not permit:
-            raise TelegramSendRejected("telegram permit missing")
-        if not self._kernel.consume(permit, intent):
-            raise TelegramSendRejected("telegram permit rejected")
+        self._validate_transport_scope(message)
+        activation_intent = message.activation_intent(
+            principal=principal,
+            session_id=session_id,
+        )
+        message_intent = message.intent(principal=principal, session_id=session_id)
+        if not isinstance(activation_permit, str) or not activation_permit:
+            raise TelegramSendRejected("telegram activation permit missing")
+        if not self._kernel.consume(activation_permit, activation_intent):
+            raise TelegramSendRejected("telegram activation permit rejected")
+        if not isinstance(message_permit, str) or not message_permit:
+            raise TelegramSendRejected("telegram message permit missing")
+        if not self._kernel.consume(message_permit, message_intent):
+            raise TelegramSendRejected("telegram message permit rejected")
         return self._transport.send_message(message)
