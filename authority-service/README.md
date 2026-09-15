@@ -23,5 +23,26 @@ durable state and append-only evidence, the signer is backed by a non-exportable
 service key, ingress is restricted to the governed worker identity, and the
 exact RP ID/origin and hardware credentials are selected and enrolled.
 
+`PostgresAuthorityState` supplies the durable serialized state contract.
+`CloudSqlPostgresConnectionFactory` is the production connection boundary for
+that adapter: it pins private IP, the dedicated database, and automatic IAM
+database authentication, and exposes no password or public-IP fallback. The
+factory creates no database, user, IAM grant, or network route. Its presence and
+tests are software evidence only; they do not establish live connectivity or a
+deployed authority service.
+
+`cloudsql_probe` is a separately gated, one-shot observation of that connection
+boundary. It opens one read-only transaction, verifies the expected IAM database
+identity, encrypted session, least-privilege role, schema access, and search
+path, then rolls back. It runs one application-level attempt and classifies any
+missing or mismatched observation as unknown. There is no application-level
+retry or password/public-IP fallback. Its JSON output requires external
+reconciliation and does not become authority.
+
+`Dockerfile.cloudsql-probe` packages only this one-shot entry point on a pinned
+Linux image and runs it as an unprivileged numeric user. Building or publishing
+that image and creating or executing a cloud job remain separate provider
+effects; this repository artifact authorizes none of them.
+
 There is deliberately no enrollment, rotation, recovery, revocation, raw-sign,
 or trust-configuration API in this package.

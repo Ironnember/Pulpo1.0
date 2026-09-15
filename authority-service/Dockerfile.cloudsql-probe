@@ -1,0 +1,16 @@
+FROM python:3.11-slim-bookworm@sha256:b1add8a6f2aca6bcfcf0b9c9b522352f7ce0d62a3d556a2f2f32511aa0cca250
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
+
+WORKDIR /app
+
+COPY pyproject.toml README.md ./
+COPY src ./src
+
+RUN python -m pip install --no-cache-dir --disable-pip-version-check '.[gcp-sql]' \
+    && python -m pip check
+
+USER 65532:65532
+
+ENTRYPOINT ["python", "-m", "pulpo_authority_service.cloudsql_probe"]

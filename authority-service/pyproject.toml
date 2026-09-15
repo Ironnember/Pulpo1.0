@@ -21,6 +21,10 @@ test = [
 ]
 gcp-auth = ["google-auth==2.57.0"]
 gcp-kms = ["google-cloud-kms==3.16.0"]
+gcp-sql = [
+  "cloud-sql-python-connector==1.22.0",
+  "pg8000==1.31.5",
+]
 gcp-storage = ["google-cloud-storage==3.13.1"]
 
 [tool.setuptools.packages.find]
