@@ -1,0 +1,80 @@
+name: Cloud SQL Probe Container Proof
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  cloudsql-probe-container:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      SOURCE_SHA: ${{ github.event.pull_request.head.sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+
+      - name: Build exact probe image
+        run: docker build -f authority-service/Dockerfile.probe -t pulpo-authority-cloudsql-probe:${SOURCE_SHA} .
+
+      - name: Verify capability-stripped probe container
+        shell: bash
+        run: |
+          set -euo pipefail
+          image="pulpo-authority-cloudsql-probe:${SOURCE_SHA}"
+
+          test -n "$SOURCE_SHA"
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          test "$(docker inspect -f '{{.Config.User}}' "$image")" = "pulpo"
+          test -z "$(docker inspect -f '{{json .Config.ExposedPorts}}' "$image" | sed 's/null//')"
+          test "$(docker inspect -f '{{json .Config.Cmd}}' "$image")" = '["python","-m","pulpo_authority_service.cloud_sql_probe"]'
+
+          docker run --rm \
+            --network none \
+            --read-only \
+            --tmpfs /tmp:rw,noexec,nosuid,size=16m \
+            --cap-drop ALL \
+            --security-opt no-new-privileges:true \
+            --entrypoint python \
+            "$image" -c "
+          import os
+          from pathlib import Path
+          from pulpo_authority_service.cloud_sql_probe import probe_authority_database
+          forbidden = {
+              'GOOGLE_APPLICATION_CREDENTIALS',
+              'PULPO_KERNEL_SECRET_HEX',
+              'PULPO_CUSTODY_SECRET_HEX',
+              'NAMECOM_SANDBOX_EXECUTOR_TOKEN',
+              'NAMECOM_SANDBOX_OBSERVER_TOKEN',
+          }
+          assert forbidden.isdisjoint(os.environ), sorted(forbidden.intersection(os.environ))
+          assert callable(probe_authority_database)
+          package = Path('/opt/pulpo/authority-service/src/pulpo_authority_service')
+          assert sorted(path.name for path in package.glob('*.py')) == [
+              'cloud_sql_probe.py',
+              'cloud_sql_state.py',
+          ]
+          "
+
+      - name: Preserve exact built image bytes and manifest
+        shell: bash
+        run: |
+          set -euo pipefail
+          image="pulpo-authority-cloudsql-probe:${SOURCE_SHA}"
+          mkdir -p probe-artifact
+          docker image inspect "$image" > probe-artifact/docker-image-inspect.json
+          docker save "$image" | gzip -1 > probe-artifact/pulpo-authority-cloudsql-probe.tar.gz
+          sha256sum probe-artifact/pulpo-authority-cloudsql-probe.tar.gz | tee probe-artifact/pulpo-authority-cloudsql-probe.tar.gz.sha256
+          printf '%s\n' "$SOURCE_SHA" > probe-artifact/source-head.txt
+
+      - name: Upload exact probe artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: pulpo-authority-cloudsql-probe-${{ github.event.pull_request.head.sha }}
+          path: probe-artifact/
+          if-no-files-found: error
+          retention-days: 7
