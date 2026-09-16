@@ -154,6 +154,7 @@ def export_mcp_snapshot(
 
     descriptor = -1
     temporary = None
+    replace_started = False
     published = False
     try:
         open_flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
@@ -178,6 +179,7 @@ def export_mcp_snapshot(
             handle.write(payload)
             handle.flush()
             os.fsync(handle.fileno())
+        replace_started = True
         os.replace(os.fspath(parent / temporary), os.fspath(target))
         temporary = None
         published = True
@@ -205,7 +207,7 @@ def export_mcp_snapshot(
     except OSError as exc:
         reason = (
             "mcp_snapshot_export_commit_unknown"
-            if published
+            if replace_started or published
             else "mcp_snapshot_export_failed"
         )
         raise MCPBoundaryError(reason) from exc
