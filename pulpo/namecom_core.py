@@ -198,13 +198,16 @@ class NameComCoreClient:
     ) -> tuple[dict[str, Any], NameComResponse]:
         if order.registrar != "name.com":
             raise NameComViolation("namecom_registrar_mismatch")
-        # One-year standard-registration V0 only. Disable autorenew to avoid a
-        # future unattended financial consequence. Lock and requested privacy
-        # are included in the exact create object.
+        if order.auto_renew_enabled is not False:
+            raise NameComViolation("namecom_autorenew_not_supported")
+        # One-year standard-registration V0 only. The exact governed order
+        # explicitly requires auto-renew disabled to avoid a future unattended
+        # financial consequence. Lock and requested privacy remain bound in the
+        # provider create object.
         payload = {
             "domain": {
                 "domainName": order.domain,
-                "autorenewEnabled": False,
+                "autorenewEnabled": order.auto_renew_enabled,
                 "locked": True,
                 "privacyEnabled": order.privacy_required,
             },
@@ -253,6 +256,8 @@ class NameComCoreRegistrarAdapter:
 
         if order.registrar != "name.com":
             raise NameComViolation("namecom_registrar_mismatch")
+        if order.auto_renew_enabled is not False:
+            raise NameComViolation("namecom_autorenew_not_supported")
         decoded = self.client.check_availability(order.domain)
         results = decoded.get("results")
         if not isinstance(results, list):
@@ -283,6 +288,7 @@ class NameComCoreRegistrarAdapter:
             "purchase_type": purchase_type or "registration",
             "purchase_price_cents": purchase_cents,
             "renewal_price_cents": renewal_cents,
+            "auto_renew_enabled": order.auto_renew_enabled,
             "premium": bool(result.get("premium", False)),
             "reason": result.get("reason"),
         }
@@ -297,6 +303,8 @@ class NameComCoreRegistrarAdapter:
     ) -> RegistrarResult:
         if max_charge_cents != order.purchase_price_cents:
             raise NameComViolation("namecom_charge_cap_order_mismatch")
+        if order.auto_renew_enabled is not False:
+            raise NameComViolation("namecom_autorenew_not_supported")
         decoded, response = self.client.create_domain(
             order,
             idempotency_key=idempotency_key,

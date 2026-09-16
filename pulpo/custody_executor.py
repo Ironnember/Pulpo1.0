@@ -130,16 +130,18 @@ class TrustedDomainExecutor:
 
         preflight_hash = adapter.preflight(order)
         _require_hash(preflight_hash, "provider_preflight_hash")
-        provider_request_id = f"domain:{governed.attempt_id}:preflight:{preflight_hash}"
+        local_request_id = f"domain:{governed.attempt_id}:preflight:{preflight_hash}"
 
         # Release the transmission right before the network call, then require
         # its canonical evidence projection before any external write occurs.
+        # The identity stored at this point is deliberately local: the provider
+        # has not yet returned its own transaction identifier.
         head = self.custody.snapshot()
         transmission = self.custody.authorize_transmission(
             expected_epoch=head.epoch,
             expected_state_root=head.state_root,
             attempt_id=governed.attempt_id,
-            provider_request_id=provider_request_id,
+            provider_request_id=local_request_id,
         )
         try:
             self._project_evidence()
@@ -167,26 +169,64 @@ class TrustedDomainExecutor:
                 # The already-projected transmission right remains the safety
                 # boundary. Pending evidence blocks any further authority.
                 pass
+            # A response was not safely converted into provider-native identity.
+            # The local request identity therefore remains in custody, and the
+            # observer must classify the attempt unresolved rather than guess or
+            # retry the external write.
             raise ExternalConsequenceUnknown(governed.attempt_id) from exc
 
+        # A successful provider response is still only a claim. Before it can be
+        # independently reconciled, persist the provider-native transaction
+        # identifier returned inside the bounded RegistrarResult. Name.com maps
+        # this to `namecom-order:<numeric id>`. This reuses the existing custody
+        # field: the earlier local request identity remains preserved in the
+        # already-projected REQUEST_TRANSMITTED transition receipt, while the
+        # current custody snapshot advances to provider-native identity.
+        provider_reference = result.payment_id
+        if not isinstance(provider_reference, str) or not provider_reference:
+            # Reality may already have changed. Never restore the transmission
+            # right merely because the provider response lacked durable identity.
+            current = self.custody.snapshot()
+            try:
+                self.custody.require_reconciliation(
+                    expected_epoch=current.epoch,
+                    expected_state_root=current.state_root,
+                    attempt_id=governed.attempt_id,
+                )
+                self._project_evidence()
+            except Exception:
+                pass
+            raise ExternalConsequenceUnknown(governed.attempt_id)
+
         current = self.custody.snapshot()
-        self.custody.require_reconciliation(
-            expected_epoch=current.epoch,
-            expected_state_root=current.state_root,
-            attempt_id=governed.attempt_id,
-        )
         try:
+            # One atomic existing-custody transition both replaces the current
+            # local request identifier with the provider-native reference and
+            # closes execution by moving into reconciliation-required state.
+            self.custody._transition_attempt(
+                expected_epoch=current.epoch,
+                expected_state_root=current.state_root,
+                attempt_id=governed.attempt_id,
+                required_states=frozenset({self.custody.REQUEST_TRANSMITTED}),
+                next_state=self.custody.RECONCILIATION_REQUIRED,
+                payload={
+                    "reason": "external_consequence_not_yet_verified",
+                    "provider_request_id": provider_reference,
+                    "provider_identity_source": "provider_response",
+                },
+                updates={"provider_request_id": provider_reference},
+            )
             self._project_evidence()
         except Exception as exc:
-            # Reality may already have changed; do not surface provider success
-            # when canonical accountability has not converged.
+            # The external effect may already exist. Failure to durably bind the
+            # provider-native identity is UNKNOWN and cannot recreate retry.
             raise ExternalConsequenceUnknown(governed.attempt_id) from exc
 
         claim_material = {
             "schema": "pulpo.provider-attempt-claim.v0",
             "attempt_id": governed.attempt_id,
             "order_hash": order.order_hash,
-            "provider_request_id": provider_request_id,
+            "provider_request_id": provider_reference,
             "preflight_hash": preflight_hash,
             "idempotency_key": transmission.idempotency_key,
             "result": asdict(result),
@@ -194,7 +234,7 @@ class TrustedDomainExecutor:
         return ProviderAttemptClaim(
             attempt_id=governed.attempt_id,
             order_hash=order.order_hash,
-            provider_request_id=provider_request_id,
+            provider_request_id=provider_reference,
             preflight_hash=preflight_hash,
             idempotency_key=transmission.idempotency_key,
             result=result,
