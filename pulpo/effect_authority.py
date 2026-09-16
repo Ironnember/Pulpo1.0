@@ -542,7 +542,7 @@ def verify_effect_authority(
     return EffectAuthorityCheck("allow", "exact_effect_authority_match", expected, observed_hash)
 
 
-def consume_remote_effect_permit(
+def _consume_remote_effect_permit_exact(
     kernel: GovernanceKernel,
     permit: str,
     intent: Intent,
@@ -614,6 +614,53 @@ def consume_remote_effect_permit(
             check.observed_envelope_hash,
         ), False
     return check, True
+
+
+def consume_remote_effect_permit(
+    kernel: GovernanceKernel,
+    permit: str,
+    intent: Intent,
+    envelope: EffectAuthorityEnvelope | None,
+    requested_effect: RemoteEffect | None,
+    observed_context: ExecutionContext | None,
+    *,
+    observed_pre_state: str | None,
+    requested_derived_effects: Iterable[str] = (),
+    requested_consequence: ConsequenceVector | None = None,
+    now_ns: int,
+    observation_complete: bool = True,
+) -> tuple[EffectAuthorityCheck, bool]:
+    """Consume only zero-consequence exact effects through the non-aggregate path.
+
+    Any effect that declares a non-zero consequence must cross the durable
+    aggregate-custody path. This prevents an adapter from bypassing sequence
+    ceilings by selecting the exact-effect helper directly.
+    """
+
+    if isinstance(envelope, EffectAuthorityEnvelope) and envelope.planned_consequence != ConsequenceVector():
+        expected = required_effect_authority_hash(intent.resource)
+        return (
+            EffectAuthorityCheck(
+                "deny",
+                "aggregate_custody_required",
+                expected,
+                envelope.envelope_hash,
+            ),
+            False,
+        )
+    return _consume_remote_effect_permit_exact(
+        kernel,
+        permit,
+        intent,
+        envelope,
+        requested_effect,
+        observed_context,
+        observed_pre_state=observed_pre_state,
+        requested_derived_effects=requested_derived_effects,
+        requested_consequence=requested_consequence,
+        now_ns=now_ns,
+        observation_complete=observation_complete,
+    )
 
 
 def reconcile_remote_effect(
@@ -717,7 +764,7 @@ def authorize_remote_effect_attempt_with_aggregate(
     except AggregateConsequenceViolation as exc:
         return AggregateRemoteEffectAuthorization("deny", str(exc), False, False)
 
-    check, permit_consumed = consume_remote_effect_permit(
+    check, permit_consumed = _consume_remote_effect_permit_exact(
         kernel, permit, intent, envelope, requested_effect, observed_context,
         observed_pre_state=observed_pre_state,
         requested_derived_effects=requested_derived_effects,
