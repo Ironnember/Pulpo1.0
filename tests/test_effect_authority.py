@@ -42,12 +42,12 @@ class RemoteEffectAuthorityTests(unittest.TestCase):
             desired_post_state=NEW_SHA,
             parameters=(("force", "false"),),
         )
-        self.consequence = ConsequenceVector(mutations=1, compute_units=1)
+        self.consequence = ConsequenceVector()
         self.envelope = EffectAuthorityEnvelope(
             effect=self.effect,
             allowed_derived_effects=("github_actions_trigger", "review_invalidation"),
             planned_consequence=self.consequence,
-            consequence_ceiling=ConsequenceVector(mutations=1, compute_units=1),
+            consequence_ceiling=ConsequenceVector(),
             expires_at_ns=NOW + 10_000,
         )
         resource = bind_resource_to_effect_authority("github:branch-reconcile", self.envelope)
@@ -338,7 +338,12 @@ class RemoteEffectAuthorityTests(unittest.TestCase):
                 expected_pre_state=(str(index) * 40)[:40],
                 desired_post_state=(str(index + 1) * 40)[:40],
             )
-            envelopes.append(replace(self.envelope, effect=effect))
+            envelopes.append(replace(
+                self.envelope,
+                effect=effect,
+                planned_consequence=ConsequenceVector(mutations=1, compute_units=1),
+                consequence_ceiling=ConsequenceVector(mutations=1, compute_units=1),
+            ))
         result = evaluate_sequence_ceiling(
             envelopes,
             ConsequenceVector(mutations=3, compute_units=5),
@@ -355,7 +360,17 @@ class RemoteEffectAuthorityTests(unittest.TestCase):
             expected_pre_state=NEW_SHA,
             desired_post_state=OTHER_SHA,
         )
-        second = replace(self.envelope, effect=second_effect)
+        first = replace(
+            first,
+            planned_consequence=ConsequenceVector(mutations=1, compute_units=1),
+            consequence_ceiling=ConsequenceVector(mutations=1, compute_units=1),
+        )
+        second = replace(
+            self.envelope,
+            effect=second_effect,
+            planned_consequence=ConsequenceVector(mutations=1, compute_units=1),
+            consequence_ceiling=ConsequenceVector(mutations=1, compute_units=1),
+        )
         result = evaluate_sequence_ceiling(
             (first, second),
             ConsequenceVector(mutations=2, compute_units=2),
@@ -424,45 +439,40 @@ class RemoteEffectAuthorityTests(unittest.TestCase):
         )
         self.assertEqual(("deny", "effect_context_surface_mismatch", False), (check.outcome, check.reason, consumed))
 
-    def test_26_separately_issued_permits_do_not_yet_share_a_rolling_sequence_ceiling(self):
-        # This is an executable boundary finding, not a success claim.
-        envelopes = []
-        consumed_count = 0
-        for index in range(4):
-            effect = replace(
-                self.effect,
-                resource=f"refs/heads/proof/separate-{index}",
-                expected_pre_state=(str(index) * 40)[:40],
-                desired_post_state=(str(index + 1) * 40)[:40],
-            )
-            envelope = replace(self.envelope, effect=effect)
-            envelopes.append(envelope)
-            resource = bind_resource_to_effect_authority(f"github:separate-{index}", envelope)
-            resource = bind_resource_to_execution_context(resource, self.context)
-            intent = replace(self.intent, resource=resource)
-            permit = self.kernel.evaluate(intent).permit
-            check, consumed = consume_remote_effect_permit(
-                self.kernel,
-                permit,
-                intent,
-                envelope,
-                effect,
-                self.context,
-                observed_pre_state=effect.expected_pre_state,
-                requested_derived_effects=("github_actions_trigger",),
-                requested_consequence=self.consequence,
-                now_ns=NOW,
-            )
-            self.assertEqual("allow", check.outcome)
-            consumed_count += int(consumed)
-
-        aggregate = evaluate_sequence_ceiling(
-            envelopes,
-            ConsequenceVector(mutations=3, compute_units=4),
+    def test_26_nonzero_consequence_cannot_bypass_aggregate_custody_via_exact_helper(self):
+        effect = replace(
+            self.effect,
+            resource="refs/heads/proof/nonzero-direct",
         )
-        self.assertEqual(4, consumed_count)
-        self.assertEqual("deny", aggregate.outcome)
-        self.assertIn("mutations", aggregate.reason)
+        consequence = ConsequenceVector(mutations=1, compute_units=1)
+        envelope = replace(
+            self.envelope,
+            effect=effect,
+            planned_consequence=consequence,
+            consequence_ceiling=consequence,
+        )
+        resource = bind_resource_to_effect_authority("github:nonzero-direct", envelope)
+        resource = bind_resource_to_execution_context(resource, self.context)
+        intent = replace(self.intent, resource=resource)
+        permit = self.kernel.evaluate(intent).permit
+        check, consumed = consume_remote_effect_permit(
+            self.kernel,
+            permit,
+            intent,
+            envelope,
+            effect,
+            self.context,
+            observed_pre_state=effect.expected_pre_state,
+            requested_derived_effects=("github_actions_trigger",),
+            requested_consequence=consequence,
+            now_ns=NOW,
+        )
+        self.assertEqual(
+            ("deny", "aggregate_custody_required", False),
+            (check.outcome, check.reason, consumed),
+        )
+        self.assertTrue(self.kernel.consume(permit, intent))
+
 
 
 if __name__ == "__main__":
