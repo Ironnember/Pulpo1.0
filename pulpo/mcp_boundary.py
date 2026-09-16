@@ -141,8 +141,16 @@ def export_mcp_snapshot(
         os.close(directory_descriptor)
         raise MCPBoundaryError("mcp_snapshot_parent_invalid")
 
+    descriptor_relative = os.name != "nt"
     try:
-        existing = os.stat(os.fspath(target), follow_symlinks=False)
+        if descriptor_relative:
+            existing = os.stat(
+                target.name,
+                dir_fd=directory_descriptor,
+                follow_symlinks=False,
+            )
+        else:
+            existing = os.stat(os.fspath(target), follow_symlinks=False)
     except FileNotFoundError:
         existing = None
     except OSError as exc:
@@ -163,9 +171,16 @@ def export_mcp_snapshot(
             open_flags |= os.O_NOFOLLOW
         for _ in range(100):
             candidate = f".{target.name}.{secrets.token_hex(8)}.tmp"
-            temporary_path = parent / candidate
             try:
-                descriptor = os.open(os.fspath(temporary_path), open_flags, 0o600)
+                if descriptor_relative:
+                    descriptor = os.open(
+                        candidate,
+                        open_flags,
+                        0o600,
+                        dir_fd=directory_descriptor,
+                    )
+                else:
+                    descriptor = os.open(os.fspath(parent / candidate), open_flags, 0o600)
             except FileExistsError:
                 continue
             temporary = candidate
@@ -180,14 +195,29 @@ def export_mcp_snapshot(
             handle.flush()
             os.fsync(handle.fileno())
         replace_started = True
-        os.replace(os.fspath(parent / temporary), os.fspath(target))
+        if descriptor_relative:
+            os.replace(
+                temporary,
+                target.name,
+                src_dir_fd=directory_descriptor,
+                dst_dir_fd=directory_descriptor,
+            )
+        else:
+            os.replace(os.fspath(parent / temporary), os.fspath(target))
         temporary = None
         published = True
         os.fsync(directory_descriptor)
 
         try:
             current_parent = parent.lstat()
-            published_target = target.lstat()
+            if descriptor_relative:
+                published_target = os.stat(
+                    target.name,
+                    dir_fd=directory_descriptor,
+                    follow_symlinks=False,
+                )
+            else:
+                published_target = target.lstat()
             requested_target = target.lstat()
         except OSError as exc:
             raise MCPBoundaryError("mcp_snapshot_export_commit_unknown") from exc
@@ -217,7 +247,10 @@ def export_mcp_snapshot(
                 os.close(descriptor)
             if temporary is not None:
                 try:
-                    os.unlink(os.fspath(parent / temporary))
+                    if descriptor_relative:
+                        os.unlink(temporary, dir_fd=directory_descriptor)
+                    else:
+                        os.unlink(os.fspath(parent / temporary))
                 except OSError:
                     pass
         finally:
