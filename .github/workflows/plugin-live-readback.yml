@@ -1,0 +1,138 @@
+name: Plugin Live Readback Proof
+
+on:
+  push:
+    branches:
+      - proof/plugin-live-readback-v0
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  live-readback:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out proof branch
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install admitted Pulpo MCP package
+        run: python -m pip install -e '.[mcp]'
+
+      - name: Create capability-free frozen snapshot
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          from pulpo import GovernanceKernel, Policy, PulpoOrchestrator
+          from pulpo.mcp_boundary import export_mcp_snapshot
+
+          destination = Path('/tmp/pulpo-plugin-data')
+          destination.mkdir(mode=0o700)
+          snapshot_path = destination / 'mcp-read-snapshot.json'
+
+          kernel = GovernanceKernel(
+              Policy(frozenset({'read'}), 0),
+              secret=b'plugin-live-readback-proof',
+              clock=lambda: 2_000_000,
+          )
+          orchestrator = PulpoOrchestrator(kernel)
+          snapshot = export_mcp_snapshot(orchestrator, snapshot_path)
+
+          assert snapshot.audit_valid is True
+          assert snapshot.audit_records == 0
+          assert snapshot.audit_tip is None
+          assert snapshot_path.stat().st_mode & 0o777 == 0o600
+          assert kernel.audit == []
+          print('SNAPSHOT_EXPORT_OK')
+          PY
+
+      - name: Launch real stdio server and call MCP tools
+        run: |
+          python - <<'PY'
+          import asyncio
+          import json
+          import os
+          import sys
+
+          from mcp import ClientSession, StdioServerParameters
+          from mcp.client.stdio import stdio_client
+
+          SNAPSHOT = '/tmp/pulpo-plugin-data/mcp-read-snapshot.json'
+
+          def structured(result):
+              value = getattr(result, 'structuredContent', None)
+              if value is None:
+                  value = getattr(result, 'structured_content', None)
+              if value is not None:
+                  return value
+              for block in result.content:
+                  text = getattr(block, 'text', None)
+                  if text:
+                      try:
+                          return json.loads(text)
+                      except json.JSONDecodeError:
+                          continue
+              raise AssertionError('tool returned no structured JSON payload')
+
+          async def main():
+              server = StdioServerParameters(
+                  command=sys.executable,
+                  args=['-m', 'pulpo.mcp_plugin', '--snapshot', SNAPSHOT],
+                  cwd=os.getcwd(),
+              )
+              async with stdio_client(server) as (read, write):
+                  async with ClientSession(read, write) as session:
+                      await session.initialize()
+
+                      tools = await session.list_tools()
+                      names = {tool.name for tool in tools.tools}
+                      assert names == {'pulpo_propose_intent', 'pulpo_get_evidence'}, names
+
+                      evidence_result = await session.call_tool('pulpo_get_evidence', arguments={})
+                      assert not getattr(evidence_result, 'isError', False)
+                      assert not getattr(evidence_result, 'is_error', False)
+                      evidence = structured(evidence_result)
+                      assert evidence['schema'] == 'pulpo.mcp-evidence.v1'
+                      assert evidence['freshness'] == 'frozen'
+                      assert evidence['canonical_state_mutation'] is False
+                      assert evidence['governed_effect'] == 'none'
+                      assert evidence['authority_effect'] == 'none'
+                      assert evidence['audit_valid'] is True
+                      assert evidence['audit_records'] == 0
+                      assert evidence['audit_tip'] is None
+
+                      proposal_result = await session.call_tool(
+                          'pulpo_propose_intent',
+                          arguments={
+                              'target_id': 'live-readback-target',
+                              'principal': 'agent:planner',
+                              'action': 'read',
+                              'resource': 'repo:file',
+                              'cost': 0,
+                              'session_id': 'live-readback-session',
+                              'version': 1,
+                          },
+                      )
+                      assert not getattr(proposal_result, 'isError', False)
+                      assert not getattr(proposal_result, 'is_error', False)
+                      proposal = structured(proposal_result)
+                      assert proposal['schema'] == 'pulpo.mcp-proposal.v2'
+                      assert proposal['freshness'] == 'frozen'
+                      assert proposal['canonical_state_mutation'] is False
+                      assert proposal['governed_effect'] == 'none'
+                      assert proposal['authority_effect'] == 'none'
+                      assert 'permit' not in proposal
+                      assert 'target_hash' not in proposal
+
+                      print('MCP_TOOLS=' + ','.join(sorted(names)))
+                      print('EVIDENCE_READBACK_OK')
+                      print('PROPOSAL_READBACK_OK')
+
+          asyncio.run(main())
+          PY
