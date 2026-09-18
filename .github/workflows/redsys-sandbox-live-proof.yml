@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   fire:
-    if: ${{ github.run_attempt == 1 && github.event.head_commit.message == 'FIRE Redsys sandbox a446649f6d45487da4ec208515467d2e4447008e914856b1647ec732ec64d78d' }}
+    if: ${{ github.run_attempt == 1 && github.event.head_commit.message == 'FIRE Redsys sandbox e917948d877d44e9ed2e4e0f890ca113b77dc6ef5e186f9a6e196588ac781ee7' }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
