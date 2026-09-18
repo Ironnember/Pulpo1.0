@@ -1,0 +1,62 @@
+name: Redsys Sandbox Live Proof
+
+on:
+  push:
+    branches:
+      - proof/redsys-sandbox-governance-v0
+
+permissions:
+  contents: read
+
+jobs:
+  fire:
+    if: ${{ github.run_attempt == 1 && github.event.head_commit.message == 'FIRE Redsys sandbox a446649f6d45487da4ec208515467d2e4447008e914856b1647ec732ec64d78d' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install reviewed crypto dependency
+        run: python -m pip install '.[authority]'
+      - name: Re-run exact Redsys denial matrix before FIRE
+        run: python -W error -m unittest tests.test_redsys_sandbox_governance -v
+      - name: Compile exact live runner
+        run: python -m py_compile scripts/run_redsys_sandbox_live_v0.py
+      - name: Load official public Redsys sandbox execution inputs
+        shell: bash
+        run: |
+          python - <<'PY'
+          import html
+          import os
+          import re
+          import urllib.request
+
+          url = "https://pagosonline.redsys.es/desarrolladores-inicio/integrate-con-nosotros/tarjetas-y-entornos-de-prueba/"
+          text = urllib.request.urlopen(url, timeout=20).read().decode("utf-8", "replace")
+          text = html.unescape(re.sub(r"<[^>]+>", " ", text))
+          text = re.sub(r"\s+", " ", text)
+
+          key_match = re.search(r"Clave de firma SHA-256.{0,500}?([A-Za-z0-9]{32,64})", text, re.I)
+          visa_match = re.search(r"VISA.{0,500}?((?:\d[\s]*){16}).{0,120}?(\d{2}/\d{2}).{0,80}?(\d{3})", text, re.I)
+          if not key_match or not visa_match:
+              raise SystemExit("official Redsys sandbox inputs not found")
+
+          signing_key = key_match.group(1)
+          pan = re.sub(r"\s+", "", visa_match.group(1))
+          expiry_mm_yy = visa_match.group(2)
+          cvv = visa_match.group(3)
+          mm, yy = expiry_mm_yy.split("/")
+          expiry = yy + mm
+
+          for value in (signing_key, pan, expiry, cvv):
+              print(f"::add-mask::{value}")
+          with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as fh:
+              fh.write(f"REDSYS_SANDBOX_SIGNING_KEY={signing_key}\n")
+              fh.write(f"REDSYS_SANDBOX_PAN={pan}\n")
+              fh.write(f"REDSYS_SANDBOX_EXPIRY={expiry}\n")
+              fh.write(f"REDSYS_SANDBOX_CVV={cvv}\n")
+          PY
+      - name: FIRE one exact Redsys sandbox payment
+        run: python scripts/run_redsys_sandbox_live_v0.py
