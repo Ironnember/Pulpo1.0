@@ -54,6 +54,7 @@ class RedsysPayment:
     principal: str
     session_id: str
     expires_at_ns: int
+    operation_mode: str = "moto"
     environment: str = "sandbox"
     schema: str = "pulpo.redsys-payment.v0"
 
@@ -66,6 +67,7 @@ class RedsysPayment:
             self.transaction_type,
             self.principal,
             self.session_id,
+            self.operation_mode,
             self.environment,
             self.schema,
         )
@@ -79,6 +81,8 @@ class RedsysPayment:
             raise TypeError("expires_at_ns must be an integer")
         if self.expires_at_ns <= 0:
             raise ValueError("expires_at_ns must be positive")
+        if self.operation_mode != "moto":
+            raise ValueError("only the bounded Redsys MOTO proof mode is supported")
         if self.environment != "sandbox":
             raise ValueError("only the Redsys sandbox environment is supported")
         if self.schema != "pulpo.redsys-payment.v0":
@@ -94,7 +98,7 @@ class RedsysPayment:
             surface="redsys",
             authority_scope=(
                 f"merchant:{self.merchant_code}:terminal:{self.terminal}:"
-                f"environment:{self.environment}"
+                f"mode:{self.operation_mode}:environment:{self.environment}"
             ),
             principal=self.principal,
             connection=f"origin:{REDSYS_SANDBOX_ORIGIN}",
@@ -176,6 +180,7 @@ class RedsysSandboxGateway:
             "amount_cents": payment.amount_cents,
             "currency": payment.currency,
             "transaction_type": payment.transaction_type,
+            "operation_mode": payment.operation_mode,
             "environment": payment.environment,
             "payment_hash": payment.payment_hash,
         }
@@ -194,6 +199,7 @@ class RedsysSandboxGateway:
             "amount_cents": payment.amount_cents,
             "currency": payment.currency,
             "transaction_type": payment.transaction_type,
+            "operation_mode": payment.operation_mode,
             "environment": payment.environment,
             "payment_hash": payment.payment_hash,
         }
