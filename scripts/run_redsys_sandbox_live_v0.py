@@ -32,6 +32,7 @@ from pulpo.redsys import (
     RedsysExternalRealityUnknown,
     RedsysPayment,
     RedsysSandboxGateway,
+    classify_rest_response_shape,
     payment_intent,
 )
 
@@ -151,6 +152,27 @@ def _live_transport(origin: str, path: str, payload: dict[str, Any]) -> dict[str
     }
 
     raw_response = _post_once(origin + path, wrapper)
+    response_shape = classify_rest_response_shape(raw_response)
+    print(
+        json.dumps(
+            {
+                "schema": "pulpo.redsys-provider-response-shape.v0",
+                "payment_hash": payload["payment_hash"],
+                "response_shape": response_shape.outcome,
+                "error_code": response_shape.error_code,
+                "response_hash": response_shape.response_hash,
+                "top_level_keys": response_shape.top_level_keys,
+                "authority_effect": response_shape.authority_effect,
+            },
+            sort_keys=True,
+        )
+    )
+    if response_shape.outcome == "unprocessed_error":
+        raise RuntimeError(
+            f"Redsys request not processed: {response_shape.error_code}"
+        )
+    if response_shape.outcome != "signed_processed":
+        raise RuntimeError("Redsys response shape unrecognized")
 
     response_version = _casefold_get(raw_response, "Ds_SignatureVersion")
     response_parameters = _casefold_get(raw_response, "Ds_MerchantParameters")
