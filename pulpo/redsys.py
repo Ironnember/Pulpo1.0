@@ -120,6 +120,57 @@ class RedsysExecutionResult:
     receipt: RedsysProviderReceipt
 
 
+@dataclass(frozen=True)
+class RedsysResponseShape:
+    outcome: str
+    error_code: str | None
+    response_hash: str
+    top_level_keys: tuple[str, ...]
+    authority_effect: str = "none"
+
+
+def classify_rest_response_shape(response: Mapping[str, Any]) -> RedsysResponseShape:
+    """Classify a Redsys REST response without converting it into authority.
+
+    Redsys documents two top-level response forms: a signed wrapper for a
+    processed operation, and an unsigned errorCode object when a request
+    could not be processed. Any other shape remains unknown.
+    """
+
+    if not isinstance(response, Mapping):
+        raise RedsysViolation("redsys_response_invalid")
+    normalized = dict(response)
+    keys = tuple(sorted(str(key) for key in normalized))
+    response_hash = sha256(_canonical(normalized)).hexdigest()
+    lower = {str(key).casefold(): value for key, value in normalized.items()}
+    error_code = lower.get("errorcode")
+    if isinstance(error_code, str) and error_code:
+        return RedsysResponseShape(
+            "unprocessed_error",
+            error_code,
+            response_hash,
+            keys,
+        )
+    required = {
+        "ds_signatureversion",
+        "ds_merchantparameters",
+        "ds_signature",
+    }
+    if required.issubset(lower):
+        return RedsysResponseShape(
+            "signed_processed",
+            None,
+            response_hash,
+            keys,
+        )
+    return RedsysResponseShape(
+        "unrecognized",
+        None,
+        response_hash,
+        keys,
+    )
+
+
 def payment_intent(payment: RedsysPayment) -> Intent:
     """Bind the exact sandbox payment and execution context into one Pulpo intent."""
 
