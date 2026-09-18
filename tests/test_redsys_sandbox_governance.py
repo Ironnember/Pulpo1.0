@@ -12,6 +12,7 @@ from pulpo.redsys import (
     RedsysPayment,
     RedsysSandboxGateway,
     RedsysViolation,
+    classify_rest_response_shape,
     payment_intent,
     refund_intent,
 )
@@ -76,6 +77,31 @@ class RedsysSandboxGovernanceTests(unittest.TestCase):
         self.assertEqual("allow", decision.outcome)
         self.assertIsNotNone(decision.permit)
         return kernel, intent, decision.permit
+
+    def test_processed_response_shape_is_classified_without_authority_effect(self):
+        shape = classify_rest_response_shape(
+            {
+                "Ds_SignatureVersion": "HMAC_SHA512_V2",
+                "Ds_MerchantParameters": "encoded",
+                "Ds_Signature": "signature",
+            }
+        )
+        self.assertEqual("signed_processed", shape.outcome)
+        self.assertIsNone(shape.error_code)
+        self.assertEqual("none", shape.authority_effect)
+
+    def test_unprocessed_error_shape_is_classified_without_becoming_success(self):
+        shape = classify_rest_response_shape({"errorCode": "SIS0042"})
+        self.assertEqual("unprocessed_error", shape.outcome)
+        self.assertEqual("SIS0042", shape.error_code)
+        self.assertEqual(("errorCode",), shape.top_level_keys)
+        self.assertEqual("none", shape.authority_effect)
+
+    def test_unknown_response_shape_remains_unknown(self):
+        shape = classify_rest_response_shape({"unexpected": "value"})
+        self.assertEqual("unrecognized", shape.outcome)
+        self.assertIsNone(shape.error_code)
+        self.assertEqual("none", shape.authority_effect)
 
     def test_no_permit_makes_zero_provider_calls(self):
         payment = self.payment()
