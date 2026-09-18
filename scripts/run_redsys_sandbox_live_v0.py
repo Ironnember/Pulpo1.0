@@ -37,7 +37,7 @@ from pulpo.redsys import (
 )
 
 
-EXPECTED_PAYMENT_HASH = "a446649f6d45487da4ec208515467d2e4447008e914856b1647ec732ec64d78d"
+EXPECTED_PAYMENT_HASH = "e917948d877d44e9ed2e4e0f890ca113b77dc6ef5e186f9a6e196588ac781ee7"
 SIGNATURE_VERSION = "HMAC_SHA512_V2"
 
 
@@ -223,13 +223,13 @@ def main() -> int:
     payment = RedsysPayment(
         merchant_code="999008881",
         terminal="872",
-        order_id="180920260001",
+        order_id="180920260002",
         amount_cents=123,
         currency="978",
         transaction_type="0",
         principal="agent:commerce",
-        session_id="redsys-sandbox-live-moto-1",
-        expires_at_ns=1789722000000000000,
+        session_id="redsys-sandbox-live-moto-2",
+        expires_at_ns=1789732800000000000,
         operation_mode="moto",
         environment="sandbox",
     )
