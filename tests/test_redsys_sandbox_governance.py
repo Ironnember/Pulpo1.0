@@ -159,6 +159,10 @@ class RedsysSandboxGovernanceTests(unittest.TestCase):
                     )
                 self.assertEqual([], transport.calls)
 
+    def test_operation_mode_substitution_is_rejected_before_authority(self):
+        with self.assertRaisesRegex(ValueError, "MOTO proof mode"):
+            self.payment(operation_mode="redirect")
+
     def test_production_origin_is_rejected_at_adapter_construction(self):
         with self.assertRaisesRegex(RedsysViolation, "production_origin_forbidden"):
             RedsysSandboxGateway(
