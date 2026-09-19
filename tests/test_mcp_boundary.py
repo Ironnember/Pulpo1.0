@@ -176,7 +176,8 @@ class MCPBoundaryTests(unittest.TestCase):
             },
             set(document),
         )
-        self.assertEqual(0o600, mode)
+        if os.name == "posix":
+            self.assertEqual(0o600, mode)
         self.assertEqual(before, self.kernel.audit)
         for forbidden in (
             "authority",
@@ -240,6 +241,7 @@ class MCPBoundaryTests(unittest.TestCase):
             self.assertEqual([], list(real_parent.iterdir()))
         self.assertEqual([], self.kernel.audit)
 
+    @unittest.skipUnless(os.name == "posix", "POSIX directory descriptor semantics required")
     def test_export_rejects_parent_swapped_before_open(self):
         with tempfile.TemporaryDirectory() as directory:
             destination = Path(directory) / "snapshot.json"
@@ -256,6 +258,7 @@ class MCPBoundaryTests(unittest.TestCase):
             self.assertFalse(destination.exists())
         self.assertEqual([], self.kernel.audit)
 
+    @unittest.skipUnless(os.name == "posix", "POSIX directory descriptor semantics required")
     def test_export_reports_commit_unknown_if_parent_swapped_after_open(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -287,6 +290,7 @@ class MCPBoundaryTests(unittest.TestCase):
             self.assertEqual(asdict(self.snapshot), document)
         self.assertEqual([], self.kernel.audit)
 
+    @unittest.skipUnless(os.name == "posix", "POSIX directory fsync semantics required")
     def test_export_reports_commit_unknown_if_directory_sync_fails(self):
         with tempfile.TemporaryDirectory() as directory:
             destination = Path(directory) / "snapshot.json"
