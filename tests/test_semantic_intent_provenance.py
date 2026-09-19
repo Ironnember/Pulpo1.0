@@ -65,8 +65,6 @@ class SemanticIntentProvenanceProofTests(unittest.TestCase):
     def test_transcription_drift_cannot_inherit_human_approval(self):
         path = self._path()
         state, kernel, verifier = self._kernel(path)
-        self.addCleanup(state.close)
-
         approved = self._approved_provenance("pin-up territory")
         corrupted = self._approved_provenance("penetratory")
         self.assertNotEqual(approved.transcript_hash, corrupted.transcript_hash)
@@ -83,12 +81,10 @@ class SemanticIntentProvenanceProofTests(unittest.TestCase):
         drifted_intent = replace(approved_intent, object_hash=corrupted.object_hash)
 
         missing_binding = replace(approved_intent, object_hash=None)
+        missing = kernel.evaluate(missing_binding)
         self.assertEqual(
             ("deny", "object_hash_required"),
-            (
-                kernel.evaluate(missing_binding).outcome,
-                kernel.evaluate(missing_binding).reason,
-            ),
+            (missing.outcome, missing.reason),
         )
 
         envelope = signed_envelope(
