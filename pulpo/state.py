@@ -34,8 +34,8 @@ def _delta_for(event: str, payload: dict[str, Any]) -> dict[str, Any]:
     return delta
 
 
-def _delta_state_root(previous_state_root: str, delta: dict[str, Any]) -> str:
-    return sha256(_canonical({"previous_state_root": previous_state_root, "delta": delta})).hexdigest()
+def _delta_state_root(previous_delta_root: str, delta: dict[str, Any]) -> str:
+    return sha256(_canonical({"previous_delta_root": previous_delta_root, "delta": delta})).hexdigest()
 
 
 def _audit_record(previous_hash: str, event: str, payload: dict[str, Any], timestamp_ns: int) -> dict[str, Any]:
@@ -43,12 +43,12 @@ def _audit_record(previous_hash: str, event: str, payload: dict[str, Any], times
     return {**body, "hash": sha256(_canonical(body)).hexdigest()}
 
 
-def _attach_delta(record: dict[str, Any], previous_state_root: str) -> dict[str, Any]:
+def _attach_delta(record: dict[str, Any], previous_delta_root: str) -> dict[str, Any]:
     body = {key: value for key, value in record.items() if key != "hash"}
     delta = _delta_for(str(body["event"]), body["payload"])
     body["delta"] = delta
-    body["previous_state_root"] = previous_state_root
-    body["state_root"] = _delta_state_root(previous_state_root, delta)
+    body["previous_delta_root"] = previous_delta_root
+    body["delta_root"] = _delta_state_root(previous_delta_root, delta)
     return {**body, "hash": sha256(_canonical(body)).hexdigest()}
 
 
@@ -178,7 +178,7 @@ class InMemoryKernelState:
     def append(self, event: str, payload: dict[str, Any], timestamp_ns: int) -> None:
         with self._audit_lock:
             previous = self._audit[-1]["hash"] if self._audit else "0" * 64
-            previous_root = self._audit[-1].get("state_root", previous) if self._audit else "0" * 64
+            previous_root = self._audit[-1].get("delta_root", previous) if self._audit else "0" * 64
             record = _audit_record(previous, event, payload, timestamp_ns)
             self._audit.append(_attach_delta(record, previous_root))
 
@@ -210,7 +210,7 @@ class InMemoryKernelState:
                 self._unique_audit[identity_key] = matches[0]
                 return matches[0]
             previous = self._audit[-1]["hash"] if self._audit else "0" * 64
-            previous_root = self._audit[-1].get("state_root", previous) if self._audit else "0" * 64
+            previous_root = self._audit[-1].get("delta_root", previous) if self._audit else "0" * 64
             record = _audit_record(previous, event, payload, timestamp_ns)
             self._audit.append(_attach_delta(record, previous_root))
             self._unique_audit[identity_key] = payload
@@ -228,7 +228,7 @@ class SQLiteKernelState:
             CREATE TABLE IF NOT EXISTS directives (directive_id TEXT NOT NULL, version INTEGER NOT NULL, directive_hash TEXT NOT NULL, revoked INTEGER NOT NULL DEFAULT 0 CHECK (revoked IN (0, 1)), PRIMARY KEY (directive_id, version));
             CREATE INDEX IF NOT EXISTS idx_directives_hash ON directives(directive_hash);
             CREATE TABLE IF NOT EXISTS permit_directives (permit TEXT PRIMARY KEY REFERENCES permits(permit) ON DELETE CASCADE, directive_id TEXT NOT NULL, directive_version INTEGER NOT NULL, directive_hash TEXT NOT NULL, directive_issued_at_ns INTEGER NOT NULL, directive_expires_at_ns INTEGER NOT NULL, parent_directive_hash TEXT);
-            CREATE TABLE IF NOT EXISTS audit (sequence INTEGER PRIMARY KEY, event TEXT NOT NULL, payload_json TEXT NOT NULL, previous_hash TEXT NOT NULL, timestamp_ns INTEGER NOT NULL, hash TEXT NOT NULL, delta_json TEXT, previous_state_root TEXT, state_root TEXT);
+            CREATE TABLE IF NOT EXISTS audit (sequence INTEGER PRIMARY KEY, event TEXT NOT NULL, payload_json TEXT NOT NULL, previous_hash TEXT NOT NULL, timestamp_ns INTEGER NOT NULL, hash TEXT NOT NULL, delta_json TEXT, previous_delta_root TEXT, delta_root TEXT);
             CREATE INDEX IF NOT EXISTS idx_audit_event ON audit(event);
             CREATE TABLE IF NOT EXISTS audit_unique (
                 event TEXT NOT NULL,
@@ -242,7 +242,7 @@ class SQLiteKernelState:
         if "parent_directive_hash" not in columns:
             self._connection.execute("ALTER TABLE permit_directives ADD COLUMN parent_directive_hash TEXT")
         audit_columns = {row[1] for row in self._connection.execute("PRAGMA table_info(audit)").fetchall()}
-        for column in ("delta_json", "previous_state_root", "state_root"):
+        for column in ("delta_json", "previous_delta_root", "delta_root"):
             if column not in audit_columns:
                 self._connection.execute(f"ALTER TABLE audit ADD COLUMN {column} TEXT")
         self._connection.execute("CREATE INDEX IF NOT EXISTS idx_directives_hash ON directives(directive_hash)")
@@ -251,10 +251,10 @@ class SQLiteKernelState:
     @property
     def audit(self) -> list[dict[str, Any]]:
         rows = self._connection.execute(
-            "SELECT event, payload_json, previous_hash, timestamp_ns, hash, delta_json, previous_state_root, state_root FROM audit ORDER BY sequence"
+            "SELECT event, payload_json, previous_hash, timestamp_ns, hash, delta_json, previous_delta_root, delta_root FROM audit ORDER BY sequence"
         ).fetchall()
         records: list[dict[str, Any]] = []
-        for event, payload_json, previous_hash, timestamp_ns, digest, delta_json, previous_state_root, state_root in rows:
+        for event, payload_json, previous_hash, timestamp_ns, digest, delta_json, previous_delta_root, delta_root in rows:
             record = {
                 "event": event,
                 "payload": json.loads(payload_json),
@@ -264,8 +264,8 @@ class SQLiteKernelState:
             }
             if delta_json is not None:
                 record["delta"] = json.loads(delta_json)
-                record["previous_state_root"] = previous_state_root
-                record["state_root"] = state_root
+                record["previous_delta_root"] = previous_delta_root
+                record["delta_root"] = delta_root
             records.append(record)
         return records
 
@@ -420,7 +420,7 @@ class SQLiteKernelState:
 
     def _append(self, event: str, payload: dict[str, Any], timestamp_ns: int) -> int:
         row = self._connection.execute(
-            "SELECT hash, state_root FROM audit ORDER BY sequence DESC LIMIT 1"
+            "SELECT hash, delta_root FROM audit ORDER BY sequence DESC LIMIT 1"
         ).fetchone()
         previous = row[0] if row else "0" * 64
         previous_root = (row[1] or row[0]) if row else "0" * 64
@@ -432,7 +432,7 @@ class SQLiteKernelState:
             """
             INSERT INTO audit (
                 event, payload_json, previous_hash, timestamp_ns, hash,
-                delta_json, previous_state_root, state_root
+                delta_json, previous_delta_root, delta_root
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
@@ -442,8 +442,8 @@ class SQLiteKernelState:
                 record["timestamp_ns"],
                 record["hash"],
                 _canonical(record["delta"]).decode(),
-                record["previous_state_root"],
-                record["state_root"],
+                record["previous_delta_root"],
+                record["delta_root"],
             ),
         )
         return int(cursor.lastrowid)
