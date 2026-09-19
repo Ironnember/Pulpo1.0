@@ -32,8 +32,8 @@ class AuthorityApprovalRequest:
     policy_hash: str
     deployment_id: str
     requested_ttl_ns: int
-    object_hash: str | None = None
     schema: str = "pulpo.authority-request.v1"
+    object_hash: str | None = None
 
     def __post_init__(self) -> None:
         for value, field in (
