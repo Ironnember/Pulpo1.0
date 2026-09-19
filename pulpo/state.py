@@ -20,8 +20,39 @@ def _canonical(value: Any) -> bytes:
     return json.dumps(value, sort_keys=True, separators=(",", ":")).encode()
 
 
-def _audit_record(previous_hash: str, event: str, payload: dict[str, Any], timestamp_ns: int) -> dict[str, Any]:
+def _delta_for(event: str, payload: dict[str, Any]) -> dict[str, Any]:
+    """Compact, non-authoritative state-change projection bound into the canonical audit record."""
+    keys = (
+        "outcome", "reason", "intent_hash", "approval_id", "directive_id", "version",
+        "directive_version", "directive_hash", "target_id", "attempt_id", "transition_hash",
+        "reconciliation_outcome",
+    )
+    delta = {"event": event, "payload_hash": sha256(_canonical(payload)).hexdigest()}
+    for key in keys:
+        if key in payload:
+            delta[key] = payload[key]
+    return delta
+
+
+def _delta_state_root(previous_state_root: str, delta: dict[str, Any]) -> str:
+    return sha256(_canonical({"previous_state_root": previous_state_root, "delta": delta})).hexdigest()
+
+
+def _audit_record(
+    previous_hash: str,
+    event: str,
+    payload: dict[str, Any],
+    timestamp_ns: int,
+    *,
+    previous_state_root: str | None = None,
+    delta: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     body = {"event": event, "payload": payload, "previous_hash": previous_hash, "timestamp_ns": timestamp_ns}
+    if delta is not None:
+        prior_root = previous_state_root or previous_hash
+        body["delta"] = delta
+        body["previous_state_root"] = prior_root
+        body["state_root"] = _delta_state_root(prior_root, delta)
     return {**body, "hash": sha256(_canonical(body)).hexdigest()}
 
 
@@ -76,6 +107,7 @@ class InMemoryKernelState:
         self._permit_directives: dict[str, DirectivePermitBinding] = {}
         self._audit: list[dict[str, Any]] = []
         self._audit_lock = RLock()
+        self._unique_audit: dict[tuple[str, str, str], dict[str, Any]] = {}
 
     @property
     def audit(self) -> list[dict[str, Any]]:
@@ -150,7 +182,18 @@ class InMemoryKernelState:
     def append(self, event: str, payload: dict[str, Any], timestamp_ns: int) -> None:
         with self._audit_lock:
             previous = self._audit[-1]["hash"] if self._audit else "0" * 64
-            self._audit.append(_audit_record(previous, event, payload, timestamp_ns))
+            previous_root = self._audit[-1].get("state_root", previous) if self._audit else "0" * 64
+            delta = _delta_for(event, payload)
+            self._audit.append(
+                _audit_record(
+                    previous,
+                    event,
+                    payload,
+                    timestamp_ns,
+                    previous_state_root=previous_root,
+                    delta=delta,
+                )
+            )
 
     def append_unique(
         self,
@@ -163,6 +206,10 @@ class InMemoryKernelState:
         if not event or not identity_field or payload.get(identity_field) != identity_value:
             raise ValueError("unique audit identity invalid")
         with self._audit_lock:
+            identity_key = (event, identity_field, _canonical(identity_value).decode())
+            indexed = self._unique_audit.get(identity_key)
+            if indexed is not None:
+                return indexed
             matches = [
                 record["payload"]
                 for record in self._audit
@@ -173,9 +220,22 @@ class InMemoryKernelState:
             if len(matches) > 1:
                 raise ValueError("unique audit identity ambiguous")
             if matches:
+                self._unique_audit[identity_key] = matches[0]
                 return matches[0]
             previous = self._audit[-1]["hash"] if self._audit else "0" * 64
-            self._audit.append(_audit_record(previous, event, payload, timestamp_ns))
+            previous_root = self._audit[-1].get("state_root", previous) if self._audit else "0" * 64
+            delta = _delta_for(event, payload)
+            self._audit.append(
+                _audit_record(
+                    previous,
+                    event,
+                    payload,
+                    timestamp_ns,
+                    previous_state_root=previous_root,
+                    delta=delta,
+                )
+            )
+            self._unique_audit[identity_key] = payload
             return None
 
 
@@ -188,17 +248,48 @@ class SQLiteKernelState:
             CREATE TABLE IF NOT EXISTS permits (permit TEXT PRIMARY KEY, intent_hash TEXT NOT NULL, spent INTEGER NOT NULL DEFAULT 0 CHECK (spent IN (0, 1)));
             CREATE TABLE IF NOT EXISTS approvals (approval_id TEXT PRIMARY KEY, nonce TEXT NOT NULL UNIQUE);
             CREATE TABLE IF NOT EXISTS directives (directive_id TEXT NOT NULL, version INTEGER NOT NULL, directive_hash TEXT NOT NULL, revoked INTEGER NOT NULL DEFAULT 0 CHECK (revoked IN (0, 1)), PRIMARY KEY (directive_id, version));
+            CREATE INDEX IF NOT EXISTS idx_directives_hash ON directives(directive_hash);
             CREATE TABLE IF NOT EXISTS permit_directives (permit TEXT PRIMARY KEY REFERENCES permits(permit) ON DELETE CASCADE, directive_id TEXT NOT NULL, directive_version INTEGER NOT NULL, directive_hash TEXT NOT NULL, directive_issued_at_ns INTEGER NOT NULL, directive_expires_at_ns INTEGER NOT NULL, parent_directive_hash TEXT);
-            CREATE TABLE IF NOT EXISTS audit (sequence INTEGER PRIMARY KEY, event TEXT NOT NULL, payload_json TEXT NOT NULL, previous_hash TEXT NOT NULL, timestamp_ns INTEGER NOT NULL, hash TEXT NOT NULL);
+            CREATE TABLE IF NOT EXISTS audit (sequence INTEGER PRIMARY KEY, event TEXT NOT NULL, payload_json TEXT NOT NULL, previous_hash TEXT NOT NULL, timestamp_ns INTEGER NOT NULL, hash TEXT NOT NULL, delta_json TEXT, previous_state_root TEXT, state_root TEXT);
+            CREATE INDEX IF NOT EXISTS idx_audit_event ON audit(event);
+            CREATE TABLE IF NOT EXISTS audit_unique (
+                event TEXT NOT NULL,
+                identity_field TEXT NOT NULL,
+                identity_value_json TEXT NOT NULL,
+                sequence INTEGER NOT NULL UNIQUE REFERENCES audit(sequence) ON DELETE CASCADE,
+                PRIMARY KEY (event, identity_field, identity_value_json)
+            );
         """)
         columns = {row[1] for row in self._connection.execute("PRAGMA table_info(permit_directives)").fetchall()}
         if "parent_directive_hash" not in columns:
             self._connection.execute("ALTER TABLE permit_directives ADD COLUMN parent_directive_hash TEXT")
+        audit_columns = {row[1] for row in self._connection.execute("PRAGMA table_info(audit)").fetchall()}
+        for column in ("delta_json", "previous_state_root", "state_root"):
+            if column not in audit_columns:
+                self._connection.execute(f"ALTER TABLE audit ADD COLUMN {column} TEXT")
+        self._connection.execute("CREATE INDEX IF NOT EXISTS idx_directives_hash ON directives(directive_hash)")
+        self._connection.execute("CREATE INDEX IF NOT EXISTS idx_audit_event ON audit(event)")
 
     @property
     def audit(self) -> list[dict[str, Any]]:
-        rows = self._connection.execute("SELECT event, payload_json, previous_hash, timestamp_ns, hash FROM audit ORDER BY sequence").fetchall()
-        return [{"event": e, "payload": json.loads(p), "previous_hash": ph, "timestamp_ns": ts, "hash": h} for e,p,ph,ts,h in rows]
+        rows = self._connection.execute(
+            "SELECT event, payload_json, previous_hash, timestamp_ns, hash, delta_json, previous_state_root, state_root FROM audit ORDER BY sequence"
+        ).fetchall()
+        records: list[dict[str, Any]] = []
+        for event, payload_json, previous_hash, timestamp_ns, digest, delta_json, previous_state_root, state_root in rows:
+            record = {
+                "event": event,
+                "payload": json.loads(payload_json),
+                "previous_hash": previous_hash,
+                "timestamp_ns": timestamp_ns,
+                "hash": digest,
+            }
+            if delta_json is not None:
+                record["delta"] = json.loads(delta_json)
+                record["previous_state_root"] = previous_state_root
+                record["state_root"] = state_root
+            records.append(record)
+        return records
 
     def approval_replay_reason(self, approval_id: str, nonce: str) -> str | None: return self._approval_replay_reason(approval_id, nonce)
     def _approval_replay_reason(self, approval_id: str, nonce: str) -> str | None:
@@ -307,27 +398,81 @@ class SQLiteKernelState:
     ) -> dict[str, Any] | None:
         if not event or not identity_field or payload.get(identity_field) != identity_value:
             raise ValueError("unique audit identity invalid")
+        identity_json = _canonical(identity_value).decode()
         with self._connection:
             self._connection.execute("BEGIN IMMEDIATE")
+            indexed = self._connection.execute(
+                """
+                SELECT a.payload_json
+                FROM audit_unique u
+                JOIN audit a ON a.sequence = u.sequence
+                WHERE u.event = ? AND u.identity_field = ? AND u.identity_value_json = ?
+                """,
+                (event, identity_field, identity_json),
+            ).fetchone()
+            if indexed is not None:
+                return json.loads(str(indexed[0]))
+
+            # Compatibility path for databases created before the unique projection.
             rows = self._connection.execute(
-                "SELECT payload_json FROM audit WHERE event = ? ORDER BY sequence",
+                "SELECT sequence, payload_json FROM audit WHERE event = ? ORDER BY sequence",
                 (event,),
             ).fetchall()
-            matches: list[dict[str, Any]] = []
-            for (encoded,) in rows:
+            matches: list[tuple[int, dict[str, Any]]] = []
+            for sequence, encoded in rows:
                 candidate = json.loads(str(encoded))
                 if isinstance(candidate, dict) and candidate.get(identity_field) == identity_value:
-                    matches.append(candidate)
+                    matches.append((sequence, candidate))
             if len(matches) > 1:
                 raise ValueError("unique audit identity ambiguous")
             if matches:
-                return matches[0]
-            self._append(event, payload, timestamp_ns)
+                sequence, candidate = matches[0]
+                self._connection.execute(
+                    "INSERT OR IGNORE INTO audit_unique (event, identity_field, identity_value_json, sequence) VALUES (?, ?, ?, ?)",
+                    (event, identity_field, identity_json, sequence),
+                )
+                return candidate
+
+            sequence = self._append(event, payload, timestamp_ns)
+            self._connection.execute(
+                "INSERT INTO audit_unique (event, identity_field, identity_value_json, sequence) VALUES (?, ?, ?, ?)",
+                (event, identity_field, identity_json, sequence),
+            )
             return None
 
-    def _append(self, event: str, payload: dict[str, Any], timestamp_ns: int) -> None:
-        row = self._connection.execute("SELECT hash FROM audit ORDER BY sequence DESC LIMIT 1").fetchone(); previous = row[0] if row else "0" * 64
-        record = _audit_record(previous, event, payload, timestamp_ns)
-        self._connection.execute("INSERT INTO audit (event, payload_json, previous_hash, timestamp_ns, hash) VALUES (?, ?, ?, ?, ?)", (record["event"], _canonical(record["payload"]).decode(), record["previous_hash"], record["timestamp_ns"], record["hash"]))
+    def _append(self, event: str, payload: dict[str, Any], timestamp_ns: int) -> int:
+        row = self._connection.execute(
+            "SELECT hash, state_root FROM audit ORDER BY sequence DESC LIMIT 1"
+        ).fetchone()
+        previous = row[0] if row else "0" * 64
+        previous_root = (row[1] or row[0]) if row else "0" * 64
+        delta = _delta_for(event, payload)
+        record = _audit_record(
+            previous,
+            event,
+            payload,
+            timestamp_ns,
+            previous_state_root=previous_root,
+            delta=delta,
+        )
+        cursor = self._connection.execute(
+            """
+            INSERT INTO audit (
+                event, payload_json, previous_hash, timestamp_ns, hash,
+                delta_json, previous_state_root, state_root
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                record["event"],
+                _canonical(record["payload"]).decode(),
+                record["previous_hash"],
+                record["timestamp_ns"],
+                record["hash"],
+                _canonical(record["delta"]).decode(),
+                record["previous_state_root"],
+                record["state_root"],
+            ),
+        )
+        return int(cursor.lastrowid)
 
     def close(self) -> None: self._connection.close()
