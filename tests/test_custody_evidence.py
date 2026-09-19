@@ -51,6 +51,7 @@ class CustodyEvidenceConvergenceTests(unittest.TestCase):
                 END
                 """
             )
+            connection.commit()
         with self.assertRaises(CustodyViolation):
             self.authorize()
         self.assertEqual(0, self.custody.snapshot().epoch)
@@ -126,6 +127,7 @@ class CustodyEvidenceConvergenceTests(unittest.TestCase):
                 """,
                 ("0" * 64, authorization.receipt.transition_hash),
             )
+            connection.commit()
         with self.assertRaises(CustodyEvidenceViolation):
             self.evidence.project_one()
         self.assertEqual(1, self.evidence.pending_count())
