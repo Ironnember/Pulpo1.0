@@ -537,7 +537,7 @@ class GovernanceKernel:
 
     def verify_audit(self) -> bool:
         previous = "0" * 64
-        previous_state_root = "0" * 64
+        previous_delta_root = "0" * 64
         for record in self.audit:
             body = {key: value for key, value in record.items() if key != "hash"}
             if body["previous_hash"] != previous:
@@ -548,24 +548,24 @@ class GovernanceKernel:
 
             delta = body.get("delta")
             if delta is not None:
-                if body.get("previous_state_root") != previous_state_root:
+                if body.get("previous_delta_root") != previous_delta_root:
                     return False
-                expected_state_root = sha256(
+                expected_delta_root = sha256(
                     _canonical(
                         {
-                            "previous_state_root": previous_state_root,
+                            "previous_delta_root": previous_delta_root,
                             "delta": delta,
                         }
                     )
                 ).hexdigest()
-                if not hmac.compare_digest(body.get("state_root", ""), expected_state_root):
+                if not hmac.compare_digest(body.get("delta_root", ""), expected_delta_root):
                     return False
-                previous_state_root = expected_state_root
+                previous_delta_root = expected_delta_root
             else:
                 # Legacy records predate canonical delta logging. Their audit
                 # hash remains authoritative, and the first delta record after
                 # legacy history binds forward from the legacy audit head.
-                previous_state_root = record["hash"]
+                previous_delta_root = record["hash"]
 
             previous = record["hash"]
         return True
