@@ -186,16 +186,17 @@ class RestartSafeStateTests(unittest.TestCase):
         kernel = self.kernel(state)
         envelope = signed_envelope(kernel, self.intent, self.verifier, now_ns=NOW)
         with closing(sqlite3.connect(self.path)) as connection:
-            connection.execute(
-                """
-                CREATE TRIGGER reject_verified_audit
-                BEFORE INSERT ON audit
-                WHEN NEW.event = 'approval_verified'
-                BEGIN
-                    SELECT RAISE(ABORT, 'forced audit failure');
-                END
-                """
-            )
+            with connection:
+                connection.execute(
+                    """
+                    CREATE TRIGGER reject_verified_audit
+                    BEFORE INSERT ON audit
+                    WHEN NEW.event = 'approval_verified'
+                    BEGIN
+                        SELECT RAISE(ABORT, 'forced audit failure');
+                    END
+                    """
+                )
 
         with self.assertRaisesRegex(sqlite3.IntegrityError, "forced audit failure"):
             kernel.evaluate_with_approval(self.intent, envelope)
@@ -214,23 +215,25 @@ class RestartSafeStateTests(unittest.TestCase):
             signed_envelope(kernel, self.intent, self.verifier, now_ns=NOW),
         )
         with closing(sqlite3.connect(self.path)) as connection:
-            connection.execute(
-                """
-                CREATE TRIGGER reject_consumed_audit
-                BEFORE INSERT ON audit
-                WHEN NEW.event = 'permit_consumed'
-                BEGIN
-                    SELECT RAISE(ABORT, 'forced consumption audit failure');
-                END
-                """
-            )
+            with connection:
+                connection.execute(
+                    """
+                    CREATE TRIGGER reject_consumed_audit
+                    BEFORE INSERT ON audit
+                    WHEN NEW.event = 'permit_consumed'
+                    BEGIN
+                        SELECT RAISE(ABORT, 'forced consumption audit failure');
+                    END
+                    """
+                )
 
         with self.assertRaisesRegex(sqlite3.IntegrityError, "forced consumption audit failure"):
             kernel.consume(decision.permit, self.intent)
 
         with closing(sqlite3.connect(self.path)) as connection:
             self.assertEqual(0, connection.execute("SELECT spent FROM permits").fetchone()[0])
-            connection.execute("DROP TRIGGER reject_consumed_audit")
+            with connection:
+                connection.execute("DROP TRIGGER reject_consumed_audit")
         self.assertTrue(kernel.consume(decision.permit, self.intent))
         self.assertTrue(kernel.verify_audit())
 
@@ -294,7 +297,8 @@ class RestartSafeStateTests(unittest.TestCase):
         state.close()
 
         with closing(sqlite3.connect(self.path)) as connection:
-            connection.execute("UPDATE audit SET payload_json = ? WHERE sequence = 1", ('{"changed":true}',))
+            with connection:
+                connection.execute("UPDATE audit SET payload_json = ? WHERE sequence = 1", ('{"changed":true}',))
 
         tampered_state = SQLiteKernelState(self.path)
         self.addCleanup(tampered_state.close)
@@ -311,7 +315,8 @@ class RestartSafeStateTests(unittest.TestCase):
         state.close()
 
         with closing(sqlite3.connect(self.path)) as connection:
-            connection.execute("UPDATE audit SET payload_json = ? WHERE sequence = 1", ("{not-json",))
+            with connection:
+                connection.execute("UPDATE audit SET payload_json = ? WHERE sequence = 1", ("{not-json",))
 
         malformed_state = SQLiteKernelState(self.path)
         self.addCleanup(malformed_state.close)
