@@ -33,6 +33,7 @@ class AuthorityApprovalRequest:
     deployment_id: str
     requested_ttl_ns: int
     schema: str = "pulpo.authority-request.v1"
+    object_hash: str | None = None
 
     def __post_init__(self) -> None:
         for value, field in (
@@ -47,6 +48,8 @@ class AuthorityApprovalRequest:
                 raise ValueError(f"{field} exceeds the authority request limit")
         _require_sha256(self.intent_hash, "intent_hash")
         _require_sha256(self.policy_hash, "policy_hash")
+        if self.object_hash is not None:
+            _require_sha256(self.object_hash, "object_hash")
         if isinstance(self.cost, bool) or not isinstance(self.cost, int) or self.cost < 0:
             raise ValueError("cost must be a non-negative integer")
         if (

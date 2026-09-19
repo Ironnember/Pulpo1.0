@@ -382,6 +382,8 @@ class GovernedDomainOutcomeMemoryProjection:
 
         matching = []
         expected_intent = asdict(intent)
+        if expected_intent.get("object_hash") is None:
+            expected_intent.pop("object_hash")
         for record in self.kernel.audit:
             if record.get("event") != "target_locked":
                 continue
