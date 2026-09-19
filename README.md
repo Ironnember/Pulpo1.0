@@ -70,6 +70,9 @@ See [project source baseline](docs/PROJECT_SOURCE_BASELINE.md), [architecture](d
 and [agents and plugins](docs/AGENTS_AND_PLUGINS.md).
 The bounded transaction proof and its remaining live-execution gates are in
 [commerce proof](docs/COMMERCE_PROOF.md).
+Outbound adapter requirements and deployment evidence boundaries are in
+[transport security](docs/TRANSPORT_SECURITY_CONTRACT.md) and
+[deployment conformance](docs/DEPLOYMENT_CONFORMANCE.md).
 The external approval contract and its still-open signer boundary are in
 [authority](docs/AUTHORITY.md).
 The mandatory deployment tests before claiming independent human authority are

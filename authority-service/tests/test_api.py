@@ -7,6 +7,7 @@ from fastapi.testclient import TestClient
 
 import test_service
 from pulpo_authority_service.api import create_app
+from pulpo_authority_service.admission import AdmissionConfig, AdmissionController
 from pulpo_authority_service.webauthn_adapter import PyWebAuthnVerifier
 
 
@@ -157,6 +158,21 @@ class AuthorityApiTests(unittest.TestCase):
         paths = {route.path for route in self.client.app.routes}
         self.assertNotIn("/human/approval/{request_id}/deny", paths)
         self.assertFalse(any(term in path for path in paths for term in ("enroll", "recover", "revoke", "rotate")))
+
+    def test_worker_admission_returns_retry_after_without_touching_authority(self):
+        app = create_app(
+            self.service,
+            worker_authenticator=FakeWorkerAuthenticator(),
+            admission=AdmissionController(
+                AdmissionConfig(requests_per_window=1, principal_budget=10)
+            ),
+        )
+        client = TestClient(app, headers={"Authorization": "******"})
+        first = client.post("/v1/approval-requests", json=asdict(self.request))
+        second = client.post("/v1/approval-requests", json=asdict(self.request))
+        self.assertEqual(200, first.status_code)
+        self.assertEqual(429, second.status_code)
+        self.assertGreaterEqual(int(second.headers["retry-after"]), 1)
 
 
 if __name__ == "__main__":

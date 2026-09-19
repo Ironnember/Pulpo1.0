@@ -10,6 +10,7 @@ from fastapi.responses import HTMLResponse, Response
 from pydantic import BaseModel, ConfigDict, Field, StrictInt
 
 from .core import ApprovalRequest, AuthorityService
+from .admission import AdmissionController, AdmissionRejected
 from .human_ui import APPROVAL_JAVASCRIPT, SECURITY_HEADERS, render_approval_page
 
 
@@ -61,8 +62,10 @@ def create_app(
     service: AuthorityService,
     *,
     worker_authenticator: WorkerAuthenticator | None = None,
+    admission: AdmissionController | None = None,
 ) -> FastAPI:
     authenticator = worker_authenticator or RejectingWorkerAuthenticator()
+    admission = admission or AdmissionController()
     app = FastAPI(
         title="Pulpo Independent Authority",
         docs_url=None,
@@ -81,26 +84,38 @@ def create_app(
             raise HTTPException(status_code=401, detail="worker authentication required")
         return identity
 
+    def admit(request: FastAPIRequest, principal: str, *, poll: bool = False):
+        try:
+            return admission.enter(principal, poll=poll)
+        except AdmissionRejected as exc:
+            raise HTTPException(
+                status_code=429,
+                detail="authority admission limit exceeded",
+                headers={"Retry-After": str(exc.retry_after_seconds)},
+            ) from exc
+
     @app.post("/v1/approval-requests")
     def request_approval(body: RequestBody, request: FastAPIRequest) -> dict[str, str]:
-        require_worker(request)
-        try:
-            request_id, approval_url = service.request_approval(
-                ApprovalRequest(**body.model_dump(by_alias=True))
-            )
-        except (ValueError, RuntimeError) as exc:
-            raise HTTPException(status_code=400, detail="approval request rejected") from exc
+        principal = require_worker(request)
+        with admit(request, principal):
+            try:
+                request_id, approval_url = service.request_approval(
+                    ApprovalRequest(**body.model_dump(by_alias=True))
+                )
+            except (ValueError, RuntimeError) as exc:
+                raise HTTPException(status_code=400, detail="approval request rejected") from exc
         return {"request_id": request_id, "approval_url": approval_url}
 
     @app.get("/v1/approval-requests/{request_id}")
     def poll_approval(request_id: str, request: FastAPIRequest) -> dict[str, object]:
-        require_worker(request)
-        try:
-            return service.poll(request_id)
-        except KeyError as exc:
-            raise HTTPException(status_code=404, detail="unknown approval request") from exc
-        except RuntimeError as exc:
-            raise HTTPException(status_code=503, detail="authority unavailable") from exc
+        principal = require_worker(request)
+        with admit(request, principal, poll=True):
+            try:
+                return service.poll(request_id)
+            except KeyError as exc:
+                raise HTTPException(status_code=404, detail="unknown approval request") from exc
+            except RuntimeError as exc:
+                raise HTTPException(status_code=503, detail="authority unavailable") from exc
 
     @app.get("/human/approval.js", response_class=Response)
     def approval_javascript() -> Response:

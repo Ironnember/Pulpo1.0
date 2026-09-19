@@ -1,0 +1,29 @@
+name: Supply-chain evidence
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  deterministic-sbom:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Generate deterministic unsigned SBOM
+        run: python scripts/generate_sbom.py sbom.json
+      - name: Verify reproducibility and committed-input boundaries
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/generate_sbom.py sbom-second.json
+          cmp sbom.json sbom-second.json
+          grep -q '"signed": false' sbom.json
+          git diff --exit-code -- sbom.json sbom-second.json

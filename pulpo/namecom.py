@@ -20,6 +20,7 @@ from .commerce import (
     DomainQuote,
     RegistrarResult,
 )
+from .transport_contract import require_https_origin
 
 
 NAMECOM_PRODUCTION_ORIGIN = "https://api.name.com"
@@ -76,8 +77,13 @@ class NameComCoreAdapter:
         credential_ref: str,
         transport: NameComTransport,
     ) -> None:
-        if base_origin not in {NAMECOM_PRODUCTION_ORIGIN, NAMECOM_SANDBOX_ORIGIN}:
-            raise CommerceViolation("namecom_origin_not_pinned")
+        try:
+            require_https_origin(
+                base_origin,
+                allowed=frozenset({NAMECOM_PRODUCTION_ORIGIN, NAMECOM_SANDBOX_ORIGIN}),
+            )
+        except ValueError as exc:
+            raise CommerceViolation("namecom_origin_not_pinned") from exc
         if not credential_ref.startswith("credential://") or credential_ref == "credential://":
             raise CommerceViolation("namecom_credential_reference_invalid")
         self.base_origin = base_origin

@@ -13,11 +13,13 @@ from urllib import error as urllib_error
 from urllib import request as urllib_request
 
 from pulpo.telegram import TelegramOutboundMessage
+from pulpo.transport_contract import TransportPolicy, require_https_origin, require_response_size
 
 
 TELEGRAM_API_ORIGIN = "https://api.telegram.org"
 TELEGRAM_TIMEOUT_SECONDS = 5
-_MAX_RESPONSE_BYTES = 1_000_000
+_TRANSPORT_POLICY = TransportPolicy(read_timeout_seconds=TELEGRAM_TIMEOUT_SECONDS)
+_MAX_RESPONSE_BYTES = _TRANSPORT_POLICY.max_response_bytes
 
 
 class TelegramTransportConfigError(RuntimeError):
@@ -125,8 +127,12 @@ class TelegramBotApiTransport:
             ensure_ascii=False,
             separators=(",", ":"),
         ).encode("utf-8")
+        origin = require_https_origin(
+            TELEGRAM_API_ORIGIN,
+            allowed=frozenset({TELEGRAM_API_ORIGIN}),
+        )
         request = urllib_request.Request(
-            f"{TELEGRAM_API_ORIGIN}/bot{self._bot_token}/sendMessage",
+            f"{origin}/bot{self._bot_token}/sendMessage",
             data=payload,
             headers={"Content-Type": "application/json"},
             method="POST",
@@ -137,7 +143,9 @@ class TelegramBotApiTransport:
         except (urllib_error.HTTPError, urllib_error.URLError, TimeoutError, OSError):
             raise TelegramExternalRealityUnknown(message.message_hash) from None
 
-        if len(raw) > _MAX_RESPONSE_BYTES:
+        try:
+            require_response_size(len(raw), policy=_TRANSPORT_POLICY)
+        except ValueError:
             raise TelegramExternalRealityUnknown(message.message_hash)
         try:
             decoded = json.loads(raw)
