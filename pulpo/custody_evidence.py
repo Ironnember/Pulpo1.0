@@ -140,6 +140,10 @@ class SQLiteCustodyEvidenceConvergence:
                     END
                     """
                 )
+                # closing() closes the handle but does not provide sqlite3.Connection's
+                # context-manager commit semantics. Commit the schema/trigger setup
+                # explicitly before closing so initialization survives on every platform.
+                connection.commit()
         except CustodyEvidenceViolation:
             raise
         except (OSError, sqlite3.Error) as exc:
