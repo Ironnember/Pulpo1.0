@@ -3,6 +3,7 @@ import unittest
 
 from pulpo.commerce import DomainPurchaseRequest, DomainQuote, assess_quote
 from pulpo.namecom_core import (
+    MAX_NAMECOM_RESPONSE_BYTES,
     NameComCoreClient,
     NameComCoreConfig,
     NameComCoreRegistrarAdapter,
@@ -257,6 +258,17 @@ class NameComCoreTests(unittest.TestCase):
                 idempotency_key="custody-attempt-abc",
             )
         self.assertEqual(1, len(transport.calls))
+
+
+    def test_oversized_provider_response_fails_closed(self):
+        client = NameComCoreClient(
+            NameComCoreConfig("tester-test", "token", environment="sandbox"),
+            transport=FakeTransport([
+                NameComResponse(200, {}, b"x" * (MAX_NAMECOM_RESPONSE_BYTES + 1))
+            ]),
+        )
+        with self.assertRaisesRegex(NameComViolation, "too_large"):
+            client.check_availability("example.com")
 
 
 if __name__ == "__main__":
