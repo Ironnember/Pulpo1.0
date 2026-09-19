@@ -36,10 +36,10 @@ class DeltaAuditPerformanceTests(unittest.TestCase):
         self.assertGreaterEqual(len(records), 2)
         prior_root = "0" * 64
         for record in records:
-            self.assertEqual(prior_root, record["previous_state_root"])
+            self.assertEqual(prior_root, record["previous_delta_root"])
             self.assertIn("delta", record)
             self.assertEqual(record["event"], record["delta"]["event"])
-            prior_root = record["state_root"]
+            prior_root = record["delta_root"]
         self.assertTrue(kernel.verify_audit())
 
     def test_delta_tamper_fails_closed_at_restart(self):
@@ -151,7 +151,7 @@ class DeltaAuditPerformanceTests(unittest.TestCase):
         kernel.evaluate(Intent("agent", "read", "repo:legacy"))
         record = kernel.audit[-1]
         self.assertIn("delta", record)
-        self.assertIn("state_root", record)
+        self.assertIn("delta_root", record)
         self.assertTrue(kernel.verify_audit())
 
     def test_policy_hash_is_stable_cached_material(self):
