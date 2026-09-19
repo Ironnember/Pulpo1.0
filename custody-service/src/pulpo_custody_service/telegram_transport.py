@@ -12,6 +12,7 @@ from typing import Mapping
 from urllib import error as urllib_error
 from urllib import request as urllib_request
 
+from pulpo.resource_limits import ResourceLimitError, load_bounded_json
 from pulpo.telegram import TelegramOutboundMessage
 
 
@@ -140,8 +141,13 @@ class TelegramBotApiTransport:
         if len(raw) > _MAX_RESPONSE_BYTES:
             raise TelegramExternalRealityUnknown(message.message_hash)
         try:
-            decoded = json.loads(raw)
-        except (UnicodeDecodeError, json.JSONDecodeError, TypeError):
+            decoded = load_bounded_json(
+                raw,
+                max_bytes=_MAX_RESPONSE_BYTES,
+                max_depth=16,
+                max_items=2_048,
+            )
+        except (UnicodeDecodeError, json.JSONDecodeError, TypeError, ResourceLimitError):
             raise TelegramExternalRealityUnknown(message.message_hash) from None
         if not isinstance(decoded, dict) or decoded.get("ok") is not True:
             raise TelegramProviderError("telegram provider rejected request")
