@@ -1,5 +1,6 @@
 import sqlite3
 import tempfile
+from contextlib import closing
 import threading
 import unittest
 from dataclasses import replace
@@ -184,7 +185,7 @@ class RestartSafeStateTests(unittest.TestCase):
         self.addCleanup(state.close)
         kernel = self.kernel(state)
         envelope = signed_envelope(kernel, self.intent, self.verifier, now_ns=NOW)
-        with sqlite3.connect(self.path) as connection:
+        with closing(sqlite3.connect(self.path)) as connection:
             connection.execute(
                 """
                 CREATE TRIGGER reject_verified_audit
@@ -199,7 +200,7 @@ class RestartSafeStateTests(unittest.TestCase):
         with self.assertRaisesRegex(sqlite3.IntegrityError, "forced audit failure"):
             kernel.evaluate_with_approval(self.intent, envelope)
 
-        with sqlite3.connect(self.path) as connection:
+        with closing(sqlite3.connect(self.path)) as connection:
             self.assertEqual(0, connection.execute("SELECT COUNT(*) FROM approvals").fetchone()[0])
             self.assertEqual(0, connection.execute("SELECT COUNT(*) FROM permits").fetchone()[0])
             self.assertEqual(0, connection.execute("SELECT COUNT(*) FROM audit").fetchone()[0])
@@ -212,7 +213,7 @@ class RestartSafeStateTests(unittest.TestCase):
             self.intent,
             signed_envelope(kernel, self.intent, self.verifier, now_ns=NOW),
         )
-        with sqlite3.connect(self.path) as connection:
+        with closing(sqlite3.connect(self.path)) as connection:
             connection.execute(
                 """
                 CREATE TRIGGER reject_consumed_audit
@@ -227,7 +228,7 @@ class RestartSafeStateTests(unittest.TestCase):
         with self.assertRaisesRegex(sqlite3.IntegrityError, "forced consumption audit failure"):
             kernel.consume(decision.permit, self.intent)
 
-        with sqlite3.connect(self.path) as connection:
+        with closing(sqlite3.connect(self.path)) as connection:
             self.assertEqual(0, connection.execute("SELECT spent FROM permits").fetchone()[0])
             connection.execute("DROP TRIGGER reject_consumed_audit")
         self.assertTrue(kernel.consume(decision.permit, self.intent))
@@ -292,7 +293,7 @@ class RestartSafeStateTests(unittest.TestCase):
         )
         state.close()
 
-        with sqlite3.connect(self.path) as connection:
+        with closing(sqlite3.connect(self.path)) as connection:
             connection.execute("UPDATE audit SET payload_json = ? WHERE sequence = 1", ('{"changed":true}',))
 
         tampered_state = SQLiteKernelState(self.path)
@@ -309,7 +310,7 @@ class RestartSafeStateTests(unittest.TestCase):
         )
         state.close()
 
-        with sqlite3.connect(self.path) as connection:
+        with closing(sqlite3.connect(self.path)) as connection:
             connection.execute("UPDATE audit SET payload_json = ? WHERE sequence = 1", ("{not-json",))
 
         malformed_state = SQLiteKernelState(self.path)
