@@ -208,8 +208,9 @@ class MCPBoundaryTests(unittest.TestCase):
     def test_export_rejects_relative_or_linked_destination(self):
         with self.assertRaisesRegex(MCPBoundaryError, "mcp_snapshot_destination_not_absolute"):
             export_mcp_snapshot(self.orchestrator, Path("mcp-read-snapshot.json"))
+        root_destination = Path(Path.cwd().anchor)
         with self.assertRaisesRegex(MCPBoundaryError, "mcp_snapshot_destination_invalid"):
-            export_mcp_snapshot(self.orchestrator, Path("/"))
+            export_mcp_snapshot(self.orchestrator, root_destination)
         with self.assertRaisesRegex(MCPBoundaryError, "mcp_snapshot_destination_invalid"):
             export_mcp_snapshot(self.orchestrator, "/tmp/snapshot\x00.json")
 
