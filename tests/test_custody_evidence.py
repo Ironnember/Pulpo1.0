@@ -1,3 +1,4 @@
+from contextlib import closing
 import sqlite3
 import tempfile
 import unittest
@@ -40,7 +41,7 @@ class CustodyEvidenceConvergenceTests(unittest.TestCase):
         )
 
     def test_abort_before_custody_commit_creates_neither_mutation_nor_obligation(self):
-        with sqlite3.connect(self.path) as connection:
+        with closing(sqlite3.connect(self.path)) as connection:
             connection.execute(
                 """
                 CREATE TRIGGER test_abort_before_custody_head
@@ -116,7 +117,7 @@ class CustodyEvidenceConvergenceTests(unittest.TestCase):
 
     def test_tampered_obligation_is_denied_and_blocks_custody(self):
         authorization = self.authorize()
-        with sqlite3.connect(self.path) as connection:
+        with closing(sqlite3.connect(self.path)) as connection:
             connection.execute(
                 """
                 UPDATE custody_evidence_outbox
