@@ -142,6 +142,7 @@ def render_approval_page(display: dict[str, object]) -> str:
         ("Session", "session_id"),
         ("Intent hash", "intent_hash"),
         ("Policy hash", "policy_hash"),
+        ("Object hash", "object_hash"),
         ("Deployment", "deployment_id"),
         ("Expires at (ns)", "expires_at_ns"),
     )
