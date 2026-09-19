@@ -2,6 +2,7 @@ from dataclasses import replace
 import sqlite3
 import tempfile
 import unittest
+from pathlib import Path
 
 from pulpo import GovernanceKernel, Intent, Policy
 from pulpo.directives import Directive, DirectiveAuthorityController, GovernedDirectiveProjection
@@ -179,8 +180,10 @@ class DirectiveProofTests(unittest.TestCase):
         self.assertEqual("directive_issuer_untrusted", decision.reason)
 
     def test_revocation_requires_new_authority_and_survives_restart(self):
-        with tempfile.NamedTemporaryFile() as handle:
-            state = SQLiteKernelState(handle.name)
+        with tempfile.NamedTemporaryFile(delete=False) as handle:
+            path = Path(handle.name)
+        self.addCleanup(lambda: path.unlink(missing_ok=True))
+            state = SQLiteKernelState(path)
             d = directive()
             kernel, verifier, controller = self.activate(state, d)
             activation = next(record for record in state.audit if record["event"] == "directive_activated")
@@ -199,7 +202,7 @@ class DirectiveProofTests(unittest.TestCase):
             self.assertEqual("allow", revoke.outcome)
             state.close()
 
-            restarted = SQLiteKernelState(handle.name)
+            restarted = SQLiteKernelState(path)
             restarted_kernel, _ = self.governed(restarted)
             projection = GovernedDirectiveProjection(restarted_kernel)
             decision = projection.evaluate(Intent("agent:builder", "write", "repo:file", 1), d)
@@ -324,8 +327,10 @@ class DirectiveProofTests(unittest.TestCase):
         self.assertEqual(parent.directive_hash, rejected["payload"]["parent_directive_hash"])
 
     def test_parent_revocation_keeps_child_permit_invalid_after_restart(self):
-        with tempfile.NamedTemporaryFile() as handle:
-            state = SQLiteKernelState(handle.name)
+        with tempfile.NamedTemporaryFile(delete=False) as handle:
+            path = Path(handle.name)
+        self.addCleanup(lambda: path.unlink(missing_ok=True))
+            state = SQLiteKernelState(path)
             parent = directive()
             kernel, verifier, controller = self.activate(state, parent)
             child = derived(parent)
@@ -348,7 +353,7 @@ class DirectiveProofTests(unittest.TestCase):
             self.assertEqual("allow", revoke.outcome)
             state.close()
 
-            restarted = SQLiteKernelState(handle.name)
+            restarted = SQLiteKernelState(path)
             restarted_kernel, _ = self.governed(restarted)
             restarted_projection = GovernedDirectiveProjection(restarted_kernel)
             self.assertEqual("directive_parent_revoked", restarted_projection.evaluate(intent, child).reason)
@@ -360,8 +365,10 @@ class DirectiveProofTests(unittest.TestCase):
             restarted.close()
 
     def test_sqlite_existing_permit_directive_table_migrates_parent_hash_column(self):
-        with tempfile.NamedTemporaryFile() as handle:
-            connection = sqlite3.connect(handle.name)
+        with tempfile.NamedTemporaryFile(delete=False) as handle:
+            path = Path(handle.name)
+        self.addCleanup(lambda: path.unlink(missing_ok=True))
+            connection = sqlite3.connect(path)
             connection.executescript("""
                 CREATE TABLE permits (permit TEXT PRIMARY KEY, intent_hash TEXT NOT NULL, spent INTEGER NOT NULL DEFAULT 0 CHECK (spent IN (0, 1)));
                 CREATE TABLE permit_directives (
@@ -375,7 +382,7 @@ class DirectiveProofTests(unittest.TestCase):
             """)
             connection.close()
 
-            state = SQLiteKernelState(handle.name)
+            state = SQLiteKernelState(path)
             columns = {row[1] for row in state._connection.execute("PRAGMA table_info(permit_directives)").fetchall()}
             self.assertIn("parent_directive_hash", columns)
             state.close()
@@ -425,8 +432,10 @@ class DirectiveProofTests(unittest.TestCase):
         self.assertEqual(d.directive_hash, rejected["payload"]["directive_hash"])
 
     def test_preissued_permit_stays_invalid_after_revocation_and_restart(self):
-        with tempfile.NamedTemporaryFile() as handle:
-            state = SQLiteKernelState(handle.name)
+        with tempfile.NamedTemporaryFile(delete=False) as handle:
+            path = Path(handle.name)
+        self.addCleanup(lambda: path.unlink(missing_ok=True))
+            state = SQLiteKernelState(path)
             d = directive()
             kernel, verifier, controller = self.activate(state, d)
             projection = GovernedDirectiveProjection(kernel)
@@ -447,7 +456,7 @@ class DirectiveProofTests(unittest.TestCase):
             self.assertEqual("allow", revoke.outcome)
             state.close()
 
-            restarted = SQLiteKernelState(handle.name)
+            restarted = SQLiteKernelState(path)
             restarted_kernel, _ = self.governed(restarted)
             self.assertFalse(restarted_kernel.consume(decision.permit, intent))
             rejected = [record for record in restarted.audit if record["event"] == "permit_rejected"][-1]
