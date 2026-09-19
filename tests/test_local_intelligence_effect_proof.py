@@ -26,8 +26,10 @@ class LocalIntelligenceEffectProofScriptTests(unittest.TestCase):
             protected.mkdir()
             profile = build_seatbelt_profile(runtime, (protected,))
             self.assertIn("(deny file-write*)", profile)
-            self.assertIn(f'(allow file-write* (subpath "{runtime.resolve()}"))', profile)
-            self.assertIn(f'(deny file-read* (subpath "{protected.resolve()}"))', profile)
+            runtime_escaped = str(runtime.resolve()).replace("\\", "\\\\").replace('"', '\\"')
+            protected_escaped = str(protected.resolve()).replace("\\", "\\\\").replace('"', '\\"')
+            self.assertIn(f'(allow file-write* (subpath "{runtime_escaped}"))', profile)
+            self.assertIn(f'(deny file-read* (subpath "{protected_escaped}"))', profile)
 
     def test_codex_exec_argv_freezes_ephemeral_readonly_update_and_hook_controls(self):
         with tempfile.TemporaryDirectory() as temp:
@@ -51,15 +53,17 @@ class LocalIntelligenceEffectProofScriptTests(unittest.TestCase):
             self.assertTrue(any(item.startswith("sqlite_home=") for item in argv))
 
     def test_environment_drops_secret_like_variables_and_pins_codex_home(self):
+        runtime = Path("/tmp/runtime")
+        codex_home = Path("/home/test/.codex")
         env = sanitize_environment(
             {"HOME": "/home/test", "PATH": "/bin", "OPENAI_API_KEY": "secret", "AWS_SECRET_ACCESS_KEY": "secret2"},
-            Path("/tmp/runtime"),
-            codex_home=Path("/home/test/.codex"),
+            runtime,
+            codex_home=codex_home,
         )
         self.assertEqual(env["HOME"], "/home/test")
         self.assertEqual(env["PATH"], "/bin")
-        self.assertEqual(env["TMPDIR"], "/tmp/runtime")
-        self.assertEqual(env["CODEX_HOME"], "/home/test/.codex")
+        self.assertEqual(env["TMPDIR"], str(runtime))
+        self.assertEqual(env["CODEX_HOME"], str(codex_home))
         self.assertNotIn("OPENAI_API_KEY", env)
         self.assertNotIn("AWS_SECRET_ACCESS_KEY", env)
 
