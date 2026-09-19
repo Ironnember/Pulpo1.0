@@ -25,6 +25,24 @@ class Intent:
     resource: str
     cost: int = 0
     session_id: str = "default"
+    object_hash: str | None = None
+
+
+def _intent_payload(intent: Intent) -> dict[str, Any]:
+    """Canonical intent payload with backwards-compatible optional object binding."""
+
+    payload = asdict(intent)
+    if payload["object_hash"] is None:
+        payload.pop("object_hash")
+    return payload
+
+
+def _valid_sha256(value: str) -> bool:
+    return (
+        len(value) == 64
+        and value == value.lower()
+        and all(character in "0123456789abcdef" for character in value)
+    )
 
 
 @dataclass(frozen=True)
@@ -57,7 +75,7 @@ class LockedTarget:
                     "schema": self.schema,
                     "target_id": self.target_id,
                     "version": self.version,
-                    "intent": asdict(self.intent),
+                    "intent": _intent_payload(self.intent),
                     "created_at_ns": self.created_at_ns,
                 }
             )
@@ -104,6 +122,7 @@ class Policy:
     approval_actions: frozenset[str] = frozenset()
     agent_grants: tuple[AgentGrant, ...] = ()
     authority_trust: AuthorityTrust | None = None
+    exact_object_actions: frozenset[str] = frozenset()
 
     def __post_init__(self) -> None:
         principals = [grant.principal for grant in self.agent_grants]
@@ -115,6 +134,8 @@ class Policy:
             raise ValueError("approval actions require a pinned authority trust")
         if self.authority_trust is not None and not self.approval_actions:
             raise ValueError("authority trust requires at least one approval action")
+        if not self.exact_object_actions.issubset(self.allowed_actions):
+            raise ValueError("exact-object actions must be a subset of policy actions")
 
 
 @dataclass(frozen=True)
@@ -164,7 +185,7 @@ class GovernanceKernel:
 
     @staticmethod
     def intent_hash(intent: Intent) -> str:
-        return sha256(_canonical(asdict(intent))).hexdigest()
+        return sha256(_canonical(_intent_payload(intent))).hexdigest()
 
     @property
     def policy_hash(self) -> str:
@@ -185,6 +206,8 @@ class GovernanceKernel:
             "agent_grants": grants,
             "authority_trust": asdict(self.policy.authority_trust) if self.policy.authority_trust else None,
         }
+        if self.policy.exact_object_actions:
+            payload["exact_object_actions"] = sorted(self.policy.exact_object_actions)
         return sha256(_canonical(payload)).hexdigest()
 
     def lock_target(self, target_id: str, intent: Intent, *, version: int = 1) -> LockedTarget:
@@ -207,7 +230,7 @@ class GovernanceKernel:
                 "target_id": target.target_id,
                 "version": target.version,
                 "target_hash": target.target_hash,
-                "intent": asdict(target.intent),
+                "intent": _intent_payload(target.intent),
                 "intent_hash": self.intent_hash(target.intent),
                 "created_at_ns": target.created_at_ns,
                 "authority_effect": "none",
@@ -452,6 +475,10 @@ class GovernanceKernel:
     def _policy_failure(self, intent: Intent) -> str | None:
         if not intent.principal or not intent.session_id or not intent.action or not intent.resource:
             return "incomplete_intent"
+        if intent.object_hash is not None and not _valid_sha256(intent.object_hash):
+            return "object_hash_invalid"
+        if intent.action in self.policy.exact_object_actions and intent.object_hash is None:
+            return "object_hash_required"
         if intent.cost < 0 or intent.cost > self.policy.max_cost:
             return "budget_exceeded"
         if intent.action not in self.policy.allowed_actions:
