@@ -96,5 +96,19 @@ class AuthorityClientTests(unittest.TestCase):
                 AuthorityClient(invalid)
 
 
+    def test_https_transport_rejects_oversized_response(self):
+        class FakeResponse:
+            status = 200
+            def __enter__(self): return self
+            def __exit__(self, exc_type, exc, tb): return False
+            def geturl(self): return "https://authority.example.com/v1/approval-requests/request%3A1"
+            def read(self, limit): return b"x" * limit
+
+        client = AuthorityClient("https://authority.example.com")
+        client._opener.open = lambda *args, **kwargs: FakeResponse()
+        with self.assertRaisesRegex(RuntimeError, "size limit"):
+            client.poll_approval("request:1")
+
+
 if __name__ == "__main__":
     unittest.main()
