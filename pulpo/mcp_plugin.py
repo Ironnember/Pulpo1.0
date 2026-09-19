@@ -41,6 +41,19 @@ def _unique_json_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
     return document
 
 
+def _path_is_junction(path: Path) -> bool:
+    """Return whether *path* is a Windows junction when the runtime can tell."""
+
+    detector = getattr(path, "is_junction", None)
+    return bool(detector and detector())
+
+
+def _same_file_identity(left: os.stat_result, right: os.stat_result) -> bool:
+    """Compare stable file identity fields exposed by the current platform."""
+
+    return left.st_dev == right.st_dev and left.st_ino == right.st_ino
+
+
 def load_mcp_snapshot(
     path: str | os.PathLike[str] = DEFAULT_SNAPSHOT_PATH,
 ) -> MCPReadSnapshot:
@@ -57,44 +70,91 @@ def load_mcp_snapshot(
         parent_metadata = parent.lstat()
     except OSError as exc:
         raise MCPBoundaryError("mcp_plugin_snapshot_parent_invalid") from exc
-    if stat.S_ISLNK(parent_metadata.st_mode) or not stat.S_ISDIR(parent_metadata.st_mode):
+    if (
+        stat.S_ISLNK(parent_metadata.st_mode)
+        or _path_is_junction(parent)
+        or not stat.S_ISDIR(parent_metadata.st_mode)
+    ):
         raise MCPBoundaryError("mcp_plugin_snapshot_parent_invalid")
 
     directory_descriptor = -1
     file_descriptor = -1
     try:
-        directory_flags = os.O_RDONLY
-        directory_flags |= getattr(os, "O_CLOEXEC", 0)
-        directory_flags |= getattr(os, "O_DIRECTORY", 0)
-        directory_flags |= getattr(os, "O_NOFOLLOW", 0)
-        try:
-            directory_descriptor = os.open(parent, directory_flags)
-            opened_parent = os.fstat(directory_descriptor)
-        except OSError as exc:
-            raise MCPBoundaryError("mcp_plugin_snapshot_parent_invalid") from exc
-        if (
-            not stat.S_ISDIR(opened_parent.st_mode)
-            or opened_parent.st_dev != parent_metadata.st_dev
-            or opened_parent.st_ino != parent_metadata.st_ino
-        ):
-            raise MCPBoundaryError("mcp_plugin_snapshot_parent_invalid")
+        if os.name == "nt":
+            # Windows cannot reliably open directories through os.open() with
+            # POSIX-style O_DIRECTORY semantics. Resolve the complete parent
+            # path instead and reject any symlink/junction traversal before
+            # opening the exact snapshot by absolute path.
+            try:
+                resolved_parent = parent.resolve(strict=True)
+            except OSError as exc:
+                raise MCPBoundaryError("mcp_plugin_snapshot_parent_invalid") from exc
 
-        file_flags = os.O_RDONLY
-        file_flags |= getattr(os, "O_CLOEXEC", 0)
-        file_flags |= getattr(os, "O_NOFOLLOW", 0)
-        try:
-            file_descriptor = os.open(
-                target.name,
-                file_flags,
-                dir_fd=directory_descriptor,
-            )
-            metadata = os.fstat(file_descriptor)
-        except OSError as exc:
-            raise MCPBoundaryError("mcp_plugin_snapshot_open_failed") from exc
-        if not stat.S_ISREG(metadata.st_mode) or metadata.st_size > _MAX_SNAPSHOT_BYTES:
-            raise MCPBoundaryError("mcp_plugin_snapshot_invalid")
-        if os.name == "posix" and stat.S_IMODE(metadata.st_mode) & 0o077:
-            raise MCPBoundaryError("mcp_plugin_snapshot_permissions_invalid")
+            lexical_parent = os.path.normcase(os.path.abspath(os.fspath(parent)))
+            canonical_parent = os.path.normcase(os.fspath(resolved_parent))
+            if lexical_parent != canonical_parent:
+                raise MCPBoundaryError("mcp_plugin_snapshot_parent_invalid")
+
+            try:
+                target_metadata = target.lstat()
+            except OSError as exc:
+                raise MCPBoundaryError("mcp_plugin_snapshot_open_failed") from exc
+
+            if stat.S_ISLNK(target_metadata.st_mode) or _path_is_junction(target):
+                raise MCPBoundaryError("mcp_plugin_snapshot_open_failed")
+            if (
+                not stat.S_ISREG(target_metadata.st_mode)
+                or target_metadata.st_size > _MAX_SNAPSHOT_BYTES
+            ):
+                raise MCPBoundaryError("mcp_plugin_snapshot_invalid")
+
+            file_flags = os.O_RDONLY
+            file_flags |= getattr(os, "O_CLOEXEC", 0)
+            file_flags |= getattr(os, "O_BINARY", 0)
+            try:
+                file_descriptor = os.open(target, file_flags)
+                metadata = os.fstat(file_descriptor)
+            except OSError as exc:
+                raise MCPBoundaryError("mcp_plugin_snapshot_open_failed") from exc
+
+            if (
+                not stat.S_ISREG(metadata.st_mode)
+                or metadata.st_size > _MAX_SNAPSHOT_BYTES
+                or not _same_file_identity(metadata, target_metadata)
+            ):
+                raise MCPBoundaryError("mcp_plugin_snapshot_invalid")
+        else:
+            directory_flags = os.O_RDONLY
+            directory_flags |= getattr(os, "O_CLOEXEC", 0)
+            directory_flags |= getattr(os, "O_DIRECTORY", 0)
+            directory_flags |= getattr(os, "O_NOFOLLOW", 0)
+            try:
+                directory_descriptor = os.open(parent, directory_flags)
+                opened_parent = os.fstat(directory_descriptor)
+            except OSError as exc:
+                raise MCPBoundaryError("mcp_plugin_snapshot_parent_invalid") from exc
+            if (
+                not stat.S_ISDIR(opened_parent.st_mode)
+                or not _same_file_identity(opened_parent, parent_metadata)
+            ):
+                raise MCPBoundaryError("mcp_plugin_snapshot_parent_invalid")
+
+            file_flags = os.O_RDONLY
+            file_flags |= getattr(os, "O_CLOEXEC", 0)
+            file_flags |= getattr(os, "O_NOFOLLOW", 0)
+            try:
+                file_descriptor = os.open(
+                    target.name,
+                    file_flags,
+                    dir_fd=directory_descriptor,
+                )
+                metadata = os.fstat(file_descriptor)
+            except OSError as exc:
+                raise MCPBoundaryError("mcp_plugin_snapshot_open_failed") from exc
+            if not stat.S_ISREG(metadata.st_mode) or metadata.st_size > _MAX_SNAPSHOT_BYTES:
+                raise MCPBoundaryError("mcp_plugin_snapshot_invalid")
+            if stat.S_IMODE(metadata.st_mode) & 0o077:
+                raise MCPBoundaryError("mcp_plugin_snapshot_permissions_invalid")
 
         try:
             with os.fdopen(file_descriptor, "r", encoding="utf-8") as handle:
