@@ -152,6 +152,33 @@ class AuthorityServiceTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "not pending"):
             self.service.approve(request_id, self.primary.credential_id, "second-assertion")
 
+    def test_exact_object_hash_is_displayed_and_bound_to_signed_intent(self):
+        object_hash = "a" * 64
+        bound_intent = replace(self.intent, object_hash=object_hash)
+        bound_request = replace(
+            self.request,
+            object_hash=object_hash,
+            intent_hash=self.kernel.intent_hash(bound_intent),
+        )
+
+        with self.assertRaisesRegex(ValueError, "intent hash"):
+            self.service.request_approval(replace(bound_request, object_hash="b" * 64))
+
+        request_id, _ = self.service.request_approval(bound_request)
+        displayed = self.service.display(request_id)
+        self.assertEqual(object_hash, displayed["object_hash"])
+
+        envelope = self.service.approve(
+            request_id,
+            self.primary.credential_id,
+            "raw-assertion-json",
+        )
+        decision = self.kernel.evaluate_with_approval(
+            bound_intent,
+            PulpoApprovalEnvelope(**asdict(envelope)),
+        )
+        self.assertEqual(("allow", "verified_approval"), (decision.outcome, decision.reason))
+
     def test_challenge_binds_request_payload_expiry_and_service_nonce(self):
         request_id, _ = self.service.request_approval(self.request)
         record = self.state.requests[request_id]
