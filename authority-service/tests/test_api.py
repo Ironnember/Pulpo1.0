@@ -159,5 +159,29 @@ class AuthorityApiTests(unittest.TestCase):
         self.assertFalse(any(term in path for path in paths for term in ("enroll", "recover", "revoke", "rotate")))
 
 
+    def test_oversized_request_body_is_rejected_before_validation(self):
+        oversized = b'{"resource":"' + (b"x" * 300_000) + b'"}'
+        response = self.client.post(
+            "/v1/approval-requests",
+            content=oversized,
+            headers={"Content-Type": "application/json"},
+        )
+        self.assertEqual(413, response.status_code)
+
+
+    def test_oversized_request_target_is_rejected_before_routing(self):
+        response = self.client.get("/" + ("x" * 9_000))
+        self.assertEqual(414, response.status_code)
+        self.assertEqual("no-store", response.headers["cache-control"])
+
+    def test_oversized_headers_are_rejected_before_routing(self):
+        response = self.client.get(
+            "/human/approval.js",
+            headers={"X-Probe": "x" * 40_000},
+        )
+        self.assertEqual(431, response.status_code)
+        self.assertEqual("no-store", response.headers["cache-control"])
+
+
 if __name__ == "__main__":
     unittest.main()
