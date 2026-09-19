@@ -211,8 +211,9 @@ class MCPBoundaryTests(unittest.TestCase):
         root_destination = Path(Path.cwd().anchor)
         with self.assertRaisesRegex(MCPBoundaryError, "mcp_snapshot_destination_invalid"):
             export_mcp_snapshot(self.orchestrator, root_destination)
+        nul_destination = Path(Path.cwd().anchor) / "snapshot\x00.json"
         with self.assertRaisesRegex(MCPBoundaryError, "mcp_snapshot_destination_invalid"):
-            export_mcp_snapshot(self.orchestrator, "/tmp/snapshot\x00.json")
+            export_mcp_snapshot(self.orchestrator, str(nul_destination))
 
         with tempfile.TemporaryDirectory() as directory:
             parent = Path(directory)
