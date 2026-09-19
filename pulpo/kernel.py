@@ -146,6 +146,7 @@ class GovernanceKernel:
     ) -> None:
         self.policy = policy
         self._secret = secret or secrets.token_bytes(32)
+        self._policy_hash = self._compute_policy_hash()
         self._approval_verifier = approval_verifier
         self._clock = clock or time.time_ns
         self._state = state if state is not None else InMemoryKernelState()
@@ -166,8 +167,7 @@ class GovernanceKernel:
     def intent_hash(intent: Intent) -> str:
         return sha256(_canonical(asdict(intent))).hexdigest()
 
-    @property
-    def policy_hash(self) -> str:
+    def _compute_policy_hash(self) -> str:
         grants = [
             {
                 "principal": grant.principal,
@@ -186,6 +186,10 @@ class GovernanceKernel:
             "authority_trust": asdict(self.policy.authority_trust) if self.policy.authority_trust else None,
         }
         return sha256(_canonical(payload)).hexdigest()
+
+    @property
+    def policy_hash(self) -> str:
+        return self._policy_hash
 
     def lock_target(self, target_id: str, intent: Intent, *, version: int = 1) -> LockedTarget:
         """Record an exact proposed target without granting authority."""
@@ -533,6 +537,7 @@ class GovernanceKernel:
 
     def verify_audit(self) -> bool:
         previous = "0" * 64
+        previous_state_root = "0" * 64
         for record in self.audit:
             body = {key: value for key, value in record.items() if key != "hash"}
             if body["previous_hash"] != previous:
@@ -540,6 +545,28 @@ class GovernanceKernel:
             expected = sha256(_canonical(body)).hexdigest()
             if not hmac.compare_digest(record["hash"], expected):
                 return False
+
+            delta = body.get("delta")
+            if delta is not None:
+                if body.get("previous_state_root") != previous_state_root:
+                    return False
+                expected_state_root = sha256(
+                    _canonical(
+                        {
+                            "previous_state_root": previous_state_root,
+                            "delta": delta,
+                        }
+                    )
+                ).hexdigest()
+                if not hmac.compare_digest(body.get("state_root", ""), expected_state_root):
+                    return False
+                previous_state_root = expected_state_root
+            else:
+                # Legacy records predate canonical delta logging. Their audit
+                # hash remains authoritative, and the first delta record after
+                # legacy history binds forward from the legacy audit head.
+                previous_state_root = record["hash"]
+
             previous = record["hash"]
         return True
 
