@@ -183,32 +183,32 @@ class DirectiveProofTests(unittest.TestCase):
         with tempfile.NamedTemporaryFile(delete=False) as handle:
             path = Path(handle.name)
         self.addCleanup(lambda: path.unlink(missing_ok=True))
-            state = SQLiteKernelState(path)
-            d = directive()
-            kernel, verifier, controller = self.activate(state, d)
-            activation = next(record for record in state.audit if record["event"] == "directive_activated")
-            self.assertEqual(d.directive_hash, activation["payload"]["authority_evidence"]["directive_hash"])
-            self.assertEqual("authority:test-owner", activation["payload"]["authority_evidence"]["authority_id"])
+        state = SQLiteKernelState(path)
+        d = directive()
+        kernel, verifier, controller = self.activate(state, d)
+        activation = next(record for record in state.audit if record["event"] == "directive_activated")
+        self.assertEqual(d.directive_hash, activation["payload"]["authority_evidence"]["directive_hash"])
+        self.assertEqual("authority:test-owner", activation["payload"]["authority_evidence"]["authority_id"])
 
-            revoke_envelope = self.approve(
-                kernel,
-                verifier,
-                controller.REVOKE,
-                d,
-                "revoke-1",
-                "revoke-nonce-1",
-            )
-            revoke = controller.revoke(d, revoke_envelope, operator_principal=OPERATOR)
-            self.assertEqual("allow", revoke.outcome)
-            state.close()
+        revoke_envelope = self.approve(
+            kernel,
+            verifier,
+            controller.REVOKE,
+            d,
+            "revoke-1",
+            "revoke-nonce-1",
+        )
+        revoke = controller.revoke(d, revoke_envelope, operator_principal=OPERATOR)
+        self.assertEqual("allow", revoke.outcome)
+        state.close()
 
-            restarted = SQLiteKernelState(path)
-            restarted_kernel, _ = self.governed(restarted)
-            projection = GovernedDirectiveProjection(restarted_kernel)
-            decision = projection.evaluate(Intent("agent:builder", "write", "repo:file", 1), d)
-            self.assertEqual("directive_revoked", decision.reason)
-            self.assertTrue(restarted_kernel.verify_audit())
-            restarted.close()
+        restarted = SQLiteKernelState(path)
+        restarted_kernel, _ = self.governed(restarted)
+        projection = GovernedDirectiveProjection(restarted_kernel)
+        decision = projection.evaluate(Intent("agent:builder", "write", "repo:file", 1), d)
+        self.assertEqual("directive_revoked", decision.reason)
+        self.assertTrue(restarted_kernel.verify_audit())
+        restarted.close()
 
     def test_delegated_scope_cannot_be_broadened_by_substitution(self):
         state = InMemoryKernelState()
@@ -330,62 +330,62 @@ class DirectiveProofTests(unittest.TestCase):
         with tempfile.NamedTemporaryFile(delete=False) as handle:
             path = Path(handle.name)
         self.addCleanup(lambda: path.unlink(missing_ok=True))
-            state = SQLiteKernelState(path)
-            parent = directive()
-            kernel, verifier, controller = self.activate(state, parent)
-            child = derived(parent)
-            self.activate_child(kernel, verifier, controller, parent, child)
-            projection = GovernedDirectiveProjection(kernel)
-            intent = Intent("agent:builder", "write", "repo:service:file", 1)
-            decision = projection.evaluate(intent, child)
-            self.assertEqual("allow", decision.outcome)
-            self.assertIsNotNone(decision.permit)
+        state = SQLiteKernelState(path)
+        parent = directive()
+        kernel, verifier, controller = self.activate(state, parent)
+        child = derived(parent)
+        self.activate_child(kernel, verifier, controller, parent, child)
+        projection = GovernedDirectiveProjection(kernel)
+        intent = Intent("agent:builder", "write", "repo:service:file", 1)
+        decision = projection.evaluate(intent, child)
+        self.assertEqual("allow", decision.outcome)
+        self.assertIsNotNone(decision.permit)
 
-            revoke_envelope = self.approve(
-                kernel,
-                verifier,
-                controller.REVOKE,
-                parent,
-                "revoke-parent-1",
-                "revoke-parent-nonce-1",
-            )
-            revoke = controller.revoke(parent, revoke_envelope, operator_principal=OPERATOR)
-            self.assertEqual("allow", revoke.outcome)
-            state.close()
+        revoke_envelope = self.approve(
+            kernel,
+            verifier,
+            controller.REVOKE,
+            parent,
+            "revoke-parent-1",
+            "revoke-parent-nonce-1",
+        )
+        revoke = controller.revoke(parent, revoke_envelope, operator_principal=OPERATOR)
+        self.assertEqual("allow", revoke.outcome)
+        state.close()
 
-            restarted = SQLiteKernelState(path)
-            restarted_kernel, _ = self.governed(restarted)
-            restarted_projection = GovernedDirectiveProjection(restarted_kernel)
-            self.assertEqual("directive_parent_revoked", restarted_projection.evaluate(intent, child).reason)
-            self.assertFalse(restarted_kernel.consume(decision.permit, intent))
-            rejected = [record for record in restarted.audit if record["event"] == "permit_rejected"][-1]
-            self.assertEqual("directive_parent_revoked", rejected["payload"]["directive_status"])
-            self.assertEqual(parent.directive_hash, rejected["payload"]["parent_directive_hash"])
-            self.assertTrue(restarted_kernel.verify_audit())
-            restarted.close()
+        restarted = SQLiteKernelState(path)
+        restarted_kernel, _ = self.governed(restarted)
+        restarted_projection = GovernedDirectiveProjection(restarted_kernel)
+        self.assertEqual("directive_parent_revoked", restarted_projection.evaluate(intent, child).reason)
+        self.assertFalse(restarted_kernel.consume(decision.permit, intent))
+        rejected = [record for record in restarted.audit if record["event"] == "permit_rejected"][-1]
+        self.assertEqual("directive_parent_revoked", rejected["payload"]["directive_status"])
+        self.assertEqual(parent.directive_hash, rejected["payload"]["parent_directive_hash"])
+        self.assertTrue(restarted_kernel.verify_audit())
+        restarted.close()
 
     def test_sqlite_existing_permit_directive_table_migrates_parent_hash_column(self):
         with tempfile.NamedTemporaryFile(delete=False) as handle:
             path = Path(handle.name)
         self.addCleanup(lambda: path.unlink(missing_ok=True))
-            connection = sqlite3.connect(path)
-            connection.executescript("""
-                CREATE TABLE permits (permit TEXT PRIMARY KEY, intent_hash TEXT NOT NULL, spent INTEGER NOT NULL DEFAULT 0 CHECK (spent IN (0, 1)));
-                CREATE TABLE permit_directives (
-                    permit TEXT PRIMARY KEY REFERENCES permits(permit) ON DELETE CASCADE,
-                    directive_id TEXT NOT NULL,
-                    directive_version INTEGER NOT NULL,
-                    directive_hash TEXT NOT NULL,
-                    directive_issued_at_ns INTEGER NOT NULL,
-                    directive_expires_at_ns INTEGER NOT NULL
-                );
-            """)
-            connection.close()
+        connection = sqlite3.connect(path)
+        connection.executescript("""
+            CREATE TABLE permits (permit TEXT PRIMARY KEY, intent_hash TEXT NOT NULL, spent INTEGER NOT NULL DEFAULT 0 CHECK (spent IN (0, 1)));
+            CREATE TABLE permit_directives (
+                permit TEXT PRIMARY KEY REFERENCES permits(permit) ON DELETE CASCADE,
+                directive_id TEXT NOT NULL,
+                directive_version INTEGER NOT NULL,
+                directive_hash TEXT NOT NULL,
+                directive_issued_at_ns INTEGER NOT NULL,
+                directive_expires_at_ns INTEGER NOT NULL
+            );
+        """)
+        connection.close()
 
-            state = SQLiteKernelState(path)
-            columns = {row[1] for row in state._connection.execute("PRAGMA table_info(permit_directives)").fetchall()}
-            self.assertIn("parent_directive_hash", columns)
-            state.close()
+        state = SQLiteKernelState(path)
+        columns = {row[1] for row in state._connection.execute("PRAGMA table_info(permit_directives)").fetchall()}
+        self.assertIn("parent_directive_hash", columns)
+        state.close()
 
     def test_active_directive_bound_permit_consumes_once_with_identity_evidence(self):
         state = InMemoryKernelState()
@@ -435,37 +435,37 @@ class DirectiveProofTests(unittest.TestCase):
         with tempfile.NamedTemporaryFile(delete=False) as handle:
             path = Path(handle.name)
         self.addCleanup(lambda: path.unlink(missing_ok=True))
-            state = SQLiteKernelState(path)
-            d = directive()
-            kernel, verifier, controller = self.activate(state, d)
-            projection = GovernedDirectiveProjection(kernel)
-            intent = Intent("agent:builder", "write", "repo:file", 1)
-            decision = projection.evaluate(intent, d)
-            self.assertEqual("allow", decision.outcome)
-            self.assertIsNotNone(decision.permit)
+        state = SQLiteKernelState(path)
+        d = directive()
+        kernel, verifier, controller = self.activate(state, d)
+        projection = GovernedDirectiveProjection(kernel)
+        intent = Intent("agent:builder", "write", "repo:file", 1)
+        decision = projection.evaluate(intent, d)
+        self.assertEqual("allow", decision.outcome)
+        self.assertIsNotNone(decision.permit)
 
-            revoke_envelope = self.approve(
-                kernel,
-                verifier,
-                controller.REVOKE,
-                d,
-                "revoke-1",
-                "revoke-nonce-1",
-            )
-            revoke = controller.revoke(d, revoke_envelope, operator_principal=OPERATOR)
-            self.assertEqual("allow", revoke.outcome)
-            state.close()
+        revoke_envelope = self.approve(
+            kernel,
+            verifier,
+            controller.REVOKE,
+            d,
+            "revoke-1",
+            "revoke-nonce-1",
+        )
+        revoke = controller.revoke(d, revoke_envelope, operator_principal=OPERATOR)
+        self.assertEqual("allow", revoke.outcome)
+        state.close()
 
-            restarted = SQLiteKernelState(path)
-            restarted_kernel, _ = self.governed(restarted)
-            self.assertFalse(restarted_kernel.consume(decision.permit, intent))
-            rejected = [record for record in restarted.audit if record["event"] == "permit_rejected"][-1]
-            self.assertEqual("directive_revoked", rejected["payload"]["directive_status"])
-            self.assertEqual(d.directive_id, rejected["payload"]["directive_id"])
-            self.assertEqual(d.version, rejected["payload"]["directive_version"])
-            self.assertEqual(d.directive_hash, rejected["payload"]["directive_hash"])
-            self.assertTrue(restarted_kernel.verify_audit())
-            restarted.close()
+        restarted = SQLiteKernelState(path)
+        restarted_kernel, _ = self.governed(restarted)
+        self.assertFalse(restarted_kernel.consume(decision.permit, intent))
+        rejected = [record for record in restarted.audit if record["event"] == "permit_rejected"][-1]
+        self.assertEqual("directive_revoked", rejected["payload"]["directive_status"])
+        self.assertEqual(d.directive_id, rejected["payload"]["directive_id"])
+        self.assertEqual(d.version, rejected["payload"]["directive_version"])
+        self.assertEqual(d.directive_hash, rejected["payload"]["directive_hash"])
+        self.assertTrue(restarted_kernel.verify_audit())
+        restarted.close()
 
 
 if __name__ == "__main__":
