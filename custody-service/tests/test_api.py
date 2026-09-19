@@ -346,7 +346,8 @@ class CustodyServiceApiTests(unittest.TestCase):
 
 
     def test_oversized_request_body_is_rejected_before_pydantic(self):
-        response = self.client.post(
+        client, _, _, _, _, _ = self.build()
+        response = client.post(
             "/v1/domain-proposals",
             content=b'{"domain":"' + (b"x" * 300_000) + b'"}',
             headers={"Content-Type": "application/json"},
