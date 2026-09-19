@@ -187,6 +187,36 @@ class GovernedTargetReconciliation:
             descriptor = os.open(resolved, flags)
         except FileNotFoundError as exc:
             raise ValueError("artifact_changed_during_observation") from exc
+        except PermissionError as exc:
+            # Windows may deny descriptor opens on a NamedTemporaryFile that is
+            # still held open by the creating process. Fall back only for this
+            # platform-specific sharing violation; the path is still observed
+            # fail-closed with pre/post identity and metadata checks below.
+            if os.name != "nt":
+                raise ValueError("artifact_unreadable") from exc
+            try:
+                before_path = os.stat(resolved, follow_symlinks=False)
+                if not stat.S_ISREG(before_path.st_mode):
+                    raise ValueError("artifact_not_file")
+                if before_path.st_size <= 0:
+                    raise ValueError("artifact_empty")
+                data = resolved.read_bytes()
+                after_path = os.stat(resolved, follow_symlinks=False)
+            except ValueError:
+                raise
+            except OSError as fallback_exc:
+                raise ValueError("artifact_unreadable") from fallback_exc
+            stable_path = (
+                before_path.st_dev == after_path.st_dev
+                and before_path.st_ino == after_path.st_ino
+                and before_path.st_size == after_path.st_size
+                and before_path.st_mtime_ns == after_path.st_mtime_ns
+                and before_path.st_ctime_ns == after_path.st_ctime_ns
+                and len(data) == before_path.st_size
+            )
+            if not stable_path:
+                raise ValueError("artifact_changed_during_observation")
+            return str(resolved), sha256(data).hexdigest(), len(data)
         except OSError as exc:
             raise ValueError("artifact_unreadable") from exc
 
