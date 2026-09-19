@@ -38,21 +38,17 @@ def _delta_state_root(previous_state_root: str, delta: dict[str, Any]) -> str:
     return sha256(_canonical({"previous_state_root": previous_state_root, "delta": delta})).hexdigest()
 
 
-def _audit_record(
-    previous_hash: str,
-    event: str,
-    payload: dict[str, Any],
-    timestamp_ns: int,
-    *,
-    previous_state_root: str | None = None,
-    delta: dict[str, Any] | None = None,
-) -> dict[str, Any]:
+def _audit_record(previous_hash: str, event: str, payload: dict[str, Any], timestamp_ns: int) -> dict[str, Any]:
     body = {"event": event, "payload": payload, "previous_hash": previous_hash, "timestamp_ns": timestamp_ns}
-    if delta is not None:
-        prior_root = previous_state_root or previous_hash
-        body["delta"] = delta
-        body["previous_state_root"] = prior_root
-        body["state_root"] = _delta_state_root(prior_root, delta)
+    return {**body, "hash": sha256(_canonical(body)).hexdigest()}
+
+
+def _attach_delta(record: dict[str, Any], previous_state_root: str) -> dict[str, Any]:
+    body = {key: value for key, value in record.items() if key != "hash"}
+    delta = _delta_for(str(body["event"]), body["payload"])
+    body["delta"] = delta
+    body["previous_state_root"] = previous_state_root
+    body["state_root"] = _delta_state_root(previous_state_root, delta)
     return {**body, "hash": sha256(_canonical(body)).hexdigest()}
 
 
@@ -183,17 +179,8 @@ class InMemoryKernelState:
         with self._audit_lock:
             previous = self._audit[-1]["hash"] if self._audit else "0" * 64
             previous_root = self._audit[-1].get("state_root", previous) if self._audit else "0" * 64
-            delta = _delta_for(event, payload)
-            self._audit.append(
-                _audit_record(
-                    previous,
-                    event,
-                    payload,
-                    timestamp_ns,
-                    previous_state_root=previous_root,
-                    delta=delta,
-                )
-            )
+            record = _audit_record(previous, event, payload, timestamp_ns)
+            self._audit.append(_attach_delta(record, previous_root))
 
     def append_unique(
         self,
@@ -224,17 +211,8 @@ class InMemoryKernelState:
                 return matches[0]
             previous = self._audit[-1]["hash"] if self._audit else "0" * 64
             previous_root = self._audit[-1].get("state_root", previous) if self._audit else "0" * 64
-            delta = _delta_for(event, payload)
-            self._audit.append(
-                _audit_record(
-                    previous,
-                    event,
-                    payload,
-                    timestamp_ns,
-                    previous_state_root=previous_root,
-                    delta=delta,
-                )
-            )
+            record = _audit_record(previous, event, payload, timestamp_ns)
+            self._audit.append(_attach_delta(record, previous_root))
             self._unique_audit[identity_key] = payload
             return None
 
@@ -446,14 +424,9 @@ class SQLiteKernelState:
         ).fetchone()
         previous = row[0] if row else "0" * 64
         previous_root = (row[1] or row[0]) if row else "0" * 64
-        delta = _delta_for(event, payload)
-        record = _audit_record(
-            previous,
-            event,
-            payload,
-            timestamp_ns,
-            previous_state_root=previous_root,
-            delta=delta,
+        record = _attach_delta(
+            _audit_record(previous, event, payload, timestamp_ns),
+            previous_root,
         )
         cursor = self._connection.execute(
             """
