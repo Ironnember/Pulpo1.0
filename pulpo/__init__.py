@@ -9,6 +9,7 @@ from .authority import (
 )
 from .authority_client import AuthorityApprovalRequest, AuthorityClient, AuthorityPoll
 from .commerce import SQLiteBudgetAccount
+from .intent_provenance import IntentProvenance, stage_hash
 from .kernel import (
     AgentGrant,
     AuthorityTrustError,
@@ -55,6 +56,7 @@ __all__ = [
     "GovernedTargetReconciliation",
     "InMemoryKernelState",
     "Intent",
+    "IntentProvenance",
     "KernelState",
     "LockedTarget",
     "NameComCoreAdapter",
@@ -68,4 +70,5 @@ __all__ = [
     "TargetObligationStatus",
     "TargetResolution",
     "evaluate_locked_target_with_approval",
+    "stage_hash",
 ]
