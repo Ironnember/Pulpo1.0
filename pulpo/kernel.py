@@ -227,9 +227,7 @@ class GovernanceKernel:
             return None
         if not self.verify_audit():
             raise StateIntegrityError("kernel state audit chain is invalid")
-        for record in reversed(self.audit):
-            if record.get("event") != "target_locked":
-                continue
+        for record in self._state.iter_audit(event="target_locked", reverse=True):
             payload = record.get("payload", {})
             if payload.get("target_id") != target_id or payload.get("version") != version:
                 continue
@@ -538,7 +536,7 @@ class GovernanceKernel:
     def verify_audit(self) -> bool:
         previous = "0" * 64
         previous_delta_root = "0" * 64
-        for record in self.audit:
+        for record in self._state.iter_audit():
             body = {key: value for key, value in record.items() if key != "hash"}
             if body["previous_hash"] != previous:
                 return False
