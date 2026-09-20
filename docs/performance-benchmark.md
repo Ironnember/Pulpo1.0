@@ -8,7 +8,8 @@ proof. Correctness and constitutional tests remain separate and outrank speed.
 
 For each requested audit size, the harness measures:
 
-- kernel startup with full historical audit verification;
+- kernel startup with full historical audit verification through streaming iteration;
+- full audit streaming iteration without list materialization;
 - full audit materialization/JSON decoding;
 - policy evaluation plus one-use permit issue;
 - permit issue plus one-use consumption;
@@ -28,7 +29,7 @@ exposes it.
 python scripts/benchmark_performance.py
 ```
 
-Default sizes are 100, 1,000, and 10,000 audit records with 3 warmups and 15
+Default sizes are 1,000, 10,000, and 100,000 audit records with 3 warmups and 15
 measured samples. For a quick development run:
 
 ```bash
