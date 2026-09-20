@@ -154,6 +154,73 @@ class DeltaAuditPerformanceTests(unittest.TestCase):
         self.assertIn("delta_root", record)
         self.assertTrue(kernel.verify_audit())
 
+
+    def test_kernel_bootstrap_streams_without_materializing_audit(self):
+        class StreamingOnlyState(SQLiteKernelState):
+            @property
+            def audit(self):
+                raise AssertionError("full audit materialization is not allowed during bootstrap")
+
+        seed = SQLiteKernelState(self.path)
+        for index in range(25):
+            seed.append(
+                "benchmark_seed",
+                {"index": index, "authority_effect": "none"},
+                NOW + index,
+            )
+        seed.close()
+
+        state = StreamingOnlyState(self.path)
+        self.addCleanup(state.close)
+        kernel = self.kernel(state)
+        self.assertTrue(kernel.verify_audit())
+
+    def test_streaming_verification_detects_old_row_tamper(self):
+        state = SQLiteKernelState(self.path)
+        for index in range(10):
+            state.append(
+                "benchmark_seed",
+                {"index": index, "authority_effect": "none"},
+                NOW + index,
+            )
+        state.close()
+
+        with sqlite3.connect(self.path) as connection:
+            connection.execute(
+                "UPDATE audit SET payload_json = ? WHERE sequence = 2",
+                ('{"authority_effect":"none","index":"tampered"}',),
+            )
+
+        tampered = SQLiteKernelState(self.path)
+        self.addCleanup(tampered.close)
+        with self.assertRaisesRegex(StateIntegrityError, "audit chain"):
+            self.kernel(tampered)
+
+    def test_locked_target_lookup_uses_event_filtered_stream_after_full_verification(self):
+        state = SQLiteKernelState(self.path)
+        self.addCleanup(state.close)
+        kernel = self.kernel(state)
+        target = kernel.lock_target(
+            "stream-target",
+            Intent("agent", "read", "repo:stream-target"),
+        )
+        for index in range(20):
+            state.append(
+                "noise",
+                {"index": index, "authority_effect": "none"},
+                NOW + index + 1,
+            )
+
+        statements = []
+        state._connection.set_trace_callback(statements.append)
+        resolved = kernel.get_locked_target("stream-target")
+        self.assertEqual(target, resolved)
+        filtered = [
+            statement for statement in statements
+            if "FROM audit WHERE event = 'target_locked'" in statement
+        ]
+        self.assertEqual(1, len(filtered))
+
     def test_policy_hash_is_stable_cached_material(self):
         state = SQLiteKernelState(self.path)
         self.addCleanup(state.close)
