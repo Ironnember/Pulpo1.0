@@ -1,4 +1,9 @@
-"""ASGI request-body admission limit with bounded buffering."""
+"""ASGI request admission limits with bounded buffering.
+
+These limits are intentionally stateless. They bound obvious probing and
+resource-exhaustion inputs without turning the governance service into a
+rate-limit state machine.
+"""
 
 from __future__ import annotations
 
@@ -6,9 +11,15 @@ from typing import Any, Awaitable, Callable
 
 
 MAX_HTTP_REQUEST_BODY_BYTES = 262_144
+MAX_HTTP_REQUEST_TARGET_BYTES = 8_192
+MAX_HTTP_HEADER_BYTES = 32_768
 
 
-async def _reject(send: Callable[[dict[str, Any]], Awaitable[None]], status: int, message: bytes) -> None:
+async def _reject(
+    send: Callable[[dict[str, Any]], Awaitable[None]],
+    status: int,
+    message: bytes,
+) -> None:
     await send(
         {
             "type": "http.response.start",
@@ -24,20 +35,52 @@ async def _reject(send: Callable[[dict[str, Any]], Awaitable[None]], status: int
 
 
 class RequestBodyLimitMiddleware:
-    """Read at most max_bytes before handing an HTTP request to FastAPI."""
+    """Reject oversized request targets, headers, and bodies before routing."""
 
-    def __init__(self, app, max_bytes: int = MAX_HTTP_REQUEST_BODY_BYTES) -> None:
-        if max_bytes <= 0:
-            raise ValueError("max_bytes must be positive")
+    def __init__(
+        self,
+        app,
+        max_bytes: int = MAX_HTTP_REQUEST_BODY_BYTES,
+        max_target_bytes: int = MAX_HTTP_REQUEST_TARGET_BYTES,
+        max_header_bytes: int = MAX_HTTP_HEADER_BYTES,
+    ) -> None:
+        if max_bytes <= 0 or max_target_bytes <= 0 or max_header_bytes <= 0:
+            raise ValueError("request admission limits must be positive")
         self.app = app
         self.max_bytes = max_bytes
+        self.max_target_bytes = max_target_bytes
+        self.max_header_bytes = max_header_bytes
 
     async def __call__(self, scope, receive, send) -> None:
         if scope.get("type") != "http":
             await self.app(scope, receive, send)
             return
 
-        headers = {key.lower(): value for key, value in scope.get("headers", ())}
+        raw_path = scope.get("raw_path")
+        if not isinstance(raw_path, bytes):
+            raw_path = str(scope.get("path", "")).encode("utf-8", "surrogatepass")
+        query_string = scope.get("query_string", b"")
+        if not isinstance(query_string, bytes):
+            await _reject(send, 400, b"invalid request target")
+            return
+        target_size = len(raw_path) + (1 + len(query_string) if query_string else 0)
+        if target_size > self.max_target_bytes:
+            await _reject(send, 414, b"request target too large")
+            return
+
+        raw_headers = scope.get("headers", ())
+        header_bytes = 0
+        headers: dict[bytes, bytes] = {}
+        for key, value in raw_headers:
+            if not isinstance(key, bytes) or not isinstance(value, bytes):
+                await _reject(send, 400, b"invalid request headers")
+                return
+            header_bytes += len(key) + len(value)
+            if header_bytes > self.max_header_bytes:
+                await _reject(send, 431, b"request headers too large")
+                return
+            headers[key.lower()] = value
+
         content_length = headers.get(b"content-length")
         if content_length is not None:
             try:

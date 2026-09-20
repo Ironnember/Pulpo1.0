@@ -355,5 +355,21 @@ class CustodyServiceApiTests(unittest.TestCase):
         self.assertEqual(413, response.status_code)
 
 
+    def test_oversized_request_target_is_rejected_before_routing(self):
+        client, _, _, _, _, _ = self.build()
+        response = client.get("/" + ("x" * 9_000))
+        self.assertEqual(414, response.status_code)
+        self.assertEqual("no-store", response.headers["cache-control"])
+
+    def test_oversized_headers_are_rejected_before_routing(self):
+        client, _, _, _, _, _ = self.build()
+        response = client.get(
+            "/health",
+            headers={"X-Probe": "x" * 40_000},
+        )
+        self.assertEqual(431, response.status_code)
+        self.assertEqual("no-store", response.headers["cache-control"])
+
+
 if __name__ == "__main__":
     unittest.main()
