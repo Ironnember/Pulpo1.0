@@ -504,28 +504,29 @@ class GovernanceKernel:
             rejection_time = 0 if trusted_time is None else trusted_time
         else:
             rejection_time = timestamp_ns
-        self._state.append(
-            "approval_rejected",
-            {
-                "approval_id": envelope.approval_id,
-                "authority_id": envelope.authority_id,
-                "verifier_id": envelope.verifier_id,
-                "key_id": envelope.key_id,
-                "deployment_id": envelope.deployment_id,
-                "trust_hash": envelope.trust_hash,
-                "envelope_hash": envelope.envelope_hash,
-                "signing_payload_hash": envelope.signing_payload_hash,
-                "intent_hash": digest,
-                "policy_hash": self.policy_hash,
-                "reason": reason,
-            },
-            rejection_time,
-        )
+        rejection_payload = {
+            "approval_id": envelope.approval_id,
+            "authority_id": envelope.authority_id,
+            "verifier_id": envelope.verifier_id,
+            "key_id": envelope.key_id,
+            "deployment_id": envelope.deployment_id,
+            "trust_hash": envelope.trust_hash,
+            "envelope_hash": envelope.envelope_hash,
+            "signing_payload_hash": envelope.signing_payload_hash,
+            "intent_hash": digest,
+            "policy_hash": self.policy_hash,
+            "reason": reason,
+        }
         decision = Decision("deny", reason, digest)
-        self._state.append(
-            "decision",
-            {"outcome": "deny", "reason": reason, "intent_hash": digest},
-            rejection_time,
+        self._state.append_many(
+            [
+                ("approval_rejected", rejection_payload, rejection_time),
+                (
+                    "decision",
+                    {"outcome": "deny", "reason": reason, "intent_hash": digest},
+                    rejection_time,
+                ),
+            ]
         )
         return decision
 
