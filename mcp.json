@@ -1,0 +1,16 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/mcp.schema.json",
+  "mcpServers": {
+    "pulpo": {
+      "type": "stdio",
+      "command": "python3",
+      "args": [
+        "-m",
+        "pulpo.mcp_plugin",
+        "--snapshot",
+        "${PLUGIN_DATA}/mcp-read-snapshot.json"
+      ],
+      "cwd": "${PLUGIN_ROOT}"
+    }
+  }
+}
