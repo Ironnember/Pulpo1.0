@@ -91,6 +91,7 @@ class KernelState(Protocol):
     def consume_permit(self, permit: str, intent_hash: str, timestamp_ns: int) -> bool: ...
     def directive_hash_status(self, directive_hash: str) -> str: ...
     def append(self, event: str, payload: dict[str, Any], timestamp_ns: int) -> None: ...
+    def append_many(self, entries: list[tuple[str, dict[str, Any], int]]) -> None: ...
     def append_unique(self, event: str, identity_field: str, identity_value: Any, payload: dict[str, Any], timestamp_ns: int) -> dict[str, Any] | None: ...
 
 
@@ -193,6 +194,21 @@ class InMemoryKernelState:
             previous_root = self._audit[-1].get("delta_root", previous) if self._audit else "0" * 64
             record = _audit_record(previous, event, payload, timestamp_ns)
             self._audit.append(_attach_delta(record, previous_root))
+
+    def append_many(self, entries: list[tuple[str, dict[str, Any], int]]) -> None:
+        if any(not event or not isinstance(payload, dict) for event, payload, _ in entries):
+            raise ValueError("audit batch entry invalid")
+        with self._audit_lock:
+            start = len(self._audit)
+            try:
+                for event, payload, timestamp_ns in entries:
+                    previous = self._audit[-1]["hash"] if self._audit else "0" * 64
+                    previous_root = self._audit[-1].get("delta_root", previous) if self._audit else "0" * 64
+                    record = _audit_record(previous, event, payload, timestamp_ns)
+                    self._audit.append(_attach_delta(record, previous_root))
+            except Exception:
+                del self._audit[start:]
+                raise
 
     def append_unique(
         self,
@@ -399,6 +415,16 @@ class SQLiteKernelState:
     def append(self, event: str, payload: dict[str, Any], timestamp_ns: int) -> None:
         with self._connection:
             self._connection.execute("BEGIN IMMEDIATE"); self._append(event, payload, timestamp_ns)
+
+    def append_many(self, entries: list[tuple[str, dict[str, Any], int]]) -> None:
+        if any(not event or not isinstance(payload, dict) for event, payload, _ in entries):
+            raise ValueError("audit batch entry invalid")
+        if not entries:
+            return
+        with self._connection:
+            self._connection.execute("BEGIN IMMEDIATE")
+            for event, payload, timestamp_ns in entries:
+                self._append(event, payload, timestamp_ns)
 
     def append_unique(
         self,
