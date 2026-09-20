@@ -71,7 +71,7 @@ def _toml_string(value: str) -> str:
 
 def _seatbelt_string(value: Path) -> str:
     text = str(Path(os.path.realpath(value)))
-    return text.replace('"', '\\"')
+    return text.replace("\\", "\\\\").replace('"', '\\"')
 
 
 def build_seatbelt_profile(

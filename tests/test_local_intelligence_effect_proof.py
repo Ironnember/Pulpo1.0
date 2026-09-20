@@ -24,18 +24,43 @@ class LocalIntelligenceEffectProofScriptTests(unittest.TestCase):
             runtime.mkdir()
             protected = root / "protected"
             protected.mkdir()
+
             profile = build_seatbelt_profile(runtime, (protected,))
+
             self.assertIn("(deny network*)", profile)
             self.assertNotIn("(allow network*)", profile)
             self.assertIn("(deny file-write*)", profile)
-            self.assertIn(f'(allow file-write* (subpath "{runtime.resolve()}"))', profile)
-            self.assertIn(f'(deny file-read* (subpath "{protected.resolve()}"))', profile)
+
+            runtime_escaped = (
+                str(runtime.resolve())
+                .replace("\\", "\\\\")
+                .replace('"', '\\"')
+            )
+            protected_escaped = (
+                str(protected.resolve())
+                .replace("\\", "\\\\")
+                .replace('"', '\\"')
+            )
+
+            self.assertIn(
+                f'(allow file-write* (subpath "{runtime_escaped}"))',
+                profile,
+            )
+            self.assertIn(
+                f'(deny file-read* (subpath "{protected_escaped}"))',
+                profile,
+            )
 
     def test_network_egress_requires_explicit_profile_opt_in(self):
         with tempfile.TemporaryDirectory() as temp:
             runtime = Path(temp) / "runtime"
             runtime.mkdir()
-            profile = build_seatbelt_profile(runtime, allow_network=True)
+
+            profile = build_seatbelt_profile(
+                runtime,
+                allow_network=True,
+            )
+
             self.assertIn("(allow network*)", profile)
             self.assertNotIn("(deny network*)", profile)
 
@@ -45,8 +70,16 @@ class LocalIntelligenceEffectProofScriptTests(unittest.TestCase):
             codex = root / "codex"
             worktree = root / "worktree"
             runtime = root / "runtime"
-            argv = build_codex_argv(codex, worktree, runtime, "read only")
+
+            argv = build_codex_argv(
+                codex,
+                worktree,
+                runtime,
+                "read only",
+            )
+
             joined = " ".join(argv)
+
             self.assertIn("exec", argv)
             self.assertIn("--ephemeral", argv)
             self.assertIn("--ignore-user-config", argv)
@@ -57,49 +90,147 @@ class LocalIntelligenceEffectProofScriptTests(unittest.TestCase):
             self.assertIn("features.hooks=false", argv)
             self.assertIn('approval_policy="on-request"', argv)
             self.assertIn('web_search="disabled"', argv)
-            self.assertTrue(any(item.startswith("log_dir=") for item in argv))
-            self.assertTrue(any(item.startswith("sqlite_home=") for item in argv))
+            self.assertTrue(
+                any(item.startswith("log_dir=") for item in argv)
+            )
+            self.assertTrue(
+                any(item.startswith("sqlite_home=") for item in argv)
+            )
 
     def test_environment_drops_secret_like_variables_and_pins_codex_home(self):
+        runtime = Path("/tmp/runtime")
+        codex_home = Path("/home/test/.codex")
+
         env = sanitize_environment(
-            {"HOME": "/home/test", "PATH": "/bin", "OPENAI_API_KEY": "secret", "AWS_SECRET_ACCESS_KEY": "secret2"},
-            Path("/tmp/runtime"),
-            codex_home=Path("/home/test/.codex"),
+            {
+                "HOME": "/home/test",
+                "PATH": "/bin",
+                "OPENAI_API_KEY": "secret",
+                "AWS_SECRET_ACCESS_KEY": "secret2",
+            },
+            runtime,
+            codex_home=codex_home,
         )
+
         self.assertEqual(env["HOME"], "/home/test")
         self.assertEqual(env["PATH"], "/bin")
-        self.assertEqual(env["TMPDIR"], "/tmp/runtime")
-        self.assertEqual(env["CODEX_HOME"], "/home/test/.codex")
+        self.assertEqual(env["TMPDIR"], str(runtime))
+        self.assertEqual(env["CODEX_HOME"], str(codex_home))
         self.assertNotIn("OPENAI_API_KEY", env)
         self.assertNotIn("AWS_SECRET_ACCESS_KEY", env)
 
     def test_environment_can_replace_real_home_with_disposable_runtime_home(self):
+        runtime = Path("/tmp/runtime")
+        codex_home = Path("/tmp/runtime/codex-home")
+        home_override = Path("/tmp/runtime/home")
+
         env = sanitize_environment(
-            {"HOME": "/Users/operator", "PATH": "/bin", "SSH_AUTH_SOCK": "/tmp/agent.sock"},
-            Path("/tmp/runtime"),
-            codex_home=Path("/tmp/runtime/codex-home"),
-            home_override=Path("/tmp/runtime/home"),
+            {
+                "HOME": "/Users/operator",
+                "PATH": "/bin",
+                "SSH_AUTH_SOCK": "/tmp/agent.sock",
+            },
+            runtime,
+            codex_home=codex_home,
+            home_override=home_override,
         )
-        self.assertEqual(env["HOME"], "/tmp/runtime/home")
-        self.assertEqual(env["CODEX_HOME"], "/tmp/runtime/codex-home")
+
+        self.assertEqual(
+            env["HOME"],
+            str(home_override),
+        )
+        self.assertEqual(
+            env["CODEX_HOME"],
+            str(codex_home),
+        )
         self.assertNotIn("SSH_AUTH_SOCK", env)
 
     def test_profile_binding_changes_for_any_containment_identity_change(self):
-        one = profile_binding(codex_sha256="a" * 64, seatbelt_sha256="b" * 64, seatbelt_profile_sha256="c" * 64)
-        two = profile_binding(codex_sha256="d" * 64, seatbelt_sha256="b" * 64, seatbelt_profile_sha256="c" * 64)
-        three = profile_binding(codex_sha256="a" * 64, seatbelt_sha256="e" * 64, seatbelt_profile_sha256="c" * 64)
-        four = profile_binding(codex_sha256="a" * 64, seatbelt_sha256="b" * 64, seatbelt_profile_sha256="f" * 64)
+        one = profile_binding(
+            codex_sha256="a" * 64,
+            seatbelt_sha256="b" * 64,
+            seatbelt_profile_sha256="c" * 64,
+        )
+        two = profile_binding(
+            codex_sha256="d" * 64,
+            seatbelt_sha256="b" * 64,
+            seatbelt_profile_sha256="c" * 64,
+        )
+        three = profile_binding(
+            codex_sha256="a" * 64,
+            seatbelt_sha256="e" * 64,
+            seatbelt_profile_sha256="c" * 64,
+        )
+        four = profile_binding(
+            codex_sha256="a" * 64,
+            seatbelt_sha256="b" * 64,
+            seatbelt_profile_sha256="f" * 64,
+        )
+
         self.assertNotEqual(one, two)
         self.assertNotEqual(one, three)
         self.assertNotEqual(one, four)
 
     def test_overall_pass_requires_execution_reconciliation_replay_and_audit(self):
-        self.assertTrue(overall_pass(exit_code=0, timed_out=False, reconciliation_status="verified", replay_denied=True, audit_valid=True))
-        self.assertFalse(overall_pass(exit_code=1, timed_out=False, reconciliation_status="verified", replay_denied=True, audit_valid=True))
-        self.assertFalse(overall_pass(exit_code=0, timed_out=True, reconciliation_status="verified", replay_denied=True, audit_valid=True))
-        self.assertFalse(overall_pass(exit_code=0, timed_out=False, reconciliation_status="mismatch", replay_denied=True, audit_valid=True))
-        self.assertFalse(overall_pass(exit_code=0, timed_out=False, reconciliation_status="verified", replay_denied=False, audit_valid=True))
-        self.assertFalse(overall_pass(exit_code=0, timed_out=False, reconciliation_status="verified", replay_denied=True, audit_valid=False))
+        self.assertTrue(
+            overall_pass(
+                exit_code=0,
+                timed_out=False,
+                reconciliation_status="verified",
+                replay_denied=True,
+                audit_valid=True,
+            )
+        )
+
+        self.assertFalse(
+            overall_pass(
+                exit_code=1,
+                timed_out=False,
+                reconciliation_status="verified",
+                replay_denied=True,
+                audit_valid=True,
+            )
+        )
+
+        self.assertFalse(
+            overall_pass(
+                exit_code=0,
+                timed_out=True,
+                reconciliation_status="verified",
+                replay_denied=True,
+                audit_valid=True,
+            )
+        )
+
+        self.assertFalse(
+            overall_pass(
+                exit_code=0,
+                timed_out=False,
+                reconciliation_status="mismatch",
+                replay_denied=True,
+                audit_valid=True,
+            )
+        )
+
+        self.assertFalse(
+            overall_pass(
+                exit_code=0,
+                timed_out=False,
+                reconciliation_status="verified",
+                replay_denied=False,
+                audit_valid=True,
+            )
+        )
+
+        self.assertFalse(
+            overall_pass(
+                exit_code=0,
+                timed_out=False,
+                reconciliation_status="verified",
+                replay_denied=True,
+                audit_valid=False,
+            )
+        )
 
     def test_envelope_plan_roundtrip_preserves_exact_hash(self):
         with tempfile.TemporaryDirectory() as temp:
@@ -107,31 +238,67 @@ class LocalIntelligenceEffectProofScriptTests(unittest.TestCase):
             executable = root / "sandbox-exec"
             worktree = root / "target"
             runtime = root / "runtime"
+
             executable.write_bytes(b"seatbelt")
             worktree.mkdir()
             runtime.mkdir()
+
             envelope = EffectEnvelope(
                 executable_path=str(executable),
                 executable_sha256="a" * 64,
-                argv=(str(executable), "-f", str(root / "control" / "seatbelt.sb"), "codex"),
+                argv=(
+                    str(executable),
+                    "-f",
+                    str(root / "control" / "seatbelt.sb"),
+                    "codex",
+                ),
                 workdir=str(worktree),
                 source_sha="deadbeef",
                 profile="proof",
                 expires_at_ns=100,
                 surfaces=(
-                    SurfaceSpec(str(worktree), "protected"),
-                    SurfaceSpec(str(runtime), "writable"),
+                    SurfaceSpec(
+                        str(worktree),
+                        "protected",
+                    ),
+                    SurfaceSpec(
+                        str(runtime),
+                        "writable",
+                    ),
                 ),
             )
-            restored = envelope_from_dict(envelope_to_dict(envelope))
-            self.assertEqual(restored.envelope_hash, envelope.envelope_hash)
-            self.assertEqual(restored.argv, envelope.argv)
+
+            restored = envelope_from_dict(
+                envelope_to_dict(envelope)
+            )
+
+            self.assertEqual(
+                restored.envelope_hash,
+                envelope.envelope_hash,
+            )
+            self.assertEqual(
+                restored.argv,
+                envelope.argv,
+            )
 
     def test_plan_hash_fails_if_any_frozen_field_changes(self):
-        plan = freeze_plan({"schema": "x", "effect_envelope_hash": "a" * 64, "target_sha": "abc"})
-        self.assertTrue(verify_plan_hash(plan))
+        plan = freeze_plan(
+            {
+                "schema": "x",
+                "effect_envelope_hash": "a" * 64,
+                "target_sha": "abc",
+            }
+        )
+
+        self.assertTrue(
+            verify_plan_hash(plan)
+        )
+
         plan["target_sha"] = "def"
-        self.assertFalse(verify_plan_hash(plan))
+
+        self.assertFalse(
+            verify_plan_hash(plan)
+        )
 
 
 if __name__ == "__main__":
