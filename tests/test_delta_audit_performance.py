@@ -221,6 +221,53 @@ class DeltaAuditPerformanceTests(unittest.TestCase):
         ]
         self.assertEqual(1, len(filtered))
 
+    def test_append_many_uses_one_durable_transaction(self):
+        state = SQLiteKernelState(self.path)
+        self.addCleanup(state.close)
+        statements = []
+        state._connection.set_trace_callback(statements.append)
+
+        state.append_many(
+            [
+                ("approval_rejected", {"reason": "test", "authority_effect": "none"}, NOW),
+                ("decision", {"outcome": "deny", "reason": "test"}, NOW),
+            ]
+        )
+
+        begins = [statement for statement in statements if statement.strip().upper().startswith("BEGIN")]
+        commits = [statement for statement in statements if statement.strip().upper() == "COMMIT"]
+        self.assertEqual(1, len(begins))
+        self.assertEqual(1, len(commits))
+        self.assertEqual(
+            ["approval_rejected", "decision"],
+            [record["event"] for record in state.audit],
+        )
+
+    def test_append_many_rolls_back_whole_batch_on_failure(self):
+        class FailingBatchState(SQLiteKernelState):
+            def __init__(self, path):
+                super().__init__(path)
+                self.calls = 0
+
+            def _append(self, event, payload, timestamp_ns):
+                self.calls += 1
+                if self.calls == 2:
+                    raise RuntimeError("forced batch failure")
+                return super()._append(event, payload, timestamp_ns)
+
+        state = FailingBatchState(self.path)
+        self.addCleanup(state.close)
+
+        with self.assertRaisesRegex(RuntimeError, "forced batch failure"):
+            state.append_many(
+                [
+                    ("first", {"authority_effect": "none"}, NOW),
+                    ("second", {"authority_effect": "none"}, NOW + 1),
+                ]
+            )
+
+        self.assertEqual([], state.audit)
+
     def test_policy_hash_is_stable_cached_material(self):
         state = SQLiteKernelState(self.path)
         self.addCleanup(state.close)
