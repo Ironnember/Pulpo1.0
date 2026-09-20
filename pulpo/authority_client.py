@@ -9,6 +9,8 @@ from urllib.parse import quote, urlparse
 from urllib.request import Request
 
 from .authority import ApprovalEnvelope, _require_sha256, _require_text
+
+from .resource_limits import ResourceLimitError, load_bounded_json
 from .transport import build_secure_opener
 
 
@@ -140,7 +142,15 @@ class AuthorityClient:
             encoded = response.read(MAX_AUTHORITY_RESPONSE_BYTES + 1)
             if len(encoded) > MAX_AUTHORITY_RESPONSE_BYTES:
                 raise RuntimeError("authority response exceeded the size limit")
-            value = json.loads(encoded)
+            try:
+                value = load_bounded_json(
+                    encoded,
+                    max_bytes=MAX_AUTHORITY_RESPONSE_BYTES,
+                    max_depth=24,
+                    max_items=4_096,
+                )
+            except (json.JSONDecodeError, ResourceLimitError) as exc:
+                raise RuntimeError("authority response JSON exceeded resource limits") from exc
         if not isinstance(value, dict):
             raise ValueError("authority returned a non-object response")
         return value

@@ -345,5 +345,15 @@ class CustodyServiceApiTests(unittest.TestCase):
         self.assertEqual(403, rejected.status_code)
 
 
+    def test_oversized_request_body_is_rejected_before_pydantic(self):
+        client, _, _, _, _, _ = self.build()
+        response = client.post(
+            "/v1/domain-proposals",
+            content=b'{"domain":"' + (b"x" * 300_000) + b'"}',
+            headers={"Content-Type": "application/json"},
+        )
+        self.assertEqual(413, response.status_code)
+
+
 if __name__ == "__main__":
     unittest.main()
