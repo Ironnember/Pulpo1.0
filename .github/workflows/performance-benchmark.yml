@@ -6,7 +6,7 @@ on:
       sizes:
         description: "Comma-separated audit sizes"
         required: true
-        default: "100,1000,10000"
+        default: "1000,10000,100000"
       samples:
         description: "Measured samples per benchmark"
         required: true
