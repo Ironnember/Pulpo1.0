@@ -162,6 +162,57 @@ class RestartSafeStateTests(unittest.TestCase):
         ]
         self.assertEqual(1, len(replay_reads))
 
+    def test_unspent_permit_expires_across_restart(self):
+        now = NOW
+        policy = Policy(
+            frozenset({"read"}),
+            0,
+            permit_ttl_ns=10,
+        )
+        intent = Intent("agent:reader", "read", "repo:file", 0, "session-disconnected")
+
+        first_state = SQLiteKernelState(self.path)
+        first_kernel = GovernanceKernel(
+            policy,
+            secret=b"permit-secret",
+            clock=lambda: now,
+            state=first_state,
+        )
+        decision = first_kernel.evaluate(intent)
+        self.assertEqual("allow", decision.outcome)
+        first_state.close()
+
+        now += 10
+        restarted_state = SQLiteKernelState(self.path)
+        self.addCleanup(restarted_state.close)
+        restarted_kernel = GovernanceKernel(
+            policy,
+            secret=b"permit-secret",
+            clock=lambda: now,
+            state=restarted_state,
+        )
+        self.assertFalse(restarted_kernel.consume(decision.permit, intent))
+        self.assertEqual("permit_rejected", restarted_kernel.audit[-1]["event"])
+
+    def test_legacy_persisted_permit_without_expiry_fails_closed(self):
+        state = SQLiteKernelState(self.path)
+        state.close()
+        with sqlite3.connect(self.path) as connection:
+            connection.execute(
+                "INSERT INTO permits (permit, intent_hash, spent, expires_at_ns) VALUES (?, ?, 0, NULL)",
+                ("legacy-permit", "legacy-hash"),
+            )
+
+        restarted_state = SQLiteKernelState(self.path)
+        self.addCleanup(restarted_state.close)
+        self.assertFalse(
+            restarted_state.consume_permit(
+                "legacy-permit",
+                "legacy-hash",
+                NOW,
+            )
+        )
+
     def test_verified_approval_and_permit_are_committed_with_one_transaction(self):
         state = SQLiteKernelState(self.path)
         self.addCleanup(state.close)
