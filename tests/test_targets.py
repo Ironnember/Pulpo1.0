@@ -1,6 +1,8 @@
+import sqlite3
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from pulpo import GovernanceKernel, Intent, Policy, SQLiteKernelState
 
@@ -114,6 +116,88 @@ class TargetLockTests(unittest.TestCase):
             self.assertEqual("match", resolution.outcome)
             self.assertEqual("allow", decision.outcome)
             second_state.close()
+
+    def test_sqlite_target_lookup_reuses_verified_audit_until_external_change(self):
+        intent = Intent("agent:builder", "write", "repo:README.md", 5, "voice-session")
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "pulpo.db"
+            state = SQLiteKernelState(path)
+            kernel = GovernanceKernel(
+                Policy(frozenset({"write"}), 100),
+                secret=b"target-test-secret",
+                clock=lambda: self.now,
+                state=state,
+            )
+            target = kernel.lock_target("T-FAST", intent)
+
+            with mock.patch.object(kernel, "verify_audit", wraps=kernel.verify_audit) as verify:
+                self.assertEqual(target, kernel.get_locked_target("T-FAST"))
+                self.assertEqual(target, kernel.get_locked_target("T-FAST"))
+                self.assertEqual(0, verify.call_count)
+            state.close()
+
+    def test_sqlite_external_audit_tamper_forces_full_revalidation_and_fails_closed(self):
+        intent = Intent("agent:builder", "write", "repo:README.md", 5, "voice-session")
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "pulpo.db"
+            state = SQLiteKernelState(path)
+            kernel = GovernanceKernel(
+                Policy(frozenset({"write"}), 100),
+                secret=b"target-test-secret",
+                clock=lambda: self.now,
+                state=state,
+            )
+            kernel.lock_target("T-TAMPER", intent)
+
+            outsider = sqlite3.connect(path)
+            try:
+                outsider.execute(
+                    "UPDATE audit SET payload_json = ? WHERE sequence = 1",
+                    ('{"tampered":true}',),
+                )
+                outsider.commit()
+            finally:
+                outsider.close()
+
+            with self.assertRaisesRegex(Exception, "audit chain is invalid"):
+                kernel.get_locked_target("T-TAMPER")
+            state.close()
+
+    def test_sqlite_restart_revalidates_tampered_persisted_audit(self):
+        intent = Intent("agent:builder", "write", "repo:README.md", 5, "voice-session")
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "pulpo.db"
+            first_state = SQLiteKernelState(path)
+            first = GovernanceKernel(
+                Policy(frozenset({"write"}), 100),
+                secret=b"target-test-secret",
+                clock=lambda: self.now,
+                state=first_state,
+            )
+            first.lock_target("T-RESTART-TAMPER", intent)
+            first_state.close()
+
+            outsider = sqlite3.connect(path)
+            try:
+                outsider.execute(
+                    "UPDATE audit SET payload_json = ? WHERE sequence = 1",
+                    ('{"tampered":true}',),
+                )
+                outsider.commit()
+            finally:
+                outsider.close()
+
+            second_state = SQLiteKernelState(path)
+            try:
+                with self.assertRaisesRegex(Exception, "audit chain is invalid"):
+                    GovernanceKernel(
+                        Policy(frozenset({"write"}), 100),
+                        secret=b"target-test-secret",
+                        clock=lambda: self.now + 1,
+                        state=second_state,
+                    )
+            finally:
+                second_state.close()
 
     def test_target_version_is_immutable(self):
         first = Intent("agent:builder", "write", "repo:a", 0, "voice-session")
