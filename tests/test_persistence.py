@@ -33,7 +33,13 @@ class RestartSafeStateTests(unittest.TestCase):
             frozenset({"push"}),
             authority_trust=trust_for(self.verifier),
         )
-        self.intent = Intent("agent:publisher", "push", "repo:origin/main", 0, "session-1")
+        self.intent = Intent(
+            "agent:publisher",
+            "push",
+            "repo:origin/main",
+            0,
+            "session-1",
+        )
 
     def kernel(self, state):
         return GovernanceKernel(
@@ -47,20 +53,33 @@ class RestartSafeStateTests(unittest.TestCase):
     def test_approval_and_permit_replay_remain_denied_after_restart(self):
         first_state = SQLiteKernelState(self.path)
         first_kernel = self.kernel(first_state)
-        envelope = signed_envelope(first_kernel, self.intent, self.verifier, now_ns=NOW)
+        envelope = signed_envelope(
+            first_kernel,
+            self.intent,
+            self.verifier,
+            now_ns=NOW,
+        )
         decision = first_kernel.evaluate_with_approval(self.intent, envelope)
+
         self.assertEqual("allow", decision.outcome)
+
         first_length = len(first_kernel.audit)
         first_state.close()
 
         restarted_state = SQLiteKernelState(self.path)
         self.addCleanup(restarted_state.close)
         restarted_kernel = self.kernel(restarted_state)
+
         self.assertTrue(restarted_kernel.verify_audit())
+
         self.assertEqual(
             "approval_id_replayed",
-            restarted_kernel.evaluate_with_approval(self.intent, envelope).reason,
+            restarted_kernel.evaluate_with_approval(
+                self.intent,
+                envelope,
+            ).reason,
         )
+
         same_nonce = signed_envelope(
             restarted_kernel,
             self.intent,
@@ -69,31 +88,60 @@ class RestartSafeStateTests(unittest.TestCase):
             approval_id="approval-2",
             nonce=envelope.nonce,
         )
+
         self.assertEqual(
             "approval_nonce_replayed",
-            restarted_kernel.evaluate_with_approval(self.intent, same_nonce).reason,
+            restarted_kernel.evaluate_with_approval(
+                self.intent,
+                same_nonce,
+            ).reason,
         )
+
         self.assertFalse(
             restarted_kernel.consume(
                 decision.permit,
                 replace(self.intent, resource="repo:other"),
             )
         )
-        self.assertTrue(restarted_kernel.consume(decision.permit, self.intent))
-        self.assertGreater(len(restarted_kernel.audit), first_length)
+
+        self.assertTrue(
+            restarted_kernel.consume(
+                decision.permit,
+                self.intent,
+            )
+        )
+
+        self.assertGreater(
+            len(restarted_kernel.audit),
+            first_length,
+        )
         self.assertTrue(restarted_kernel.verify_audit())
+
         restarted_state.close()
 
         final_state = SQLiteKernelState(self.path)
         self.addCleanup(final_state.close)
         final_kernel = self.kernel(final_state)
-        self.assertFalse(final_kernel.consume(decision.permit, self.intent))
+
+        self.assertFalse(
+            final_kernel.consume(
+                decision.permit,
+                self.intent,
+            )
+        )
         self.assertTrue(final_kernel.verify_audit())
 
     def test_concurrent_identical_approval_allows_exactly_once(self):
         signing_state = SQLiteKernelState(self.path)
         signing_kernel = self.kernel(signing_state)
-        envelope = signed_envelope(signing_kernel, self.intent, self.verifier, now_ns=NOW)
+
+        envelope = signed_envelope(
+            signing_kernel,
+            self.intent,
+            self.verifier,
+            now_ns=NOW,
+        )
+
         signing_state.close()
 
         barrier = threading.Barrier(2)
@@ -105,28 +153,48 @@ class RestartSafeStateTests(unittest.TestCase):
             try:
                 kernel = self.kernel(state)
                 barrier.wait()
-                results.append(kernel.evaluate_with_approval(self.intent, envelope))
+                results.append(
+                    kernel.evaluate_with_approval(
+                        self.intent,
+                        envelope,
+                    )
+                )
             except Exception as exc:
                 errors.append(exc)
             finally:
                 state.close()
 
-        threads = [threading.Thread(target=evaluate) for _ in range(2)]
+        threads = [
+            threading.Thread(target=evaluate)
+            for _ in range(2)
+        ]
+
         for thread in threads:
             thread.start()
+
         for thread in threads:
             thread.join()
 
         self.assertEqual([], errors)
-        self.assertEqual(["allow", "deny"], sorted((result.outcome for result in results)))
+
+        self.assertEqual(
+            ["allow", "deny"],
+            sorted(result.outcome for result in results),
+        )
+
         self.assertEqual(
             ["approval_id_replayed"],
-            [result.reason for result in results if result.outcome == "deny"],
+            [
+                result.reason
+                for result in results
+                if result.outcome == "deny"
+            ],
         )
 
     def test_replay_reason_uses_one_snapshot_with_id_precedence(self):
         state = SQLiteKernelState(self.path)
         self.addCleanup(state.close)
+
         state._connection.executemany(
             "INSERT INTO approvals (approval_id, nonce) VALUES (?, ?)",
             [
@@ -137,74 +205,130 @@ class RestartSafeStateTests(unittest.TestCase):
 
         statements = []
         state._connection.set_trace_callback(statements.append)
+
         self.assertEqual(
             "approval_nonce_replayed",
-            state.approval_replay_reason("new-approval", "nonce-match"),
+            state.approval_replay_reason(
+                "new-approval",
+                "nonce-match",
+            ),
         )
+
         replay_reads = [
             statement
             for statement in statements
             if statement.lstrip().upper().startswith("SELECT")
             and "approvals" in statement
         ]
+
         self.assertEqual(1, len(replay_reads))
 
         statements.clear()
+
         self.assertEqual(
             "approval_id_replayed",
-            state.approval_replay_reason("approval-id-match", "nonce-match"),
+            state.approval_replay_reason(
+                "approval-id-match",
+                "nonce-match",
+            ),
         )
+
         replay_reads = [
             statement
             for statement in statements
             if statement.lstrip().upper().startswith("SELECT")
             and "approvals" in statement
         ]
+
         self.assertEqual(1, len(replay_reads))
 
     def test_unspent_permit_expires_across_restart(self):
         now = NOW
+
         policy = Policy(
             frozenset({"read"}),
             0,
             permit_ttl_ns=10,
         )
-        intent = Intent("agent:reader", "read", "repo:file", 0, "session-disconnected")
+
+        intent = Intent(
+            "agent:reader",
+            "read",
+            "repo:file",
+            0,
+            "session-disconnected",
+        )
 
         first_state = SQLiteKernelState(self.path)
+
         first_kernel = GovernanceKernel(
             policy,
             secret=b"permit-secret",
             clock=lambda: now,
             state=first_state,
         )
+
         decision = first_kernel.evaluate(intent)
-        self.assertEqual("allow", decision.outcome)
+
+        self.assertEqual(
+            "allow",
+            decision.outcome,
+        )
+
         first_state.close()
 
         now += 10
+
         restarted_state = SQLiteKernelState(self.path)
         self.addCleanup(restarted_state.close)
+
         restarted_kernel = GovernanceKernel(
             policy,
             secret=b"permit-secret",
             clock=lambda: now,
             state=restarted_state,
         )
-        self.assertFalse(restarted_kernel.consume(decision.permit, intent))
-        self.assertEqual("permit_rejected", restarted_kernel.audit[-1]["event"])
+
+        self.assertFalse(
+            restarted_kernel.consume(
+                decision.permit,
+                intent,
+            )
+        )
+
+        self.assertEqual(
+            "permit_rejected",
+            restarted_kernel.audit[-1]["event"],
+        )
 
     def test_legacy_persisted_permit_without_expiry_fails_closed(self):
         state = SQLiteKernelState(self.path)
         state.close()
-        with sqlite3.connect(self.path) as connection:
+
+        connection = sqlite3.connect(self.path)
+        try:
             connection.execute(
-                "INSERT INTO permits (permit, intent_hash, spent, expires_at_ns) VALUES (?, ?, 0, NULL)",
-                ("legacy-permit", "legacy-hash"),
+                """
+                INSERT INTO permits (
+                    permit,
+                    intent_hash,
+                    spent,
+                    expires_at_ns
+                )
+                VALUES (?, ?, 0, NULL)
+                """,
+                (
+                    "legacy-permit",
+                    "legacy-hash",
+                ),
             )
+            connection.commit()
+        finally:
+            connection.close()
 
         restarted_state = SQLiteKernelState(self.path)
         self.addCleanup(restarted_state.close)
+
         self.assertFalse(
             restarted_state.consume_permit(
                 "legacy-permit",
@@ -216,156 +340,375 @@ class RestartSafeStateTests(unittest.TestCase):
     def test_verified_approval_and_permit_are_committed_with_one_transaction(self):
         state = SQLiteKernelState(self.path)
         self.addCleanup(state.close)
+
         kernel = self.kernel(state)
-        envelope = signed_envelope(kernel, self.intent, self.verifier, now_ns=NOW)
-        decision = kernel.evaluate_with_approval(self.intent, envelope)
+
+        envelope = signed_envelope(
+            kernel,
+            self.intent,
+            self.verifier,
+            now_ns=NOW,
+        )
+
+        decision = kernel.evaluate_with_approval(
+            self.intent,
+            envelope,
+        )
 
         connection = sqlite3.connect(self.path)
-        self.addCleanup(connection.close)
-        self.assertEqual(1, connection.execute("SELECT COUNT(*) FROM approvals").fetchone()[0])
-        self.assertEqual(1, connection.execute("SELECT COUNT(*) FROM permits").fetchone()[0])
-        self.assertEqual(
-            ["approval_verified", "decision"],
-            [row[0] for row in connection.execute("SELECT event FROM audit ORDER BY sequence")],
+        try:
+            self.assertEqual(
+                1,
+                connection.execute(
+                    "SELECT COUNT(*) FROM approvals"
+                ).fetchone()[0],
+            )
+
+            self.assertEqual(
+                1,
+                connection.execute(
+                    "SELECT COUNT(*) FROM permits"
+                ).fetchone()[0],
+            )
+
+            self.assertEqual(
+                [
+                    "approval_verified",
+                    "decision",
+                ],
+                [
+                    row[0]
+                    for row in connection.execute(
+                        "SELECT event FROM audit ORDER BY sequence"
+                    )
+                ],
+            )
+        finally:
+            connection.close()
+
+        self.assertTrue(
+            kernel.consume(
+                decision.permit,
+                self.intent,
+            )
         )
-        self.assertTrue(kernel.consume(decision.permit, self.intent))
 
     def test_failed_audit_write_rolls_back_approval_and_permit(self):
         state = SQLiteKernelState(self.path)
         self.addCleanup(state.close)
+
         kernel = self.kernel(state)
-        envelope = signed_envelope(kernel, self.intent, self.verifier, now_ns=NOW)
-        with sqlite3.connect(self.path) as connection:
+
+        envelope = signed_envelope(
+            kernel,
+            self.intent,
+            self.verifier,
+            now_ns=NOW,
+        )
+
+        connection = sqlite3.connect(self.path)
+        try:
             connection.execute(
                 """
                 CREATE TRIGGER reject_verified_audit
                 BEFORE INSERT ON audit
                 WHEN NEW.event = 'approval_verified'
                 BEGIN
-                    SELECT RAISE(ABORT, 'forced audit failure');
+                    SELECT RAISE(
+                        ABORT,
+                        'forced audit failure'
+                    );
                 END
                 """
             )
+            connection.commit()
+        finally:
+            connection.close()
 
-        with self.assertRaisesRegex(sqlite3.IntegrityError, "forced audit failure"):
-            kernel.evaluate_with_approval(self.intent, envelope)
+        with self.assertRaisesRegex(
+            sqlite3.IntegrityError,
+            "forced audit failure",
+        ):
+            kernel.evaluate_with_approval(
+                self.intent,
+                envelope,
+            )
 
-        with sqlite3.connect(self.path) as connection:
-            self.assertEqual(0, connection.execute("SELECT COUNT(*) FROM approvals").fetchone()[0])
-            self.assertEqual(0, connection.execute("SELECT COUNT(*) FROM permits").fetchone()[0])
-            self.assertEqual(0, connection.execute("SELECT COUNT(*) FROM audit").fetchone()[0])
+        connection = sqlite3.connect(self.path)
+        try:
+            self.assertEqual(
+                0,
+                connection.execute(
+                    "SELECT COUNT(*) FROM approvals"
+                ).fetchone()[0],
+            )
+
+            self.assertEqual(
+                0,
+                connection.execute(
+                    "SELECT COUNT(*) FROM permits"
+                ).fetchone()[0],
+            )
+
+            self.assertEqual(
+                0,
+                connection.execute(
+                    "SELECT COUNT(*) FROM audit"
+                ).fetchone()[0],
+            )
+        finally:
+            connection.close()
 
     def test_failed_consumption_audit_rolls_back_spent_permit(self):
         state = SQLiteKernelState(self.path)
         self.addCleanup(state.close)
+
         kernel = self.kernel(state)
+
         decision = kernel.evaluate_with_approval(
             self.intent,
-            signed_envelope(kernel, self.intent, self.verifier, now_ns=NOW),
+            signed_envelope(
+                kernel,
+                self.intent,
+                self.verifier,
+                now_ns=NOW,
+            ),
         )
-        with sqlite3.connect(self.path) as connection:
+
+        connection = sqlite3.connect(self.path)
+        try:
             connection.execute(
                 """
                 CREATE TRIGGER reject_consumed_audit
                 BEFORE INSERT ON audit
                 WHEN NEW.event = 'permit_consumed'
                 BEGIN
-                    SELECT RAISE(ABORT, 'forced consumption audit failure');
+                    SELECT RAISE(
+                        ABORT,
+                        'forced consumption audit failure'
+                    );
                 END
                 """
             )
+            connection.commit()
+        finally:
+            connection.close()
 
-        with self.assertRaisesRegex(sqlite3.IntegrityError, "forced consumption audit failure"):
-            kernel.consume(decision.permit, self.intent)
+        with self.assertRaisesRegex(
+            sqlite3.IntegrityError,
+            "forced consumption audit failure",
+        ):
+            kernel.consume(
+                decision.permit,
+                self.intent,
+            )
 
-        with sqlite3.connect(self.path) as connection:
-            self.assertEqual(0, connection.execute("SELECT spent FROM permits").fetchone()[0])
-            connection.execute("DROP TRIGGER reject_consumed_audit")
-        self.assertTrue(kernel.consume(decision.permit, self.intent))
+        connection = sqlite3.connect(self.path)
+        try:
+            self.assertEqual(
+                0,
+                connection.execute(
+                    "SELECT spent FROM permits"
+                ).fetchone()[0],
+            )
+
+            connection.execute(
+                "DROP TRIGGER reject_consumed_audit"
+            )
+            connection.commit()
+        finally:
+            connection.close()
+
+        self.assertTrue(
+            kernel.consume(
+                decision.permit,
+                self.intent,
+            )
+        )
+
         self.assertTrue(kernel.verify_audit())
 
     def test_overlapping_connections_serialize_audit_tip_selection(self):
         first_record_started = threading.Event()
         release_first_record = threading.Event()
         second_record_started = threading.Event()
+
         record_count = 0
         record_count_lock = threading.Lock()
+
         original_audit_record = state_module._audit_record
 
-        def observed_audit_record(previous_hash, event, payload, timestamp_ns):
+        def observed_audit_record(
+            previous_hash,
+            event,
+            payload,
+            timestamp_ns,
+        ):
             nonlocal record_count
+
             with record_count_lock:
                 record_count += 1
                 current_record = record_count
+
             if current_record == 1:
                 first_record_started.set()
-                self.assertTrue(release_first_record.wait(2))
+                self.assertTrue(
+                    release_first_record.wait(2)
+                )
+
             elif current_record == 2:
                 second_record_started.set()
-            return original_audit_record(previous_hash, event, payload, timestamp_ns)
+
+            return original_audit_record(
+                previous_hash,
+                event,
+                payload,
+                timestamp_ns,
+            )
 
         errors = []
 
         def append_from_connection(event):
             state = SQLiteKernelState(self.path)
+
             try:
-                state.append(event, {"source": event}, NOW)
+                state.append(
+                    event,
+                    {"source": event},
+                    NOW,
+                )
             except Exception as exc:
                 errors.append(exc)
             finally:
                 state.close()
 
-        with patch.object(state_module, "_audit_record", observed_audit_record):
-            first = threading.Thread(target=append_from_connection, args=("first",))
-            second = threading.Thread(target=append_from_connection, args=("second",))
+        with patch.object(
+            state_module,
+            "_audit_record",
+            observed_audit_record,
+        ):
+            first = threading.Thread(
+                target=append_from_connection,
+                args=("first",),
+            )
+
+            second = threading.Thread(
+                target=append_from_connection,
+                args=("second",),
+            )
+
             first.start()
-            self.assertTrue(first_record_started.wait(2))
+
+            self.assertTrue(
+                first_record_started.wait(2)
+            )
+
             second.start()
-            self.assertFalse(second_record_started.wait(0.1))
+
+            self.assertFalse(
+                second_record_started.wait(0.1)
+            )
+
             release_first_record.set()
+
             first.join(2)
             second.join(2)
 
         self.assertFalse(first.is_alive())
         self.assertFalse(second.is_alive())
         self.assertEqual([], errors)
+
         state = SQLiteKernelState(self.path)
         self.addCleanup(state.close)
-        self.assertEqual(["first", "second"], [record["event"] for record in state.audit])
-        self.assertTrue(self.kernel(state).verify_audit())
+
+        self.assertEqual(
+            ["first", "second"],
+            [
+                record["event"]
+                for record in state.audit
+            ],
+        )
+
+        self.assertTrue(
+            self.kernel(state).verify_audit()
+        )
 
     def test_tampered_persisted_audit_fails_closed_at_restart(self):
         state = SQLiteKernelState(self.path)
         kernel = self.kernel(state)
+
         kernel.evaluate_with_approval(
             self.intent,
-            signed_envelope(kernel, self.intent, self.verifier, now_ns=NOW),
+            signed_envelope(
+                kernel,
+                self.intent,
+                self.verifier,
+                now_ns=NOW,
+            ),
         )
+
         state.close()
 
-        with sqlite3.connect(self.path) as connection:
-            connection.execute("UPDATE audit SET payload_json = ? WHERE sequence = 1", ('{"changed":true}',))
+        connection = sqlite3.connect(self.path)
+        try:
+            connection.execute(
+                """
+                UPDATE audit
+                SET payload_json = ?
+                WHERE sequence = 1
+                """,
+                ('{"changed":true}',),
+            )
+            connection.commit()
+        finally:
+            connection.close()
 
         tampered_state = SQLiteKernelState(self.path)
         self.addCleanup(tampered_state.close)
-        with self.assertRaisesRegex(StateIntegrityError, "audit chain"):
+
+        with self.assertRaisesRegex(
+            StateIntegrityError,
+            "audit chain",
+        ):
             self.kernel(tampered_state)
 
     def test_malformed_persisted_audit_raises_integrity_error_at_restart(self):
         state = SQLiteKernelState(self.path)
         kernel = self.kernel(state)
+
         kernel.evaluate_with_approval(
             self.intent,
-            signed_envelope(kernel, self.intent, self.verifier, now_ns=NOW),
+            signed_envelope(
+                kernel,
+                self.intent,
+                self.verifier,
+                now_ns=NOW,
+            ),
         )
+
         state.close()
 
-        with sqlite3.connect(self.path) as connection:
-            connection.execute("UPDATE audit SET payload_json = ? WHERE sequence = 1", ("{not-json",))
+        connection = sqlite3.connect(self.path)
+        try:
+            connection.execute(
+                """
+                UPDATE audit
+                SET payload_json = ?
+                WHERE sequence = 1
+                """,
+                ("{not-json",),
+            )
+            connection.commit()
+        finally:
+            connection.close()
 
         malformed_state = SQLiteKernelState(self.path)
         self.addCleanup(malformed_state.close)
-        with self.assertRaisesRegex(StateIntegrityError, "audit chain"):
+
+        with self.assertRaisesRegex(
+            StateIntegrityError,
+            "audit chain",
+        ):
             self.kernel(malformed_state)
 
 
