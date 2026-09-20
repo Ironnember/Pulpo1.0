@@ -26,6 +26,19 @@ jobs:
       - name: Check committed whitespace
         run: git diff --check 4b825dc642cb6eb9a060e54bf8d69288fbee4904 HEAD
 
+  network_exposure_proof:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Run listener proof parser and policy tests
+        run: python -W error -m unittest tests.test_network_exposure -v
+      - name: Compile listener proof sources
+        run: python -m compileall -q pulpo/network_exposure.py scripts/check_network_exposure.py tests/test_network_exposure.py
+
   authority:
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -194,6 +207,7 @@ jobs:
     if: ${{ always() }}
     needs:
       - unit-tests
+      - network_exposure_proof
       - hostile-worker-custody
       - hostile-worker-container-isolation
     runs-on: ubuntu-latest
@@ -203,10 +217,12 @@ jobs:
         env:
           UNIT_RESULT: ${{ needs.unit-tests.result }}
           CUSTODY_RESULT: ${{ needs.hostile-worker-custody.result }}
+          NETWORK_RESULT: ${{ needs.network_exposure_proof.result }}
           CONTAINER_RESULT: ${{ needs.hostile-worker-container-isolation.result }}
         shell: bash
         run: |
           set -euo pipefail
           test "$UNIT_RESULT" = "success"
+          test "$NETWORK_RESULT" = "success"
           test "$CUSTODY_RESULT" = "success"
           test "$CONTAINER_RESULT" = "success"
