@@ -64,6 +64,7 @@ class KernelState(Protocol):
     def directive_hash_status(self, directive_hash: str) -> str: ...
     def append(self, event: str, payload: dict[str, Any], timestamp_ns: int) -> None: ...
     def append_unique(self, event: str, identity_field: str, identity_value: Any, payload: dict[str, Any], timestamp_ns: int) -> dict[str, Any] | None: ...
+    def audit_integrity_token(self) -> object | None: ...
 
 
 class InMemoryKernelState:
@@ -80,6 +81,11 @@ class InMemoryKernelState:
     @property
     def audit(self) -> list[dict[str, Any]]:
         return self._audit
+
+    def audit_integrity_token(self) -> object | None:
+        # The in-memory audit is intentionally mutable for proof/tests that
+        # exercise tamper detection directly. Keep full verification there.
+        return None
 
     def approval_replay_reason(self, approval_id: str, nonce: str) -> str | None:
         if approval_id in self._approval_ids: return "approval_id_replayed"
@@ -199,6 +205,16 @@ class SQLiteKernelState:
     def audit(self) -> list[dict[str, Any]]:
         rows = self._connection.execute("SELECT event, payload_json, previous_hash, timestamp_ns, hash FROM audit ORDER BY sequence").fetchall()
         return [{"event": e, "payload": json.loads(p), "previous_hash": ph, "timestamp_ns": ts, "hash": h} for e,p,ph,ts,h in rows]
+
+    def audit_integrity_token(self) -> object | None:
+        # SQLite increments data_version when another connection commits.
+        # Writes through this trusted state connection do not change it, so
+        # normal canonical appends stay O(1) while out-of-band mutation forces
+        # a full genesis-to-head revalidation on the next guarded lookup.
+        row = self._connection.execute("PRAGMA data_version").fetchone()
+        if row is None:
+            raise RuntimeError("SQLite audit data version is unavailable")
+        return ("sqlite-data-version", int(row[0]))
 
     def approval_replay_reason(self, approval_id: str, nonce: str) -> str | None: return self._approval_replay_reason(approval_id, nonce)
     def _approval_replay_reason(self, approval_id: str, nonce: str) -> str | None:
