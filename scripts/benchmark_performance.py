@@ -158,6 +158,13 @@ def benchmark_size(
         state = SQLiteKernelState(path)
         kernel = new_kernel(state)
 
+        stream_values = measure(
+            lambda: sum(1 for _ in state.iter_audit()),
+            warmup=warmup,
+            samples=samples,
+        )
+        results.append(metric("audit_stream_iterate", audit_records, stream_values))
+
         materialize_values = measure(
             lambda: len(state.audit),
             warmup=warmup,
@@ -345,8 +352,8 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--sizes",
-        default="100,1000,10000",
-        help="comma-separated audit sizes (default: 100,1000,10000)",
+        default="1000,10000,100000",
+        help="comma-separated audit sizes (default: 1000,10000,100000)",
     )
     parser.add_argument("--samples", type=int, default=15)
     parser.add_argument("--warmup", type=int, default=3)
