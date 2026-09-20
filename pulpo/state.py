@@ -13,7 +13,7 @@ import json
 from os import PathLike
 import sqlite3
 from threading import RLock
-from typing import Any, Protocol
+from typing import Any, Iterator, Protocol
 
 
 def _canonical(value: Any) -> bytes:
@@ -84,6 +84,7 @@ class DirectivePermitBinding:
 class KernelState(Protocol):
     @property
     def audit(self) -> list[dict[str, Any]]: ...
+    def iter_audit(self, *, event: str | None = None, reverse: bool = False) -> Iterator[dict[str, Any]]: ...
     def approval_replay_reason(self, approval_id: str, nonce: str) -> str | None: ...
     def issue_permit(self, permit: str, intent_hash: str, decision_reason: str, timestamp_ns: int, approval: ApprovalUse | None = None) -> str | None: ...
     def bind_permit_to_directive(self, permit: str, intent_hash: str, binding: DirectivePermitBinding, timestamp_ns: int) -> None: ...
@@ -108,6 +109,17 @@ class InMemoryKernelState:
     @property
     def audit(self) -> list[dict[str, Any]]:
         return self._audit
+
+    def iter_audit(
+        self,
+        *,
+        event: str | None = None,
+        reverse: bool = False,
+    ) -> Iterator[dict[str, Any]]:
+        records = reversed(self._audit) if reverse else iter(self._audit)
+        for record in records:
+            if event is None or record.get("event") == event:
+                yield record
 
     def approval_replay_reason(self, approval_id: str, nonce: str) -> str | None:
         if approval_id in self._approval_ids: return "approval_id_replayed"
@@ -248,26 +260,48 @@ class SQLiteKernelState:
         self._connection.execute("CREATE INDEX IF NOT EXISTS idx_directives_hash ON directives(directive_hash)")
         self._connection.execute("CREATE INDEX IF NOT EXISTS idx_audit_event ON audit(event)")
 
+    @staticmethod
+    def _decode_audit_row(row: tuple[Any, ...]) -> dict[str, Any]:
+        event, payload_json, previous_hash, timestamp_ns, digest, delta_json, previous_delta_root, delta_root = row
+        record = {
+            "event": event,
+            "payload": json.loads(payload_json),
+            "previous_hash": previous_hash,
+            "timestamp_ns": timestamp_ns,
+            "hash": digest,
+        }
+        if delta_json is not None:
+            record["delta"] = json.loads(delta_json)
+            record["previous_delta_root"] = previous_delta_root
+            record["delta_root"] = delta_root
+        return record
+
+    def iter_audit(
+        self,
+        *,
+        event: str | None = None,
+        reverse: bool = False,
+    ) -> Iterator[dict[str, Any]]:
+        columns = (
+            "event, payload_json, previous_hash, timestamp_ns, hash, "
+            "delta_json, previous_delta_root, delta_root"
+        )
+        order = "DESC" if reverse else "ASC"
+        if event is None:
+            cursor = self._connection.execute(
+                f"SELECT {columns} FROM audit ORDER BY sequence {order}"
+            )
+        else:
+            cursor = self._connection.execute(
+                f"SELECT {columns} FROM audit WHERE event = ? ORDER BY sequence {order}",
+                (event,),
+            )
+        for row in cursor:
+            yield self._decode_audit_row(row)
+
     @property
     def audit(self) -> list[dict[str, Any]]:
-        rows = self._connection.execute(
-            "SELECT event, payload_json, previous_hash, timestamp_ns, hash, delta_json, previous_delta_root, delta_root FROM audit ORDER BY sequence"
-        ).fetchall()
-        records: list[dict[str, Any]] = []
-        for event, payload_json, previous_hash, timestamp_ns, digest, delta_json, previous_delta_root, delta_root in rows:
-            record = {
-                "event": event,
-                "payload": json.loads(payload_json),
-                "previous_hash": previous_hash,
-                "timestamp_ns": timestamp_ns,
-                "hash": digest,
-            }
-            if delta_json is not None:
-                record["delta"] = json.loads(delta_json)
-                record["previous_delta_root"] = previous_delta_root
-                record["delta_root"] = delta_root
-            records.append(record)
-        return records
+        return list(self.iter_audit())
 
     def approval_replay_reason(self, approval_id: str, nonce: str) -> str | None: return self._approval_replay_reason(approval_id, nonce)
     def _approval_replay_reason(self, approval_id: str, nonce: str) -> str | None:
