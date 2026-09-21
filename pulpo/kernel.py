@@ -123,6 +123,7 @@ class Policy:
     approval_actions: frozenset[str] = frozenset()
     agent_grants: tuple[AgentGrant, ...] = ()
     authority_trust: AuthorityTrust | None = None
+    provenance_required_actions: frozenset[str] = frozenset()
 
     def __post_init__(self) -> None:
         principals = [grant.principal for grant in self.agent_grants]
@@ -134,6 +135,8 @@ class Policy:
             raise ValueError("approval actions require a pinned authority trust")
         if self.authority_trust is not None and not self.approval_actions:
             raise ValueError("authority trust requires at least one approval action")
+        if not self.provenance_required_actions.issubset(self.allowed_actions):
+            raise ValueError("provenance-required actions must be a subset of policy actions")
 
 
 @dataclass(frozen=True)
@@ -204,6 +207,8 @@ class GovernanceKernel:
             "agent_grants": grants,
             "authority_trust": asdict(self.policy.authority_trust) if self.policy.authority_trust else None,
         }
+        if self.policy.provenance_required_actions:
+            payload["provenance_required_actions"] = sorted(self.policy.provenance_required_actions)
         return sha256(_canonical(payload)).hexdigest()
 
     def lock_target(self, target_id: str, intent: Intent, *, version: int = 1) -> LockedTarget:
@@ -473,6 +478,8 @@ class GovernanceKernel:
             return "incomplete_intent"
         if intent.provenance_hash is not None and not _is_sha256(intent.provenance_hash):
             return "provenance_invalid"
+        if intent.action in self.policy.provenance_required_actions and intent.provenance_hash is None:
+            return "provenance_required"
         if intent.cost < 0 or intent.cost > self.policy.max_cost:
             return "budget_exceeded"
         if intent.action not in self.policy.allowed_actions:
