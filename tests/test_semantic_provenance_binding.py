@@ -1,5 +1,8 @@
+from dataclasses import replace
 import hashlib
 import json
+from pathlib import Path
+import tempfile
 import unittest
 
 from pulpo import (
@@ -8,6 +11,7 @@ from pulpo import (
     Policy,
     PulpoOrchestrator,
     SemanticProvenance,
+    SQLiteKernelState,
     artifact_hash,
 )
 from pulpo.mcp_boundary import MCPBoundaryError, PulpoMCPProjection, freeze_mcp_snapshot
@@ -28,6 +32,7 @@ class SemanticProvenanceBindingTests(unittest.TestCase):
                 max_cost=0,
                 approval_actions=frozenset({ACTION}),
                 authority_trust=trust_for(self.verifier),
+                provenance_required_actions=frozenset({ACTION}),
             ),
             secret=b"semantic-provenance-kernel",
             approval_verifier=self.verifier,
@@ -45,6 +50,20 @@ class SemanticProvenanceBindingTests(unittest.TestCase):
             proposal_hash=artifact_hash(
                 "Render the existing animation with smoother motion, stronger shape, and a comedic pin-up aesthetic."
             ),
+        )
+
+    def test_required_action_without_provenance_fails_closed(self):
+        missing = Intent(
+            "local:owner",
+            ACTION,
+            RESOURCE,
+            0,
+            "semantic-drift-case",
+        )
+        decision = self.kernel.evaluate(missing)
+        self.assertEqual(
+            ("deny", "provenance_required", None),
+            (decision.outcome, decision.reason, decision.permit),
         )
 
     def test_transcription_drift_cannot_inherit_exact_approval_or_permit(self):
@@ -87,6 +106,7 @@ class SemanticProvenanceBindingTests(unittest.TestCase):
         self.assertFalse(self.kernel.consume(decision.permit, drifted))
         self.assertTrue(self.kernel.consume(decision.permit, approved))
         self.assertFalse(self.kernel.consume(decision.permit, approved))
+
 
     def test_mcp_proposal_carries_provenance_without_gaining_authority(self):
         provenance = self._provenance("pin-up territory")
@@ -143,6 +163,59 @@ class SemanticProvenanceBindingTests(unittest.TestCase):
                 1,
                 "not-a-sha256",
             )
+
+    def test_provenance_bound_replay_remains_denied_after_sqlite_restart(self):
+        handle = tempfile.NamedTemporaryFile(suffix=".sqlite3", delete=False)
+        path = Path(handle.name)
+        handle.close()
+        self.addCleanup(lambda: path.unlink(missing_ok=True))
+        self.addCleanup(lambda: Path(str(path) + "-wal").unlink(missing_ok=True))
+        self.addCleanup(lambda: Path(str(path) + "-shm").unlink(missing_ok=True))
+
+        verifier = HmacTestVerifier(b"semantic-provenance-restart-authority")
+        policy = Policy(
+            allowed_actions=frozenset({ACTION}),
+            max_cost=0,
+            approval_actions=frozenset({ACTION}),
+            authority_trust=trust_for(verifier),
+            provenance_required_actions=frozenset({ACTION}),
+        )
+        state = SQLiteKernelState(path)
+        kernel = GovernanceKernel(
+            policy,
+            secret=b"semantic-provenance-restart-kernel",
+            approval_verifier=verifier,
+            clock=lambda: NOW,
+            state=state,
+        )
+        provenance = self._provenance("pin-up territory")
+        intent = Intent(
+            "local:owner",
+            ACTION,
+            RESOURCE,
+            0,
+            "restart-case",
+            provenance.chain_hash,
+        )
+        envelope = signed_envelope(kernel, intent, verifier, now_ns=NOW)
+        decision = kernel.evaluate_with_approval(intent, envelope)
+        self.assertEqual("allow", decision.outcome)
+        self.assertTrue(kernel.consume(decision.permit, intent))
+        state.close()
+
+        restarted_state = SQLiteKernelState(path)
+        self.addCleanup(restarted_state.close)
+        restarted = GovernanceKernel(
+            policy,
+            secret=b"semantic-provenance-restart-kernel",
+            approval_verifier=verifier,
+            clock=lambda: NOW,
+            state=restarted_state,
+        )
+        self.assertTrue(restarted.verify_audit())
+        self.assertFalse(restarted.consume(decision.permit, intent))
+        future = restarted.evaluate(replace(intent, session_id="future-session"))
+        self.assertEqual(("require_approval", None), (future.outcome, future.permit))
 
     def test_legacy_intent_hash_remains_stable_without_provenance(self):
         intent = Intent("agent", "read", "repo:file", 0, "default")
