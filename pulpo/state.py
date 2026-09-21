@@ -17,10 +17,17 @@ from typing import Any, Iterator, Protocol
 
 
 def _canonical(value: Any) -> bytes:
-    return json.dumps(value, sort_keys=True, separators=(",", ":")).encode()
+    return json.dumps(
+        value,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode()
 
 
-def _delta_for(event: str, payload: dict[str, Any]) -> dict[str, Any]:
+def _delta_for(
+    event: str,
+    payload: dict[str, Any],
+) -> dict[str, Any]:
     """Compact, non-authoritative state-change projection bound into the canonical audit record."""
     keys = (
         "outcome",
@@ -36,13 +43,18 @@ def _delta_for(event: str, payload: dict[str, Any]) -> dict[str, Any]:
         "transition_hash",
         "reconciliation_outcome",
     )
+
     delta = {
         "event": event,
-        "payload_hash": sha256(_canonical(payload)).hexdigest(),
+        "payload_hash": sha256(
+            _canonical(payload)
+        ).hexdigest(),
     }
+
     for key in keys:
         if key in payload:
             delta[key] = payload[key]
+
     return delta
 
 
@@ -72,9 +84,12 @@ def _audit_record(
         "previous_hash": previous_hash,
         "timestamp_ns": timestamp_ns,
     }
+
     return {
         **body,
-        "hash": sha256(_canonical(body)).hexdigest(),
+        "hash": sha256(
+            _canonical(body)
+        ).hexdigest(),
     }
 
 
@@ -102,7 +117,9 @@ def _attach_delta(
 
     return {
         **body,
-        "hash": sha256(_canonical(body)).hexdigest(),
+        "hash": sha256(
+            _canonical(body)
+        ).hexdigest(),
     }
 
 
@@ -132,7 +149,9 @@ class DirectivePermitBinding:
         }
 
         if self.parent_directive_hash is not None:
-            payload["parent_directive_hash"] = self.parent_directive_hash
+            payload["parent_directive_hash"] = (
+                self.parent_directive_hash
+            )
 
         return payload
 
@@ -148,6 +167,11 @@ class KernelState(Protocol):
         event: str | None = None,
         reverse: bool = False,
     ) -> Iterator[dict[str, Any]]:
+        ...
+
+    def audit_integrity_token(
+        self,
+    ) -> object | None:
         ...
 
     def approval_replay_reason(
@@ -224,20 +248,32 @@ class KernelState(Protocol):
 
 class InMemoryKernelState:
     def __init__(self) -> None:
-        self._issued: dict[str, tuple[str, int]] = {}
+        self._issued: dict[
+            str,
+            tuple[str, int],
+        ] = {}
+
         self._spent: set[str] = set()
+
         self._approval_ids: set[str] = set()
         self._approval_nonces: set[str] = set()
+
         self._directives: dict[
             tuple[str, int],
             tuple[str, bool],
         ] = {}
+
         self._permit_directives: dict[
             str,
             DirectivePermitBinding,
         ] = {}
-        self._audit: list[dict[str, Any]] = []
+
+        self._audit: list[
+            dict[str, Any]
+        ] = []
+
         self._audit_lock = RLock()
+
         self._unique_audit: dict[
             tuple[str, str, str],
             dict[str, Any],
@@ -260,8 +296,18 @@ class InMemoryKernelState:
         )
 
         for record in records:
-            if event is None or record.get("event") == event:
+            if (
+                event is None
+                or record.get("event") == event
+            ):
                 yield record
+
+    def audit_integrity_token(
+        self,
+    ) -> object | None:
+        # In-memory audit is deliberately mutable in tamper tests.
+        # Always force full verification.
+        return None
 
     def approval_replay_reason(
         self,
@@ -290,6 +336,7 @@ class InMemoryKernelState:
                 approval.approval_id,
                 approval.nonce,
             )
+
             if replay:
                 return replay
 
@@ -336,7 +383,9 @@ class InMemoryKernelState:
         binding: DirectivePermitBinding,
         timestamp_ns: int,
     ) -> None:
-        issued = self._issued.get(permit)
+        issued = self._issued.get(
+            permit
+        )
 
         if (
             issued is None
@@ -376,7 +425,9 @@ class InMemoryKernelState:
                 "parent directive is not active for permit binding"
             )
 
-        self._permit_directives[permit] = binding
+        self._permit_directives[
+            permit
+        ] = binding
 
         self.append(
             "permit_bound_to_directive",
@@ -393,7 +444,9 @@ class InMemoryKernelState:
         intent_hash: str,
         timestamp_ns: int,
     ) -> bool:
-        issued = self._issued.get(permit)
+        issued = self._issued.get(
+            permit
+        )
 
         expires_at_ns = (
             issued[1]
@@ -409,7 +462,9 @@ class InMemoryKernelState:
             and timestamp_ns < expires_at_ns
         )
 
-        binding = self._permit_directives.get(permit)
+        binding = self._permit_directives.get(
+            permit
+        )
 
         payload: dict[str, Any] = {
             "intent_hash": intent_hash,
@@ -449,15 +504,22 @@ class InMemoryKernelState:
             payload.update(
                 binding.audit_payload()
             )
-            payload["directive_status"] = status
+
+            payload[
+                "directive_status"
+            ] = status
 
         if valid:
-            self._spent.add(permit)
+            self._spent.add(
+                permit
+            )
 
         self.append(
-            "permit_consumed"
-            if valid
-            else "permit_rejected",
+            (
+                "permit_consumed"
+                if valid
+                else "permit_rejected"
+            ),
             payload,
             timestamp_ns,
         )
@@ -530,7 +592,9 @@ class InMemoryKernelState:
                 "directive version not found"
             )
 
-        digest, _ = self._directives[key]
+        digest, _ = self._directives[
+            key
+        ]
 
         self._directives[key] = (
             digest,
@@ -579,7 +643,10 @@ class InMemoryKernelState:
         self,
         directive_hash: str,
     ) -> str:
-        for digest, revoked in self._directives.values():
+        for (
+            digest,
+            revoked,
+        ) in self._directives.values():
             if digest == directive_hash:
                 return (
                     "directive_parent_revoked"
@@ -637,7 +704,10 @@ class InMemoryKernelState:
     ) -> None:
         if any(
             not event
-            or not isinstance(payload, dict)
+            or not isinstance(
+                payload,
+                dict,
+            )
             for event, payload, _ in entries
         ):
             raise ValueError(
@@ -645,7 +715,9 @@ class InMemoryKernelState:
             )
 
         with self._audit_lock:
-            start = len(self._audit)
+            start = len(
+                self._audit
+            )
 
             try:
                 for (
@@ -697,7 +769,9 @@ class InMemoryKernelState:
         if (
             not event
             or not identity_field
-            or payload.get(identity_field)
+            or payload.get(
+                identity_field
+            )
             != identity_value
         ):
             raise ValueError(
@@ -713,8 +787,10 @@ class InMemoryKernelState:
                 ).decode(),
             )
 
-            indexed = self._unique_audit.get(
-                identity_key
+            indexed = (
+                self._unique_audit.get(
+                    identity_key
+                )
             )
 
             if indexed is not None:
@@ -723,12 +799,15 @@ class InMemoryKernelState:
             matches = [
                 record["payload"]
                 for record in self._audit
-                if record.get("event") == event
+                if record.get("event")
+                == event
                 and isinstance(
                     record.get("payload"),
                     dict,
                 )
-                and record["payload"].get(
+                and record[
+                    "payload"
+                ].get(
                     identity_field
                 )
                 == identity_value
@@ -743,6 +822,7 @@ class InMemoryKernelState:
                 self._unique_audit[
                     identity_key
                 ] = matches[0]
+
                 return matches[0]
 
             previous = (
@@ -793,6 +873,7 @@ class SQLiteKernelState:
         self._connection.execute(
             "PRAGMA foreign_keys = ON"
         )
+
         self._connection.execute(
             "PRAGMA synchronous = FULL"
         )
@@ -802,7 +883,8 @@ class SQLiteKernelState:
             CREATE TABLE IF NOT EXISTS permits (
                 permit TEXT PRIMARY KEY,
                 intent_hash TEXT NOT NULL,
-                spent INTEGER NOT NULL DEFAULT 0 CHECK (spent IN (0, 1)),
+                spent INTEGER NOT NULL DEFAULT 0
+                    CHECK (spent IN (0, 1)),
                 expires_at_ns INTEGER
             );
 
@@ -815,15 +897,21 @@ class SQLiteKernelState:
                 directive_id TEXT NOT NULL,
                 version INTEGER NOT NULL,
                 directive_hash TEXT NOT NULL,
-                revoked INTEGER NOT NULL DEFAULT 0 CHECK (revoked IN (0, 1)),
-                PRIMARY KEY (directive_id, version)
+                revoked INTEGER NOT NULL DEFAULT 0
+                    CHECK (revoked IN (0, 1)),
+                PRIMARY KEY (
+                    directive_id,
+                    version
+                )
             );
 
             CREATE INDEX IF NOT EXISTS idx_directives_hash
-            ON directives(directive_hash);
+                ON directives(directive_hash);
 
             CREATE TABLE IF NOT EXISTS permit_directives (
-                permit TEXT PRIMARY KEY REFERENCES permits(permit) ON DELETE CASCADE,
+                permit TEXT PRIMARY KEY
+                    REFERENCES permits(permit)
+                    ON DELETE CASCADE,
                 directive_id TEXT NOT NULL,
                 directive_version INTEGER NOT NULL,
                 directive_hash TEXT NOT NULL,
@@ -845,7 +933,7 @@ class SQLiteKernelState:
             );
 
             CREATE INDEX IF NOT EXISTS idx_audit_event
-            ON audit(event);
+                ON audit(event);
 
             CREATE TABLE IF NOT EXISTS audit_unique (
                 event TEXT NOT NULL,
@@ -863,14 +951,18 @@ class SQLiteKernelState:
             """
         )
 
-        columns = {
+        permit_directive_columns = {
             row[1]
-            for row in self._connection.execute(
+            for row
+            in self._connection.execute(
                 "PRAGMA table_info(permit_directives)"
             ).fetchall()
         }
 
-        if "parent_directive_hash" not in columns:
+        if (
+            "parent_directive_hash"
+            not in permit_directive_columns
+        ):
             self._connection.execute(
                 "ALTER TABLE permit_directives "
                 "ADD COLUMN parent_directive_hash TEXT"
@@ -878,12 +970,16 @@ class SQLiteKernelState:
 
         permit_columns = {
             row[1]
-            for row in self._connection.execute(
+            for row
+            in self._connection.execute(
                 "PRAGMA table_info(permits)"
             ).fetchall()
         }
 
-        if "expires_at_ns" not in permit_columns:
+        if (
+            "expires_at_ns"
+            not in permit_columns
+        ):
             self._connection.execute(
                 "ALTER TABLE permits "
                 "ADD COLUMN expires_at_ns INTEGER"
@@ -891,7 +987,8 @@ class SQLiteKernelState:
 
         audit_columns = {
             row[1]
-            for row in self._connection.execute(
+            for row
+            in self._connection.execute(
                 "PRAGMA table_info(audit)"
             ).fetchall()
         }
@@ -948,10 +1045,14 @@ class SQLiteKernelState:
             record["delta"] = json.loads(
                 delta_json
             )
+
             record[
                 "previous_delta_root"
             ] = previous_delta_root
-            record["delta_root"] = delta_root
+
+            record[
+                "delta_root"
+            ] = delta_root
 
         return record
 
@@ -979,6 +1080,7 @@ class SQLiteKernelState:
                 f"FROM audit "
                 f"ORDER BY sequence {order}"
             )
+
         else:
             cursor = self._connection.execute(
                 f"SELECT {columns} "
@@ -994,9 +1096,30 @@ class SQLiteKernelState:
             )
 
     @property
-    def audit(self) -> list[dict[str, Any]]:
+    def audit(
+        self,
+    ) -> list[dict[str, Any]]:
         return list(
             self.iter_audit()
+        )
+
+    def audit_integrity_token(
+        self,
+    ) -> object | None:
+        # SQLite changes data_version when another
+        # connection commits to the database.
+        row = self._connection.execute(
+            "PRAGMA data_version"
+        ).fetchone()
+
+        if row is None:
+            raise RuntimeError(
+                "SQLite audit data version is unavailable"
+            )
+
+        return (
+            "sqlite-data-version",
+            int(row[0]),
         )
 
     def approval_replay_reason(
@@ -1061,9 +1184,11 @@ class SQLiteKernelState:
             )
 
             if approval is not None:
-                replay = self._approval_replay_reason(
-                    approval.approval_id,
-                    approval.nonce,
+                replay = (
+                    self._approval_replay_reason(
+                        approval.approval_id,
+                        approval.nonce,
+                    )
                 )
 
                 if replay:
@@ -1159,32 +1284,38 @@ class SQLiteKernelState:
                     "permit unavailable for directive binding"
                 )
 
-            if self._connection.execute(
-                """
-                SELECT 1
-                FROM permit_directives
-                WHERE permit = ?
-                """,
-                (permit,),
-            ).fetchone():
+            existing = (
+                self._connection.execute(
+                    """
+                    SELECT 1
+                    FROM permit_directives
+                    WHERE permit = ?
+                    """,
+                    (permit,),
+                ).fetchone()
+            )
+
+            if existing:
                 raise ValueError(
                     "permit directive binding is immutable"
                 )
 
-            directive = self._connection.execute(
-                """
-                SELECT
-                    directive_hash,
-                    revoked
-                FROM directives
-                WHERE directive_id = ?
-                  AND version = ?
-                """,
-                (
-                    binding.directive_id,
-                    binding.version,
-                ),
-            ).fetchone()
+            directive = (
+                self._connection.execute(
+                    """
+                    SELECT
+                        directive_hash,
+                        revoked
+                    FROM directives
+                    WHERE directive_id = ?
+                      AND version = ?
+                    """,
+                    (
+                        binding.directive_id,
+                        binding.version,
+                    ),
+                ).fetchone()
+            )
 
             if (
                 directive is None
@@ -1197,7 +1328,8 @@ class SQLiteKernelState:
                 )
 
             if (
-                binding.parent_directive_hash is not None
+                binding.parent_directive_hash
+                is not None
                 and self.directive_hash_status(
                     binding.parent_directive_hash
                 )
@@ -1251,17 +1383,19 @@ class SQLiteKernelState:
                 "BEGIN IMMEDIATE"
             )
 
-            permit_row = self._connection.execute(
-                """
-                SELECT
-                    intent_hash,
-                    spent,
-                    expires_at_ns
-                FROM permits
-                WHERE permit = ?
-                """,
-                (permit,),
-            ).fetchone()
+            permit_row = (
+                self._connection.execute(
+                    """
+                    SELECT
+                        intent_hash,
+                        spent,
+                        expires_at_ns
+                    FROM permits
+                    WHERE permit = ?
+                    """,
+                    (permit,),
+                ).fetchone()
+            )
 
             expires_at_ns = (
                 permit_row[2]
@@ -1307,29 +1441,35 @@ class SQLiteKernelState:
                     row[5],
                 )
 
-                directive = self._connection.execute(
-                    """
-                    SELECT
-                        directive_hash,
-                        revoked
-                    FROM directives
-                    WHERE directive_id = ?
-                      AND version = ?
-                    """,
-                    (
-                        binding.directive_id,
-                        binding.version,
-                    ),
-                ).fetchone()
+                directive = (
+                    self._connection.execute(
+                        """
+                        SELECT
+                            directive_hash,
+                            revoked
+                        FROM directives
+                        WHERE directive_id = ?
+                          AND version = ?
+                        """,
+                        (
+                            binding.directive_id,
+                            binding.version,
+                        ),
+                    ).fetchone()
+                )
 
                 if directive is None:
-                    status = "directive_not_authorized"
+                    status = (
+                        "directive_not_authorized"
+                    )
 
                 elif (
                     directive[0]
                     != binding.directive_hash
                 ):
-                    status = "directive_version_mismatch"
+                    status = (
+                        "directive_version_mismatch"
+                    )
 
                 elif directive[1] != 0:
                     status = "directive_revoked"
@@ -1338,8 +1478,10 @@ class SQLiteKernelState:
                     binding.parent_directive_hash
                     is not None
                 ):
-                    status = self.directive_hash_status(
-                        binding.parent_directive_hash
+                    status = (
+                        self.directive_hash_status(
+                            binding.parent_directive_hash
+                        )
                     )
 
                 else:
@@ -1363,21 +1505,26 @@ class SQLiteKernelState:
                 payload.update(
                     binding.audit_payload()
                 )
-                payload["directive_status"] = status
+
+                payload[
+                    "directive_status"
+                ] = status
 
             if valid:
-                cursor = self._connection.execute(
-                    """
-                    UPDATE permits
-                    SET spent = 1
-                    WHERE permit = ?
-                      AND intent_hash = ?
-                      AND spent = 0
-                    """,
-                    (
-                        permit,
-                        intent_hash,
-                    ),
+                cursor = (
+                    self._connection.execute(
+                        """
+                        UPDATE permits
+                        SET spent = 1
+                        WHERE permit = ?
+                          AND intent_hash = ?
+                          AND spent = 0
+                        """,
+                        (
+                            permit,
+                            intent_hash,
+                        ),
+                    )
                 )
 
                 valid = (
@@ -1385,9 +1532,11 @@ class SQLiteKernelState:
                 )
 
             self._append(
-                "permit_consumed"
-                if valid
-                else "permit_rejected",
+                (
+                    "permit_consumed"
+                    if valid
+                    else "permit_rejected"
+                ),
                 payload,
                 timestamp_ns,
             )
@@ -1405,18 +1554,22 @@ class SQLiteKernelState:
                 "BEGIN IMMEDIATE"
             )
 
-            if self._connection.execute(
-                """
-                SELECT 1
-                FROM directives
-                WHERE directive_id = ?
-                  AND version = ?
-                """,
-                (
-                    directive.directive_id,
-                    directive.version,
-                ),
-            ).fetchone():
+            existing = (
+                self._connection.execute(
+                    """
+                    SELECT 1
+                    FROM directives
+                    WHERE directive_id = ?
+                      AND version = ?
+                    """,
+                    (
+                        directive.directive_id,
+                        directive.version,
+                    ),
+                ).fetchone()
+            )
+
+            if existing:
                 raise ValueError(
                     "directive version is immutable"
                 )
@@ -1428,14 +1581,16 @@ class SQLiteKernelState:
             )
 
             if parent_hash is not None:
-                parent = self._connection.execute(
-                    """
-                    SELECT revoked
-                    FROM directives
-                    WHERE directive_hash = ?
-                    """,
-                    (parent_hash,),
-                ).fetchone()
+                parent = (
+                    self._connection.execute(
+                        """
+                        SELECT revoked
+                        FROM directives
+                        WHERE directive_hash = ?
+                        """,
+                        (parent_hash,),
+                    ).fetchone()
+                )
 
                 if (
                     parent is None
@@ -1573,7 +1728,9 @@ class SQLiteKernelState:
         ).fetchone()
 
         if row is None:
-            return "directive_parent_not_authorized"
+            return (
+                "directive_parent_not_authorized"
+            )
 
         return (
             "directive_parent_revoked"
@@ -1610,7 +1767,10 @@ class SQLiteKernelState:
     ) -> None:
         if any(
             not event
-            or not isinstance(payload, dict)
+            or not isinstance(
+                payload,
+                dict,
+            )
             for event, payload, _ in entries
         ):
             raise ValueError(
@@ -1647,7 +1807,9 @@ class SQLiteKernelState:
         if (
             not event
             or not identity_field
-            or payload.get(identity_field)
+            or payload.get(
+                identity_field
+            )
             != identity_value
         ):
             raise ValueError(
@@ -1663,22 +1825,24 @@ class SQLiteKernelState:
                 "BEGIN IMMEDIATE"
             )
 
-            indexed = self._connection.execute(
-                """
-                SELECT a.payload_json
-                FROM audit_unique u
-                JOIN audit a
-                  ON a.sequence = u.sequence
-                WHERE u.event = ?
-                  AND u.identity_field = ?
-                  AND u.identity_value_json = ?
-                """,
-                (
-                    event,
-                    identity_field,
-                    identity_json,
-                ),
-            ).fetchone()
+            indexed = (
+                self._connection.execute(
+                    """
+                    SELECT a.payload_json
+                    FROM audit_unique u
+                    JOIN audit a
+                      ON a.sequence = u.sequence
+                    WHERE u.event = ?
+                      AND u.identity_field = ?
+                      AND u.identity_value_json = ?
+                    """,
+                    (
+                        event,
+                        identity_field,
+                        identity_json,
+                    ),
+                ).fetchone()
+            )
 
             if indexed is not None:
                 return json.loads(
@@ -1704,13 +1868,19 @@ class SQLiteKernelState:
                 ]
             ] = []
 
-            for sequence, encoded in rows:
+            for (
+                sequence,
+                encoded,
+            ) in rows:
                 candidate = json.loads(
                     str(encoded)
                 )
 
                 if (
-                    isinstance(candidate, dict)
+                    isinstance(
+                        candidate,
+                        dict,
+                    )
                     and candidate.get(
                         identity_field
                     )
@@ -1729,12 +1899,14 @@ class SQLiteKernelState:
                 )
 
             if matches:
-                sequence, candidate = matches[0]
+                (
+                    sequence,
+                    candidate,
+                ) = matches[0]
 
                 self._connection.execute(
                     """
-                    INSERT OR IGNORE
-                    INTO audit_unique (
+                    INSERT OR IGNORE INTO audit_unique (
                         event,
                         identity_field,
                         identity_value_json,
@@ -1802,7 +1974,10 @@ class SQLiteKernelState:
         )
 
         previous_root = (
-            (row[1] or row[0])
+            (
+                row[1]
+                or row[0]
+            )
             if row
             else "0" * 64
         )
@@ -1842,7 +2017,9 @@ class SQLiteKernelState:
                 _canonical(
                     record["delta"]
                 ).decode(),
-                record["previous_delta_root"],
+                record[
+                    "previous_delta_root"
+                ],
                 record["delta_root"],
             ),
         )
