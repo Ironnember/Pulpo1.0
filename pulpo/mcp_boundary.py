@@ -314,7 +314,15 @@ def export_mcp_snapshot(
             handle.write(payload)
             handle.flush()
             os.fsync(handle.fileno())
-        os.replace(os.fspath(parent / temporary), os.fspath(target))
+        try:
+            os.replace(
+                temporary,
+                target.name,
+                src_dir_fd=directory_descriptor,
+                dst_dir_fd=directory_descriptor,
+            )
+        except (TypeError, NotImplementedError):
+            os.replace(os.fspath(parent / temporary), os.fspath(target))
         temporary = None
         published = True
         os.fsync(directory_descriptor)
