@@ -135,6 +135,15 @@ MUTATIONS: tuple[Mutation, ...] = (
         'if False and not hmac.compare_digest(record["hash"], expected):\n                self._verified_audit_token = None\n                return False',
         ("tests.test_kernel.GovernanceKernelTests.test_audit_chain_detects_tampering",),
     ),
+    Mutation(
+        "audit_cache_token_comparison_removed",
+        "pulpo/kernel.py",
+        'if current_token is not None and current_token == self._verified_audit_token:\n            return',
+        'if current_token is not None:\n            return',
+        (
+            "tests.test_targets.TargetLockTests.test_sqlite_external_audit_tamper_invalidates_token_and_fails_closed",
+        ),
+    ),
 )
 
 
