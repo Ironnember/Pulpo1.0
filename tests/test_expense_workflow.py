@@ -179,7 +179,14 @@ class FieldExpenseGovernedEffectProofTests(unittest.TestCase):
         changed_claim = evidence(changed)
         changed_effect = build_expense_effect(changed, changed_claim)
 
-        mismatch = kernel.resolve_locked_target(target.target_id, changed_effect.effect_hash)
+        forged_target = target.__class__(
+            target_id=target.target_id,
+            version=target.version,
+            intent=changed_effect.intent(PRINCIPAL),
+            created_at_ns=target.created_at_ns,
+        )
+
+        mismatch = kernel.resolve_locked_target(target.target_id, forged_target.target_hash)
         exact = kernel.resolve_locked_target(target.target_id, target.target_hash)
 
         self.assertEqual(("deny", "target_hash_mismatch"), (mismatch.outcome, mismatch.reason))
