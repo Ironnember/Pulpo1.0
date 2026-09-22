@@ -65,6 +65,49 @@ Issue #90 records:
 - one live Cloud Run execution that reached and queried the intended private Cloud SQL session before the acceptance receipt correctly failed closed on an invalid TLS observation;
 - a corrected probe candidate awaiting a fresh governed execution.
 
+### Pulpo Autonomous v0.2.0 cross-repository integration evidence
+
+**Recorded:** external repository `spikediegel-prog/Pulpo-Autonomous` published
+release `v0.2.0` at exact tag commit
+`3d19259a4db74d1a0c54eba17737bd80c139ebe6` on 2026-09-21.
+
+The Autonomous repository's own source-baseline document continues to designate
+`Ironnember/Pulpo1.0` as the sole canonical Pulpo source and prohibits wholesale
+legacy/fork import. The release is therefore evidence about portability and
+composition, not a competing source of authority.
+
+Useful transfer evidence includes:
+
+- byte-identical `pulpo/network_exposure.py` with upstream candidate #238;
+- byte-identical local-intelligence V2 proof implementation with #241;
+- byte-identical core resource-limit and authority request-limit modules with #242;
+- byte-identical narrowed custody-service Dockerfile with #244;
+- byte-identical permit-expiry kernel tests with #243;
+- a combined delta-audit / audit-fast-path / persistence integration that exercises
+  the same core tamper, replay, restart, rollback, streaming verification, and
+  delta-chain invariants represented by #246 and #248.
+
+At the release tag, push CI succeeded for unit tests, network-exposure proof,
+authority, authority-service, dependency-surface audit, hostile-worker custody,
+hostile-worker container isolation, and the aggregate `test` gate.
+
+The stronger boundary must remain explicit:
+
+- the release is a mirror/port/synchronization of Pulpo1.0 hardening, not a
+  clean-room independent implementation;
+- it does not constitute a cold third-party reproduction of the complete
+  consequential chain;
+- the PR #11 integration head that became the release had a failed
+  Constitutional Survival Proof: the randomized constitutional sequence passed,
+  two mutation cases were killed, zero mutations survived, but 12 of 14 mutation
+  cases were invalid because refactoring changed the mutation anchors;
+- therefore exact-release Constitutional Survival is **not Verified** and the
+  earlier green mutation run may not be transferred forward as exact-head proof.
+
+Use v0.2.0 as cross-repository compatibility and integration evidence only.
+Canonical Pulpo candidates still require their own exact-head CI, current
+mutation-harness proof, independent review, and protected-main admission.
+
 ### Operational-hardening frontier
 
 Current exact heads of PRs #236, #237, #238, #241, #242, #243, #244, #245, #246, #247, and #248 have CI and Constitutional Survival Proof evidence reported successful at reconciliation time.
@@ -125,6 +168,13 @@ Until reconciled:
 `#239 + #240 != TWO_CANONICAL_TRUTHS`
 
 #### Audit optimization — #246 vs #248
+
+Pulpo Autonomous v0.2.0 is **Recorded integration evidence** that the delta-audit
+and audit-integrity fast-path families can coexist in one broader tree while
+ordinary CI remains green. It is not an upstream admission decision: the
+release-side integration also exposed mutation-harness anchor drift, so the
+canonical synthesis must update and pass the current constitutional mutation
+harness rather than importing the combined fork state wholesale.
 
 The admitted design must preserve one canonical audit truth.
 
