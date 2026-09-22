@@ -93,6 +93,7 @@ class KernelState(Protocol):
     def append(self, event: str, payload: dict[str, Any], timestamp_ns: int) -> None: ...
     def append_many(self, entries: list[tuple[str, dict[str, Any], int]]) -> None: ...
     def append_unique(self, event: str, identity_field: str, identity_value: Any, payload: dict[str, Any], timestamp_ns: int) -> dict[str, Any] | None: ...
+    def audit_integrity_token(self) -> object | None: ...
 
 
 class InMemoryKernelState:
@@ -121,6 +122,11 @@ class InMemoryKernelState:
         for record in records:
             if event is None or record.get("event") == event:
                 yield record
+
+    def audit_integrity_token(self) -> object | None:
+        # In-memory state stays fully reverified because direct mutation is an
+        # intentional tamper surface in the constitutional proof suite.
+        return None
 
     def approval_replay_reason(self, approval_id: str, nonce: str) -> str | None:
         if approval_id in self._approval_ids: return "approval_id_replayed"
@@ -318,6 +324,30 @@ class SQLiteKernelState:
     @property
     def audit(self) -> list[dict[str, Any]]:
         return list(self.iter_audit())
+
+    def audit_integrity_token(self) -> object | None:
+        """Return a cheap invalidation token, never an integrity verdict.
+
+        SQLite data_version changes after another connection commits, while the
+        canonical audit tip changes after writes through this connection.
+        Binding both detects external mutation and trusted local extension
+        without treating either value as authority or historical proof.
+        """
+
+        version_row = self._connection.execute("PRAGMA data_version").fetchone()
+        if version_row is None:
+            raise RuntimeError("SQLite audit data version is unavailable")
+        tip = self._connection.execute(
+            "SELECT sequence, hash FROM audit ORDER BY sequence DESC LIMIT 1"
+        ).fetchone()
+        if tip is None:
+            return ("sqlite-audit-integrity-v1", int(version_row[0]), 0, None)
+        return (
+            "sqlite-audit-integrity-v1",
+            int(version_row[0]),
+            int(tip[0]),
+            str(tip[1]),
+        )
 
     def approval_replay_reason(self, approval_id: str, nonce: str) -> str | None: return self._approval_replay_reason(approval_id, nonce)
     def _approval_replay_reason(self, approval_id: str, nonce: str) -> str | None:
