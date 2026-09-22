@@ -28,7 +28,11 @@ jobs:
         run: python -m py_compile scripts/run_redsys_sandbox_live_v0.py
       - name: Assert hosted CI cannot be the live payment executor
         run: |
-          if grep -q "FIRE one exact Redsys sandbox payment" .github/workflows/redsys-sandbox-live-proof.yml; then
-            echo "live FIRE step must not exist in hosted CI"
-            exit 1
-          fi
+          python - <<'PY'
+          from pathlib import Path
+
+          workflow = Path(".github/workflows/redsys-sandbox-live-proof.yml").read_text()
+          needle = "python scripts/" + "run_redsys_sandbox_live_v0.py"
+          if needle in workflow:
+              raise SystemExit("hosted CI must not execute the live Redsys runner")
+          PY
