@@ -12,6 +12,7 @@ from pulpo.redsys import (
     RedsysPayment,
     RedsysSandboxGateway,
     RedsysViolation,
+    authorize_payment_with_external_approval,
     classify_rest_response_shape,
     payment_intent,
     refund_intent,
@@ -77,6 +78,134 @@ class RedsysSandboxGovernanceTests(unittest.TestCase):
         self.assertEqual("allow", decision.outcome)
         self.assertIsNotNone(decision.permit)
         return kernel, intent, decision.permit
+
+
+    def test_external_approval_is_required_for_payment_permit(self):
+        verifier = HmacTestVerifier()
+        trust = trust_for(verifier)
+        policy = Policy(
+            frozenset({"redsys_payment"}),
+            3_000,
+            frozenset({"redsys_payment"}),
+            authority_trust=trust,
+        )
+        signing_kernel = GovernanceKernel(
+            policy,
+            approval_verifier=verifier,
+            clock=lambda: NOW,
+        )
+        payment = self.payment()
+        intent = payment_intent(payment)
+        self.assertEqual("require_approval", signing_kernel.evaluate(intent).outcome)
+        envelope = signed_envelope(
+            signing_kernel,
+            intent,
+            verifier,
+            now_ns=NOW - 10,
+            approval_id="redsys-payment-approval",
+            nonce="redsys-payment-nonce",
+        )
+
+        kernel, exact_intent, permit = authorize_payment_with_external_approval(
+            payment,
+            envelope,
+            trust=trust,
+            verifier=verifier,
+            clock=lambda: NOW,
+        )
+
+        self.assertEqual(intent, exact_intent)
+        self.assertTrue(kernel.consume(permit, intent))
+        self.assertFalse(kernel.consume(permit, intent))
+
+    def test_external_approval_cannot_be_reused_after_restart(self):
+        handle = tempfile.NamedTemporaryFile(suffix=".sqlite3")
+        path = Path(handle.name)
+        handle.close()
+        self.addCleanup(lambda: path.unlink(missing_ok=True))
+        self.addCleanup(lambda: Path(str(path) + "-wal").unlink(missing_ok=True))
+        self.addCleanup(lambda: Path(str(path) + "-shm").unlink(missing_ok=True))
+
+        verifier = HmacTestVerifier()
+        trust = trust_for(verifier)
+        policy = Policy(
+            frozenset({"redsys_payment"}),
+            3_000,
+            frozenset({"redsys_payment"}),
+            authority_trust=trust,
+        )
+        payment = self.payment()
+        intent = payment_intent(payment)
+        signing_kernel = GovernanceKernel(
+            policy,
+            approval_verifier=verifier,
+            clock=lambda: NOW,
+        )
+        envelope = signed_envelope(
+            signing_kernel,
+            intent,
+            verifier,
+            now_ns=NOW - 10,
+            approval_id="redsys-restart-approval",
+            nonce="redsys-restart-nonce",
+        )
+
+        state = SQLiteKernelState(path)
+        _, _, _permit = authorize_payment_with_external_approval(
+            payment,
+            envelope,
+            trust=trust,
+            verifier=verifier,
+            clock=lambda: NOW,
+            state=state,
+        )
+        state.close()
+
+        restarted_state = SQLiteKernelState(path)
+        self.addCleanup(restarted_state.close)
+        with self.assertRaisesRegex(RedsysViolation, "external_approval_rejected"):
+            authorize_payment_with_external_approval(
+                payment,
+                envelope,
+                trust=trust,
+                verifier=verifier,
+                clock=lambda: NOW,
+                state=restarted_state,
+            )
+
+    def test_external_approval_for_one_payment_cannot_authorize_substitution(self):
+        verifier = HmacTestVerifier()
+        trust = trust_for(verifier)
+        policy = Policy(
+            frozenset({"redsys_payment"}),
+            3_000,
+            frozenset({"redsys_payment"}),
+            authority_trust=trust,
+        )
+        original = self.payment()
+        substituted = self.payment(amount_cents=124)
+        signing_kernel = GovernanceKernel(
+            policy,
+            approval_verifier=verifier,
+            clock=lambda: NOW,
+        )
+        envelope = signed_envelope(
+            signing_kernel,
+            payment_intent(original),
+            verifier,
+            now_ns=NOW - 10,
+            approval_id="redsys-original-approval",
+            nonce="redsys-original-nonce",
+        )
+
+        with self.assertRaisesRegex(RedsysViolation, "external_approval_rejected"):
+            authorize_payment_with_external_approval(
+                substituted,
+                envelope,
+                trust=trust,
+                verifier=verifier,
+                clock=lambda: NOW,
+            )
 
     def test_processed_response_shape_is_classified_without_authority_effect(self):
         shape = classify_rest_response_shape(
