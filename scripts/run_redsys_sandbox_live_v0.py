@@ -2,11 +2,14 @@
 """One-shot live Redsys sandbox proof for Pulpo Issue #234.
 
 This script is intentionally bound to one frozen sandbox payment object. It:
-1. creates one canonical Pulpo permit for that exact object;
-2. consumes it through RedsysSandboxGateway;
+1. requires one externally signed Pulpo approval envelope for that exact object;
+2. mints and consumes one permit through durable kernel state;
 3. sends one signed Redsys MOTO sandbox request;
 4. verifies the signed Redsys response;
-5. emits only secret-safe evidence.
+5. emits only secret-safe provider evidence.
+
+It refuses to run inside GitHub Actions. The live ceremony requires a stable
+non-CI state path so approval and permit replay denial survive process restart.
 
 There is no retry loop. Network/provider ambiguity is terminal.
 """
@@ -21,25 +24,95 @@ import os
 import time
 import urllib.error
 import urllib.request
+from pathlib import Path
 from typing import Any
 
 from cryptography.hazmat.primitives import padding
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 
-from pulpo.kernel import GovernanceKernel, Policy
+from pulpo.authority import ApprovalEnvelope, AuthorityTrust, P256ApprovalVerifier
+from pulpo.state import SQLiteKernelState
 from pulpo.redsys import (
     REDSYS_SANDBOX_ORIGIN,
     RedsysExternalRealityUnknown,
     RedsysPayment,
     RedsysSandboxGateway,
+    authorize_payment_with_external_approval,
     classify_rest_response_shape,
-    payment_intent,
 )
 
 
-EXPECTED_PAYMENT_HASH = "e917948d877d44e9ed2e4e0f890ca113b77dc6ef5e186f9a6e196588ac781ee7"
+EXPECTED_PAYMENT_HASH = "f96f419575a4e8a18973ba1f18954bb31719bcca8f58712071ffc66e3f4f7f6f"
+EXPECTED_AUTHORITY_KEY_FINGERPRINT = "b59288317ee9735a3bfd24595fd6a5d5c97476c1461b945124aded9ffd0ab127"
 SIGNATURE_VERSION = "HMAC_SHA512_V2"
 
+
+
+def _required_json_env(name: str) -> dict[str, Any]:
+    raw = os.environ.get(name)
+    if not raw:
+        raise RuntimeError(f"missing required external authority input: {name}")
+    try:
+        value = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise RuntimeError(f"invalid JSON in {name}") from exc
+    if not isinstance(value, dict):
+        raise RuntimeError(f"{name} must contain one JSON object")
+    return value
+
+
+def _load_external_authority() -> tuple[AuthorityTrust, P256ApprovalVerifier, ApprovalEnvelope]:
+    trust = AuthorityTrust(**_required_json_env("PULPO_REDSYS_AUTHORITY_TRUST_JSON"))
+    envelope = ApprovalEnvelope(**_required_json_env("PULPO_REDSYS_APPROVAL_ENVELOPE_JSON"))
+    if trust.algorithm != "ecdsa-p256-sha256":
+        raise RuntimeError("Redsys live proof requires P-256 authority trust")
+    if trust.key_fingerprint != EXPECTED_AUTHORITY_KEY_FINGERPRINT:
+        raise RuntimeError("authority trust fingerprint does not match accepted HSM key")
+    if envelope.trust_hash != trust.trust_hash:
+        raise RuntimeError("approval envelope trust hash does not match pinned trust")
+
+    public_hex = os.environ.get("PULPO_REDSYS_AUTHORITY_PUBLIC_KEY_HEX", "")
+    try:
+        public_key = bytes.fromhex(public_hex)
+    except ValueError as exc:
+        raise RuntimeError("authority public key must be hex") from exc
+    if len(public_key) != 65 or public_key[:1] != b"\x04":
+        raise RuntimeError("authority public key must be an uncompressed P-256 SEC1 point")
+    if hashlib.sha256(public_key).hexdigest() != EXPECTED_AUTHORITY_KEY_FINGERPRINT:
+        raise RuntimeError("authority public key does not match accepted HSM fingerprint")
+
+    verifier = P256ApprovalVerifier(
+        authority_id=trust.authority_id,
+        verifier_id=trust.verifier_id,
+        key_id=trust.key_id,
+        public_key=public_key,
+    )
+    if verifier.algorithm != trust.algorithm or verifier.key_fingerprint != trust.key_fingerprint:
+        raise RuntimeError("authority verifier does not match pinned trust")
+    return trust, verifier, envelope
+
+
+def _durable_state_path() -> Path:
+    if os.environ.get("GITHUB_ACTIONS", "").lower() == "true":
+        raise RuntimeError("live Redsys proof requires durable non-CI runtime state")
+    raw = os.environ.get("PULPO_REDSYS_KERNEL_STATE_PATH", "")
+    if not raw:
+        raise RuntimeError("PULPO_REDSYS_KERNEL_STATE_PATH is required")
+    path = Path(raw).expanduser()
+    if not path.is_absolute():
+        raise RuntimeError("Redsys kernel state path must be absolute")
+    resolved = path.resolve()
+    for root in (Path("/tmp"), Path("/var/tmp")):
+        if resolved == root or root in resolved.parents:
+            raise RuntimeError("Redsys kernel state may not use an ephemeral temp path")
+    runner_temp = os.environ.get("RUNNER_TEMP")
+    if runner_temp:
+        temp = Path(runner_temp).expanduser().resolve()
+        if resolved == temp or temp in resolved.parents:
+            raise RuntimeError("Redsys kernel state may not use RUNNER_TEMP")
+    if not resolved.parent.exists() or not resolved.parent.is_dir():
+        raise RuntimeError("Redsys kernel state parent directory must already exist")
+    return resolved
 
 def _b64url_encode(raw: bytes) -> str:
     return base64.urlsafe_b64encode(raw).decode("ascii").rstrip("=")
@@ -223,13 +296,13 @@ def main() -> int:
     payment = RedsysPayment(
         merchant_code="999008881",
         terminal="872",
-        order_id="180920260002",
+        order_id="220920260001",
         amount_cents=123,
         currency="978",
         transaction_type="0",
         principal="agent:commerce",
-        session_id="redsys-sandbox-live-moto-2",
-        expires_at_ns=1789732800000000000,
+        session_id="redsys-sandbox-live-moto-3",
+        expires_at_ns=1792065600000000000,
         operation_mode="moto",
         environment="sandbox",
     )
@@ -240,56 +313,66 @@ def main() -> int:
     if now_ns >= payment.expires_at_ns:
         raise RuntimeError("frozen Redsys sandbox object expired before FIRE")
 
-    kernel = GovernanceKernel(
-        Policy(frozenset({"redsys_payment"}), 3_000),
-        secret=os.urandom(32),
-        clock=time.time_ns,
-    )
-    intent = payment_intent(payment)
-    decision = kernel.evaluate(intent)
-    if decision.outcome != "allow" or decision.permit is None:
-        raise RuntimeError(f"Pulpo authorization failed: {decision.reason}")
-
-    gateway = RedsysSandboxGateway(transport=_live_transport)
+    state = SQLiteKernelState(_durable_state_path())
     try:
-        result = gateway.execute_payment(
-            kernel=kernel,
-            permit=decision.permit,
-            payment=payment,
-            observed_context=payment.expected_context,
-            now_ns=time.time_ns(),
+        trust, verifier, envelope = _load_external_authority()
+        kernel, intent, permit = authorize_payment_with_external_approval(
+            payment,
+            envelope,
+            trust=trust,
+            verifier=verifier,
+            clock=time.time_ns,
+            state=state,
         )
-    except RedsysExternalRealityUnknown:
-        print(
-            json.dumps(
-                {
-                    "schema": "pulpo.redsys-live-proof.result.v0",
-                    "payment_hash": payment.payment_hash,
-                    "outcome": "EXTERNAL_REALITY_UNKNOWN",
-                    "automatic_retry": False,
-                },
-                sort_keys=True,
-            )
-        )
-        raise
 
-    safe = {
-        "schema": "pulpo.redsys-live-proof.result.v0",
-        "payment_hash": payment.payment_hash,
-        "context_outcome": result.context_check.outcome,
-        "provider_result": result.receipt.result,
-        "provider_reference": result.receipt.provider_reference,
-        "response_hash": result.receipt.response_hash,
-        "authority_effect_of_provider_receipt": result.receipt.authority_effect,
-        "automatic_retry": False,
-        "permit_replay_after_fire": kernel.consume(decision.permit, intent),
-    }
-    print(json.dumps(safe, sort_keys=True))
-    if safe["permit_replay_after_fire"] is not False:
-        raise RuntimeError("consumed permit unexpectedly replayable")
-    if result.receipt.result != "approved":
-        raise RuntimeError("Redsys sandbox provider did not approve frozen payment")
-    return 0
+        gateway = RedsysSandboxGateway(transport=_live_transport)
+        try:
+            result = gateway.execute_payment(
+                kernel=kernel,
+                permit=permit,
+                payment=payment,
+                observed_context=payment.expected_context,
+                now_ns=time.time_ns(),
+            )
+        except RedsysExternalRealityUnknown:
+            print(
+                json.dumps(
+                    {
+                        "schema": "pulpo.redsys-live-proof.result.v1",
+                        "payment_hash": payment.payment_hash,
+                        "approval_envelope_hash": envelope.envelope_hash,
+                        "authority_key_fingerprint": trust.key_fingerprint,
+                        "outcome": "EXTERNAL_REALITY_UNKNOWN",
+                        "automatic_retry": False,
+                    },
+                    sort_keys=True,
+                )
+            )
+            raise
+
+        safe = {
+            "schema": "pulpo.redsys-live-proof.result.v1",
+            "payment_hash": payment.payment_hash,
+            "approval_envelope_hash": envelope.envelope_hash,
+            "approval_id": envelope.approval_id,
+            "authority_key_fingerprint": trust.key_fingerprint,
+            "context_outcome": result.context_check.outcome,
+            "provider_result": result.receipt.result,
+            "provider_reference": result.receipt.provider_reference,
+            "response_hash": result.receipt.response_hash,
+            "authority_effect_of_provider_receipt": result.receipt.authority_effect,
+            "reconciliation_status": "PROVIDER_EVIDENCE_ONLY",
+            "automatic_retry": False,
+            "permit_replay_after_fire": kernel.consume(permit, intent),
+        }
+        print(json.dumps(safe, sort_keys=True))
+        if safe["permit_replay_after_fire"] is not False:
+            raise RuntimeError("consumed permit unexpectedly replayable")
+        if result.receipt.result != "approved":
+            raise RuntimeError("Redsys sandbox provider did not approve frozen payment")
+        return 0
+    finally:
+        state.close()
 
 
 if __name__ == "__main__":

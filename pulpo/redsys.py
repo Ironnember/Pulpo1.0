@@ -17,13 +17,15 @@ import hmac
 import json
 from typing import Any, Callable, Mapping
 
+from .authority import ApprovalEnvelope, ApprovalVerifier, AuthorityTrust
 from .execution_context import (
     ExecutionContext,
     ExecutionContextCheck,
     bind_resource_to_execution_context,
     consume_context_bound_permit,
 )
-from .kernel import GovernanceKernel, Intent
+from .kernel import GovernanceKernel, Intent, Policy
+from .state import KernelState
 
 
 REDSYS_SANDBOX_ORIGIN = "https://sis-t.redsys.es:25443"
@@ -185,6 +187,50 @@ def payment_intent(payment: RedsysPayment) -> Intent:
         session_id=payment.session_id,
     )
 
+
+
+def authorize_payment_with_external_approval(
+    payment: RedsysPayment,
+    envelope: ApprovalEnvelope,
+    *,
+    trust: AuthorityTrust,
+    verifier: ApprovalVerifier,
+    clock: Callable[[], int],
+    state: KernelState | None = None,
+) -> tuple[GovernanceKernel, Intent, str]:
+    """Require independently verified approval before minting payment authority."""
+
+    if not isinstance(payment, RedsysPayment):
+        raise TypeError("payment must be RedsysPayment")
+    if not isinstance(envelope, ApprovalEnvelope):
+        raise TypeError("envelope must be ApprovalEnvelope")
+    if not isinstance(trust, AuthorityTrust):
+        raise TypeError("trust must be AuthorityTrust")
+    if not callable(clock):
+        raise TypeError("clock must be callable")
+
+    policy = Policy(
+        frozenset({"redsys_payment"}),
+        3_000,
+        frozenset({"redsys_payment"}),
+        authority_trust=trust,
+    )
+    kernel = GovernanceKernel(
+        policy,
+        approval_verifier=verifier,
+        clock=clock,
+        state=state,
+    )
+    intent = payment_intent(payment)
+    preapproval = kernel.evaluate(intent)
+    if preapproval.outcome != "require_approval":
+        raise RedsysViolation("redsys_external_approval_not_required_fail_closed")
+    decision = kernel.evaluate_with_approval(intent, envelope)
+    if decision.outcome != "allow" or not decision.permit:
+        raise RedsysViolation(
+            f"redsys_external_approval_rejected:{decision.reason}"
+        )
+    return kernel, intent, decision.permit
 
 def refund_intent(payment: RedsysPayment) -> Intent:
     """Model refund authority as a distinct consequence class."""
