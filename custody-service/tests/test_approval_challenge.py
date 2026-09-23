@@ -67,8 +67,11 @@ class ApprovalChallengeTests(unittest.TestCase):
         self.path = Path(handle.name)
         handle.close()
         self.addCleanup(lambda: self.path.unlink(missing_ok=True))
-        self.addCleanup(lambda: Path(str(self.path) + "-wal").unlink(missing_ok=True))
-        self.addCleanup(lambda: Path(str(self.path) + "-shm").unlink(missing_ok=True))
+        from conftest import _try_unlink
+self.addCleanup(lambda: _try_unlink(Path(str(self.path) + "-wal")))
+)
+        self.addCleanup(lambda: _try_unlink(Path(str(self.path) + "-shm")))
+)
 
     def request_for(self, domain):
         return DomainPurchaseRequest(
