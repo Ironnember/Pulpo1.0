@@ -1,0 +1,220 @@
+{
+  "config": {
+    "append_batch": 25,
+    "samples": 10,
+    "sizes": [
+      1000,
+      10000
+    ],
+    "warmup": 3
+  },
+  "metadata": {
+    "commit_sha": "787ff0c8f4f64185071645760f3a310535d587fd",
+    "cpu_count": 32,
+    "duration_seconds": 52.06705594062805,
+    "machine": "AMD64",
+    "peak_rss_bytes": null,
+    "platform": "Windows-11-10.0.26200-SP0",
+    "processor": "AMD64 Family 25 Model 33 Stepping 2, AuthenticAMD",
+    "python_implementation": "CPython",
+    "python_version": "3.12.10",
+    "release": "11",
+    "started_at_unix": 1790119282.607068,
+    "system": "Windows"
+  },
+  "results": [
+    {
+      "audit_records": 1000,
+      "benchmark": "startup_full_audit_verify",
+      "lower_is_better": true,
+      "max": 31.2919,
+      "median": 30.778100000000002,
+      "min": 29.4992,
+      "p95": 31.2919,
+      "samples": 10,
+      "unit": "ms"
+    },
+    {
+      "audit_records": 1000,
+      "benchmark": "audit_stream_iterate",
+      "lower_is_better": true,
+      "max": 3.9744,
+      "median": 3.9184,
+      "min": 3.879,
+      "p95": 3.9744,
+      "samples": 10,
+      "unit": "ms"
+    },
+    {
+      "audit_records": 1000,
+      "benchmark": "audit_materialize",
+      "lower_is_better": true,
+      "max": 4.6588,
+      "median": 4.1875,
+      "min": 3.9662,
+      "p95": 4.6588,
+      "samples": 10,
+      "unit": "ms"
+    },
+    {
+      "audit_records": 1000,
+      "benchmark": "evaluate_and_issue_permit",
+      "lower_is_better": true,
+      "max": 4.0648,
+      "median": 3.4736000000000002,
+      "min": 3.1351,
+      "p95": 4.0648,
+      "samples": 10,
+      "unit": "ms"
+    },
+    {
+      "audit_records": 1000,
+      "benchmark": "permit_issue_plus_consume",
+      "lower_is_better": true,
+      "max": 7.6837,
+      "median": 6.99615,
+      "min": 6.3738,
+      "p95": 7.6837,
+      "samples": 10,
+      "unit": "ms"
+    },
+    {
+      "audit_records": 1000,
+      "benchmark": "append_unique_existing_lookup",
+      "lower_is_better": true,
+      "max": 0.137,
+      "median": 0.1001,
+      "min": 0.0943,
+      "p95": 0.137,
+      "samples": 10,
+      "unit": "ms"
+    },
+    {
+      "audit_records": 1000,
+      "benchmark": "locked_target_lookup",
+      "lower_is_better": true,
+      "max": 0.2226,
+      "median": 0.1895,
+      "min": 0.1875,
+      "p95": 0.2226,
+      "samples": 10,
+      "unit": "ms"
+    },
+    {
+      "audit_records": 1000,
+      "benchmark": "sqlite_audit_write_throughput",
+      "lower_is_better": false,
+      "max": 312.1800154841288,
+      "median": 302.0207890696786,
+      "min": 284.1567817994171,
+      "p95": 312.1800154841288,
+      "samples": 10,
+      "unit": "ops/sec"
+    },
+    {
+      "audit_records": 10000,
+      "benchmark": "startup_full_audit_verify",
+      "lower_is_better": true,
+      "max": 303.4856,
+      "median": 295.8845,
+      "min": 285.0704,
+      "p95": 303.4856,
+      "samples": 10,
+      "unit": "ms"
+    },
+    {
+      "audit_records": 10000,
+      "benchmark": "audit_stream_iterate",
+      "lower_is_better": true,
+      "max": 44.7447,
+      "median": 43.6906,
+      "min": 42.9336,
+      "p95": 44.7447,
+      "samples": 10,
+      "unit": "ms"
+    },
+    {
+      "audit_records": 10000,
+      "benchmark": "audit_materialize",
+      "lower_is_better": true,
+      "max": 55.3786,
+      "median": 52.53085,
+      "min": 51.1648,
+      "p95": 55.3786,
+      "samples": 10,
+      "unit": "ms"
+    },
+    {
+      "audit_records": 10000,
+      "benchmark": "evaluate_and_issue_permit",
+      "lower_is_better": true,
+      "max": 3.6793,
+      "median": 3.41295,
+      "min": 3.1392,
+      "p95": 3.6793,
+      "samples": 10,
+      "unit": "ms"
+    },
+    {
+      "audit_records": 10000,
+      "benchmark": "permit_issue_plus_consume",
+      "lower_is_better": true,
+      "max": 60.859,
+      "median": 7.0648,
+      "min": 6.4415,
+      "p95": 60.859,
+      "samples": 10,
+      "unit": "ms"
+    },
+    {
+      "audit_records": 10000,
+      "benchmark": "append_unique_existing_lookup",
+      "lower_is_better": true,
+      "max": 0.1506,
+      "median": 0.12415000000000001,
+      "min": 0.0996,
+      "p95": 0.1506,
+      "samples": 10,
+      "unit": "ms"
+    },
+    {
+      "audit_records": 10000,
+      "benchmark": "locked_target_lookup",
+      "lower_is_better": true,
+      "max": 0.2742,
+      "median": 0.1981,
+      "min": 0.1897,
+      "p95": 0.2742,
+      "samples": 10,
+      "unit": "ms"
+    },
+    {
+      "audit_records": 10000,
+      "benchmark": "sqlite_audit_write_throughput",
+      "lower_is_better": false,
+      "max": 314.6870751724485,
+      "median": 303.04352707244436,
+      "min": 99.93695976577975,
+      "p95": 314.6870751724485,
+      "samples": 10,
+      "unit": "ops/sec"
+    }
+  ],
+  "schema": "pulpo.performance-benchmark.v1",
+  "storage": {
+    "1000": {
+      "database_bytes": 880640,
+      "foreign_keys": 1,
+      "journal_mode": "delete",
+      "sqlite_version": "3.49.1",
+      "synchronous": 2
+    },
+    "10000": {
+      "database_bytes": 6225920,
+      "foreign_keys": 1,
+      "journal_mode": "delete",
+      "sqlite_version": "3.49.1",
+      "synchronous": 2
+    }
+  }
+}
