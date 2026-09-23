@@ -15,6 +15,8 @@ from pulpo_authority_service.production_runtime import (
     ORIGIN,
     RP_ID,
     ProductionSettings,
+    WORKER_AUDIENCE,
+    WORKER_EMAIL,
     build_production_app,
 )
 
@@ -28,9 +30,7 @@ ENV = {
     "PULPO_AUTHORITY_EVIDENCE_BUCKET": "pulpo-authority-evidence-example",
     "PULPO_AUTHORITY_EVIDENCE_PREFIX": "authority/v1",
     "PULPO_AUTHORITY_EVIDENCE_MIN_RETENTION_SECONDS": "2592000",
-    "PULPO_AUTHORITY_WORKER_AUDIENCE": "https://authority.pulpo.ai",
     "PULPO_AUTHORITY_WORKER_SUBJECT": "123456789012345678901",
-    "PULPO_AUTHORITY_WORKER_EMAIL": "pulpo-governed-worker@example.iam.gserviceaccount.com",
 }
 
 
@@ -110,6 +110,11 @@ class RuntimeCompositionTests(unittest.TestCase):
         self.assertEqual(
             "b59288317ee9735a3bfd24595fd6a5d5c97476c1461b945124aded9ffd0ab127",
             KMS_PUBLIC_FINGERPRINT,
+        )
+        self.assertEqual(ORIGIN, WORKER_AUDIENCE)
+        self.assertEqual(
+            "pulpo-governed-worker@dulcet-opus-499511-a5.iam.gserviceaccount.com",
+            WORKER_EMAIL,
         )
 
     def test_settings_fail_closed_on_missing_or_ambiguous_external_particulars(self):
