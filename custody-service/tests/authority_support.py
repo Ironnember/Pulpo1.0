@@ -31,6 +31,19 @@ class AuthorityTrust:
 
 
 @dataclass
+class ApprovalEnvelope:
+    """
+    Dataclass shape expected by tests. Using dataclass ensures asdict(envelope)
+    will recursively convert nested dataclasses (like Intent) to plain dicts.
+    """
+    payload: Any
+    signature: str
+    now_ns: Optional[int] = None
+    approval_id: Optional[str] = None
+    nonce: Optional[str] = None
+
+
+@dataclass
 class HmacTestVerifier:
     # HMAC signing key (kept JSON-friendly)
     key: str = DEFAULT_TEST_KEY
@@ -65,7 +78,7 @@ class HmacTestVerifier:
         return hmac.compare_digest(self.sign(payload), signature)
 
 
-def signed_envelope(signing_kernel_or_verifier, payload: Dict[str, Any], verifier=None, *, now_ns: int | None = None, approval_id: str | None = None, nonce: str | None = None) -> Dict[str, Any]:
+def signed_envelope(signing_kernel_or_verifier, payload: Dict[str, Any], verifier=None, *, now_ns: int | None = None, approval_id: str | None = None, nonce: str | None = None) -> ApprovalEnvelope:
     """
     Backwards-compatible helper used by tests.
 
@@ -73,9 +86,7 @@ def signed_envelope(signing_kernel_or_verifier, payload: Dict[str, Any], verifie
       - (verifier, payload)  OR
       - (signing_kernel, payload, verifier=verifier)
 
-    Produces a minimal envelope dict that includes the payload, an HMAC
-    signature computed by the provided verifier, and optional metadata
-    fields the tests pass (now_ns, approval_id, nonce).
+    Returns an ApprovalEnvelope dataclass so tests can call asdict(envelope).
     """
     if verifier is None:
         verifier = signing_kernel_or_verifier
@@ -86,14 +97,13 @@ def signed_envelope(signing_kernel_or_verifier, payload: Dict[str, Any], verifie
 
     signature = sign_fn(payload)
 
-    envelope = {"payload": payload, "signature": signature}
-    if now_ns is not None:
-        envelope["now_ns"] = now_ns
-    if approval_id is not None:
-        envelope["approval_id"] = approval_id
-    if nonce is not None:
-        envelope["nonce"] = nonce
-    return envelope
+    return ApprovalEnvelope(
+        payload=payload,
+        signature=signature,
+        now_ns=now_ns,
+        approval_id=approval_id,
+        nonce=nonce,
+    )
 
 
 def trust_for(verifier: HmacTestVerifier) -> AuthorityTrust:
