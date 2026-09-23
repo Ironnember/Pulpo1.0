@@ -1,5 +1,4 @@
 import sqlite3
-import tempfile
 import time
 import gc
 from pathlib import Path
@@ -8,21 +7,36 @@ import pytest
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker, scoped_session
 
-# helper to unlink with retries
-def _try_unlink(path: Path, attempts: int = 6, base_delay: float = 0.1):
+# helper to unlink with retries (Windows-friendly)
+def _try_unlink(path: Path, attempts: int = 8, base_delay: float = 0.05) -> bool:
+    """
+    Try to unlink a file, retrying on PermissionError (Windows file-lock).
+    Returns True if removed or not present, False if still locked after retries.
+    """
     for attempt in range(attempts):
         try:
             if path.exists():
                 path.unlink(missing_ok=True)
-            return
+            return True
         except PermissionError:
             time.sleep(base_delay * (attempt + 1))
         except FileNotFoundError:
-            return
+            return True
+    return False
+
 
 @pytest.fixture
 def tmp_sqlite_db(tmp_path):
-    # prepare paths and DB URL
+    """
+    Provide a temporary SQLite database for tests and tear it down safely on Windows.
+
+    Yields a dict with:
+      - db_path: pathlib.Path to the sqlite file
+      - db_url: SQLAlchemy URL string
+      - engine: SQLAlchemy Engine
+      - Session: scoped_session factory
+      - raw_conn: optional sqlite3.Connection (if tests need it)
+    """
     db_path = tmp_path / "custody.sqlite3"
     db_url = f"sqlite:///{str(db_path)}"
 
@@ -34,7 +48,7 @@ def tmp_sqlite_db(tmp_path):
     # optional: raw sqlite3 connection if tests need it
     raw_conn = sqlite3.connect(str(db_path))
 
-    # Prefer DELETE journal mode to avoid WAL/SHM files on Windows
+    # Prefer DELETE journal mode to avoid WAL/SHM files on Windows (best-effort)
     try:
         with engine.connect() as conn:
             conn.execute(text("PRAGMA journal_mode=DELETE"))
@@ -79,4 +93,4 @@ def tmp_sqlite_db(tmp_path):
         _try_unlink(Path(str(db_path) + "-wal"))
         _try_unlink(Path(str(db_path) + "-shm"))
 
-        # 6) cleanup tmp_path is handled by pytest tmp_path fixture automatically
+        # tmp_path cleanup is handled by pytest automatically
