@@ -6,3 +6,6 @@ dist/
 build/
 *.egg-info/
 pulpo_ed25519.key
+audit_chain.ndjson
+__pycache__/
+*.pyc
