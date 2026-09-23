@@ -5,25 +5,26 @@ import hashlib
 import json
 from typing import Dict, Any, Optional
 
-DEFAULT_TEST_KEY = b"pulpo-test-key"
+# Keep the stored key as a JSON-friendly string; encode when signing.
+DEFAULT_TEST_KEY = "pulpo-test-key"
 
 @dataclass
 class HmacTestVerifier:
     """
     Minimal dataclass test verifier so dataclasses.asdict() works in tests.
-    Provides HMAC-SHA256 signing/verification for test payloads.
+    Stores key as a string so JSON serialization succeeds.
     """
-    key: bytes = DEFAULT_TEST_KEY
+    key: str = DEFAULT_TEST_KEY
 
     def sign(self, payload: Dict[str, Any]) -> str:
         body = json.dumps(payload, sort_keys=True).encode("utf-8")
-        return hmac.new(self.key, body, hashlib.sha256).hexdigest()
+        return hmac.new(self.key.encode("utf-8"), body, hashlib.sha256).hexdigest()
 
     def verify(self, payload: Dict[str, Any], signature: str) -> bool:
         return hmac.compare_digest(self.sign(payload), signature)
 
 
-def signed_envelope(payload: Dict[str, Any], key: Optional[bytes] = None) -> Dict[str, Any]:
+def signed_envelope(payload: Dict[str, Any], key: Optional[str] = None) -> Dict[str, Any]:
     verifier = HmacTestVerifier(key if key is not None else DEFAULT_TEST_KEY)
     sig = verifier.sign(payload)
     return {"payload": payload, "signature": sig}
