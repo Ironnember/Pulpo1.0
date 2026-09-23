@@ -182,7 +182,7 @@ class RuntimeCompositionTests(unittest.TestCase):
         self.assertNotIn("/docs", paths)
         self.assertNotIn("/openapi.json", paths)
 
-    def test_runtime_rejects_a_locked-evidence-boundary_failure_before_app_exists(self):
+    def test_runtime_rejects_a_locked_evidence_boundary_failure_before_app_exists(self):
         settings = ProductionSettings.from_mapping(ENV)
         transport = FakeKmsTransport()
         fingerprint = sha256(transport.raw).hexdigest()
