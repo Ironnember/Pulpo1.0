@@ -32,11 +32,6 @@ class AuthorityTrust:
 
 @dataclass
 class HmacTestVerifier:
-    """
-    Dataclass verifier used by tests. It intentionally exposes the same
-    canonical fields the kernel expects for authority trust so that
-    dataclasses.asdict(...) produces identical mappings.
-    """
     # HMAC signing key (kept JSON-friendly)
     key: str = DEFAULT_TEST_KEY
 
@@ -58,48 +53,38 @@ class HmacTestVerifier:
         return hmac.compare_digest(self.sign(payload), signature)
 
 
-    def signed_envelope(signing_kernel_or_verifier, payload: Dict[str, Any], verifier=None, *, now_ns: int | None = None, approval_id: str | None = None, nonce: str | None = None) -> Dict[str, Any]:
-        """
-        Backwards-compatible helper used by tests.
-    
-        Accepts either:
-          - (verifier, payload)  OR
-          - (signing_kernel, payload, verifier=verifier)
-    
-        Produces a minimal envelope dict that includes the payload, an HMAC
-        signature computed by the provided verifier (or by the signing_kernel
-        if it exposes a compatible sign(...) method), and optional metadata
-        fields the tests pass (now_ns, approval_id, nonce).
-        """
-        # Resolve verifier: allow either calling convention
-        if verifier is None:
-            # caller passed (verifier, payload)
-            verifier = signing_kernel_or_verifier
-        # compute signature using verifier.sign if available
-        sign_fn = getattr(verifier, "sign", None)
-        if callable(sign_fn):
-            signature = sign_fn(payload)
-        else:
-            # fallback: try to use a signing_kernel-like object with .sign or .intent_hash
-            raise TypeError("verifier does not provide a sign(payload) method")
-    
-        envelope = {"payload": payload, "signature": signature}
-        if now_ns is not None:
-            envelope["now_ns"] = now_ns
-        if approval_id is not None:
-            envelope["approval_id"] = approval_id
-        if nonce is not None:
-            envelope["nonce"] = nonce
-        return envelope
+def signed_envelope(signing_kernel_or_verifier, payload: Dict[str, Any], verifier=None, *, now_ns: int | None = None, approval_id: str | None = None, nonce: str | None = None) -> Dict[str, Any]:
+    """
+    Backwards-compatible helper used by tests.
+
+    Accepts either:
+      - (verifier, payload)  OR
+      - (signing_kernel, payload, verifier=verifier)
+
+    Produces a minimal envelope dict that includes the payload, an HMAC
+    signature computed by the provided verifier, and optional metadata
+    fields the tests pass (now_ns, approval_id, nonce).
+    """
+    if verifier is None:
+        verifier = signing_kernel_or_verifier
+
+    sign_fn = getattr(verifier, "sign", None)
+    if not callable(sign_fn):
+        raise TypeError("verifier does not provide a sign(payload) method")
+
+    signature = sign_fn(payload)
+
+    envelope = {"payload": payload, "signature": signature}
+    if now_ns is not None:
+        envelope["now_ns"] = now_ns
+    if approval_id is not None:
+        envelope["approval_id"] = approval_id
+    if nonce is not None:
+        envelope["nonce"] = nonce
+    return envelope
 
 
 def trust_for(verifier: HmacTestVerifier) -> AuthorityTrust:
-    """
-    Return an AuthorityTrust dataclass instance that matches the canonical
-    shape the kernel expects when it calls dataclasses.asdict(...) on the
-    pinned authority trust. Use the verifier's canonical fields so the
-    pinned trust and the approval verifier canonicalize identically.
-    """
     return AuthorityTrust(
         authority_id=verifier.authority_id,
         verifier_id=verifier.verifier_id,
