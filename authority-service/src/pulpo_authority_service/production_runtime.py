@@ -33,6 +33,8 @@ KMS_KEY_VERSION = (
 KMS_PUBLIC_FINGERPRINT = (
     "b59288317ee9735a3bfd24595fd6a5d5c97476c1461b945124aded9ffd0ab127"
 )
+WORKER_EMAIL = "pulpo-governed-worker@dulcet-opus-499511-a5.iam.gserviceaccount.com"
+WORKER_AUDIENCE = ORIGIN
 
 
 def _required(mapping: Mapping[str, str], name: str) -> str:
@@ -62,9 +64,7 @@ class ProductionSettings:
     evidence_bucket: str
     evidence_prefix: str
     evidence_min_retention_seconds: int
-    worker_audience: str
     worker_subject: str
-    worker_email: str
 
     @classmethod
     def from_mapping(cls, mapping: Mapping[str, str]) -> "ProductionSettings":
@@ -74,10 +74,6 @@ class ProductionSettings:
         prefix = _required(mapping, "PULPO_AUTHORITY_EVIDENCE_PREFIX")
         if prefix != prefix.strip("/") or prefix != prefix.strip():
             raise RuntimeError("PULPO_AUTHORITY_EVIDENCE_PREFIX must be canonical non-slash text")
-        worker_email = _required(mapping, "PULPO_AUTHORITY_WORKER_EMAIL")
-        if "@" not in worker_email:
-            raise RuntimeError("PULPO_AUTHORITY_WORKER_EMAIL must identify one service account")
-
         return cls(
             authority_id=_required(mapping, "PULPO_AUTHORITY_ID"),
             verifier_id=_required(mapping, "PULPO_AUTHORITY_VERIFIER_ID"),
@@ -90,9 +86,7 @@ class ProductionSettings:
                 mapping,
                 "PULPO_AUTHORITY_EVIDENCE_MIN_RETENTION_SECONDS",
             ),
-            worker_audience=_required(mapping, "PULPO_AUTHORITY_WORKER_AUDIENCE"),
             worker_subject=_required(mapping, "PULPO_AUTHORITY_WORKER_SUBJECT"),
-            worker_email=worker_email,
         )
 
 
@@ -145,9 +139,9 @@ def build_production_app(
     state = state_factory(connection_factory, ())
 
     worker_authenticator = GoogleServiceAccountWorkerAuthenticator(
-        audience=settings.worker_audience,
+        audience=WORKER_AUDIENCE,
         expected_subject=settings.worker_subject,
-        expected_email=settings.worker_email,
+        expected_email=WORKER_EMAIL,
         verifier=worker_claims_verifier,
     )
 
