@@ -26,6 +26,8 @@ class GitClarityTests(unittest.TestCase):
         self.repository = Path(self.temporary.name) / "Pulpo1.0"
         self.repository.mkdir()
         self.git("init", "-b", "main")
+        self.git("config", "core.autocrlf", "false")
+        self.git("config", "core.eol", "lf")
         self.git("config", "user.name", "Pulpo Test")
         self.git("config", "user.email", "pulpo@example.invalid")
         self.git("remote", "add", "origin", "https://github.com/Ironnember/Pulpo1.0.git")
