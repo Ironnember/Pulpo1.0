@@ -6,6 +6,11 @@ import json
 import time
 from typing import Dict, Any, Optional
 
+from pulpo.authority import (
+    ApprovalEnvelope as ProductionApprovalEnvelope,
+    AuthorityTrust,
+)
+
 # JSON-friendly defaults used in tests
 DEFAULT_TEST_KEY = "pulpo-test-key"
 DEFAULT_ALGORITHM = "hmac-sha256-test-only"
@@ -17,18 +22,6 @@ DEFAULT_KEY_FINGERPRINT = "c0d4282378c959913c7f62a748798a931c7f45ac18527fb1a0b0c
 DEFAULT_DEPLOYMENT_ID = "deployment:test"
 DEFAULT_MAX_TTL_NS = 10_000
 DEFAULT_SCHEMA = "pulpo.authority-trust.v1"
-
-
-@dataclass
-class AuthorityTrust:
-    authority_id: str
-    verifier_id: str
-    key_id: str
-    algorithm: str
-    key_fingerprint: str
-    deployment_id: str
-    max_approval_ttl_ns: int
-    schema: str
 
 
 @dataclass
@@ -58,6 +51,13 @@ class ApprovalEnvelope:
     approval_id: Optional[str] = None
     nonce: Optional[str] = None
 
+    def as_dict(self) -> dict:
+        payload = asdict(self.approval)
+        payload["approval_id"] = self.approval_id
+        payload["nonce"] = self.nonce
+        payload["signature"] = self.signature
+        return payload
+
 
 @dataclass
 class HmacTestVerifier:
@@ -74,23 +74,37 @@ class HmacTestVerifier:
     max_approval_ttl_ns: int = DEFAULT_MAX_TTL_NS
     schema: str = DEFAULT_SCHEMA
 
-    def sign(self, payload: Dict[str, Any]) -> str:
+    def sign(self, payload: Any) -> str:
         """
-        Canonicalize payloads before signing:
-        - If payload is a dataclass, convert to dict via asdict (recursively).
-        - Otherwise assume it's JSON-serializable already.
+        Sign the exact bytes supplied by the authority/verifier protocol.
+
+        Production GovernanceKernel verifies envelope.signing_bytes(), so
+        the test verifier must authenticate those exact canonical bytes.
+        Mapping/dataclass inputs remain supported for existing helper callers.
         """
-        payload_to_sign = payload
-        try:
-            if is_dataclass(payload):
-                payload_to_sign = asdict(payload)
-        except Exception:
+        if isinstance(payload, bytes):
+            body = payload
+        else:
             payload_to_sign = payload
+            try:
+                if is_dataclass(payload):
+                    payload_to_sign = asdict(payload)
+            except Exception:
+                payload_to_sign = payload
 
-        body = json.dumps(payload_to_sign, sort_keys=True, separators=(",", ":")).encode("utf-8")
-        return hmac.new(self.key.encode("utf-8"), body, hashlib.sha256).hexdigest()
+            body = json.dumps(
+                payload_to_sign,
+                sort_keys=True,
+                separators=(",", ":"),
+            ).encode("utf-8")
 
-    def verify(self, payload: Dict[str, Any], signature: str) -> bool:
+        return hmac.new(
+            self.key.encode("utf-8"),
+            body,
+            hashlib.sha256,
+        ).hexdigest()
+
+    def verify(self, payload: bytes, signature: str) -> bool:
         return hmac.compare_digest(self.sign(payload), signature)
 
 
@@ -148,12 +162,6 @@ def signed_envelope(signing_kernel_or_verifier, payload: Any, verifier=None, *, 
     except Exception:
         payload_to_sign = payload
 
-    # compute signature
-    sign_fn = getattr(verifier, "sign", None)
-    if not callable(sign_fn):
-        raise TypeError("verifier does not provide a sign(payload) method")
-    signature = sign_fn(payload_to_sign)
-
     # compute issued/expires
     issued = int(now_ns) if now_ns is not None else int(time.time_ns())
     expires = issued + int(getattr(verifier, "max_approval_ttl_ns", 0) or 0)
@@ -201,6 +209,30 @@ def signed_envelope(signing_kernel_or_verifier, payload: Any, verifier=None, *, 
         issued_at_ns=issued,
         expires_at_ns=expires,
     )
+
+    # Production signs the exact canonical bytes of the complete unsigned
+    # ApprovalEnvelope, excluding only its signature field.
+    unsigned = ProductionApprovalEnvelope(
+        approval_id=approval_id,
+        authority_id=approval.authority_id,
+        verifier_id=approval.verifier_id,
+        key_id=approval.key_id,
+        deployment_id=approval.deployment_id,
+        trust_hash=approval.trust_hash,
+        session_id=approval.session_id,
+        principal=approval.principal,
+        intent_hash=approval.intent_hash,
+        policy_hash=approval.policy_hash,
+        nonce=nonce,
+        issued_at_ns=approval.issued_at_ns,
+        expires_at_ns=approval.expires_at_ns,
+        signature="",
+    )
+
+    sign_fn = getattr(verifier, "sign", None)
+    if not callable(sign_fn):
+        raise TypeError("verifier does not provide a sign(payload) method")
+    signature = sign_fn(unsigned.signing_bytes())
 
     return ApprovalEnvelope(
         approval=approval,

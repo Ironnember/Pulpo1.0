@@ -1,7 +1,6 @@
 import json
 import tempfile
 import unittest
-from dataclasses import asdict
 from pathlib import Path
 
 from fastapi.testclient import TestClient
@@ -205,7 +204,7 @@ class DomainProposalApiTests(unittest.TestCase):
             "/v1/domain-attempts",
             json={
                 "proposal_commitment_id": commitment_id,
-                "approval": asdict(envelope),
+                "approval": envelope.as_dict(),
             },
         )
         self.assertEqual(200, authorized.status_code, authorized.text)
@@ -221,7 +220,7 @@ class DomainProposalApiTests(unittest.TestCase):
             "/v1/domain-attempts",
             json={
                 "proposal_commitment_id": commitment_id,
-                "approval": asdict(envelope),
+                "approval": envelope.as_dict(),
             },
         )
         self.assertEqual(403, replay.status_code)

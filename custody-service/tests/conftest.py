@@ -1,95 +1,134 @@
-# custody-service/tests/conftest.py
-import tempfile
-from pathlib import Path
+# custody-service/tests/authority_support.py
+from dataclasses import dataclass
+import hmac
+import hashlib
+import json
+from typing import Dict, Any, Optional
+
 import sqlite3
-import os
+import time
+import gc
+from pathlib import Path
+
 import pytest
-
-# Try to import SQLAlchemy; if not present, the fixture falls back to sqlite3 connections.
-try:
-    from sqlalchemy import create_engine
-    from sqlalchemy.orm import sessionmaker
-except Exception:
-    create_engine = None
-    sessionmaker = None
+from sqlalchemy import create_engine, text
+from sqlalchemy.orm import sessionmaker, scoped_session
 
 
-def _try_unlink(path):
+# helper to unlink with retries (Windows-friendly)
+def _try_unlink(path: Path, attempts: int = 8, base_delay: float = 0.05) -> bool:
     """
-    Remove a file or directory if it exists. Silently ignore missing paths.
-    Works for files and directories.
+    Try to unlink a file, retrying on PermissionError (Windows file-lock).
+    Returns True if removed or not present, False if still locked after retries.
     """
-    p = Path(path)
-    try:
-        if p.is_dir():
-            import shutil
-            shutil.rmtree(p)
-        else:
-            p.unlink(missing_ok=True)
-    except FileNotFoundError:
-        pass
-    except PermissionError:
-        # On Windows, sometimes files are locked briefly; ignore here for tests.
-        return
+    for attempt in range(attempts):
+        try:
+            if path.exists():
+                path.unlink(missing_ok=True)
+            return True
+        except PermissionError:
+            time.sleep(base_delay * (attempt + 1))
+        except FileNotFoundError:
+            return True
+    return False
 
 
 @pytest.fixture
 def tmp_sqlite_db(tmp_path):
     """
-    Provide a mapping expected by tests:
-      {
-        "db_url": "sqlite:///...path...",
-        "db_path": "/abs/path/to/file.sqlite3",
-        "engine": <sqlalchemy.Engine> or None,
-        "Session": <sqlalchemy.orm.sessionmaker> or a simple callable,
-        "raw_conn": a DB-API connection object
-      }
+    Provide a temporary SQLite database for tests and tear it down safely on Windows.
 
-    Creates a temporary sqlite file and yields the mapping. Cleans up files on teardown.
+    Yields a dict with:
+      - db_path: pathlib.Path to the sqlite file
+      - db_url: SQLAlchemy URL string
+      - engine: SQLAlchemy Engine
+      - Session: scoped_session factory
+      - raw_conn: optional sqlite3.Connection
     """
-    fd, path = tempfile.mkstemp(suffix=".sqlite3")
-    os.close(fd)
+    db_path = tmp_path / "custody.sqlite3"
+    db_url = f"sqlite:///{str(db_path)}"
 
-    # Ensure a clean file exists and enable WAL so tests that expect -wal/-shm behave similarly.
-    conn = sqlite3.connect(path)
+    engine = create_engine(
+        db_url,
+        connect_args={"check_same_thread": False},
+    )
+    SessionFactory = sessionmaker(bind=engine)
+    Session = scoped_session(SessionFactory)
+
+    raw_conn = sqlite3.connect(str(db_path))
+
     try:
-        conn.execute("PRAGMA journal_mode=WAL;")
-        conn.commit()
-    finally:
-        conn.close()
-
-    db_url = f"sqlite:///{path}"
-
-    engine = None
-    Session = None
-    raw_conn = None
-    if create_engine is not None and sessionmaker is not None:
-        # Create SQLAlchemy engine and sessionmaker
-        engine = create_engine(db_url, connect_args={"check_same_thread": False})
-        Session = sessionmaker(bind=engine)
-        # raw_conn as DB-API connection from engine
-        try:
-            raw_conn = engine.raw_connection()
-        except Exception:
-            raw_conn = None
-    else:
-        # Fallback: provide a simple callable that returns a sqlite3.Connection
-        def _simple_session_factory():
-            return sqlite3.connect(path)
-        Session = _simple_session_factory
-        raw_conn = sqlite3.connect(path)
-
-    yield {"db_url": db_url, "db_path": path, "engine": engine, "Session": Session, "raw_conn": raw_conn}
-
-    # Teardown: close raw_conn and remove files (ignore permission errors)
-    try:
-        if raw_conn is not None:
-            try:
-                raw_conn.close()
-            except Exception:
-                pass
-        _try_unlink(path)
-        _try_unlink(f"{path}-wal")
-        _try_unlink(f"{path}-shm")
+        with engine.connect() as conn:
+            conn.execute(text("PRAGMA journal_mode=DELETE"))
+            conn.commit()
     except Exception:
         pass
+
+    try:
+        yield {
+            "db_path": db_path,
+            "db_url": db_url,
+            "engine": engine,
+            "Session": Session,
+            "raw_conn": raw_conn,
+        }
+    finally:
+        try:
+            raw_conn.close()
+        except Exception:
+            pass
+
+        try:
+            Session.remove()
+        except Exception:
+            pass
+
+        try:
+            engine.dispose()
+        except Exception:
+            pass
+
+        gc.collect()
+        time.sleep(0.05)
+
+        _try_unlink(Path(str(db_path)))
+        _try_unlink(Path(str(db_path) + "-wal"))
+        _try_unlink(Path(str(db_path) + "-shm"))
+
+
+# Keep the stored key as a JSON-friendly string; encode when signing.
+DEFAULT_TEST_KEY = "pulpo-test-key"
+DEFAULT_ALGORITHM = "hmac-sha256"
+
+@dataclass
+class HmacTestVerifier:
+    """
+    Minimal dataclass test verifier so dataclasses.asdict() works in tests.
+    Stores key as a string so JSON serialization succeeds and includes an
+    algorithm field so the kernel's canonicalization matches expectations.
+    """
+    key: str = DEFAULT_TEST_KEY
+    algorithm: str = DEFAULT_ALGORITHM
+
+    def sign(self, payload: Dict[str, Any]) -> str:
+        body = json.dumps(payload, sort_keys=True).encode("utf-8")
+        # Use HMAC-SHA256 for signing (algorithm name kept in algorithm field).
+        return hmac.new(self.key.encode("utf-8"), body, hashlib.sha256).hexdigest()
+
+    def verify(self, payload: Dict[str, Any], signature: str) -> bool:
+        return hmac.compare_digest(self.sign(payload), signature)
+
+
+def signed_envelope(payload: Dict[str, Any], key: Optional[str] = None) -> Dict[str, Any]:
+    verifier = HmacTestVerifier(key if key is not None else DEFAULT_TEST_KEY)
+    sig = verifier.sign(payload)
+    return {"payload": payload, "signature": sig}
+
+
+def trust_for(verifier: HmacTestVerifier) -> HmacTestVerifier:
+    """
+    Return the verifier instance (keeps API shape used by tests).
+    The important part is that the returned object is a dataclass instance
+    with the same canonical fields the kernel expects (algorithm + key).
+    """
+    return verifier
