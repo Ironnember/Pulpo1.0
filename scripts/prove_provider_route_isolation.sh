@@ -31,7 +31,9 @@ cleanup() {
 trap cleanup EXIT
 
 docker image inspect "$custody_image" >/dev/null
-docker image inspect "$python_image" >/dev/null
+if ! docker image inspect "$python_image" >/dev/null 2>&1; then
+  docker pull "$python_image" >/dev/null
+fi
 
 docker network create --internal "$worker_network" >/dev/null
 created_worker_network=1
