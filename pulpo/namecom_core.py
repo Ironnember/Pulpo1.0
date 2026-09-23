@@ -299,6 +299,8 @@ class NameComCoreRegistrarAdapter:
         max_charge_cents: int,
         idempotency_key: str,
     ) -> RegistrarResult:
+        if order.auto_renew_enabled is not False:
+            raise NameComViolation("namecom_autorenew_not_supported")
         if max_charge_cents != order.purchase_price_cents:
             raise NameComViolation("namecom_charge_cap_order_mismatch")
         decoded, response = self.client.create_domain(

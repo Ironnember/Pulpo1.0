@@ -263,7 +263,7 @@ class CommerceProofTests(unittest.TestCase):
             accept_delivery(
                 order,
                 outcome,
-                VerificationEvidence(order.domain, order.registrar, order.owner_ref, 1, True, "registered"),
+                VerificationEvidence(order.domain, order.registrar, order.owner_ref, 1, True, "registered", False),
             )
 
     def test_acceptance_requires_independent_ownership_period_privacy_and_dns(self):
@@ -279,11 +279,11 @@ class CommerceProofTests(unittest.TestCase):
             reservation.reservation_id,
             now_ns=NOW,
         )
-        wrong_owner = VerificationEvidence(order.domain, order.registrar, "owner://attacker", 1, True, "registered")
+        wrong_owner = VerificationEvidence(order.domain, order.registrar, "owner://attacker", 1, True, "registered", False)
         with self.assertRaisesRegex(CommerceViolation, "ownership_not_verified"):
             accept_delivery(order, outcome, wrong_owner)
         self.assertIsNone(outcome.verification)
-        verified = VerificationEvidence(order.domain, order.registrar, order.owner_ref, 1, True, "configured")
+        verified = VerificationEvidence(order.domain, order.registrar, order.owner_ref, 1, True, "configured", False)
         accept_delivery(order, outcome, verified)
         self.assertTrue(outcome.accepted)
         self.assertFalse(outcome.valuable)
