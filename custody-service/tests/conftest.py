@@ -7,18 +7,22 @@ import pytest
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker, scoped_session
 
-
 # helper to unlink with retries (Windows-friendly)
-def _try_unlink(path: Path, attempts: int = 6, base_delay: float = 0.1):
+def _try_unlink(path: Path, attempts: int = 8, base_delay: float = 0.05) -> bool:
+    """
+    Try to unlink a file, retrying on PermissionError (Windows file-lock).
+    Returns True if removed or not present, False if still locked after retries.
+    """
     for attempt in range(attempts):
         try:
             if path.exists():
                 path.unlink(missing_ok=True)
-            return
+            return True
         except PermissionError:
             time.sleep(base_delay * (attempt + 1))
         except FileNotFoundError:
-            return
+            return True
+    return False
 
 
 @pytest.fixture
