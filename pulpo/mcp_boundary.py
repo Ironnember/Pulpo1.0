@@ -315,7 +315,12 @@ def export_mcp_snapshot(
             handle.flush()
             os.fsync(handle.fileno())
         try:
-            os.replace(os.fspath(parent / temporary), os.fspath(target))
+            os.replace(
+                temporary,
+                target.name,
+                src_dir_fd=directory_descriptor,
+                dst_dir_fd=directory_descriptor,
+            )
         except OSError as exc:
             raise MCPBoundaryError(
                 "mcp_snapshot_export_commit_unknown"
