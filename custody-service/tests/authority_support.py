@@ -7,17 +7,23 @@ from typing import Dict, Any, Optional
 
 # Keep the stored key as a JSON-friendly string; encode when signing.
 DEFAULT_TEST_KEY = "pulpo-test-key"
+DEFAULT_ALGORITHM = "hmac-sha256"
+DEFAULT_TYPE = "hmac"
 
 @dataclass
 class HmacTestVerifier:
     """
     Minimal dataclass test verifier so dataclasses.asdict() works in tests.
-    Stores key as a string so JSON serialization succeeds.
+    Stores key and algorithm as JSON-friendly strings and includes a 'type'
+    field so the kernel's canonicalization matches expectations.
     """
     key: str = DEFAULT_TEST_KEY
+    algorithm: str = DEFAULT_ALGORITHM
+    type: str = DEFAULT_TYPE
 
     def sign(self, payload: Dict[str, Any]) -> str:
         body = json.dumps(payload, sort_keys=True).encode("utf-8")
+        # Use HMAC-SHA256 for signing (algorithm name kept in algorithm field).
         return hmac.new(self.key.encode("utf-8"), body, hashlib.sha256).hexdigest()
 
     def verify(self, payload: Dict[str, Any], signature: str) -> bool:
@@ -33,6 +39,7 @@ def signed_envelope(payload: Dict[str, Any], key: Optional[str] = None) -> Dict[
 def trust_for(verifier: HmacTestVerifier) -> HmacTestVerifier:
     """
     Return the verifier instance (keeps API shape used by tests).
-    The important part is that the returned object is a dataclass instance.
+    The returned object is a dataclass instance with the canonical fields
+    (type, algorithm, key) the kernel is likely to compare.
     """
     return verifier
