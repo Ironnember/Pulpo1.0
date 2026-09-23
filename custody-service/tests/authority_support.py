@@ -52,7 +52,7 @@ class ApprovalEnvelope:
     Dataclass shape expected by tests. ApprovalEnvelope.payload is an Approval
     dataclass so asdict(envelope) produces the full approval mapping.
     """
-    payload: Approval
+    approval: Approval
     signature: str
     now_ns: Optional[int] = None
     approval_id: Optional[str] = None
@@ -203,7 +203,7 @@ def signed_envelope(signing_kernel_or_verifier, payload: Any, verifier=None, *, 
     )
 
     return ApprovalEnvelope(
-        payload=approval,
+        approval=approval,
         signature=signature,
         now_ns=now_ns,
         approval_id=approval_id,
