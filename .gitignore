@@ -10,3 +10,4 @@ audit_chain.ndjson
 __pycache__/
 *.pyc
 custody-service/tests/conftest.py.bak
+custody-service/tests/conftest.py.bak
