@@ -1,16 +1,3 @@
-*** Begin Patch
-*** Update File: custody-service/tests/test_approval_challenge.py
-@@
--        self.addCleanup(lambda: Path(str(self.path) + "-wal").unlink(missing_ok=True))
--        self.addCleanup(lambda: Path(str(self.path) + "-shm").unlink(missing_ok=True))
-+        # Use the Windows-safe unlink helper to avoid PermissionError when
-+        # WAL/SHM files are still briefly held open by SQLite/SQLAlchemy.
-+        from custody_service.tests.conftest import _try_unlink  # adjust import path if needed
-+        self.addCleanup(lambda: _try_unlink(Path(str(self.path) + "-wal")))
-+        self.addCleanup(lambda: _try_unlink(Path(str(self.path) + "-shm")))
-*** End Patch
-
-
 import sqlite3
 import time
 import gc
