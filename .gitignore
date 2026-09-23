@@ -5,3 +5,4 @@ __pycache__/
 dist/
 build/
 *.egg-info/
+pulpo_ed25519.key
