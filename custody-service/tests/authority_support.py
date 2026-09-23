@@ -1,5 +1,5 @@
 # custody-service/tests/authority_support.py
-from dataclasses import dataclass
+from dataclasses import dataclass, is_dataclass, asdict
 import hmac
 import hashlib
 import json
@@ -46,7 +46,19 @@ class HmacTestVerifier:
     schema: str = DEFAULT_SCHEMA
 
     def sign(self, payload: Dict[str, Any]) -> str:
-        body = json.dumps(payload, sort_keys=True).encode("utf-8")
+        """
+        Canonicalize payloads before signing:
+        - If payload is a dataclass, convert to dict via asdict (recursively).
+        - Otherwise assume it's JSON-serializable already.
+        """
+        payload_to_sign = payload
+        try:
+            if is_dataclass(payload):
+                payload_to_sign = asdict(payload)
+        except Exception:
+            payload_to_sign = payload
+
+        body = json.dumps(payload_to_sign, sort_keys=True, separators=(",", ":")).encode("utf-8")
         return hmac.new(self.key.encode("utf-8"), body, hashlib.sha256).hexdigest()
 
     def verify(self, payload: Dict[str, Any], signature: str) -> bool:
@@ -85,6 +97,10 @@ def signed_envelope(signing_kernel_or_verifier, payload: Dict[str, Any], verifie
 
 
 def trust_for(verifier: HmacTestVerifier) -> AuthorityTrust:
+    """
+    Return an AuthorityTrust dataclass instance constructed from the verifier's
+    canonical fields so dataclasses.asdict(...) produces the same mapping.
+    """
     return AuthorityTrust(
         authority_id=verifier.authority_id,
         verifier_id=verifier.verifier_id,
