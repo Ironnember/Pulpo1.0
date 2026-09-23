@@ -146,15 +146,22 @@ class RuntimeCompositionTests(unittest.TestCase):
         bucket = FakeBucket(settings.evidence_bucket)
         connection_factory = object()
 
-        app = build_production_app(
-            settings,
-            cloud_sql_connection_factory=connection_factory,
-            state_factory=state_factory,
-            kms_transport=transport,
-            evidence_client=FakeStorageClient(bucket),
-            webauthn_verifier=object(),
-            worker_claims_verifier=lambda _token, _audience: {},
-        )
+        import pulpo_authority_service.production_runtime as runtime
+
+        original = runtime.KMS_PUBLIC_FINGERPRINT
+        runtime.KMS_PUBLIC_FINGERPRINT = fingerprint
+        try:
+            app = build_production_app(
+                settings,
+                cloud_sql_connection_factory=connection_factory,
+                state_factory=state_factory,
+                kms_transport=transport,
+                evidence_client=FakeStorageClient(bucket),
+                webauthn_verifier=object(),
+                worker_claims_verifier=lambda _token, _audience: {},
+            )
+        finally:
+            runtime.KMS_PUBLIC_FINGERPRINT = original
 
         service = app.state.pulpo_authority_service
         self.assertEqual([(connection_factory, ())], calls)
