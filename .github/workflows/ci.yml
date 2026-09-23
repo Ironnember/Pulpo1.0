@@ -172,6 +172,12 @@ jobs:
                   raise AssertionError(path + ' unexpectedly exposed')
           "
 
+      - name: Prove hostile worker has no alternate provider route
+        shell: bash
+        env:
+          PULPO_CUSTODY_IMAGE: pulpo-custody-v0:${{ github.sha }}
+        run: bash scripts/prove_provider_route_isolation.sh
+
   # `test` is already a protected required status on main. Keep that exact
   # context, but make it an explicit admission gate that fails unless both
   # hostile-worker proofs and the ordinary unit suite succeeded. `always()` is
