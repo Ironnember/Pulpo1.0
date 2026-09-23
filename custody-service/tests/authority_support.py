@@ -33,12 +33,22 @@ class AuthorityTrust:
 @dataclass
 class HmacTestVerifier:
     """
-    Dataclass verifier used by tests. Storing fields as strings so
-    dataclasses.asdict(...) and json canonicalization succeed.
+    Dataclass verifier used by tests. It intentionally exposes the same
+    canonical fields the kernel expects for authority trust so that
+    dataclasses.asdict(...) produces identical mappings.
     """
+    # HMAC signing key (kept JSON-friendly)
     key: str = DEFAULT_TEST_KEY
+
+    # Canonical authority-trust fields (match AuthorityTrust)
+    authority_id: str = DEFAULT_AUTHORITY_ID
+    verifier_id: str = DEFAULT_VERIFIER_ID
+    key_id: str = DEFAULT_KEY_ID
     algorithm: str = DEFAULT_ALGORITHM
-    type: str = DEFAULT_TYPE
+    key_fingerprint: str = DEFAULT_KEY_FINGERPRINT
+    deployment_id: str = DEFAULT_DEPLOYMENT_ID
+    max_approval_ttl_ns: int = DEFAULT_MAX_TTL_NS
+    schema: str = DEFAULT_SCHEMA
 
     def sign(self, payload: Dict[str, Any]) -> str:
         body = json.dumps(payload, sort_keys=True).encode("utf-8")
@@ -58,15 +68,16 @@ def trust_for(verifier: HmacTestVerifier) -> AuthorityTrust:
     """
     Return an AuthorityTrust dataclass instance that matches the canonical
     shape the kernel expects when it calls dataclasses.asdict(...) on the
-    pinned authority trust. Use stable test-only values so comparisons succeed.
+    pinned authority trust. Use the verifier's canonical fields so the
+    pinned trust and the approval verifier canonicalize identically.
     """
     return AuthorityTrust(
-        authority_id=DEFAULT_AUTHORITY_ID,
-        verifier_id=DEFAULT_VERIFIER_ID,
-        key_id=DEFAULT_KEY_ID,
-        algorithm=verifier.algorithm or DEFAULT_ALGORITHM,
-        key_fingerprint=DEFAULT_KEY_FINGERPRINT,
-        deployment_id=DEFAULT_DEPLOYMENT_ID,
-        max_approval_ttl_ns=DEFAULT_MAX_TTL_NS,
-        schema=DEFAULT_SCHEMA,
+        authority_id=verifier.authority_id,
+        verifier_id=verifier.verifier_id,
+        key_id=verifier.key_id,
+        algorithm=verifier.algorithm,
+        key_fingerprint=verifier.key_fingerprint,
+        deployment_id=verifier.deployment_id,
+        max_approval_ttl_ns=verifier.max_approval_ttl_ns,
+        schema=verifier.schema,
     )
