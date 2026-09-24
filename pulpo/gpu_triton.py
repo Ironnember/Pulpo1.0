@@ -63,7 +63,7 @@ if _triton is not None:
         h6 = _tl.full((BLOCK,), 0x1F83D9AB, _tl.uint32)
         h7 = _tl.full((BLOCK,), 0x5BE0CD19, _tl.uint32)
 
-        for block_index in _tl.static_range(MAX_BLOCKS):
+        for block_index in range(MAX_BLOCKS):
             active = valid & (block_index < row_blocks)
             base = rows * STRIDE + block_index * 64
             w = []
@@ -88,7 +88,8 @@ if _triton is not None:
             for round_index in _tl.static_range(64):
                 sum1 = _rotr32(e, 6) ^ _rotr32(e, 11) ^ _rotr32(e, 25)
                 choose = (e & f) ^ ((~e) & g)
-                temp1 = hh + sum1 + choose + _SHA256_K[round_index] + w[round_index]
+                round_constant = _tl.full((BLOCK,), _SHA256_K[round_index], _tl.uint32)
+                temp1 = hh + sum1 + choose + round_constant + w[round_index]
                 sum0 = _rotr32(a, 2) ^ _rotr32(a, 13) ^ _rotr32(a, 22)
                 majority = (a & b) ^ (a & c) ^ (b & c)
                 temp2 = sum0 + majority
