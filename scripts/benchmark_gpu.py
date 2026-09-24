@@ -172,7 +172,7 @@ def main() -> int:
     payload = {
         "schema": "pulpo.gpu-performance-benchmark.v1",
         "metadata": metadata,
-        "config": {"sizes": sizes, "samples": args.samples, "warmup": args.warmup},
+        "config": {"sizes": sizes, "samples": args.samples, "warmup": args.warmup, "implementation": args.implementation},
         "results": rows,
         "governance": {
             "cpu_is_canonical": True,
@@ -187,7 +187,7 @@ def main() -> int:
         writer.writerows(rows)
 
     print(f"GPU: {metadata['gpu_name']}")
-    print(f"Torch: {metadata['torch_version']} | CUDA: {metadata['torch_cuda_version']}")
+    print(f"Torch: {metadata['torch_version']} | backend: {metadata['gpu_backend']} | HIP: {metadata['torch_hip_version']}")
     print(f"{'records':>10} {'CPU ms':>12} {'GPU e2e ms':>14} {'GPU device ms':>15} {'e2e speedup':>13}")
     for row in rows:
         print(
