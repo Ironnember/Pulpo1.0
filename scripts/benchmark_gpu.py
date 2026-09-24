@@ -178,7 +178,7 @@ def main() -> int:
             "correctness_required_before_timing": True,
         },
     }
-    args.json.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\\n", encoding="utf-8")
+    args.json.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     with args.csv.open("w", newline="", encoding="utf-8") as handle:
         writer = csv.DictWriter(handle, fieldnames=rows[0].keys())
         writer.writeheader()
