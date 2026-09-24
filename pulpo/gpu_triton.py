@@ -49,6 +49,7 @@ if _triton is not None:
         STRIDE: _tl.constexpr,
         MAX_BLOCKS: _tl.constexpr,
         BLOCK: _tl.constexpr,
+        SHA256_K: _tl.constexpr,
     ):
         rows = _tl.program_id(0) * BLOCK + _tl.arange(0, BLOCK)
         valid = rows < count
@@ -88,7 +89,7 @@ if _triton is not None:
             for round_index in _tl.static_range(64):
                 sum1 = _rotr32(e, 6) ^ _rotr32(e, 11) ^ _rotr32(e, 25)
                 choose = (e & f) ^ ((~e) & g)
-                round_constant = _tl.full((BLOCK,), _SHA256_K[round_index], _tl.uint32)
+                round_constant = _tl.full((BLOCK,), SHA256_K[round_index], _tl.uint32)
                 temp1 = hh + sum1 + choose + round_constant + w[round_index]
                 sum0 = _rotr32(a, 2) ^ _rotr32(a, 13) ^ _rotr32(a, 22)
                 majority = (a & b) ^ (a & c) ^ (b & c)
@@ -158,6 +159,7 @@ def triton_record_hashes(messages: Sequence[bytes], torch: Any) -> list[str]:
         stride,
         max_blocks,
         block_size,
+        _SHA256_K,
         num_warps=1,
     )
 
