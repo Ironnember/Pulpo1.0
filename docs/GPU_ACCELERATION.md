@@ -6,6 +6,15 @@ checks chain linkage, delta-root linkage, and the final verification result.
 GPU output must match the CPU reference before benchmark timings are accepted.
 Permit, policy, authority, replay, and durable-state decisions stay on the CPU.
 
+## Implementations
+
+The benchmark defaults to the fused Triton implementation, which keeps each
+record's SHA-256 compression rounds inside one GPU kernel. Use
+`--implementation torch` to run the original eager PyTorch implementation
+for a direct comparison. The `gpu` extra installs PyTorch; use an AMD/PyTorch
+environment that includes its ROCm-compatible Triton package for the fused
+path.
+
 ## Backend behavior
 
 The same implementation supports CUDA and ROCm PyTorch builds. PyTorch exposes
@@ -47,7 +56,7 @@ The visibility check should report a non-empty HIP version, `True`, and
 `Radeon RX 7900 XT`. Then run the correctness-gated benchmark:
 
 ```bash
-python scripts/benchmark_gpu.py --device rocm --sizes 1000,10000,100000
+python scripts/benchmark_gpu.py --device rocm --implementation triton --sizes 1000,10000,100000
 ```
 
 This produces JSON and CSV results in the current directory. Timings are
@@ -55,7 +64,7 @@ reported only after exact CPU/GPU hash equality for each size. PyTorch's ROCm
 build uses the CUDA-named Python APIs internally; that naming does not mean the
 benchmark is using NVIDIA CUDA.
 
-The optional `gpu` extra declares PyTorch but cannot select a ROCm wheel index
+To compare with the original eager path, add `--implementation torch` and use new output names. The optional `gpu` extra declares PyTorch but cannot select a ROCm wheel index
 or install the matching host driver. Follow the official PyTorch or AMD install
 instructions for the chosen ROCm/PyTorch version before installing the extra.
 
