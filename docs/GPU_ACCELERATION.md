@@ -64,7 +64,7 @@ reported only after exact CPU/GPU hash equality for each size. PyTorch's ROCm
 build uses the CUDA-named Python APIs internally; that naming does not mean the
 benchmark is using NVIDIA CUDA.
 
-With `--implementation triton`, the benchmark reports CPU canonicalization, host-side padding/allocation, host-to-device transfer, kernel-only GPU-event time, device-to-host result handling, and total wall-clock latency. The kernel timer starts after host preparation and transfer synchronization, so host-side idle gaps are excluded. The eager `--implementation torch` path reports end-to-end latency; its individual stages are shown as unavailable. To compare with the original eager path, add `--implementation torch` and use new output names. The optional `gpu` extra declares PyTorch but cannot select a ROCm wheel index
+With `--implementation triton`, the benchmark reports CPU canonicalization, host-side padding/allocation, host-to-device transfer, kernel-only GPU-event time, device-to-host result handling, and total wall-clock latency. It separately reports raw device-to-host copy time and CPU digest formatting time. The kernel timer starts after host preparation and transfer synchronization, so host-side idle gaps are excluded. The eager `--implementation torch` path reports end-to-end latency; its individual stages are shown as unavailable. To compare with the original eager path, add `--implementation torch` and use new output names. The optional `gpu` extra declares PyTorch but cannot select a ROCm wheel index
 or install the matching host driver. Follow the official PyTorch or AMD install
 instructions for the chosen ROCm/PyTorch version before installing the extra.
 
