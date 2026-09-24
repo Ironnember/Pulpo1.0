@@ -1,4 +1,4 @@
-"""Optional CUDA acceleration for Pulpo audit integrity verification.
+"""Optional PyTorch accelerator support for Pulpo audit integrity verification.
 
 The GPU path accelerates only the embarrassingly-parallel SHA-256 recomputation
 of canonical audit-record bodies. CPU-side chain linkage, delta-root linkage,
@@ -36,7 +36,7 @@ def cpu_record_hashes(records: Sequence[dict[str, Any]]) -> list[str]:
     return [sha256(canonical_audit_body(record)).hexdigest() for record in records]
 
 
-def _sha256_batch_torch(messages: Sequence[bytes], torch: Any) -> list[str]:
+def _sha256_batch_torch(messages: Sequence[bytes], torch: Any, device_name: str) -> list[str]:
     """Compute SHA-256 for many messages in parallel with Torch CUDA tensors.
 
     The implementation uses int64 lanes with an explicit 32-bit mask because
@@ -47,7 +47,7 @@ def _sha256_batch_torch(messages: Sequence[bytes], torch: Any) -> list[str]:
     if not messages:
         return []
 
-    device = torch.device("cuda")
+    device = torch.device(device_name)
     mask = 0xFFFFFFFF
 
     constants = (
@@ -160,9 +160,9 @@ def _sha256_batch_torch(messages: Sequence[bytes], torch: Any) -> list[str]:
 def gpu_record_hashes(
     records: Sequence[dict[str, Any]],
     *,
-    device: str = "cuda",
+    device: str = "auto",
 ) -> list[str]:
-    """Return SHA-256 hashes for canonical audit bodies on CUDA."""
+    """Return SHA-256 hashes on CUDA or ROCm via PyTorch."""
     try:
         import torch
     except ImportError as exc:
@@ -170,20 +170,23 @@ def gpu_record_hashes(
             "GPU support requires the optional 'gpu' dependency (PyTorch)."
         ) from exc
 
-    if device != "cuda":
-        raise ValueError("Pulpo GPU acceleration currently requires CUDA")
-
+    if device not in {"auto", "cuda", "rocm"}:
+        raise ValueError("device must be auto, cuda, or rocm")
+    if not records:
+        return []
     if not torch.cuda.is_available():
-        raise RuntimeError("CUDA is not available in the current runtime")
-
+        raise RuntimeError("No PyTorch GPU runtime is available; install CUDA or ROCm PyTorch.")
+    backend = "rocm" if getattr(torch.version, "hip", None) else "cuda"
+    if device != "auto" and device != backend:
+        raise RuntimeError(f"Requested {device}, but installed PyTorch backend is {backend}")
     messages = [canonical_audit_body(record) for record in records]
-    return _sha256_batch_torch(messages, torch)
+    return _sha256_batch_torch(messages, torch, "cuda")
 
 
 def verify_audit_gpu(
     records: Iterable[dict[str, Any]],
     *,
-    device: str = "cuda",
+    device: str = "auto",
 ) -> bool:
     """Verify an audit chain with GPU hash recomputation and CPU linkage checks.
 
