@@ -98,6 +98,7 @@ def _sha256_batch_torch(messages: Sequence[bytes], torch: Any, device_name: str)
         host[index, : len(data)] = torch.tensor(list(data), dtype=torch.uint8)
 
     data = host.to(device, non_blocking=True)
+    device_lengths = torch.tensor(lengths, dtype=torch.int64, device=device)
     del host
 
     def rotr(value: Any, amount: int) -> Any:
@@ -142,15 +143,11 @@ def _sha256_batch_torch(messages: Sequence[bytes], torch: Any, device_name: str)
             b = a
             a = (temp1 + temp2) & mask
 
+        active = block_offset < device_lengths
+        compressed = (a, b, c, d, e, f, g, hh)
         state = [
-            (state[0] + a) & mask,
-            (state[1] + b) & mask,
-            (state[2] + c) & mask,
-            (state[3] + d) & mask,
-            (state[4] + e) & mask,
-            (state[5] + f) & mask,
-            (state[6] + g) & mask,
-            (state[7] + hh) & mask,
+            torch.where(active, (old + updated) & mask, old)
+            for old, updated in zip(state, compressed)
         ]
 
     words = torch.stack(state, dim=1).cpu().tolist()
