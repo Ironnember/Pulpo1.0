@@ -1,4 +1,7 @@
-import pytest
+try:
+    import pytest
+except ModuleNotFoundError:  # unittest discovery runs without optional test dependencies
+    pytest = None
 
 from pulpo.gpu_acceleration import gpu_record_hashes
 from pulpo.gpu_triton import triton_record_hashes
