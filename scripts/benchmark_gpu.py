@@ -92,7 +92,7 @@ def time_gpu(
     torch.cuda.synchronize()
 
     end_to_end: list[float] = []
-    stage_names = ("canonicalization", "host_preparation", "host_to_device", "kernel", "device_to_host")
+    stage_names = ("canonicalization", "host_preparation", "host_to_device", "kernel", "device_to_host", "digest_format")
     stages: dict[str, list[float] | None] = {
         name: [] if implementation == "triton" else None for name in stage_names
     }
@@ -170,6 +170,7 @@ def main() -> int:
             "gpu_host_to_device_median_ms": stage_stats["host_to_device"]["median_ms"] if stage_stats["host_to_device"] else None,
             "gpu_kernel_median_ms": stage_stats["kernel"]["median_ms"] if stage_stats["kernel"] else None,
             "gpu_device_to_host_median_ms": stage_stats["device_to_host"]["median_ms"] if stage_stats["device_to_host"] else None,
+            "gpu_digest_format_median_ms": stage_stats["digest_format"]["median_ms"] if stage_stats["digest_format"] else None,
             "speedup_end_to_end": cpu_stats["median_ms"] / gpu_stats["median_ms"],
         })
 
@@ -205,7 +206,7 @@ def main() -> int:
 
     print(f"GPU: {metadata['gpu_name']}")
     print(f"Torch: {metadata['torch_version']} | backend: {metadata['gpu_backend']} | HIP: {metadata['torch_hip_version']}")
-    print(f"{'records':>10} {'CPU ms':>10} {'canonical':>11} {'host prep':>11} {'H2D':>9} {'kernel':>9} {'D2H':>9} {'GPU total':>11} {'speedup':>9}")
+    print(f"{'records':>10} {'CPU ms':>10} {'canonical':>11} {'host prep':>11} {'H2D':>9} {'kernel':>9} {'D2H':>9} {'digest':>9} {'GPU total':>11} {'speedup':>9}")
     for row in rows:
         phase_values = [
             row["gpu_canonicalization_median_ms"],
@@ -213,6 +214,7 @@ def main() -> int:
             row["gpu_host_to_device_median_ms"],
             row["gpu_kernel_median_ms"],
             row["gpu_device_to_host_median_ms"],
+            row["gpu_digest_format_median_ms"],
         ]
         phase_text = [f"{value:9.3f}" if value is not None else f"{'n/a':>9}" for value in phase_values]
         print(
