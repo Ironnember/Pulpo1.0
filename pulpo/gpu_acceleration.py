@@ -161,8 +161,9 @@ def gpu_record_hashes(
     records: Sequence[dict[str, Any]],
     *,
     device: str = "auto",
+    implementation: str = "triton",
 ) -> list[str]:
-    """Return SHA-256 hashes on CUDA or ROCm via PyTorch."""
+    """Return SHA-256 hashes using fused Triton or eager PyTorch operations."""
     try:
         import torch
     except ImportError as exc:
@@ -172,6 +173,8 @@ def gpu_record_hashes(
 
     if device not in {"auto", "cuda", "rocm"}:
         raise ValueError("device must be auto, cuda, or rocm")
+    if implementation not in {"triton", "torch"}:
+        raise ValueError("implementation must be triton or torch")
     if not records:
         return []
     if not torch.cuda.is_available():
@@ -180,13 +183,17 @@ def gpu_record_hashes(
     if device != "auto" and device != backend:
         raise RuntimeError(f"Requested {device}, but installed PyTorch backend is {backend}")
     messages = [canonical_audit_body(record) for record in records]
-    return _sha256_batch_torch(messages, torch, "cuda")
+    if implementation == "torch":
+        return _sha256_batch_torch(messages, torch, "cuda")
+    from pulpo.gpu_triton import triton_record_hashes
+    return triton_record_hashes(messages, torch)
 
 
 def verify_audit_gpu(
     records: Iterable[dict[str, Any]],
     *,
     device: str = "auto",
+    implementation: str = "triton",
 ) -> bool:
     """Verify an audit chain with GPU hash recomputation and CPU linkage checks.
 
@@ -199,7 +206,7 @@ def verify_audit_gpu(
     if not materialized:
         return True
 
-    recomputed = gpu_record_hashes(materialized, device=device)
+    recomputed = gpu_record_hashes(materialized, device=device, implementation=implementation)
     previous = ZERO_HASH
     previous_delta_root = ZERO_HASH
 
