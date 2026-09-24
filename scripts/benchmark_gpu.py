@@ -91,7 +91,7 @@ def time_gpu(records: list[dict[str, Any]], warmup: int, samples: int, device: s
         gpu_start = torch.cuda.Event(enable_timing=True)
         gpu_end = torch.cuda.Event(enable_timing=True)
         gpu_start.record()
-        gpu_record_hashes(records)
+        gpu_record_hashes(records, device=device)
         gpu_end.record()
         torch.cuda.synchronize()
         end_to_end.append((time.perf_counter_ns() - start) / 1_000_000)
@@ -134,7 +134,7 @@ def main() -> int:
     for size in sizes:
         records = build_chain(size)
         expected = cpu_record_hashes(records)
-        actual = gpu_record_hashes(records)
+        actual = gpu_record_hashes(records, device=args.device)
         if actual != expected:
             raise RuntimeError(f"GPU correctness check failed for {size} records")
 
