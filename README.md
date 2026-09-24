@@ -84,3 +84,8 @@ The restart-safe state proof and its storage boundary are in
 The governed success-and-failure learning rules are in the
 [outcome learning protocol](docs/OUTCOME_LEARNING_PROTOCOL.md), including the
 [legacy migration regression case](docs/OUTCOME_CASE_LEGACY_MIGRATION_REGRESSION.md).
+
+
+## GPU audit hashing
+
+The optional CUDA/ROCm accelerator, CPU authority boundary, and RX 7900 XT setup are documented in [GPU acceleration](docs/GPU_ACCELERATION.md).
