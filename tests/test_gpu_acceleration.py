@@ -35,14 +35,14 @@ def test_cpu_hash_reference_matches_stored_hashes():
     assert cpu_record_hashes(records) == [record["hash"] for record in records]
 
 
-def test_gpu_verifier_requires_cuda():
+def test_gpu_verifier_requires_accelerator():
     import torch
 
     records = make_chain(2)
     if torch.cuda.is_available():
         assert verify_audit_gpu(records)
     else:
-        with pytest.raises(RuntimeError, match="CUDA is not available"):
+        with pytest.raises(RuntimeError, match="No PyTorch GPU runtime is available"):
             verify_audit_gpu(records)
 
 
