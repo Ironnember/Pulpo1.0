@@ -6,7 +6,7 @@ PyTorch launches. ROCm PyTorch and CUDA PyTorch both use the cuda tensor API.
 """
 from __future__ import annotations
 
-from typing import Any, Sequence
+import sys\nfrom typing import Any, Sequence
 
 _SHA256_K = (
     0x428A2F98, 0x71374491, 0xB5C0FBCF, 0xE9B5DBA5,
@@ -152,16 +152,18 @@ def triton_record_hashes_profiled(
 
     host_data = torch.zeros((count, stride), dtype=torch.uint8, pin_memory=True)
     host_blocks = torch.tensor(blocks_per_row, dtype=torch.int32, pin_memory=True)
+
+    # Pack directly into the pinned tensor's backing buffer. Avoid allocating a
+    # Python list and a temporary Torch tensor for every message and padding field.
+    packed = memoryview(host_data.numpy()).cast("B")
     for row, message in enumerate(messages):
+        row_start = row * stride
         row_blocks = blocks_per_row[row]
         padded_size = row_blocks * 64
-        if message:
-            host_data[row, :len(message)] = torch.tensor(list(message), dtype=torch.uint8)
-        host_data[row, len(message)] = 0x80
+        packed[row_start:row_start + len(message)] = message
+        packed[row_start + len(message)] = 0x80
         bit_length = len(message) * 8
-        host_data[row, padded_size - 8:padded_size] = torch.tensor(
-            list(bit_length.to_bytes(8, "big")), dtype=torch.uint8
-        )
+        packed[row_start + padded_size - 8:row_start + padded_size] = bit_length.to_bytes(8, "big")
     device = torch.device("cuda")
     block_size = 64
     output = torch.empty((count, 8), dtype=torch.uint32, device=device)
@@ -194,9 +196,17 @@ def triton_record_hashes_profiled(
     kernel_ms = kernel_start.elapsed_time(kernel_end)
 
     device_to_host_start = perf_counter_ns()
-    words = output.cpu().tolist()
-    hashes = ["".join(f"{word:08x}" for word in row) for row in words]
+    host_output = output.cpu()
+    torch.cuda.synchronize()
     device_to_host_ms = (perf_counter_ns() - device_to_host_start) / 1_000_000
+
+    format_start = perf_counter_ns()
+    host_words = host_output.numpy()
+    if sys.byteorder == "little":
+        host_words = host_words.byteswap()
+    hex_output = host_words.tobytes().hex()
+    hashes = [hex_output[index * 64:(index + 1) * 64] for index in range(count)]
+    digest_format_ms = (perf_counter_ns() - format_start) / 1_000_000
     total_ms = (perf_counter_ns() - total_start) / 1_000_000
     return hashes, {
         "host_preparation_ms": host_preparation_ms,
