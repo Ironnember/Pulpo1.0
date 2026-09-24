@@ -114,6 +114,7 @@ class DirectiveAuthorityController:
     """Use the one governance kernel to authorize canonical directive mutations."""
 
     ACTIVATE = "activate_directive"
+    SUPERSEDE = "supersede_directive"
     REVOKE = "revoke_directive"
 
     def __init__(self, kernel: GovernanceKernel) -> None:
@@ -139,6 +140,26 @@ class DirectiveAuthorityController:
         )
 
     @staticmethod
+    def supersession_intent(
+        current: Directive,
+        replacement: Directive,
+        *,
+        operator_principal: str,
+        session_id: str = "default",
+    ) -> Intent:
+        return Intent(
+            principal=operator_principal,
+            action=DirectiveAuthorityController.SUPERSEDE,
+            resource=(
+                f"directive-lineage:{current.directive_id}:"
+                f"{current.version}:{current.directive_hash}->"
+                f"{replacement.version}:{replacement.directive_hash}"
+            ),
+            cost=0,
+            session_id=session_id,
+        )
+
+    @staticmethod
     def _evidence(
         operation: str,
         directive: Directive,
@@ -152,6 +173,29 @@ class DirectiveAuthorityController:
             "directive_version": directive.version,
             "directive_hash": directive.directive_hash,
             "parent_directive_hash": directive.parent_directive_hash,
+            "authority_id": envelope.authority_id,
+            "approval_id": envelope.approval_id,
+            "envelope_hash": envelope.envelope_hash,
+            "intent_hash": kernel.intent_hash(authority_intent),
+            "policy_hash": kernel.policy_hash,
+        }
+
+    @staticmethod
+    def _supersession_evidence(
+        current: Directive,
+        replacement: Directive,
+        envelope: ApprovalEnvelope,
+        authority_intent: Intent,
+        kernel: GovernanceKernel,
+    ) -> dict[str, object]:
+        return {
+            "operation": DirectiveAuthorityController.SUPERSEDE,
+            "directive_id": current.directive_id,
+            "superseded_version": current.version,
+            "superseded_directive_hash": current.directive_hash,
+            "replacement_version": replacement.version,
+            "replacement_directive_hash": replacement.directive_hash,
+            "parent_directive_hash": replacement.parent_directive_hash,
             "authority_id": envelope.authority_id,
             "approval_id": envelope.approval_id,
             "envelope_hash": envelope.envelope_hash,
@@ -197,6 +241,36 @@ class DirectiveAuthorityController:
             operator_principal=operator_principal,
             session_id=session_id,
         )
+        decision = self.kernel.evaluate_with_approval(authority_intent, envelope)
+        if decision.outcome != "allow" or decision.permit is None:
+            return decision, authority_intent
+        if not self.kernel.consume(decision.permit, authority_intent):
+            return Decision("deny", "directive_authority_permit_rejected", digest), authority_intent
+        return decision, authority_intent
+
+    def _authorize_supersession(
+        self,
+        current: Directive,
+        replacement: Directive,
+        envelope: ApprovalEnvelope,
+        *,
+        operator_principal: str,
+        session_id: str,
+    ) -> tuple[Decision, Intent]:
+        authority_intent = self.supersession_intent(
+            current,
+            replacement,
+            operator_principal=operator_principal,
+            session_id=session_id,
+        )
+        digest = self.kernel.intent_hash(authority_intent)
+        trust = self.kernel.policy.authority_trust
+        if (
+            trust is None
+            or current.issuer_authority_id != trust.authority_id
+            or replacement.issuer_authority_id != trust.authority_id
+        ):
+            return Decision("deny", "directive_issuer_untrusted", digest), authority_intent
         decision = self.kernel.evaluate_with_approval(authority_intent, envelope)
         if decision.outcome != "allow" or decision.permit is None:
             return decision, authority_intent
@@ -271,6 +345,85 @@ class DirectiveAuthorityController:
         except ValueError as exc:
             if str(exc) == "parent directive is not active for activation":
                 return Decision("deny", "directive_parent_inactive_at_activation", decision.intent_hash)
+            if str(exc) == "active directive version exists":
+                return Decision("deny", "directive_supersession_required", decision.intent_hash)
+            raise
+        return decision
+
+    def supersede(
+        self,
+        current: Directive,
+        replacement: Directive,
+        envelope: ApprovalEnvelope,
+        *,
+        operator_principal: str,
+        session_id: str = "default",
+        parent_directive: Directive | None = None,
+    ) -> Decision:
+        authority_intent = self.supersession_intent(
+            current,
+            replacement,
+            operator_principal=operator_principal,
+            session_id=session_id,
+        )
+        digest = self.kernel.intent_hash(authority_intent)
+        if current.directive_id != replacement.directive_id:
+            return Decision("deny", "directive_lineage_mismatch", digest)
+        if replacement.version <= current.version:
+            return Decision("deny", "directive_replacement_version_not_newer", digest)
+        if current.issuer_authority_id != replacement.issuer_authority_id:
+            return Decision("deny", "directive_replacement_issuer_mismatch", digest)
+        if current.principal != replacement.principal:
+            return Decision("deny", "directive_replacement_principal_mismatch", digest)
+        if current.parent_directive_hash != replacement.parent_directive_hash:
+            return Decision("deny", "directive_replacement_parent_mismatch", digest)
+        current_status = self.kernel._state.directive_status(
+            current.directive_id,
+            current.version,
+            current.directive_hash,
+        )
+        if current_status != "active":
+            return Decision("deny", current_status, digest)
+        derivation = self._derivation_decision(
+            replacement,
+            parent_directive,
+            operator_principal=operator_principal,
+            session_id=session_id,
+        )
+        if derivation is not None:
+            return Decision("deny", derivation.reason, digest)
+        decision, authority_intent = self._authorize_supersession(
+            current,
+            replacement,
+            envelope,
+            operator_principal=operator_principal,
+            session_id=session_id,
+        )
+        if decision.outcome != "allow":
+            return decision
+        try:
+            self.kernel._state.supersede_directive(
+                current,
+                replacement,
+                self._supersession_evidence(
+                    current,
+                    replacement,
+                    envelope,
+                    authority_intent,
+                    self.kernel,
+                ),
+                self._trusted_now(),
+            )
+        except ValueError as exc:
+            reason = {
+                "directive to supersede is not active": "directive_supersession_source_inactive",
+                "replacement directive version is not newer": "directive_replacement_version_not_newer",
+                "replacement directive version already exists": "directive_version_immutable",
+                "another active directive version exists": "directive_lineage_ambiguous",
+                "parent directive is not active for supersession": "directive_parent_inactive_at_supersession",
+            }.get(str(exc))
+            if reason is not None:
+                return Decision("deny", reason, decision.intent_hash)
             raise
         return decision
 
