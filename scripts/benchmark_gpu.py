@@ -77,15 +77,15 @@ def time_cpu(records: list[dict[str, Any]], warmup: int, samples: int) -> list[f
     return values
 
 
-def time_gpu(records: list[dict[str, Any]], warmup: int, samples: int, device: str) -> dict[str, list[float]]:
+def time_gpu(records: list[dict[str, Any]], warmup: int, samples: int, device: str, implementation: str) -> dict[str, list[float]]:
     import torch
 
     for _ in range(warmup):
-        gpu_record_hashes(records, device=device)
+        gpu_record_hashes(records, device=device, implementation=implementation)
     torch.cuda.synchronize()
 
     end_to_end = []
-    kernel = []
+    device_elapsed = []
     for _ in range(samples):
         start = time.perf_counter_ns()
         gpu_start = torch.cuda.Event(enable_timing=True)
@@ -95,8 +95,8 @@ def time_gpu(records: list[dict[str, Any]], warmup: int, samples: int, device: s
         gpu_end.record()
         torch.cuda.synchronize()
         end_to_end.append((time.perf_counter_ns() - start) / 1_000_000)
-        kernel.append(gpu_start.elapsed_time(gpu_end))
-    return {"end_to_end": end_to_end, "kernel": kernel}
+        device_elapsed.append(gpu_start.elapsed_time(gpu_end))
+    return {"end_to_end": end_to_end, "device_elapsed": device_elapsed}
 
 
 def stats(values: list[float]) -> dict[str, float]:
@@ -114,6 +114,7 @@ def main() -> int:
     parser.add_argument("--samples", type=int, default=10)
     parser.add_argument("--warmup", type=int, default=3)
     parser.add_argument("--device", choices=("auto", "cuda", "rocm"), default="auto")
+    parser.add_argument("--implementation", choices=("triton", "torch"), default="triton")
     parser.add_argument("--json", type=Path, default=Path("pulpo-gpu-benchmark.json"))
     parser.add_argument("--csv", type=Path, default=Path("pulpo-gpu-benchmark.csv"))
     args = parser.parse_args()
@@ -134,25 +135,25 @@ def main() -> int:
     for size in sizes:
         records = build_chain(size)
         expected = cpu_record_hashes(records)
-        actual = gpu_record_hashes(records, device=args.device)
+        actual = gpu_record_hashes(records, device=args.device, implementation=args.implementation)
         if actual != expected:
             raise RuntimeError(f"GPU correctness check failed for {size} records")
 
         cpu = time_cpu(records, args.warmup, args.samples)
-        gpu = time_gpu(records, args.warmup, args.samples, args.device)
+        gpu = time_gpu(records, args.warmup, args.samples, args.device, args.implementation)
         cpu_stats = stats(cpu)
         gpu_stats = stats(gpu["end_to_end"])
-        kernel_stats = stats(gpu["kernel"])
+        device_stats = stats(gpu["device_elapsed"])
         rows.append({
             "audit_records": size,
             "cpu_median_ms": cpu_stats["median_ms"],
             "cpu_p95_ms": cpu_stats["p95_ms"],
             "gpu_end_to_end_median_ms": gpu_stats["median_ms"],
             "gpu_end_to_end_p95_ms": gpu_stats["p95_ms"],
-            "gpu_kernel_median_ms": kernel_stats["median_ms"],
-            "gpu_kernel_p95_ms": kernel_stats["p95_ms"],
+            "gpu_device_elapsed_median_ms": device_stats["median_ms"],
+            "gpu_device_elapsed_p95_ms": device_stats["p95_ms"],
             "speedup_end_to_end": cpu_stats["median_ms"] / gpu_stats["median_ms"],
-            "speedup_kernel": cpu_stats["median_ms"] / kernel_stats["median_ms"],
+            "speedup_device_elapsed": cpu_stats["median_ms"] / device_stats["median_ms"],
         })
 
     metadata = {
@@ -164,6 +165,7 @@ def main() -> int:
         "torch_cuda_version": torch.version.cuda,
         "torch_hip_version": getattr(torch.version, "hip", None),
         "gpu_backend": "rocm" if getattr(torch.version, "hip", None) else "cuda",
+        "gpu_implementation": args.implementation,
         "gpu_name": torch.cuda.get_device_name(0),
         "gpu_count": torch.cuda.device_count(),
     }
@@ -186,13 +188,13 @@ def main() -> int:
 
     print(f"GPU: {metadata['gpu_name']}")
     print(f"Torch: {metadata['torch_version']} | CUDA: {metadata['torch_cuda_version']}")
-    print(f"{'records':>10} {'CPU ms':>12} {'GPU e2e ms':>14} {'GPU kernel ms':>15} {'e2e speedup':>13}")
+    print(f"{'records':>10} {'CPU ms':>12} {'GPU e2e ms':>14} {'GPU device ms':>15} {'e2e speedup':>13}")
     for row in rows:
         print(
             f"{row['audit_records']:10d} "
             f"{row['cpu_median_ms']:12.3f} "
             f"{row['gpu_end_to_end_median_ms']:14.3f} "
-            f"{row['gpu_kernel_median_ms']:15.3f} "
+            f"{row['gpu_device_elapsed_median_ms']:15.3f} "
             f"{row['speedup_end_to_end']:13.2f}x"
         )
     print(f"JSON: {args.json}")
