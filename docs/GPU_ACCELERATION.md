@@ -59,15 +59,42 @@ The optional `gpu` extra declares PyTorch but cannot select a ROCm wheel index
 or install the matching host driver. Follow the official PyTorch or AMD install
 instructions for the chosen ROCm/PyTorch version before installing the extra.
 
-## Windows
+## Windows Subsystem for Linux (WSL2)
 
-AMD's Windows support matrix includes the RX 7900 XT and PyTorch packages with
-ROCm components, but it notes the full ROCm stack is not yet supported on
-Windows. Linux is the recommended route for this benchmark. A Windows run is
-only useful if the installed AMD PyTorch build reports `torch.version.hip`,
-`torch.cuda.is_available() == True`, and the 7900 XT device name; the same
-`--device rocm` command then applies. Do not install a standard CPU or NVIDIA
-CUDA wheel and expect it to use the AMD card.
+AMD's ROCm 7.2.1 WSL matrix explicitly lists the RX 7900 XT and PyTorch
+2.9.1. This is the recommended route for a Windows host: install AMD's
+supported WSL2 graphics driver and ROCm WSL components following the
+[AMD WSL guide](https://rocm.docs.amd.com/projects/radeon-ryzen/en/docs-7.2/docs/install/installrad/wsl/install-pytorch.html)
+and check the [WSL compatibility matrix](https://rocm.docs.amd.com/projects/radeon-ryzen/en/latest/docs/compatibility/compatibilityrad/wsl/wsl_compatibility.html).
 
-See AMD's [Windows support matrix](https://rocm.docs.amd.com/projects/radeon-ryzen/en/latest/docs/compatibility/compatibilityrad/windows/windows_compatibility.html)
-for the current limits.
+In the Ubuntu WSL shell, change to the Pulpo checkout (for a C: checkout,
+`cd /mnt/c/Users/<your-user>/pulpo1.0`) and start the AMD documented
+ROCm 7.2 container. WSL exposes the GPU as `/dev/dxg`; do not use the native
+Linux `/dev/kfd` and `/dev/dri` device arguments here.
+
+```bash
+sudo docker run --rm -it \
+  --cap-add=SYS_PTRACE --security-opt seccomp=unconfined --ipc=host \
+  --shm-size 8G --device=/dev/dxg \
+  -v /usr/lib/wsl/lib/libdxcore.so:/usr/lib/libdxcore.so \
+  -v /opt/rocm/lib/libhsa-runtime64.so.1:/opt/rocm/lib/libhsa-runtime64.so.1 \
+  -v "$PWD":/workspace -w /workspace \
+  rocm/pytorch:rocm7.2_ubuntu24.04_py3.12_pytorch_release_2.9.1 bash
+```
+
+Inside the container:
+
+```bash
+python -m pip install -e ".[gpu]"
+python -c "import torch; print(torch.__version__, torch.version.hip, torch.cuda.is_available(), torch.cuda.get_device_name(0))"
+python scripts/benchmark_gpu.py --device rocm --sizes 1000,10000,100000
+```
+
+Continue only if the check reports a non-empty HIP version, `True`, and
+`Radeon RX 7900 XT`. AMD's WSL container requires the host WSL ROCm setup;
+running the Linux `/dev/kfd` container command from Git Bash or ordinary
+Docker Desktop does not provide that GPU path.
+
+AMD's native Windows PyTorch support matrix has a narrower GPU list and does
+not list the RX 7900 XT in its current table. Use WSL2 or a supported Linux
+installation for this GPU benchmark.
