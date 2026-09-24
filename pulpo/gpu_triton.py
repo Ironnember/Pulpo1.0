@@ -119,14 +119,32 @@ if _triton is not None:
 
 def triton_record_hashes(messages: Sequence[bytes], torch: Any) -> list[str]:
     """Hash an input batch using one fused Triton kernel."""
+    hashes, _ = triton_record_hashes_profiled(messages, torch)
+    return hashes
+
+
+def triton_record_hashes_profiled(
+    messages: Sequence[bytes], torch: Any
+) -> tuple[list[str], dict[str, float]]:
+    """Hash messages and report host preparation, transfer, kernel, and D2H time."""
+    from time import perf_counter_ns
+
     if not messages:
-        return []
+        return [], {
+            "host_preparation_ms": 0.0,
+            "host_to_device_ms": 0.0,
+            "kernel_ms": 0.0,
+            "device_to_host_ms": 0.0,
+            "total_ms": 0.0,
+        }
     if _triton is None:
         raise RuntimeError(
             "The fused GPU path requires the Triton package supplied by the "
             "CUDA or ROCm PyTorch environment."
         )
 
+    total_start = perf_counter_ns()
+    host_start = perf_counter_ns()
     count = len(messages)
     blocks_per_row = [(len(message) + 9 + 63) // 64 for message in messages]
     max_blocks = max(blocks_per_row)
@@ -144,13 +162,22 @@ def triton_record_hashes(messages: Sequence[bytes], torch: Any) -> list[str]:
         host_data[row, padded_size - 8:padded_size] = torch.tensor(
             list(bit_length.to_bytes(8, "big")), dtype=torch.uint8
         )
-
     device = torch.device("cuda")
+    block_size = 64
+    output = torch.empty((count, 8), dtype=torch.uint32, device=device)
+    host_preparation_ms = (perf_counter_ns() - host_start) / 1_000_000
+
+    transfer_start = perf_counter_ns()
     data = host_data.to(device, non_blocking=True)
     block_counts = host_blocks.to(device, non_blocking=True)
-    output = torch.empty((count, 8), dtype=torch.uint32, device=device)
+    torch.cuda.synchronize()
+    host_to_device_ms = (perf_counter_ns() - transfer_start) / 1_000_000
 
-    block_size = 64
+    # Events begin only after host preparation and completed transfers, so this
+    # interval measures queued kernel execution rather than host-side idle gaps.
+    kernel_start = torch.cuda.Event(enable_timing=True)
+    kernel_end = torch.cuda.Event(enable_timing=True)
+    kernel_start.record()
     _sha256_batch_kernel[( _triton.cdiv(count, block_size), )](
         data,
         block_counts,
@@ -162,6 +189,19 @@ def triton_record_hashes(messages: Sequence[bytes], torch: Any) -> list[str]:
         _SHA256_K,
         num_warps=1,
     )
+    kernel_end.record()
+    torch.cuda.synchronize()
+    kernel_ms = kernel_start.elapsed_time(kernel_end)
 
+    device_to_host_start = perf_counter_ns()
     words = output.cpu().tolist()
-    return ["".join(f"{word:08x}" for word in row) for row in words]
+    hashes = ["".join(f"{word:08x}" for word in row) for row in words]
+    device_to_host_ms = (perf_counter_ns() - device_to_host_start) / 1_000_000
+    total_ms = (perf_counter_ns() - total_start) / 1_000_000
+    return hashes, {
+        "host_preparation_ms": host_preparation_ms,
+        "host_to_device_ms": host_to_device_ms,
+        "kernel_ms": kernel_ms,
+        "device_to_host_ms": device_to_host_ms,
+        "total_ms": total_ms,
+    }
