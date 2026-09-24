@@ -21,6 +21,7 @@ from .kernel import (
     TargetResolution,
 )
 from .namecom import NameComCoreAdapter
+from .provenance import SemanticProvenance, artifact_hash
 from .orchestrator import (
     ApprovalHandle,
     AuthorizationAttempt,
@@ -64,8 +65,10 @@ __all__ = [
     "PulpoOrchestrator",
     "SQLiteBudgetAccount",
     "SQLiteKernelState",
+    "SemanticProvenance",
     "StateIntegrityError",
     "TargetObligationStatus",
     "TargetResolution",
+    "artifact_hash",
     "evaluate_locked_target_with_approval",
 ]
