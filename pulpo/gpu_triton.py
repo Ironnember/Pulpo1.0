@@ -66,21 +66,21 @@ if _triton is not None:
         for block_index in range(MAX_BLOCKS):
             active = valid & (block_index < row_blocks)
             base = rows * STRIDE + block_index * 64
-            w = []
+            w = ()
             for word_index in _tl.static_range(16):
                 offset = word_index * 4
                 b0 = _tl.load(data_ptr + base + offset, mask=active, other=0).to(_tl.uint32)
                 b1 = _tl.load(data_ptr + base + offset + 1, mask=active, other=0).to(_tl.uint32)
                 b2 = _tl.load(data_ptr + base + offset + 2, mask=active, other=0).to(_tl.uint32)
                 b3 = _tl.load(data_ptr + base + offset + 3, mask=active, other=0).to(_tl.uint32)
-                w.append((b0 << 24) | (b1 << 16) | (b2 << 8) | b3)
+                w += ((b0 << 24) | (b1 << 16) | (b2 << 8) | b3,)
 
             for word_index in _tl.static_range(16, 64):
                 x = w[word_index - 15]
                 y = w[word_index - 2]
                 s0 = _rotr32(x, 7) ^ _rotr32(x, 18) ^ (x >> 3)
                 s1 = _rotr32(y, 17) ^ _rotr32(y, 19) ^ (y >> 10)
-                w.append(w[word_index - 16] + s0 + w[word_index - 7] + s1)
+                w += (w[word_index - 16] + s0 + w[word_index - 7] + s1,)
 
             a, b, c, d = h0, h1, h2, h3
             e, f, g, hh = h4, h5, h6, h7
