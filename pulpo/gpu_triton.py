@@ -135,6 +135,7 @@ def triton_record_hashes_profiled(
             "host_to_device_ms": 0.0,
             "kernel_ms": 0.0,
             "device_to_host_ms": 0.0,
+            "digest_format_ms": 0.0,
             "total_ms": 0.0,
         }
     if _triton is None:
@@ -213,5 +214,6 @@ def triton_record_hashes_profiled(
         "host_to_device_ms": host_to_device_ms,
         "kernel_ms": kernel_ms,
         "device_to_host_ms": device_to_host_ms,
+        "digest_format_ms": digest_format_ms,
         "total_ms": total_ms,
     }
