@@ -1,5 +1,8 @@
 import pytest
 
+from pulpo.gpu_acceleration import gpu_record_hashes
+from pulpo.gpu_triton import triton_record_hashes
+
 from pulpo.gpu_acceleration import (
     cpu_record_hashes,
     verify_audit_gpu,
@@ -55,3 +58,28 @@ def test_gpu_verifier_rejects_cpu_corruption_without_authority_side_effects():
     records = make_chain(4)
     records[2]["payload"]["index"] = 999
     assert verify_audit_gpu(records) is False
+
+def test_triton_sha256_padding_boundaries():
+    import torch
+    from hashlib import sha256
+
+    if not torch.cuda.is_available():
+        pytest.skip("CUDA or ROCm GPU required for fused-kernel test")
+
+    lengths = [0, 1, 55, 56, 63, 64, 119, 120, 127, 128, 255, 1024]
+    messages = [bytes((index % 251 for index in range(length))) for length in lengths]
+    assert triton_record_hashes(messages, torch) == [
+        sha256(message).hexdigest() for message in messages
+    ]
+
+
+def test_fused_triton_matches_eager_torch_reference():
+    import torch
+
+    if not torch.cuda.is_available():
+        pytest.skip("CUDA or ROCm GPU required for fused-kernel test")
+
+    records = make_chain(32)
+    assert gpu_record_hashes(records, implementation="triton") == gpu_record_hashes(
+        records, implementation="torch"
+    )
