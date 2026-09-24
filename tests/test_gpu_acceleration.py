@@ -73,6 +73,20 @@ def test_triton_sha256_padding_boundaries():
     ]
 
 
+def test_eager_torch_hashes_mixed_sha256_padding_block_counts():
+    import torch
+    from hashlib import sha256
+    from pulpo.gpu_acceleration import _sha256_batch_torch
+
+    if not torch.cuda.is_available():
+        pytest.skip("CUDA or ROCm GPU required for eager GPU hash test")
+
+    messages = [bytes((i % 251 for i in range(length))) for length in (0, 55, 56, 119, 120, 130)]
+    assert _sha256_batch_torch(messages, torch, "cuda") == [
+        sha256(message).hexdigest() for message in messages
+    ]
+
+
 def test_fused_triton_matches_eager_torch_reference():
     import torch
 
@@ -80,9 +94,9 @@ def test_fused_triton_matches_eager_torch_reference():
         pytest.skip("CUDA or ROCm GPU required for fused-kernel test")
 
     records = make_chain(32)
-    assert gpu_record_hashes(records, implementation="triton") == gpu_record_hashes(
-        records, implementation="torch"
-    )
+    expected = cpu_record_hashes(records)
+    assert gpu_record_hashes(records, implementation="triton") == expected
+    assert gpu_record_hashes(records, implementation="torch") == expected
 
 
 def test_triton_profiled_hashes_report_separate_stages():
