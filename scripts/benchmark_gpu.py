@@ -22,7 +22,8 @@ import time
 from pathlib import Path
 from typing import Any, Callable
 
-from pulpo.gpu_acceleration import cpu_record_hashes, gpu_record_hashes
+from pulpo.gpu_acceleration import canonical_audit_body, cpu_record_hashes, gpu_record_hashes
+from pulpo.gpu_triton import triton_record_hashes_profiled
 
 
 def percentile(values: list[float], fraction: float) -> float:
@@ -77,27 +78,41 @@ def time_cpu(records: list[dict[str, Any]], warmup: int, samples: int) -> list[f
     return values
 
 
-def time_gpu(records: list[dict[str, Any]], warmup: int, samples: int, device: str, implementation: str) -> dict[str, list[float]]:
+def time_gpu(
+    records: list[dict[str, Any]],
+    warmup: int,
+    samples: int,
+    device: str,
+    implementation: str,
+) -> dict[str, Any]:
     import torch
 
     for _ in range(warmup):
         gpu_record_hashes(records, device=device, implementation=implementation)
     torch.cuda.synchronize()
 
-    end_to_end = []
-    device_elapsed = []
+    end_to_end: list[float] = []
+    stage_names = ("canonicalization", "host_preparation", "host_to_device", "kernel", "device_to_host")
+    stages: dict[str, list[float] | None] = {
+        name: [] if implementation == "triton" else None for name in stage_names
+    }
     for _ in range(samples):
-        start = time.perf_counter_ns()
-        gpu_start = torch.cuda.Event(enable_timing=True)
-        gpu_end = torch.cuda.Event(enable_timing=True)
-        gpu_start.record()
-        gpu_record_hashes(records, device=device, implementation=implementation)
-        gpu_end.record()
-        torch.cuda.synchronize()
-        end_to_end.append((time.perf_counter_ns() - start) / 1_000_000)
-        device_elapsed.append(gpu_start.elapsed_time(gpu_end))
-    return {"end_to_end": end_to_end, "device_elapsed": device_elapsed}
-
+        total_start = time.perf_counter_ns()
+        if implementation == "triton":
+            canonical_start = time.perf_counter_ns()
+            messages = [canonical_audit_body(record) for record in records]
+            canonical_ms = (time.perf_counter_ns() - canonical_start) / 1_000_000
+            _, measured = triton_record_hashes_profiled(messages, torch)
+            for name in stage_names:
+                if name == "canonicalization":
+                    stages[name].append(canonical_ms)
+                else:
+                    stages[name].append(measured[name + "_ms"])
+        else:
+            gpu_record_hashes(records, device=device, implementation=implementation)
+            torch.cuda.synchronize()
+        end_to_end.append((time.perf_counter_ns() - total_start) / 1_000_000)
+    return {"end_to_end": end_to_end, "stages": stages}
 
 def stats(values: list[float]) -> dict[str, float]:
     return {
@@ -143,17 +158,19 @@ def main() -> int:
         gpu = time_gpu(records, args.warmup, args.samples, args.device, args.implementation)
         cpu_stats = stats(cpu)
         gpu_stats = stats(gpu["end_to_end"])
-        device_stats = stats(gpu["device_elapsed"])
+        stage_stats = {name: stats(values) if values else None for name, values in gpu["stages"].items()}
         rows.append({
             "audit_records": size,
             "cpu_median_ms": cpu_stats["median_ms"],
             "cpu_p95_ms": cpu_stats["p95_ms"],
             "gpu_end_to_end_median_ms": gpu_stats["median_ms"],
             "gpu_end_to_end_p95_ms": gpu_stats["p95_ms"],
-            "gpu_device_elapsed_median_ms": device_stats["median_ms"],
-            "gpu_device_elapsed_p95_ms": device_stats["p95_ms"],
+            "gpu_canonicalization_median_ms": stage_stats["canonicalization"]["median_ms"] if stage_stats["canonicalization"] else None,
+            "gpu_host_preparation_median_ms": stage_stats["host_preparation"]["median_ms"] if stage_stats["host_preparation"] else None,
+            "gpu_host_to_device_median_ms": stage_stats["host_to_device"]["median_ms"] if stage_stats["host_to_device"] else None,
+            "gpu_kernel_median_ms": stage_stats["kernel"]["median_ms"] if stage_stats["kernel"] else None,
+            "gpu_device_to_host_median_ms": stage_stats["device_to_host"]["median_ms"] if stage_stats["device_to_host"] else None,
             "speedup_end_to_end": cpu_stats["median_ms"] / gpu_stats["median_ms"],
-            "speedup_device_elapsed": cpu_stats["median_ms"] / device_stats["median_ms"],
         })
 
     metadata = {
@@ -170,7 +187,7 @@ def main() -> int:
         "gpu_count": torch.cuda.device_count(),
     }
     payload = {
-        "schema": "pulpo.gpu-performance-benchmark.v1",
+        "schema": "pulpo.gpu-performance-benchmark.v2",
         "metadata": metadata,
         "config": {"sizes": sizes, "samples": args.samples, "warmup": args.warmup, "implementation": args.implementation},
         "results": rows,
@@ -188,14 +205,22 @@ def main() -> int:
 
     print(f"GPU: {metadata['gpu_name']}")
     print(f"Torch: {metadata['torch_version']} | backend: {metadata['gpu_backend']} | HIP: {metadata['torch_hip_version']}")
-    print(f"{'records':>10} {'CPU ms':>12} {'GPU e2e ms':>14} {'GPU device ms':>15} {'e2e speedup':>13}")
+    print(f"{'records':>10} {'CPU ms':>10} {'canonical':>11} {'host prep':>11} {'H2D':>9} {'kernel':>9} {'D2H':>9} {'GPU total':>11} {'speedup':>9}")
     for row in rows:
+        phase_values = [
+            row["gpu_canonicalization_median_ms"],
+            row["gpu_host_preparation_median_ms"],
+            row["gpu_host_to_device_median_ms"],
+            row["gpu_kernel_median_ms"],
+            row["gpu_device_to_host_median_ms"],
+        ]
+        phase_text = [f"{value:9.3f}" if value is not None else f"{'n/a':>9}" for value in phase_values]
         print(
             f"{row['audit_records']:10d} "
-            f"{row['cpu_median_ms']:12.3f} "
-            f"{row['gpu_end_to_end_median_ms']:14.3f} "
-            f"{row['gpu_device_elapsed_median_ms']:15.3f} "
-            f"{row['speedup_end_to_end']:13.2f}x"
+            f"{row['cpu_median_ms']:10.3f} "
+            + " ".join(phase_text)
+            + f" {row['gpu_end_to_end_median_ms']:11.3f} "
+            + f"{row['speedup_end_to_end']:8.2f}x"
         )
     print(f"JSON: {args.json}")
     print(f"CSV:  {args.csv}")
