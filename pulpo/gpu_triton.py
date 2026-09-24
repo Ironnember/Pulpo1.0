@@ -6,7 +6,8 @@ PyTorch launches. ROCm PyTorch and CUDA PyTorch both use the cuda tensor API.
 """
 from __future__ import annotations
 
-import sys\nfrom typing import Any, Sequence
+import sys
+from typing import Any, Sequence
 
 _SHA256_K = (
     0x428A2F98, 0x71374491, 0xB5C0FBCF, 0xE9B5DBA5,
