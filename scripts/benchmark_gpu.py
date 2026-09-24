@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Real CPU-vs-CUDA audit-integrity benchmark.
+"""CPU-vs-GPU audit-integrity benchmark for PyTorch CUDA and ROCm.
 
 The existing Pulpo CPU benchmark remains the baseline. This benchmark adds a
 separate, directly comparable workload: recomputing the SHA-256 hashes of the
@@ -77,11 +77,11 @@ def time_cpu(records: list[dict[str, Any]], warmup: int, samples: int) -> list[f
     return values
 
 
-def time_gpu(records: list[dict[str, Any]], warmup: int, samples: int) -> dict[str, list[float]]:
+def time_gpu(records: list[dict[str, Any]], warmup: int, samples: int, device: str) -> dict[str, list[float]]:
     import torch
 
     for _ in range(warmup):
-        gpu_record_hashes(records)
+        gpu_record_hashes(records, device=device)
     torch.cuda.synchronize()
 
     end_to_end = []
@@ -113,6 +113,7 @@ def main() -> int:
     parser.add_argument("--sizes", default="1000,10000,100000")
     parser.add_argument("--samples", type=int, default=10)
     parser.add_argument("--warmup", type=int, default=3)
+    parser.add_argument("--device", choices=("auto", "cuda", "rocm"), default="auto")
     parser.add_argument("--json", type=Path, default=Path("pulpo-gpu-benchmark.json"))
     parser.add_argument("--csv", type=Path, default=Path("pulpo-gpu-benchmark.csv"))
     args = parser.parse_args()
@@ -124,7 +125,7 @@ def main() -> int:
 
     if not torch.cuda.is_available():
         raise SystemExit(
-            "CUDA GPU is required for the real-world benchmark. "
+            "A CUDA or ROCm PyTorch GPU is required for this benchmark. "
             f"Installed torch={torch.__version__!r} reports cuda_available=False."
         )
 
@@ -138,7 +139,7 @@ def main() -> int:
             raise RuntimeError(f"GPU correctness check failed for {size} records")
 
         cpu = time_cpu(records, args.warmup, args.samples)
-        gpu = time_gpu(records, args.warmup, args.samples)
+        gpu = time_gpu(records, args.warmup, args.samples, args.device)
         cpu_stats = stats(cpu)
         gpu_stats = stats(gpu["end_to_end"])
         kernel_stats = stats(gpu["kernel"])
@@ -161,6 +162,8 @@ def main() -> int:
         "machine": platform.machine(),
         "torch_version": torch.__version__,
         "torch_cuda_version": torch.version.cuda,
+        "torch_hip_version": getattr(torch.version, "hip", None),
+        "gpu_backend": "rocm" if getattr(torch.version, "hip", None) else "cuda",
         "gpu_name": torch.cuda.get_device_name(0),
         "gpu_count": torch.cuda.device_count(),
     }
