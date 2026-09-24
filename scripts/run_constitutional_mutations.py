@@ -124,9 +124,23 @@ MUTATIONS: tuple[Mutation, ...] = (
     Mutation(
         "directive_revocation_guard_removed",
         "pulpo/state.py",
-        'return "directive_revoked" if revoked else "active"',
-        'return "active"',
+        'if revoked: return "directive_revoked"',
+        'if False and revoked: return "directive_revoked"',
         ("tests.test_directives.DirectiveProofTests.test_revoked_directive_invalidates_previously_issued_permit",),
+    ),
+    Mutation(
+        "directive_supersession_guard_removed",
+        "pulpo/state.py",
+        'if key in self._directive_superseded_by: return "directive_superseded"',
+        'if False and key in self._directive_superseded_by: return "directive_superseded"',
+        ("tests.test_directive_supersession.DirectiveSupersessionProofTests.test_superseded_directive_cannot_authorize_or_spend_preissued_permit",),
+    ),
+    Mutation(
+        "directive_parent_supersession_guard_removed",
+        "pulpo/state.py",
+        'if key in self._directive_superseded_by: return "directive_parent_superseded"',
+        'if False and key in self._directive_superseded_by: return "directive_parent_superseded"',
+        ("tests.test_directive_supersession.DirectiveSupersessionProofTests.test_child_of_superseded_parent_and_preissued_child_permit_fail_closed",),
     ),
     Mutation(
         "audit_record_hash_check_removed",
