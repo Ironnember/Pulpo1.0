@@ -50,7 +50,7 @@ if _triton is not None:
         MAX_BLOCKS: _tl.constexpr,
         BLOCK: _tl.constexpr,
     ):
-        rows = _triton.program_id(0) * BLOCK + _tl.arange(0, BLOCK)
+        rows = _tl.program_id(0) * BLOCK + _tl.arange(0, BLOCK)
         valid = rows < count
         row_blocks = _tl.load(block_count_ptr + rows, mask=valid, other=0)
 
