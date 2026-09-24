@@ -81,8 +81,8 @@ def _sha256_batch_torch(messages: Sequence[bytes], torch: Any, device_name: str)
         pad_length = (55 - len(message)) % 64 + 1
         data = (
             message
-            + b"\\x80"
-            + b"\\x00" * (pad_length - 1)
+            + b"\x80"
+            + b"\x00" * (pad_length - 1)
             + bit_length.to_bytes(8, "big")
         )
         lengths.append(len(data))
