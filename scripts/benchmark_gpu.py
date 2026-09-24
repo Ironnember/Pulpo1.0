@@ -91,7 +91,7 @@ def time_gpu(records: list[dict[str, Any]], warmup: int, samples: int, device: s
         gpu_start = torch.cuda.Event(enable_timing=True)
         gpu_end = torch.cuda.Event(enable_timing=True)
         gpu_start.record()
-        gpu_record_hashes(records, device=device)
+        gpu_record_hashes(records, device=device, implementation=implementation)
         gpu_end.record()
         torch.cuda.synchronize()
         end_to_end.append((time.perf_counter_ns() - start) / 1_000_000)
