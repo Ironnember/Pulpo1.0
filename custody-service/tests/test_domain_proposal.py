@@ -11,7 +11,10 @@ from pulpo.kernel import GovernanceKernel, Policy
 from pulpo.namecom_core import NameComCoreClient, NameComCoreConfig, NameComResponse
 from pulpo.namecom_proposal import NameComSandboxProposalBuilder
 from pulpo.state import SQLiteKernelState
-from .authority_support import HmacTestVerifier, signed_envelope, trust_for
+try:
+    from .authority_support import HmacTestVerifier, signed_envelope, trust_for
+except ImportError:
+    from authority_support import HmacTestVerifier, signed_envelope, trust_for
 
 from pulpo_custody_service.api import create_app
 from pulpo_custody_service.core import DomainCustodyService

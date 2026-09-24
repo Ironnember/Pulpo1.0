@@ -219,4 +219,3 @@ def test_worker_uses_proposal_reference_then_handle_only(tmp_sqlite_db):
 
     _close_db_resources(tmp_sqlite_db)
     _assert_db_file_removed(tmp_sqlite_db)
-

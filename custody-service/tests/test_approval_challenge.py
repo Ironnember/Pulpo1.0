@@ -2,8 +2,15 @@
 import pytest
 
 # Use package-relative imports so pytest can collect tests when tests is a package.
-from .test_utils import _try_unlink
-from .authority_support import HmacTestVerifier, signed_envelope, trust_for
+try:
+    from .test_utils import _try_unlink
+except ImportError:
+    from test_utils import _try_unlink
+
+try:
+    from .authority_support import HmacTestVerifier, signed_envelope, trust_for
+except ImportError:
+    from authority_support import HmacTestVerifier, signed_envelope, trust_for
 
 
 def test_imports_resolve():

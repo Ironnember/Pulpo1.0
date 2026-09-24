@@ -26,6 +26,6 @@ def execute(req: ExecuteRequest):
     }
     result_hash = 'sha256:' + hashlib.sha256(result.encode()).hexdigest()
     return {'result': result, 'metadata': metadata, 'evidence': {'hash': result_hash, 'timestamp': time.time()}}
-    
+
 if __name__ == '__main__':
     uvicorn.run(app, host='127.0.0.1', port=9001)

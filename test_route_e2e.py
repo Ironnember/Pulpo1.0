@@ -36,4 +36,3 @@ payload = {"prompt": "test from pulpo", "model_id": "mock-model", "max_tokens": 
 
 resp = route_gpu_task("gpu_llm_inference", payload, permit, registry)
 print(json.dumps(resp, indent=2, default=str))
-
