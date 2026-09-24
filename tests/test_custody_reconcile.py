@@ -122,6 +122,7 @@ class CustodyReconciliationTests(unittest.TestCase):
             "receipt_hash": "a" * 64,
             "privacy_enabled": True,
             "dns_state": "registered",
+            "auto_renew_enabled": False,
         }
         values.update(changes)
         return IndependentDomainObservation(**values)
@@ -185,6 +186,7 @@ class CustodyReconciliationTests(unittest.TestCase):
             receipt_hash=None,
             privacy_enabled=None,
             dns_state=None,
+            auto_renew_enabled=None,
         )
         result = self.reconciler(custody, budget, "observer:registrar-query").reconcile(
             governed, order, observation
@@ -208,6 +210,7 @@ class CustodyReconciliationTests(unittest.TestCase):
             receipt_hash=None,
             privacy_enabled=None,
             dns_state=None,
+            auto_renew_enabled=None,
         )
         result = self.reconciler(custody, budget, "observer:registrar-query").reconcile(
             governed, order, observation

@@ -68,6 +68,7 @@ class FakeObserver:
             receipt_hash="d" * 64,
             privacy_enabled=True,
             dns_state="registered",
+            auto_renew_enabled=False,
         )
 
 
