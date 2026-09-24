@@ -115,6 +115,7 @@ def test_triton_profiled_hashes_report_separate_stages():
         "host_to_device_ms",
         "kernel_ms",
         "device_to_host_ms",
+        "digest_format_ms",
         "total_ms",
     }
     assert all(value >= 0 for value in timings.values())
