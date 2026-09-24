@@ -83,3 +83,24 @@ def test_fused_triton_matches_eager_torch_reference():
     assert gpu_record_hashes(records, implementation="triton") == gpu_record_hashes(
         records, implementation="torch"
     )
+
+
+def test_triton_profiled_hashes_report_separate_stages():
+    import torch
+    from hashlib import sha256
+    from pulpo.gpu_triton import triton_record_hashes_profiled
+
+    if not torch.cuda.is_available():
+        pytest.skip("CUDA or ROCm GPU required for fused-kernel profiling")
+
+    messages = [b"profile-stage-check", b"a" * 120]
+    hashes, timings = triton_record_hashes_profiled(messages, torch)
+    assert hashes == [sha256(message).hexdigest() for message in messages]
+    assert set(timings) == {
+        "host_preparation_ms",
+        "host_to_device_ms",
+        "kernel_ms",
+        "device_to_host_ms",
+        "total_ms",
+    }
+    assert all(value >= 0 for value in timings.values())
