@@ -278,7 +278,11 @@ def export_mcp_snapshot(
         raise MCPBoundaryError("mcp_snapshot_parent_invalid")
 
     try:
-        existing = os.stat(os.fspath(target), follow_symlinks=False)
+        existing = os.stat(
+            target.name,
+            dir_fd=directory_descriptor,
+            follow_symlinks=False,
+        )
     except FileNotFoundError:
         existing = None
     except OSError as exc:
@@ -298,9 +302,13 @@ def export_mcp_snapshot(
             open_flags |= os.O_NOFOLLOW
         for _ in range(100):
             candidate = f".{target.name}.{secrets.token_hex(8)}.tmp"
-            temporary_path = parent / candidate
             try:
-                descriptor = os.open(os.fspath(temporary_path), open_flags, 0o600)
+                descriptor = os.open(
+                    candidate,
+                    open_flags,
+                    0o600,
+                    dir_fd=directory_descriptor,
+                )
             except FileExistsError:
                 continue
             temporary = candidate
@@ -331,7 +339,11 @@ def export_mcp_snapshot(
 
         try:
             current_parent = parent.lstat()
-            published_target = target.lstat()
+            published_target = os.stat(
+                target.name,
+                dir_fd=directory_descriptor,
+                follow_symlinks=False,
+            )
             requested_target = target.lstat()
         except OSError as exc:
             raise MCPBoundaryError("mcp_snapshot_export_commit_unknown") from exc
@@ -359,7 +371,10 @@ def export_mcp_snapshot(
                 os.close(descriptor)
             if temporary is not None:
                 try:
-                    os.unlink(os.fspath(parent / temporary))
+                    os.unlink(
+                        temporary,
+                        dir_fd=directory_descriptor,
+                    )
                 except OSError:
                     pass
         finally:

@@ -261,6 +261,44 @@ class MCPBoundaryTests(unittest.TestCase):
         self.assertEqual([], self.kernel.audit)
 
     @unittest.skipUnless(os.name == "posix", "POSIX directory descriptor semantics required")
+    def test_export_anchors_temporary_file_to_opened_parent_if_path_swaps(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            parent = root / "trusted"
+            moved_parent = root / "trusted-moved"
+            parent.mkdir()
+            destination = parent / "snapshot.json"
+            real_open = os.open
+            swapped = False
+
+            def swap_before_temporary_open(path, flags, mode=0o777, *, dir_fd=None):
+                nonlocal swapped
+                if dir_fd is not None and not swapped:
+                    parent.rename(moved_parent)
+                    parent.mkdir()
+                    swapped = True
+                return real_open(path, flags, mode, dir_fd=dir_fd)
+
+            with patch(
+                "pulpo.mcp_boundary.os.open",
+                side_effect=swap_before_temporary_open,
+            ):
+                with self.assertRaisesRegex(
+                    MCPBoundaryError,
+                    "mcp_snapshot_export_commit_unknown",
+                ):
+                    export_mcp_snapshot(self.orchestrator, destination)
+
+            self.assertTrue(swapped)
+            self.assertFalse(destination.exists())
+            self.assertEqual([], list(parent.iterdir()))
+            document = json.loads(
+                (moved_parent / "snapshot.json").read_text(encoding="utf-8")
+            )
+            self.assertEqual(asdict(self.snapshot), document)
+        self.assertEqual([], self.kernel.audit)
+
+    @unittest.skipUnless(os.name == "posix", "POSIX directory descriptor semantics required")
     def test_export_reports_commit_unknown_if_parent_swapped_after_open(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
