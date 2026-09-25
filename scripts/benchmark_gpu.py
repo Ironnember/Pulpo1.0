@@ -23,8 +23,14 @@ import time
 from pathlib import Path
 from typing import Any, Callable
 
-from pulpo.gpu_acceleration import canonical_audit_body, cpu_record_hashes, gpu_record_hashes
-from pulpo.gpu_triton import triton_record_hashes_profiled
+from pulpo.gpu_acceleration import (
+    cpu_digest_messages,
+    cpu_record_digests,
+    gpu_digest_messages,
+    gpu_record_digests,
+    serialize_audit_records,
+)
+from pulpo.gpu_triton import triton_record_digests_profiled
 
 
 def percentile(values: list[float], fraction: float) -> float:
@@ -70,11 +76,41 @@ def build_chain(count: int) -> list[dict[str, Any]]:
 
 def time_cpu(records: list[dict[str, Any]], warmup: int, samples: int) -> list[float]:
     for _ in range(warmup):
-        cpu_record_hashes(records)
+        cpu_record_digests(records)
     values = []
     for _ in range(samples):
         start = time.perf_counter_ns()
-        cpu_record_hashes(records)
+        cpu_record_digests(records)
+        values.append((time.perf_counter_ns() - start) / 1_000_000)
+    return values
+
+
+def time_prepared_cpu(messages: list[bytes], warmup: int, samples: int) -> list[float]:
+    """Measure authoritative CPU hashing when canonical serialization is reused."""
+    for _ in range(warmup):
+        cpu_digest_messages(messages)
+    values = []
+    for _ in range(samples):
+        start = time.perf_counter_ns()
+        cpu_digest_messages(messages)
+        values.append((time.perf_counter_ns() - start) / 1_000_000)
+    return values
+
+
+def time_prepared_gpu(
+    messages: list[bytes], warmup: int, samples: int, device: str, implementation: str
+) -> list[float]:
+    """Measure GPU hashing from reusable canonical bytes, excluding JSON encoding."""
+    import torch
+
+    for _ in range(warmup):
+        gpu_digest_messages(messages, device=device, implementation=implementation)
+    torch.cuda.synchronize()
+    values = []
+    for _ in range(samples):
+        start = time.perf_counter_ns()
+        gpu_digest_messages(messages, device=device, implementation=implementation)
+        torch.cuda.synchronize()
         values.append((time.perf_counter_ns() - start) / 1_000_000)
     return values
 
@@ -89,11 +125,11 @@ def time_gpu(
     import torch
 
     for _ in range(warmup):
-        gpu_record_hashes(records, device=device, implementation=implementation)
+        gpu_record_digests(records, device=device, implementation=implementation)
     torch.cuda.synchronize()
 
     end_to_end: list[float] = []
-    stage_names = ("canonicalization", "host_preparation", "host_to_device", "kernel", "device_to_host", "digest_format")
+    stage_names = ("canonicalization", "host_preparation", "host_to_device", "kernel", "device_to_host", "digest_copy")
     stages: dict[str, list[float] | None] = {
         name: [] if implementation == "triton" else None for name in stage_names
     }
@@ -101,16 +137,16 @@ def time_gpu(
         total_start = time.perf_counter_ns()
         if implementation == "triton":
             canonical_start = time.perf_counter_ns()
-            messages = [canonical_audit_body(record) for record in records]
+            messages = serialize_audit_records(records)
             canonical_ms = (time.perf_counter_ns() - canonical_start) / 1_000_000
-            _, measured = triton_record_hashes_profiled(messages, torch)
+            _, measured = triton_record_digests_profiled(messages, torch)
             for name in stage_names:
                 if name == "canonicalization":
                     stages[name].append(canonical_ms)
                 else:
                     stages[name].append(measured[name + "_ms"])
         else:
-            gpu_record_hashes(records, device=device, implementation=implementation)
+            gpu_record_digests(records, device=device, implementation=implementation)
             torch.cuda.synchronize()
         end_to_end.append((time.perf_counter_ns() - total_start) / 1_000_000)
     return {"end_to_end": end_to_end, "stages": stages}
@@ -161,12 +197,19 @@ def main() -> int:
     rows = []
     for size in sizes:
         records = build_chain(size)
-        expected = cpu_record_hashes(records)
-        actual = gpu_record_hashes(records, device=args.device, implementation=args.implementation)
+        messages = serialize_audit_records(records)
+        # Share one byte-exact canonical serialization across CPU/GPU correctness
+        # checks. The full-pipeline timing below still includes serialization.
+        expected = cpu_digest_messages(messages)
+        actual = gpu_digest_messages(messages, device=args.device, implementation=args.implementation)
         if actual != expected:
             raise RuntimeError(f"GPU correctness check failed for {size} records")
 
         cpu = time_cpu(records, args.warmup, args.samples)
+        cpu_prepared = time_prepared_cpu(messages, args.warmup, args.samples)
+        gpu_prepared = time_prepared_gpu(
+            messages, args.warmup, args.samples, args.device, args.implementation
+        )
         gpu = time_gpu(records, args.warmup, args.samples, args.device, args.implementation)
         cpu_stats = stats(cpu)
         gpu_stats = stats(gpu["end_to_end"])
@@ -177,12 +220,15 @@ def main() -> int:
             "cpu_p95_ms": cpu_stats["p95_ms"],
             "gpu_end_to_end_median_ms": gpu_stats["median_ms"],
             "gpu_end_to_end_p95_ms": gpu_stats["p95_ms"],
+            "cpu_prepared_median_ms": stats(cpu_prepared)["median_ms"],
+            "gpu_prepared_median_ms": stats(gpu_prepared)["median_ms"],
+            "gpu_prepared_speedup": stats(cpu_prepared)["median_ms"] / stats(gpu_prepared)["median_ms"],
             "gpu_canonicalization_median_ms": stage_stats["canonicalization"]["median_ms"] if stage_stats["canonicalization"] else None,
             "gpu_host_preparation_median_ms": stage_stats["host_preparation"]["median_ms"] if stage_stats["host_preparation"] else None,
             "gpu_host_to_device_median_ms": stage_stats["host_to_device"]["median_ms"] if stage_stats["host_to_device"] else None,
             "gpu_kernel_median_ms": stage_stats["kernel"]["median_ms"] if stage_stats["kernel"] else None,
             "gpu_device_to_host_median_ms": stage_stats["device_to_host"]["median_ms"] if stage_stats["device_to_host"] else None,
-            "gpu_digest_format_median_ms": stage_stats["digest_format"]["median_ms"] if stage_stats["digest_format"] else None,
+            "gpu_digest_copy_median_ms": stage_stats["digest_copy"]["median_ms"] if stage_stats["digest_copy"] else None,
             "speedup_end_to_end": cpu_stats["median_ms"] / gpu_stats["median_ms"],
         })
 
@@ -200,9 +246,16 @@ def main() -> int:
         "gpu_count": torch.cuda.device_count(),
     }
     payload = {
-        "schema": "pulpo.gpu-performance-benchmark.v2",
+        "schema": "pulpo.gpu-performance-benchmark.v4",
         "metadata": metadata,
-        "config": {"sizes": sizes, "samples": args.samples, "warmup": args.warmup, "implementation": args.implementation},
+        "config": {
+            "sizes": sizes,
+            "samples": args.samples,
+            "warmup": args.warmup,
+            "implementation": args.implementation,
+            "digest_representation": "concatenated raw SHA-256 bytes; hex conversion excluded from timed path",
+            "prepared_measurement": "reuse canonical serialized messages; excludes JSON serialization on both CPU and GPU",
+        },
         "results": rows,
         "governance": {
             "cpu_is_canonical": True,
@@ -219,7 +272,7 @@ def main() -> int:
 
     print(f"GPU: {metadata['gpu_name']}")
     print(f"Torch: {metadata['torch_version']} | backend: {metadata['gpu_backend']} | HIP: {metadata['torch_hip_version']}")
-    print(f"{'records':>10} {'CPU ms':>10} {'canonical':>11} {'host prep':>11} {'H2D':>9} {'kernel':>9} {'D2H':>9} {'digest':>9} {'GPU total':>11} {'speedup':>9}")
+    print(f"{'records':>10} {'CPU e2e':>10} {'CPU prep':>10} {'GPU prep':>10} {'prep x':>8} {'canonical':>11} {'host prep':>11} {'H2D':>9} {'kernel':>9} {'D2H':>9} {'raw copy':>9} {'GPU total':>11} {'speedup':>9}")
     for row in rows:
         phase_values = [
             row["gpu_canonicalization_median_ms"],
@@ -227,12 +280,15 @@ def main() -> int:
             row["gpu_host_to_device_median_ms"],
             row["gpu_kernel_median_ms"],
             row["gpu_device_to_host_median_ms"],
-            row["gpu_digest_format_median_ms"],
+            row["gpu_digest_copy_median_ms"],
         ]
         phase_text = [f"{value:9.3f}" if value is not None else f"{'n/a':>9}" for value in phase_values]
         print(
             f"{row['audit_records']:10d} "
             f"{row['cpu_median_ms']:10.3f} "
+            f"{row['cpu_prepared_median_ms']:10.3f} "
+            f"{row['gpu_prepared_median_ms']:10.3f} "
+            f"{row['gpu_prepared_speedup']:7.2f}x "
             + " ".join(phase_text)
             + f" {row['gpu_end_to_end_median_ms']:11.3f} "
             + f"{row['speedup_end_to_end']:8.2f}x"

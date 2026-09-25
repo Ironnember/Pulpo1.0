@@ -13,6 +13,7 @@ from __future__ import annotations
 
 from hashlib import sha256
 import json
+import sys
 from typing import Any, Iterable, Sequence
 
 
@@ -32,12 +33,32 @@ def canonical_audit_body(record: dict[str, Any]) -> bytes:
     return canonical_bytes(body)
 
 
+def serialize_audit_records(records: Sequence[dict[str, Any]]) -> list[bytes]:
+    """Serialize audit bodies once for reuse by CPU and accelerator hashers."""
+    return [canonical_audit_body(record) for record in records]
+
+
+def cpu_hash_messages(messages: Sequence[bytes]) -> list[str]:
+    """Hash already-canonical messages with the authoritative CPU reference."""
+    return [sha256(message).hexdigest() for message in messages]
+
+
+def cpu_digest_messages(messages: Sequence[bytes]) -> bytes:
+    """Return concatenated raw SHA-256 digests in input order (32 bytes each)."""
+    return b"".join(sha256(message).digest() for message in messages)
+
+
 def cpu_record_hashes(records: Sequence[dict[str, Any]]) -> list[str]:
     """Reference implementation used for correctness checks and CPU timing."""
-    return [sha256(canonical_audit_body(record)).hexdigest() for record in records]
+    return cpu_hash_messages(serialize_audit_records(records))
 
 
-def _sha256_batch_torch(messages: Sequence[bytes], torch: Any, device_name: str) -> list[str]:
+def cpu_record_digests(records: Sequence[dict[str, Any]]) -> bytes:
+    """Serialize audit records and return concatenated raw CPU digests."""
+    return cpu_digest_messages(serialize_audit_records(records))
+
+
+def _sha256_batch_torch_digests(messages: Sequence[bytes], torch: Any, device_name: str) -> bytes:
     """Compute SHA-256 for many messages in parallel with Torch CUDA tensors.
 
     The implementation uses int64 lanes with an explicit 32-bit mask because
@@ -46,7 +67,7 @@ def _sha256_batch_torch(messages: Sequence[bytes], torch: Any, device_name: str)
     """
 
     if not messages:
-        return []
+        return b""
 
     device = torch.device(device_name)
     mask = 0xFFFFFFFF
@@ -151,17 +172,25 @@ def _sha256_batch_torch(messages: Sequence[bytes], torch: Any, device_name: str)
             for old, updated in zip(state, compressed)
         ]
 
-    words = torch.stack(state, dim=1).cpu().tolist()
-    return ["".join(f"{value:08x}" for value in row) for row in words]
+    words = torch.stack(state, dim=1).to(torch.int32).cpu().numpy()
+    if sys.byteorder == "little":
+        words = words.byteswap()
+    return words.tobytes()
 
 
-def gpu_record_hashes(
-    records: Sequence[dict[str, Any]],
+def _sha256_batch_torch(messages: Sequence[bytes], torch: Any, device_name: str) -> list[str]:
+    """Compatibility wrapper returning lowercase hexadecimal digest strings."""
+    raw = _sha256_batch_torch_digests(messages, torch, device_name)
+    return [raw[index:index + 32].hex() for index in range(0, len(raw), 32)]
+
+
+def gpu_digest_messages(
+    messages: Sequence[bytes],
     *,
     device: str = "auto",
     implementation: str = "triton",
-) -> list[str]:
-    """Return SHA-256 hashes using fused Triton or eager PyTorch operations."""
+) -> bytes:
+    """Return concatenated raw SHA-256 digest bytes, 32 bytes per message."""
     try:
         import torch
     except ImportError as exc:
@@ -173,18 +202,52 @@ def gpu_record_hashes(
         raise ValueError("device must be auto, cuda, or rocm")
     if implementation not in {"triton", "torch"}:
         raise ValueError("implementation must be triton or torch")
-    if not records:
-        return []
+    if not messages:
+        return b""
     if not torch.cuda.is_available():
         raise RuntimeError("No PyTorch GPU runtime is available; install CUDA or ROCm PyTorch.")
     backend = "rocm" if getattr(torch.version, "hip", None) else "cuda"
     if device != "auto" and device != backend:
         raise RuntimeError(f"Requested {device}, but installed PyTorch backend is {backend}")
-    messages = [canonical_audit_body(record) for record in records]
     if implementation == "torch":
-        return _sha256_batch_torch(messages, torch, "cuda")
-    from pulpo.gpu_triton import triton_record_hashes
-    return triton_record_hashes(messages, torch)
+        return _sha256_batch_torch_digests(messages, torch, "cuda")
+    from pulpo.gpu_triton import triton_record_digests
+    return triton_record_digests(messages, torch)
+
+
+def gpu_hash_messages(
+    messages: Sequence[bytes],
+    *,
+    device: str = "auto",
+    implementation: str = "triton",
+) -> list[str]:
+    """Return SHA-256 hashes using fused Triton or eager PyTorch operations."""
+    raw = gpu_digest_messages(messages, device=device, implementation=implementation)
+    return [raw[index:index + 32].hex() for index in range(0, len(raw), 32)]
+
+
+def gpu_record_digests(
+    records: Sequence[dict[str, Any]],
+    *,
+    device: str = "auto",
+    implementation: str = "triton",
+) -> bytes:
+    """Serialize audit records and return one raw 32-byte digest per record."""
+    return gpu_digest_messages(
+        serialize_audit_records(records), device=device, implementation=implementation
+    )
+
+
+def gpu_record_hashes(
+    records: Sequence[dict[str, Any]],
+    *,
+    device: str = "auto",
+    implementation: str = "triton",
+) -> list[str]:
+    """Serialize audit records canonically and hash them on the selected GPU."""
+    return gpu_hash_messages(
+        serialize_audit_records(records), device=device, implementation=implementation
+    )
 
 
 def verify_audit_gpu(
@@ -204,14 +267,19 @@ def verify_audit_gpu(
     if not materialized:
         return True
 
-    recomputed = gpu_record_hashes(materialized, device=device, implementation=implementation)
+    recomputed = gpu_record_digests(materialized, device=device, implementation=implementation)
     previous = ZERO_HASH
     previous_delta_root = ZERO_HASH
 
-    for record, actual_hash in zip(materialized, recomputed):
+    for index, record in enumerate(materialized):
+        actual_digest = recomputed[index * 32:(index + 1) * 32]
         if record.get("previous_hash") != previous:
             return False
-        if record.get("hash") != actual_hash:
+        try:
+            expected_digest = bytes.fromhex(record.get("hash", ""))
+        except (TypeError, ValueError):
+            return False
+        if actual_digest != expected_digest:
             return False
 
         body = {key: value for key, value in record.items() if key != "hash"}
@@ -233,6 +301,6 @@ def verify_audit_gpu(
         else:
             previous_delta_root = record["hash"]
 
-        previous = actual_hash
+        previous = record["hash"]
 
     return True

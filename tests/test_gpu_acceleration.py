@@ -8,6 +8,12 @@ from pulpo.gpu_triton import triton_record_hashes
 
 from pulpo.gpu_acceleration import (
     cpu_record_hashes,
+    cpu_hash_messages,
+    cpu_digest_messages,
+    gpu_digest_messages,
+    gpu_record_digests,
+    gpu_hash_messages,
+    serialize_audit_records,
     verify_audit_gpu,
 )
 
@@ -47,6 +53,29 @@ def test_cpu_hash_reference_matches_stored_hashes():
     assert cpu_record_hashes(records) == [record["hash"] for record in records]
 
 
+def test_serialized_messages_are_reusable_by_cpu_reference():
+    records = make_chain(8)
+    messages = serialize_audit_records(records)
+    assert len(messages) == len(records)
+    assert all(isinstance(message, bytes) for message in messages)
+    assert cpu_hash_messages(messages) == cpu_record_hashes(records)
+    assert cpu_digest_messages(messages) == b"".join(
+        bytes.fromhex(value) for value in cpu_hash_messages(messages)
+    )
+
+
+def test_gpu_message_api_matches_record_api():
+    torch = require_torch()
+    if not torch.cuda.is_available():
+        pytest.skip("CUDA or ROCm GPU required for GPU message API test")
+    records = make_chain(8)
+    messages = serialize_audit_records(records)
+    assert gpu_hash_messages(messages) == gpu_record_hashes(records)
+    raw = gpu_digest_messages(messages)
+    assert raw == gpu_record_digests(records)
+    assert [raw[i:i + 32].hex() for i in range(0, len(raw), 32)] == gpu_hash_messages(messages)
+
+
 def test_gpu_verifier_requires_accelerator():
     torch = require_torch()
 
@@ -80,6 +109,10 @@ def test_triton_sha256_padding_boundaries():
     assert triton_record_hashes(messages, torch) == [
         sha256(message).hexdigest() for message in messages
     ]
+    from pulpo.gpu_triton import triton_record_digests
+    assert triton_record_digests(messages, torch) == b"".join(
+        sha256(message).digest() for message in messages
+    )
 
 
 def test_eager_torch_hashes_mixed_sha256_padding_block_counts():
@@ -94,6 +127,10 @@ def test_eager_torch_hashes_mixed_sha256_padding_block_counts():
     assert _sha256_batch_torch(messages, torch, "cuda") == [
         sha256(message).hexdigest() for message in messages
     ]
+    from pulpo.gpu_acceleration import _sha256_batch_torch_digests
+    assert _sha256_batch_torch_digests(messages, torch, "cuda") == b"".join(
+        sha256(message).digest() for message in messages
+    )
 
 
 def test_fused_triton_matches_eager_torch_reference():
@@ -111,7 +148,10 @@ def test_fused_triton_matches_eager_torch_reference():
 def test_triton_profiled_hashes_report_separate_stages():
     torch = require_torch()
     from hashlib import sha256
-    from pulpo.gpu_triton import triton_record_hashes_profiled
+    from pulpo.gpu_triton import (
+        triton_record_digests_profiled,
+        triton_record_hashes_profiled,
+    )
 
     if not torch.cuda.is_available():
         pytest.skip("CUDA or ROCm GPU required for fused-kernel profiling")
@@ -128,3 +168,15 @@ def test_triton_profiled_hashes_report_separate_stages():
         "total_ms",
     }
     assert all(value >= 0 for value in timings.values())
+
+    raw_digests, raw_timings = triton_record_digests_profiled(messages, torch)
+    assert raw_digests == b"".join(sha256(message).digest() for message in messages)
+    assert set(raw_timings) == {
+        "host_preparation_ms",
+        "host_to_device_ms",
+        "kernel_ms",
+        "device_to_host_ms",
+        "digest_copy_ms",
+        "total_ms",
+    }
+    assert all(value >= 0 for value in raw_timings.values())

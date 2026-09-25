@@ -44,17 +44,19 @@ if _triton is not None:
     @_triton.jit
     def _sha256_batch_kernel(
         data_ptr,
-        block_count_ptr,
+        message_offset_ptr,
+        message_length_ptr,
         output_ptr,
         count,
-        STRIDE: _tl.constexpr,
         MAX_BLOCKS: _tl.constexpr,
         BLOCK: _tl.constexpr,
         SHA256_K: _tl.constexpr,
     ):
         rows = _tl.program_id(0) * BLOCK + _tl.arange(0, BLOCK)
         valid = rows < count
-        row_blocks = _tl.load(block_count_ptr + rows, mask=valid, other=0)
+        message_length = _tl.load(message_length_ptr + rows, mask=valid, other=0)
+        message_offset = _tl.load(message_offset_ptr + rows, mask=valid, other=0)
+        row_blocks = (message_length + 9 + 63) // 64
 
         h0 = _tl.full((BLOCK,), 0x6A09E667, _tl.uint32)
         h1 = _tl.full((BLOCK,), 0xBB67AE85, _tl.uint32)
@@ -67,14 +69,40 @@ if _triton is not None:
 
         for block_index in range(MAX_BLOCKS):
             active = valid & (block_index < row_blocks)
-            base = rows * STRIDE + block_index * 64
+            local_base = block_index * 64
+            padded_length = row_blocks * 64
             w = ()
             for word_index in _tl.static_range(16):
                 offset = word_index * 4
-                b0 = _tl.load(data_ptr + base + offset, mask=active, other=0).to(_tl.uint32)
-                b1 = _tl.load(data_ptr + base + offset + 1, mask=active, other=0).to(_tl.uint32)
-                b2 = _tl.load(data_ptr + base + offset + 2, mask=active, other=0).to(_tl.uint32)
-                b3 = _tl.load(data_ptr + base + offset + 3, mask=active, other=0).to(_tl.uint32)
+                p0 = local_base + offset
+                p1 = p0 + 1
+                p2 = p0 + 2
+                p3 = p0 + 3
+                b0 = _tl.load(data_ptr + message_offset + p0, mask=active & (p0 < message_length), other=0).to(_tl.uint32)
+                b1 = _tl.load(data_ptr + message_offset + p1, mask=active & (p1 < message_length), other=0).to(_tl.uint32)
+                b2 = _tl.load(data_ptr + message_offset + p2, mask=active & (p2 < message_length), other=0).to(_tl.uint32)
+                b3 = _tl.load(data_ptr + message_offset + p3, mask=active & (p3 < message_length), other=0).to(_tl.uint32)
+                t0 = _tl.minimum(_tl.maximum(p0 - (padded_length - 8), 0), 7)
+                t1 = _tl.minimum(_tl.maximum(p1 - (padded_length - 8), 0), 7)
+                t2 = _tl.minimum(_tl.maximum(p2 - (padded_length - 8), 0), 7)
+                t3 = _tl.minimum(_tl.maximum(p3 - (padded_length - 8), 0), 7)
+                bit_length = message_length * 8
+                l0 = (bit_length >> ((7 - t0) * 8)) & 0xFF
+                l1 = (bit_length >> ((7 - t1) * 8)) & 0xFF
+                l2 = (bit_length >> ((7 - t2) * 8)) & 0xFF
+                l3 = (bit_length >> ((7 - t3) * 8)) & 0xFF
+                b0 = _tl.where(p0 == message_length, 0x80, b0)
+                b1 = _tl.where(p1 == message_length, 0x80, b1)
+                b2 = _tl.where(p2 == message_length, 0x80, b2)
+                b3 = _tl.where(p3 == message_length, 0x80, b3)
+                b0 = _tl.where(p0 >= padded_length - 8, l0, b0)
+                b1 = _tl.where(p1 >= padded_length - 8, l1, b1)
+                b2 = _tl.where(p2 >= padded_length - 8, l2, b2)
+                b3 = _tl.where(p3 >= padded_length - 8, l3, b3)
+                b0 = b0.to(_tl.uint32)
+                b1 = b1.to(_tl.uint32)
+                b2 = b2.to(_tl.uint32)
+                b3 = b3.to(_tl.uint32)
                 w += ((b0 << 24) | (b1 << 16) | (b2 << 8) | b3,)
 
             for word_index in _tl.static_range(16, 64):
@@ -124,19 +152,40 @@ def triton_record_hashes(messages: Sequence[bytes], torch: Any) -> list[str]:
     return hashes
 
 
+def triton_record_digests(messages: Sequence[bytes], torch: Any) -> bytes:
+    """Return concatenated raw 32-byte digests from the fused Triton kernel."""
+    digests, _ = triton_record_digests_profiled(messages, torch)
+    return digests
+
+
 def triton_record_hashes_profiled(
     messages: Sequence[bytes], torch: Any
 ) -> tuple[list[str], dict[str, float]]:
-    """Hash messages and report host preparation, transfer, kernel, and D2H time."""
+    """Hash messages as hex strings and report all stages including formatting."""
+    from time import perf_counter_ns
+
+    raw, timings = triton_record_digests_profiled(messages, torch)
+    format_start = perf_counter_ns()
+    hashes = [raw[index:index + 32].hex() for index in range(0, len(raw), 32)]
+    format_ms = (perf_counter_ns() - format_start) / 1_000_000
+    timings["digest_format_ms"] = timings.pop("digest_copy_ms") + format_ms
+    timings["total_ms"] += format_ms
+    return hashes, timings
+
+
+def triton_record_digests_profiled(
+    messages: Sequence[bytes], torch: Any
+) -> tuple[bytes, dict[str, float]]:
+    """Hash messages to raw digests, reporting pack, transfer, kernel and copy time."""
     from time import perf_counter_ns
 
     if not messages:
-        return [], {
+        return b"", {
             "host_preparation_ms": 0.0,
             "host_to_device_ms": 0.0,
             "kernel_ms": 0.0,
             "device_to_host_ms": 0.0,
-            "digest_format_ms": 0.0,
+            "digest_copy_ms": 0.0,
             "total_ms": 0.0,
         }
     if _triton is None:
@@ -147,25 +196,26 @@ def triton_record_hashes_profiled(
 
     total_start = perf_counter_ns()
     host_start = perf_counter_ns()
+    import numpy as np
+
     count = len(messages)
-    blocks_per_row = [(len(message) + 9 + 63) // 64 for message in messages]
-    max_blocks = max(blocks_per_row)
-    stride = max_blocks * 64
+    message_lengths = np.fromiter(map(len, messages), dtype=np.int64, count=count)
+    message_offsets = np.empty(count, dtype=np.int64)
+    message_offsets[0] = 0
+    if count > 1:
+        np.cumsum(message_lengths[:-1], out=message_offsets[1:])
+    total_message_bytes = int(message_lengths.sum())
+    max_blocks = (int(message_lengths.max()) + 9 + 63) // 64
 
-    host_data = torch.zeros((count, stride), dtype=torch.uint8, pin_memory=True)
-    host_blocks = torch.tensor(blocks_per_row, dtype=torch.int32, pin_memory=True)
-
-    # Pack directly into the pinned tensor's backing buffer. Avoid allocating a
-    # Python list and a temporary Torch tensor for every message and padding field.
-    packed = memoryview(host_data.numpy()).cast("B")
-    for row, message in enumerate(messages):
-        row_start = row * stride
-        row_blocks = blocks_per_row[row]
-        padded_size = row_blocks * 64
-        packed[row_start:row_start + len(message)] = message
-        packed[row_start + len(message)] = 0x80
-        bit_length = len(message) * 8
-        packed[row_start + padded_size - 8:row_start + padded_size] = bit_length.to_bytes(8, "big")
+    # Serialize once into a contiguous pinned buffer. The kernel reads variable
+    # length messages directly and synthesizes SHA-256 padding, avoiding a Python
+    # loop that copied and padded every row on the host.
+    host_data = torch.empty((total_message_bytes,), dtype=torch.uint8, pin_memory=True)
+    host_offsets = torch.empty((count,), dtype=torch.int64, pin_memory=True)
+    host_lengths = torch.empty((count,), dtype=torch.int64, pin_memory=True)
+    memoryview(host_data.numpy()).cast("B")[:] = b"".join(messages)
+    host_offsets.numpy()[:] = message_offsets
+    host_lengths.numpy()[:] = message_lengths
     device = torch.device("cuda")
     block_size = 64
     output = torch.empty((count, 8), dtype=torch.uint32, device=device)
@@ -173,7 +223,8 @@ def triton_record_hashes_profiled(
 
     transfer_start = perf_counter_ns()
     data = host_data.to(device, non_blocking=True)
-    block_counts = host_blocks.to(device, non_blocking=True)
+    offsets = host_offsets.to(device, non_blocking=True)
+    lengths = host_lengths.to(device, non_blocking=True)
     torch.cuda.synchronize()
     host_to_device_ms = (perf_counter_ns() - transfer_start) / 1_000_000
 
@@ -184,10 +235,10 @@ def triton_record_hashes_profiled(
     kernel_start.record()
     _sha256_batch_kernel[( _triton.cdiv(count, block_size), )](
         data,
-        block_counts,
+        offsets,
+        lengths,
         output,
         count,
-        stride,
         max_blocks,
         block_size,
         _SHA256_K,
@@ -202,19 +253,18 @@ def triton_record_hashes_profiled(
     torch.cuda.synchronize()
     device_to_host_ms = (perf_counter_ns() - device_to_host_start) / 1_000_000
 
-    format_start = perf_counter_ns()
+    copy_start = perf_counter_ns()
     host_words = host_output.numpy()
     if sys.byteorder == "little":
         host_words = host_words.byteswap()
-    hex_output = host_words.tobytes().hex()
-    hashes = [hex_output[index * 64:(index + 1) * 64] for index in range(count)]
-    digest_format_ms = (perf_counter_ns() - format_start) / 1_000_000
+    digests = host_words.tobytes()
+    digest_copy_ms = (perf_counter_ns() - copy_start) / 1_000_000
     total_ms = (perf_counter_ns() - total_start) / 1_000_000
-    return hashes, {
+    return digests, {
         "host_preparation_ms": host_preparation_ms,
         "host_to_device_ms": host_to_device_ms,
         "kernel_ms": kernel_ms,
         "device_to_host_ms": device_to_host_ms,
-        "digest_format_ms": digest_format_ms,
+        "digest_copy_ms": digest_copy_ms,
         "total_ms": total_ms,
     }
