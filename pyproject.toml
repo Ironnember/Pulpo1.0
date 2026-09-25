@@ -11,6 +11,8 @@ requires-python = ">=3.11"
 [project.optional-dependencies]
 authority = ["cryptography==50.0.1"]
 mcp = ["mcp[cli]>=2,<3"]
+gpu = ["torch>=2.5"]
+test = ["pytest==9.1.1"]
 
 [project.scripts]
 pulpo-git-clarity = "pulpo.git_clarity:main"

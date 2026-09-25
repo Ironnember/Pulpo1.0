@@ -22,6 +22,32 @@ def _canonical(value: Any) -> bytes:
     ).encode()
 
 
+def _canonical_sqlite_audit_body(row: tuple[Any, ...]) -> tuple[bytes, Any]:
+    """Canonicalize a raw SQLite audit row without building a hash-bearing record."""
+    (
+        event,
+        payload_json,
+        previous_hash,
+        timestamp_ns,
+        _digest,
+        delta_json,
+        previous_delta_root,
+        delta_root,
+    ) = row
+    delta = json.loads(delta_json) if delta_json is not None else None
+    body = {
+        "event": event,
+        "payload": json.loads(payload_json),
+        "previous_hash": previous_hash,
+        "timestamp_ns": timestamp_ns,
+    }
+    if delta_json is not None:
+        body["delta"] = delta
+        body["previous_delta_root"] = previous_delta_root
+        body["delta_root"] = delta_root
+    return _canonical(body), delta
+
+
 @dataclass(frozen=True)
 class Intent:
     principal: str
@@ -1150,38 +1176,53 @@ class GovernanceKernel:
         previous = "0" * 64
         previous_delta_root = "0" * 64
 
-        for record in self._state.iter_audit():
-            body = {
-                key: value
-                for key, value
-                in record.items()
-                if key != "hash"
-            }
+        raw_rows = getattr(
+            self._state,
+            "_iter_audit_verification_rows",
+            None,
+        )
+        if callable(raw_rows):
+            def raw_audit_rows():
+                for row in raw_rows():
+                    body_bytes, delta_value = _canonical_sqlite_audit_body(row)
+                    yield (
+                        row[2], row[4], body_bytes, delta_value, row[6], row[7]
+                    )
 
-            if body["previous_hash"] != previous:
+            audit_rows = raw_audit_rows()
+        else:
+            audit_rows = (
+                (
+                    record["previous_hash"],
+                    record["hash"],
+                    _canonical(
+                        {key: value for key, value in record.items() if key != "hash"}
+                    ),
+                    record.get("delta"),
+                    record.get("previous_delta_root"),
+                    record.get("delta_root"),
+                )
+                for record in self._state.iter_audit()
+            )
+
+        for previous_hash, digest, body_bytes, delta, body_previous_delta_root, body_delta_root in audit_rows:
+            if previous_hash != previous:
                 self._verified_audit_token = None
                 return False
 
             expected = sha256(
-                _canonical(body)
+                body_bytes
             ).hexdigest()
 
             if not hmac.compare_digest(
-                record["hash"],
+                digest,
                 expected,
             ):
                 self._verified_audit_token = None
                 return False
 
-            delta = body.get("delta")
-
             if delta is not None:
-                if (
-                    body.get(
-                        "previous_delta_root"
-                    )
-                    != previous_delta_root
-                ):
+                if body_previous_delta_root != previous_delta_root:
                     self._verified_audit_token = None
                     return False
 
@@ -1197,10 +1238,7 @@ class GovernanceKernel:
                 ).hexdigest()
 
                 if not hmac.compare_digest(
-                    body.get(
-                        "delta_root",
-                        "",
-                    ),
+                    body_delta_root or "",
                     expected_delta_root,
                 ):
                     self._verified_audit_token = None
@@ -1215,11 +1253,9 @@ class GovernanceKernel:
                 # Their audit hash remains authoritative, and the
                 # first delta record after legacy history binds
                 # forward from the legacy audit head.
-                previous_delta_root = (
-                    record["hash"]
-                )
+                previous_delta_root = digest
 
-            previous = record["hash"]
+            previous = digest
 
         token_after = (
             self._audit_integrity_token()

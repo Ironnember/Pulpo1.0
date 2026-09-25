@@ -1,5 +1,6 @@
 import json
 import unittest
+from dataclasses import replace
 
 from pulpo.commerce import DomainPurchaseRequest, DomainQuote, assess_quote
 from pulpo.namecom_core import (
@@ -187,6 +188,17 @@ class NameComCoreTests(unittest.TestCase):
         self.assertEqual(20.0, body["purchasePrice"])
         self.assertEqual("registration", body["purchaseType"])
         self.assertEqual(1, body["years"])
+
+    def test_create_domain_uses_the_order_bound_autorenew_choice(self):
+        order = replace(self.order(), autorenew_enabled=True)
+        transport = FakeTransport([response({"order": 12345, "totalPaid": 20.00})])
+        client = NameComCoreClient(
+            NameComCoreConfig("pulpo-test", "sandbox-token"),
+            transport=transport,
+        )
+        client.create_domain(order, idempotency_key="autorenew-bound-check")
+        body = json.loads(transport.calls[0][3].decode())
+        self.assertTrue(body["domain"]["autorenewEnabled"])
 
     def test_provider_overcharge_is_detected_and_never_normalized_into_success(self):
         order = self.order()

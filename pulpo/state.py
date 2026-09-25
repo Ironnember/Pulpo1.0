@@ -1095,6 +1095,20 @@ class SQLiteKernelState:
                 row
             )
 
+    def _iter_audit_verification_rows(self) -> Iterator[tuple[Any, ...]]:
+        """Stream SQLite columns for the kernel's verification-only path.
+
+        The verifier parses and canonicalizes nested JSON values itself, so
+        this avoids constructing full audit-record mappings without changing
+        the existing hash input semantics.
+        """
+        cursor = self._connection.execute(
+            "SELECT event, payload_json, previous_hash, timestamp_ns, hash, "
+            "delta_json, previous_delta_root, delta_root "
+            "FROM audit ORDER BY sequence ASC"
+        )
+        yield from cursor
+
     @property
     def audit(
         self,

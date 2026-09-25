@@ -221,13 +221,13 @@ class NameComCoreClient:
     ) -> tuple[dict[str, Any], NameComResponse]:
         if order.registrar != "name.com":
             raise NameComViolation("namecom_registrar_mismatch")
-        # One-year standard-registration V0 only. Disable autorenew to avoid a
-        # future unattended financial consequence. Lock and requested privacy
-        # are included in the exact create object.
+        # One-year standard-registration V0 only. Auto-renew is bound into the
+        # canonical request/order so any future renewal capability is explicit.
+        # Lock and requested privacy are also included in the exact create object.
         payload = {
             "domain": {
                 "domainName": order.domain,
-                "autorenewEnabled": False,
+                "autorenewEnabled": order.autorenew_enabled,
                 "locked": True,
                 "privacyEnabled": order.privacy_required,
             },

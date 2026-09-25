@@ -22,11 +22,15 @@ bounded failure in one understandable transaction.
 is subordinate to the canonical `GovernanceKernel`:
 
 - a request fixes acceptable domains, purchase and renewal ceilings, registrar,
-  owner reference, privacy, prohibited upsells, expiration, and principal;
+  owner reference, privacy, prohibited upsells, expiration, principal, and an
+  explicit auto-renew choice (default `false`);
 - the pilot ceiling cannot exceed 3,000 cents;
 - a quote is assessed deterministically with a distinct denial reason;
 - the exact resulting order is hashed into the normal Pulpo intent resource;
 - the order binds SHA-256 hashes of the complete request and complete quote;
+- the request and order hashes bind the auto-renew choice, and the Name.com
+  adapter sends that exact order-bound value instead of relying on a provider
+  default;
 - a budget account reserves the exact quoted amount before permit use;
 - an optional transactional SQLite implementation preserves reservation,
   attempted-order, reconciliation, receipt-hash, and spend state across restart;
@@ -44,8 +48,8 @@ is subordinate to the canonical `GovernanceKernel`:
   than creating a second ledger.
 
 The executable tests cover $30.01, unapproved domains and registrars, excessive
-renewal price, prohibited upsells, expiration, owner substitution, missing
-privacy, invalid credential references, order substitution, permit reuse,
+renewal price, prohibited upsells, auto-renew identity and provider binding,
+expiration, owner substitution, missing privacy, invalid credential references, order substitution, permit reuse,
 duplicate execution, excessive provider charge, incomplete delivery, and the
 separation of authorization, payment, delivery, acceptance, and value.
 

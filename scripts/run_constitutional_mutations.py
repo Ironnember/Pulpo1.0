@@ -131,8 +131,8 @@ MUTATIONS: tuple[Mutation, ...] = (
     Mutation(
         "audit_record_hash_check_removed",
         "pulpo/kernel.py",
-        '            if not hmac.compare_digest(\n                record["hash"],\n                expected,\n            ):\n                self._verified_audit_token = None\n                return False',
-        '            if False and not hmac.compare_digest(\n                record["hash"],\n                expected,\n            ):\n                self._verified_audit_token = None\n                return False',
+        '            if not hmac.compare_digest(\n                digest,\n                expected,\n            ):\n                self._verified_audit_token = None\n                return False',
+        '            if False and not hmac.compare_digest(\n                digest,\n                expected,\n            ):\n                self._verified_audit_token = None\n                return False',
         ("tests.test_kernel.GovernanceKernelTests.test_audit_chain_detects_tampering",),
     ),
 )

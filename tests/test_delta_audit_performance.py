@@ -1,4 +1,5 @@
 import sqlite3
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -87,6 +88,39 @@ class DeltaAuditPerformanceTests(unittest.TestCase):
         self.assertTrue(
             kernel.verify_audit()
         )
+
+    def test_sqlite_verifier_preserves_canonical_semantics_for_json_whitespace(self):
+        state = SQLiteKernelState(self.path)
+        state.append(
+            "verification_seed",
+            {"nested": {"value": 1}, "authority_effect": "none"},
+            NOW,
+        )
+        state.close()
+
+        connection = sqlite3.connect(self.path)
+        try:
+            (payload_json,) = connection.execute(
+                "SELECT payload_json FROM audit WHERE sequence = 1"
+            ).fetchone()
+            connection.execute(
+                "UPDATE audit SET payload_json = ? WHERE sequence = 1",
+                (json.dumps(json.loads(payload_json), indent=2),),
+            )
+            connection.commit()
+        finally:
+            connection.close()
+
+        class DecodingOnlyState(SQLiteKernelState):
+            _iter_audit_verification_rows = None
+
+        fast_state = SQLiteKernelState(self.path)
+        self.addCleanup(fast_state.close)
+        fallback_state = DecodingOnlyState(self.path)
+        self.addCleanup(fallback_state.close)
+
+        self.assertTrue(self.kernel(fast_state).verify_audit())
+        self.assertTrue(self.kernel(fallback_state).verify_audit())
 
     def test_delta_tamper_fails_closed_at_restart(self):
         state = SQLiteKernelState(self.path)
@@ -306,6 +340,11 @@ class DeltaAuditPerformanceTests(unittest.TestCase):
             def audit(self):
                 raise AssertionError(
                     "full audit materialization is not allowed during bootstrap"
+                )
+
+            def iter_audit(self, **kwargs):
+                raise AssertionError(
+                    "SQLite verification should use raw verification rows"
                 )
 
         seed = SQLiteKernelState(self.path)
