@@ -51,6 +51,7 @@ class DomainPurchaseRequest:
     privacy_required: bool
     prohibited_upsells: tuple[str, ...]
     expires_at_ns: int
+    autorenew_enabled: bool = False
 
     def __post_init__(self) -> None:
         if not self.request_id or not self.principal or not self.acceptable_domains:
@@ -73,6 +74,8 @@ class DomainPurchaseRequest:
             raise CommerceViolation("prohibited upsells must be normalized")
         if self.expires_at_ns <= 0:
             raise CommerceViolation("request expiration is required")
+        if not isinstance(self.autorenew_enabled, bool):
+            raise CommerceViolation("auto-renew choice must be boolean")
 
     @property
     def request_hash(self) -> str:
@@ -128,6 +131,7 @@ class DomainPurchaseOrder:
     prohibited_upsells: tuple[str, ...]
     credential_ref: str
     expires_at_ns: int
+    autorenew_enabled: bool = False
 
     def __post_init__(self) -> None:
         if not self.request_id or not self.quote_id or not self.principal:
@@ -152,6 +156,8 @@ class DomainPurchaseOrder:
             raise CommerceViolation("credential must be an opaque credential reference")
         if self.expires_at_ns <= 0:
             raise CommerceViolation("order expiration is required")
+        if not isinstance(self.autorenew_enabled, bool):
+            raise CommerceViolation("auto-renew choice must be boolean")
 
     @property
     def order_hash(self) -> str:
@@ -216,6 +222,7 @@ def assess_quote(
             prohibited_upsells=request.prohibited_upsells,
             credential_ref=credential_ref,
             expires_at_ns=min(request.expires_at_ns, quote.expires_at_ns),
+            autorenew_enabled=request.autorenew_enabled,
         )
 
     material = {

@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+from datetime import datetime, timezone
 import hashlib
 import json
 import math
@@ -130,12 +131,24 @@ def main() -> int:
     parser.add_argument("--warmup", type=int, default=3)
     parser.add_argument("--device", choices=("auto", "cuda", "rocm"), default="auto")
     parser.add_argument("--implementation", choices=("triton", "torch"), default="triton")
-    parser.add_argument("--json", type=Path, default=Path("pulpo-gpu-benchmark.json"))
-    parser.add_argument("--csv", type=Path, default=Path("pulpo-gpu-benchmark.csv"))
+    parser.add_argument("--json", type=Path, help="JSON output path (default: unique timestamped name)")
+    parser.add_argument("--csv", type=Path, help="CSV output path (default: paired with --json)")
+    parser.add_argument("--overwrite", action="store_true", help="allow replacing existing output files")
     args = parser.parse_args()
 
     if args.samples <= 0 or args.warmup < 0:
         parser.error("samples must be positive and warmup non-negative")
+
+    try:
+        sizes = [int(item.strip()) for item in args.sizes.split(",") if item.strip()]
+    except ValueError:
+        parser.error("sizes must be comma-separated positive integers")
+    if not sizes or any(size <= 0 for size in sizes):
+        parser.error("sizes must contain at least one positive integer")
+    if len(set(sizes)) != len(sizes):
+        parser.error("sizes must not contain duplicates")
+
+    json_path, csv_path = resolve_output_paths(args, parser)
 
     import torch
 
@@ -145,7 +158,6 @@ def main() -> int:
             f"Installed torch={torch.__version__!r} reports cuda_available=False."
         )
 
-    sizes = [int(item.strip()) for item in args.sizes.split(",") if item.strip()]
     rows = []
     for size in sizes:
         records = build_chain(size)
@@ -198,8 +210,9 @@ def main() -> int:
             "correctness_required_before_timing": True,
         },
     }
-    args.json.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-    with args.csv.open("w", newline="", encoding="utf-8") as handle:
+    payload["governance"]["production_kernel_integration"] = False
+    json_path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    with csv_path.open("w", newline="", encoding="utf-8") as handle:
         writer = csv.DictWriter(handle, fieldnames=rows[0].keys())
         writer.writeheader()
         writer.writerows(rows)
@@ -224,9 +237,32 @@ def main() -> int:
             + f" {row['gpu_end_to_end_median_ms']:11.3f} "
             + f"{row['speedup_end_to_end']:8.2f}x"
         )
-    print(f"JSON: {args.json}")
-    print(f"CSV:  {args.csv}")
+    print(f"JSON: {json_path}")
+    print(f"CSV:  {csv_path}")
     return 0
+
+
+def resolve_output_paths(args: argparse.Namespace, parser: argparse.ArgumentParser) -> tuple[Path, Path]:
+    if args.json is None and args.csv is None:
+        stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S.%fZ")
+        stem = f"pulpo-gpu-benchmark-{stamp}"
+        json_path, csv_path = Path(stem + ".json"), Path(stem + ".csv")
+    elif args.json is not None and args.csv is not None:
+        json_path, csv_path = args.json, args.csv
+    elif args.json is not None:
+        json_path, csv_path = args.json, args.json.with_suffix(".csv")
+    else:
+        csv_path, json_path = args.csv, args.csv.with_suffix(".json")
+
+    if json_path.resolve() == csv_path.resolve():
+        parser.error("JSON and CSV output paths must be different")
+    existing = [path for path in (json_path, csv_path) if path.exists()]
+    if existing and not args.overwrite:
+        parser.error(
+            "output already exists: " + ", ".join(str(path) for path in existing)
+            + "; choose new paths or pass --overwrite"
+        )
+    return json_path, csv_path
 
 
 if __name__ == "__main__":

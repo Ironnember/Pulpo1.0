@@ -12,6 +12,12 @@ from pulpo.gpu_acceleration import (
 )
 
 
+def require_torch():
+    if pytest is None:
+        raise RuntimeError("pytest is required to run GPU acceleration tests")
+    return pytest.importorskip("torch")
+
+
 def make_record(index: int, previous_hash: str) -> dict:
     body = {
         "event": "benchmark_seed",
@@ -42,7 +48,7 @@ def test_cpu_hash_reference_matches_stored_hashes():
 
 
 def test_gpu_verifier_requires_accelerator():
-    import torch
+    torch = require_torch()
 
     records = make_chain(2)
     if torch.cuda.is_available():
@@ -53,7 +59,7 @@ def test_gpu_verifier_requires_accelerator():
 
 
 def test_gpu_verifier_rejects_cpu_corruption_without_authority_side_effects():
-    import torch
+    torch = require_torch()
 
     if not torch.cuda.is_available():
         pytest.skip("CUDA GPU required for GPU-path corruption test")
@@ -63,7 +69,7 @@ def test_gpu_verifier_rejects_cpu_corruption_without_authority_side_effects():
     assert verify_audit_gpu(records) is False
 
 def test_triton_sha256_padding_boundaries():
-    import torch
+    torch = require_torch()
     from hashlib import sha256
 
     if not torch.cuda.is_available():
@@ -77,7 +83,7 @@ def test_triton_sha256_padding_boundaries():
 
 
 def test_eager_torch_hashes_mixed_sha256_padding_block_counts():
-    import torch
+    torch = require_torch()
     from hashlib import sha256
     from pulpo.gpu_acceleration import _sha256_batch_torch
 
@@ -91,7 +97,7 @@ def test_eager_torch_hashes_mixed_sha256_padding_block_counts():
 
 
 def test_fused_triton_matches_eager_torch_reference():
-    import torch
+    torch = require_torch()
 
     if not torch.cuda.is_available():
         pytest.skip("CUDA or ROCm GPU required for fused-kernel test")
@@ -103,7 +109,7 @@ def test_fused_triton_matches_eager_torch_reference():
 
 
 def test_triton_profiled_hashes_report_separate_stages():
-    import torch
+    torch = require_torch()
     from hashlib import sha256
     from pulpo.gpu_triton import triton_record_hashes_profiled
 

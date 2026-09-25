@@ -1,10 +1,12 @@
 # GPU audit hashing
 
-Pulpo's GPU path accelerates independent SHA-256 recomputation for canonical
-audit-record bodies. PyTorch computes hashes on the accelerator; the CPU still
-checks chain linkage, delta-root linkage, and the final verification result.
-GPU output must match the CPU reference before benchmark timings are accepted.
-Permit, policy, authority, replay, and durable-state decisions stay on the CPU.
+The optional GPU helper and benchmark accelerate independent SHA-256
+recomputation for canonical audit-record bodies. They are not currently wired
+into `GovernanceKernel.verify_audit()`, which remains on the normal CPU path.
+Within the standalone GPU helper, the CPU checks chain linkage, delta-root
+linkage, and the final result. GPU output must match the CPU reference before
+benchmark timings are accepted. Permit, policy, authority, replay, and durable
+state decisions stay on the CPU.
 
 ## Implementations
 
@@ -59,12 +61,25 @@ The visibility check should report a non-empty HIP version, `True`, and
 python scripts/benchmark_gpu.py --device rocm --implementation triton --sizes 1000,10000,100000
 ```
 
-This produces JSON and CSV results in the current directory. Timings are
+This produces uniquely timestamped JSON and CSV results in the current
+directory. Explicit output paths are also supported and existing files are
+protected from accidental replacement; pass `--overwrite` only when replacing
+them intentionally. Timings are
 reported only after exact CPU/GPU hash equality for each size. PyTorch's ROCm
 build uses the CUDA-named Python APIs internally; that naming does not mean the
 benchmark is using NVIDIA CUDA.
 
-With `--implementation triton`, the benchmark reports CPU canonicalization, host-side padding/allocation, host-to-device transfer, kernel-only GPU-event time, device-to-host result handling, and total wall-clock latency. It separately reports raw device-to-host copy time and CPU digest formatting time. The kernel timer starts after host preparation and transfer synchronization, so host-side idle gaps are excluded. The eager `--implementation torch` path reports end-to-end latency; its individual stages are shown as unavailable. To compare with the original eager path, add `--implementation torch` and use new output names. The optional `gpu` extra declares PyTorch but cannot select a ROCm wheel index
+With `--implementation triton`, the benchmark reports CPU canonicalization, host-side padding/allocation, host-to-device transfer, kernel-only GPU-event time, device-to-host result handling, and total wall-clock latency. It separately reports raw device-to-host copy time and CPU digest formatting time. The kernel timer starts after host preparation and transfer synchronization, so host-side idle gaps are excluded. The eager `--implementation torch` path reports end-to-end latency; its individual stages are shown as unavailable. To compare with the original eager path, add `--implementation torch` and use new output names.
+
+Aggregate independent run files without pooling their samples:
+
+```bash
+python scripts/aggregate_gpu_benchmarks.py run-01.json run-02.json run-03.json
+```
+
+The summary reports the median and range across run-level medians and requires
+matching GPU/backend/software metadata. The optional `gpu` extra declares
+PyTorch but cannot select a ROCm wheel index
 or install the matching host driver. Follow the official PyTorch or AMD install
 instructions for the chosen ROCm/PyTorch version before installing the extra.
 

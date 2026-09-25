@@ -239,6 +239,22 @@ class CommerceProofTests(unittest.TestCase):
             )
         self.assertEqual(0, registrar.calls)
 
+    def test_autorenew_choice_is_bound_into_request_and_order_identity(self):
+        disabled = self.assessment().order
+        enabled_request = DomainPurchaseRequest(
+            **(self.request.__dict__ | {"autorenew_enabled": True})
+        )
+        enabled = self.assessment(request=enabled_request).order
+
+        self.assertFalse(disabled.autorenew_enabled)
+        self.assertTrue(enabled.autorenew_enabled)
+        self.assertNotEqual(self.request.request_hash, enabled_request.request_hash)
+        self.assertNotEqual(disabled.order_hash, enabled.order_hash)
+
+        with self.assertRaisesRegex(CommerceViolation, "auto-renew choice"):
+            DomainPurchaseRequest(
+                **(self.request.__dict__ | {"autorenew_enabled": 1})
+            )
     def test_authorized_paid_delivered_accepted_and_valuable_are_separate(self):
         order = self.assessment().order
         kernel, budget, reservation, permit = self.authorized_execution(order)

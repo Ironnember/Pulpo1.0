@@ -1,6 +1,28 @@
 # Pulpo Current State
 
-Status date: 2026-09-04
+Status date: 2026-09-25
+
+## Reconciliation status
+
+The detailed reconciliation below was last verified on 2026-09-04 against
+`1ee8485c4599ad3266c8e90c5baad29309bc700c`. It is historical until its claims
+and priorities are rechecked against the latest protected `main`.
+
+The latest known protected `main` at this update is
+`ab08c5bbee1a2e6dc329ccea9c36db5e68bc02be` (2026-09-24; PR #259). PR #267 is
+still an open, approved feature branch at
+`82aadda668e2128f7673f70c3062ab054999f852`; its behavior is not canonical until
+repository admission completes.
+
+The previously listed auto-renew concern is being addressed in this candidate
+by binding an explicit Boolean choice (default `false`) into canonical purchase
+request and order hashes and carrying it into the provider request. This remains
+**Proposed** pending exact-head tests, review, and admission. The latest
+independent-authority acceptance status is tracked in issue #90; issue #268
+records a pending independent review for current-main custody proof run
+`36060733165` as last checked on 2026-09-25.
+
+## Prior reconciliation (historical; 2026-09-04)
 
 ## Canonical source
 

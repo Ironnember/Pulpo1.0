@@ -1,11 +1,12 @@
-"""Optional PyTorch accelerator support for Pulpo audit integrity verification.
+"""Optional PyTorch audit-record hashing and standalone verification helpers.
 
 The GPU path accelerates only the embarrassingly-parallel SHA-256 recomputation
 of canonical audit-record bodies. CPU-side chain linkage, delta-root linkage,
 and the final governance decision remain authoritative.
 
 This module intentionally has no hard dependency on PyTorch. Importing Pulpo
-without the optional GPU extra continues to work normally.
+without the optional GPU extra continues to work normally. These helpers are
+not wired into GovernanceKernel.verify_audit(), which remains CPU-only.
 """
 
 from __future__ import annotations
