@@ -10,7 +10,7 @@ from pulpo.commerce import (
     assess_quote,
     purchase_intent,
 )
-from pulpo.custody import SQLiteGovernanceCustody
+from pulpo.custody import CustodyViolation, SQLiteGovernanceCustody
 from pulpo.custody_domain import GovernedDomainAttemptCoordinator
 from pulpo.custody_reconcile import IndependentDomainReconciler
 from pulpo.kernel import GovernanceKernel, Policy
@@ -72,7 +72,7 @@ class NameComObserverTests(unittest.TestCase):
         self.addCleanup(lambda: Path(str(self.path) + "-wal").unlink(missing_ok=True))
         self.addCleanup(lambda: Path(str(self.path) + "-shm").unlink(missing_ok=True))
 
-    def stack(self):
+    def stack(self, *, provider_reference="namecom-order:321"):
         custody = SQLiteGovernanceCustody(
             self.path,
             signing_secret=b"namecom-observer-custody",
@@ -137,19 +137,35 @@ class NameComObserverTests(unittest.TestCase):
             executor_id="executor:namecom-v0",
         )
         head = custody.snapshot()
+        local_request_id = f"domain:{governed.attempt_id}:preflight:{'b' * 64}"
         custody.authorize_transmission(
             expected_epoch=head.epoch,
             expected_state_root=head.state_root,
             attempt_id=governed.attempt_id,
-            provider_request_id=f"domain:{governed.attempt_id}",
+            provider_request_id=local_request_id,
         )
         head = custody.snapshot()
-        custody.require_reconciliation(
-            expected_epoch=head.epoch,
-            expected_state_root=head.state_root,
-            attempt_id=governed.attempt_id,
-        )
-        return custody, budget, governed, order
+        if provider_reference is None:
+            custody.require_reconciliation(
+                expected_epoch=head.epoch,
+                expected_state_root=head.state_root,
+                attempt_id=governed.attempt_id,
+            )
+        else:
+            custody._transition_attempt(
+                expected_epoch=head.epoch,
+                expected_state_root=head.state_root,
+                attempt_id=governed.attempt_id,
+                required_states=frozenset({custody.REQUEST_TRANSMITTED}),
+                next_state=custody.RECONCILIATION_REQUIRED,
+                payload={
+                    "reason": "external_consequence_not_yet_verified",
+                    "provider_request_id": provider_reference,
+                    "provider_identity_source": "provider_response",
+                },
+                updates={"provider_request_id": provider_reference},
+            )
+        return custody, budget, governed, order, local_request_id
 
     def observer(self, custody, responses):
         transport = SequenceTransport(responses)
@@ -167,37 +183,44 @@ class NameComObserverTests(unittest.TestCase):
             transport,
         )
 
-    def test_exact_order_and_get_domain_readback_can_drive_verified_reconciliation(self):
-        custody, budget, governed, order = self.stack()
-        provider_order = registration_order(order.domain)
+    @staticmethod
+    def domain_record(domain):
+        return {
+            "domainName": domain,
+            "autorenewEnabled": False,
+            "locked": True,
+            "privacyEnabled": True,
+            "contacts": {},
+            "nameservers": ["ns1.name.com", "ns2.name.com"],
+            "locks": ["clientTransferProhibited"],
+            "renewalPrice": 24.0,
+        }
+
+    def test_exact_provider_order_id_and_domain_readback_drive_verified_reconciliation(self):
+        custody, budget, governed, order, _ = self.stack()
+        provider_order = registration_order(order.domain, order_id=321)
         observer, transport = self.observer(
             custody,
-            [
-                response({"totalCount": 1, "orders": [provider_order]}),
-                response(
-                    {
-                        "domainName": order.domain,
-                        "autorenewEnabled": False,
-                        "locked": True,
-                        "privacyEnabled": True,
-                        "contacts": {},
-                        "nameservers": ["ns1.name.com", "ns2.name.com"],
-                        "locks": ["clientTransferProhibited"],
-                        "renewalPrice": 24.0,
-                    }
-                ),
-            ],
+            [response(provider_order), response(self.domain_record(order.domain))],
         )
         observation = observer.observe(governed, order)
 
+        self.assertEqual("namecom-order:321", observation.provider_request_id)
         self.assertEqual("succeeded", observation.provider_request_status)
         self.assertTrue(observation.registered)
         self.assertEqual("namecom-order:321", observation.payment_id)
         self.assertEqual(2_000, observation.charged_cents)
         self.assertEqual("owner://iron-ember", observation.owner_ref)
         self.assertTrue(observation.privacy_enabled)
+        self.assertFalse(observation.auto_renew_enabled)
         self.assertEqual("registered", observation.dns_state)
-        self.assertEqual(2, len(transport.calls))
+        self.assertEqual(
+            [
+                "https://api.dev.name.com/core/v1/orders/321",
+                f"https://api.dev.name.com/core/v1/domains/{order.domain}",
+            ],
+            [call[1] for call in transport.calls],
+        )
 
         result = IndependentDomainReconciler(
             custody,
@@ -208,12 +231,89 @@ class NameComObserverTests(unittest.TestCase):
         self.assertEqual(2_000, budget.spent_cents)
         self.assertEqual(0, budget.reserved_cents)
 
+    def test_missing_provider_native_reference_stays_unknown_without_provider_lookup(self):
+        custody, budget, governed, order, local_request_id = self.stack(
+            provider_reference=None
+        )
+        observer, transport = self.observer(custody, [])
+        observation = observer.observe(governed, order)
+
+        self.assertEqual(local_request_id, observation.provider_request_id)
+        self.assertEqual("unknown", observation.provider_request_status)
+        self.assertIsNone(observation.payment_id)
+        self.assertEqual([], transport.calls)
+
+        result = IndependentDomainReconciler(
+            custody,
+            budget,
+            observer_id="observer:namecom-core-readback",
+        ).reconcile(governed, order, observation)
+        self.assertEqual("unresolved", result.outcome)
+        self.assertEqual("provider_status_unknown", result.reason)
+        self.assertEqual(2_000, budget.reserved_cents)
+
+    def test_provider_order_id_mismatch_cannot_manufacture_success(self):
+        custody, _, governed, order, _ = self.stack(provider_reference="namecom-order:322")
+        observer, transport = self.observer(
+            custody,
+            [response(registration_order(order.domain, order_id=321))],
+        )
+        with self.assertRaisesRegex(
+            CustodyViolation,
+            "namecom_observer_provider_order_id_mismatch",
+        ):
+            observer.observe(governed, order)
+        self.assertEqual(1, len(transport.calls))
+
+    def test_provider_order_object_mismatch_cannot_manufacture_success(self):
+        custody, _, governed, order, _ = self.stack()
+        wrong = registration_order("wrong.example", order_id=321)
+        observer, transport = self.observer(custody, [response(wrong)])
+        with self.assertRaisesRegex(
+            CustodyViolation,
+            "namecom_observer_provider_order_object_mismatch",
+        ):
+            observer.observe(governed, order)
+        self.assertEqual(1, len(transport.calls))
+
+    def test_provider_order_type_mismatch_cannot_manufacture_success(self):
+        custody, _, governed, order, _ = self.stack()
+        wrong = registration_order(order.domain, order_id=321)
+        wrong["orderItems"][0]["type"] = "renewal"
+        observer, transport = self.observer(custody, [response(wrong)])
+        with self.assertRaisesRegex(
+            CustodyViolation,
+            "namecom_observer_provider_order_object_mismatch",
+        ):
+            observer.observe(governed, order)
+        self.assertEqual(1, len(transport.calls))
+
+    def test_exact_provider_order_not_found_stays_unresolved(self):
+        custody, budget, governed, order, _ = self.stack()
+        observer, transport = self.observer(
+            custody,
+            [response({"message": "not found"}, status=404)],
+        )
+        observation = observer.observe(governed, order)
+        self.assertEqual("not_found", observation.provider_request_status)
+        self.assertFalse(observation.registered is True)
+        self.assertEqual(1, len(transport.calls))
+
+        result = IndependentDomainReconciler(
+            custody,
+            budget,
+            observer_id="observer:namecom-core-readback",
+        ).reconcile(governed, order, observation)
+        self.assertEqual("unresolved", result.outcome)
+        self.assertEqual("provider_request_not_found", result.reason)
+        self.assertEqual(2_000, budget.reserved_cents)
+
     def test_success_order_without_domain_readback_stays_unknown(self):
-        custody, budget, governed, order = self.stack()
+        custody, budget, governed, order, _ = self.stack()
         observer, _ = self.observer(
             custody,
             [
-                response({"totalCount": 1, "orders": [registration_order(order.domain)]}),
+                response(registration_order(order.domain, order_id=321)),
                 response({"message": "not found"}, status=404),
             ],
         )
@@ -229,57 +329,18 @@ class NameComObserverTests(unittest.TestCase):
         self.assertEqual("unresolved", result.outcome)
         self.assertEqual(2_000, budget.reserved_cents)
 
-    def test_ambiguous_multiple_registration_orders_never_guess_attribution(self):
-        custody, budget, governed, order = self.stack()
+    def test_failed_exact_order_with_no_domain_readback_is_known_failure(self):
+        custody, budget, governed, order, _ = self.stack()
         observer, _ = self.observer(
             custody,
             [
                 response(
-                    {
-                        "totalCount": 2,
-                        "orders": [
-                            registration_order(order.domain, order_id=321),
-                            registration_order(order.domain, order_id=322),
-                        ],
-                    }
-                ),
-                response(
-                    {
-                        "domainName": order.domain,
-                        "autorenewEnabled": False,
-                        "locked": True,
-                        "privacyEnabled": True,
-                        "contacts": {},
-                        "nameservers": [],
-                        "locks": [],
-                        "renewalPrice": 24.0,
-                    }
-                ),
-            ],
-        )
-        observation = observer.observe(governed, order)
-        self.assertEqual("unknown", observation.provider_request_status)
-        self.assertIsNone(observation.payment_id)
-        self.assertIsNone(observation.charged_cents)
-
-        result = IndependentDomainReconciler(
-            custody,
-            budget,
-            observer_id="observer:namecom-core-readback",
-        ).reconcile(governed, order, observation)
-        self.assertEqual("unresolved", result.outcome)
-        self.assertEqual(2_000, budget.reserved_cents)
-
-    def test_failed_registration_order_with_no_domain_readback_is_known_failure(self):
-        custody, budget, governed, order = self.stack()
-        observer, _ = self.observer(
-            custody,
-            [
-                response(
-                    {
-                        "totalCount": 1,
-                        "orders": [registration_order(order.domain, status="failed", total_capture=0.0)],
-                    }
+                    registration_order(
+                        order.domain,
+                        order_id=321,
+                        status="failed",
+                        total_capture=0.0,
+                    )
                 ),
                 response({"message": "not found"}, status=404),
             ],
@@ -295,31 +356,7 @@ class NameComObserverTests(unittest.TestCase):
             observer_id="observer:namecom-core-readback",
         ).reconcile(governed, order, observation)
         self.assertEqual("failure", result.outcome)
-        # V0 deliberately does not reopen budget on failure until an explicit
-        # no-charge release transition is separately governed.
         self.assertEqual(2_000, budget.reserved_cents)
-
-    def test_non_registration_order_for_same_domain_is_ignored(self):
-        custody, budget, governed, order = self.stack()
-        unrelated = registration_order(order.domain)
-        unrelated["orderItems"][0]["type"] = "renewal"
-        observer, _ = self.observer(
-            custody,
-            [
-                response({"totalCount": 1, "orders": [unrelated]}),
-                response({"message": "not found"}, status=404),
-            ],
-        )
-        observation = observer.observe(governed, order)
-        self.assertEqual("unknown", observation.provider_request_status)
-        self.assertIsNone(observation.payment_id)
-
-        result = IndependentDomainReconciler(
-            custody,
-            budget,
-            observer_id="observer:namecom-core-readback",
-        ).reconcile(governed, order, observation)
-        self.assertEqual("unresolved", result.outcome)
 
 
 if __name__ == "__main__":
