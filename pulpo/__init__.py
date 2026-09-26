@@ -8,10 +8,18 @@ from .authority import (
     P256ApprovalVerifier,
 )
 from .authority_client import AuthorityApprovalRequest, AuthorityClient, AuthorityPoll
+from .ceremony import (
+    CeremonyProof,
+    CeremonyTrust,
+    CeremonyVerification,
+    CeremonyVerifier,
+    expected_ceremony_challenge,
+)
 from .commerce import SQLiteBudgetAccount
 from .kernel import (
     AgentGrant,
     AuthorityTrustError,
+    CeremonyTrustError,
     Decision,
     GovernanceKernel,
     Intent,
@@ -48,6 +56,11 @@ __all__ = [
     "AuthorityTrust",
     "AuthorityTrustError",
     "AuthorizationAttempt",
+    "CeremonyProof",
+    "CeremonyTrust",
+    "CeremonyTrustError",
+    "CeremonyVerification",
+    "CeremonyVerifier",
     "Decision",
     "Ed25519ApprovalVerifier",
     "EvidenceSnapshot",
@@ -68,4 +81,5 @@ __all__ = [
     "TargetObligationStatus",
     "TargetResolution",
     "evaluate_locked_target_with_approval",
+    "expected_ceremony_challenge",
 ]
