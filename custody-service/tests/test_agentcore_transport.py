@@ -93,7 +93,7 @@ class AgentCoreGatewayHttpTransportTests(unittest.TestCase):
             side_effect=AssertionError("network must not be called"),
         ):
             with self.assertRaisesRegex(AgentCoreProviderError, "outside custody scope"):
-                self.transport().call_tool(other)
+                self.transport().call_tool(other, idempotency_key="attempt-test")
 
     def test_request_shape_matches_current_agentcore_mcp_contract(self):
         captured = {}
@@ -106,7 +106,7 @@ class AgentCoreGatewayHttpTransportTests(unittest.TestCase):
                 json.dumps(
                     {
                         "jsonrpc": "2.0",
-                        "id": f"pulpo-{call.call_hash[:24]}",
+                        "id": "pulpo-attempt-test",
                         "result": {"content": [{"type": "text", "text": "ok"}]},
                     }
                 ).encode()
@@ -116,7 +116,7 @@ class AgentCoreGatewayHttpTransportTests(unittest.TestCase):
             "pulpo_custody_service.agentcore_transport.urllib_request.urlopen",
             side_effect=fake_urlopen,
         ):
-            claim = self.transport().call_tool(call)
+            claim = self.transport().call_tool(call, idempotency_key="attempt-test")
 
         request = captured["request"]
         self.assertEqual("POST", request.get_method())
@@ -129,6 +129,7 @@ class AgentCoreGatewayHttpTransportTests(unittest.TestCase):
         self.assertEqual("update_record", headers["mcp-name"])
         body = json.loads(request.data)
         self.assertEqual("2.0", body["jsonrpc"])
+        self.assertEqual("pulpo-attempt-test", body["id"])
         self.assertEqual("tools/call", body["method"])
         self.assertEqual("update_record", body["params"]["name"])
         self.assertEqual(call.arguments, body["params"]["arguments"])
@@ -148,7 +149,7 @@ class AgentCoreGatewayHttpTransportTests(unittest.TestCase):
             side_effect=urllib_error.URLError(f"sensitive {FAKE_TOKEN}"),
         ) as urlopen:
             with self.assertRaises(AgentCoreExternalRealityUnknown) as raised:
-                self.transport().call_tool(call)
+                self.transport().call_tool(call, idempotency_key="attempt-test")
 
         self.assertEqual("EXTERNAL_REALITY_UNKNOWN", str(raised.exception))
         self.assertEqual(call.call_hash, raised.exception.call_hash)
@@ -166,7 +167,7 @@ class AgentCoreGatewayHttpTransportTests(unittest.TestCase):
             return_value=response,
         ):
             with self.assertRaisesRegex(AgentCoreProviderError, "JSON-RPC error"):
-                self.transport().call_tool(call)
+                self.transport().call_tool(call, idempotency_key="attempt-test")
 
     def test_malformed_or_incomplete_success_is_unknown(self):
         call = self.call()
@@ -180,7 +181,7 @@ class AgentCoreGatewayHttpTransportTests(unittest.TestCase):
                     return_value=FakeResponse(payload),
                 ):
                     with self.assertRaises(AgentCoreExternalRealityUnknown):
-                        self.transport().call_tool(call)
+                        self.transport().call_tool(call, idempotency_key="attempt-test")
 
     def test_sse_response_is_provider_claim_only(self):
         call = self.call()
@@ -189,7 +190,7 @@ class AgentCoreGatewayHttpTransportTests(unittest.TestCase):
             "pulpo_custody_service.agentcore_transport.urllib_request.urlopen",
             return_value=FakeResponse(raw, "text/event-stream"),
         ):
-            claim = self.transport().call_tool(call)
+            claim = self.transport().call_tool(call, idempotency_key="attempt-test")
         self.assertEqual("provider_claim", claim["claim_class"])
         self.assertEqual(call.call_hash, claim["call_hash"])
 
