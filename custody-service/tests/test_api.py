@@ -68,6 +68,7 @@ class FakeObserver:
             receipt_hash="d" * 64,
             privacy_enabled=True,
             dns_state="registered",
+            auto_renew_enabled=order.auto_renew_enabled,
         )
 
 
@@ -232,8 +233,6 @@ class CustodyServiceApiTests(unittest.TestCase):
         self.assertEqual(0, service.budget.reserved_cents)
         self.assertEqual(0, service.custody.snapshot().epoch)
 
-        # The former direct approval-challenge route is not part of the hostile
-        # worker surface either.
         challenge = client.post(
             "/v1/domain-approval-challenges",
             json={"order": external_order},
