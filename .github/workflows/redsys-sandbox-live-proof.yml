@@ -1,0 +1,38 @@
+name: Redsys Sandbox Proof Preflight
+
+on:
+  push:
+    branches:
+      - proof/redsys-sandbox-governance-v0
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  preflight:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install reviewed crypto dependency
+        run: python -m pip install '.[authority]'
+      - name: Run exact Redsys governance matrix
+        run: python -W error -m unittest tests.test_redsys_sandbox_governance -v
+      - name: Compile exact live runner
+        run: python -m py_compile scripts/run_redsys_sandbox_live_v0.py
+      - name: Assert hosted CI cannot be the live payment executor
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          workflow = Path(".github/workflows/redsys-sandbox-live-proof.yml").read_text()
+          needle = "python scripts/" + "run_redsys_sandbox_live_v0.py"
+          if needle in workflow:
+              raise SystemExit("hosted CI must not execute the live Redsys runner")
+          PY
