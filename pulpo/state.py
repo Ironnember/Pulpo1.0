@@ -68,7 +68,8 @@ class KernelState(Protocol):
 
 class InMemoryKernelState:
     def __init__(self) -> None:
-        self._issued: dict[str, tuple[str, int]] = {}
+        self._issued: dict[str, str] = {}
+        self._permit_expiry: dict[str, int] = {}
         self._spent: set[str] = set()
         self._approval_ids: set[str] = set()
         self._approval_nonces: set[str] = set()
@@ -94,7 +95,8 @@ class InMemoryKernelState:
             self.append("approval_verified", approval.audit_payload, timestamp_ns)
         if expires_at_ns <= timestamp_ns:
             raise ValueError("permit expiry must be after issue time")
-        self._issued[permit] = (intent_hash, expires_at_ns)
+        self._issued[permit] = intent_hash
+        self._permit_expiry[permit] = expires_at_ns
         self.append(
             "decision",
             {
@@ -108,8 +110,13 @@ class InMemoryKernelState:
         return None
 
     def bind_permit_to_directive(self, permit: str, intent_hash: str, binding: DirectivePermitBinding, timestamp_ns: int) -> None:
-        issued = self._issued.get(permit)
-        if issued is None or issued[0] != intent_hash or permit in self._spent or timestamp_ns >= issued[1]:
+        expires_at_ns = self._permit_expiry.get(permit)
+        if (
+            self._issued.get(permit) != intent_hash
+            or permit in self._spent
+            or expires_at_ns is None
+            or timestamp_ns >= expires_at_ns
+        ):
             raise ValueError("permit unavailable for directive binding")
         if permit in self._permit_directives: raise ValueError("permit directive binding is immutable")
         if self.directive_status(binding.directive_id, binding.version, binding.directive_hash) != "active": raise ValueError("directive is not active for permit binding")
@@ -118,12 +125,10 @@ class InMemoryKernelState:
         self.append("permit_bound_to_directive", {"intent_hash": intent_hash, **binding.audit_payload()}, timestamp_ns)
 
     def consume_permit(self, permit: str, intent_hash: str, timestamp_ns: int) -> bool:
-        issued = self._issued.get(permit)
-        expires_at_ns = issued[1] if issued is not None else None
+        valid = self._issued.get(permit) == intent_hash and permit not in self._spent
+        expires_at_ns = self._permit_expiry.get(permit)
         valid = (
-            issued is not None
-            and issued[0] == intent_hash
-            and permit not in self._spent
+            valid
             and expires_at_ns is not None
             and timestamp_ns < expires_at_ns
         )
