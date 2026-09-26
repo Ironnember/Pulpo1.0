@@ -80,7 +80,12 @@ class SemanticAuthorityCorruptionTests(unittest.TestCase):
             self.assertEqual("require_approval", decision.outcome)
             self.assertIsNone(decision.permit)
 
-        self.assertFalse(\n            any(\n                record["event"] == "decision" and record["payload"].get("outcome") == "allow"\n                for record in self.kernel.audit\n            )\n        )
+        self.assertFalse(
+            any(
+                record["event"] == "decision" and record["payload"].get("outcome") == "allow"
+                for record in self.kernel.audit
+            )
+        )
 
 
 if __name__ == "__main__":
