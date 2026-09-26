@@ -57,15 +57,26 @@ class ForkedStateReplayTests(unittest.TestCase):
 
             self.assertTrue(canonical_kernel.verify_audit())
             self.assertTrue(fork_kernel.verify_audit())
-            self.assertTrue(canonical_kernel.consume(decision.permit, intent))
 
+            canonical_consumed = canonical_kernel.consume(decision.permit, intent)
             now[0] += 1
+            fork_consumed = fork_kernel.consume(decision.permit, intent)
+
+            # Both branches must remain structurally valid even after divergence;
+            # otherwise this would be corruption, not a state-lineage fork.
+            canonical_audit_valid = canonical_kernel.verify_audit()
+            fork_audit_valid = fork_kernel.verify_audit()
+            self.assertTrue(canonical_audit_valid)
+            self.assertTrue(fork_audit_valid)
 
             # Constitutional expectation: one-use must mean one consequence
             # across the authority lineage, not one use per cloned database.
             self.assertFalse(
-                fork_kernel.consume(decision.permit, intent),
-                "forked durable state accepted a permit already consumed in a sibling lineage",
+                canonical_consumed and fork_consumed,
+                (
+                    "forked durable states both consumed the same one-use permit "
+                    "while each divergent audit chain remained valid"
+                ),
             )
 
             canonical_state.close()
