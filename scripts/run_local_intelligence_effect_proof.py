@@ -19,7 +19,7 @@ from dataclasses import asdict
 from hashlib import sha256
 import json
 import os
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 import platform
 import re
 import shutil
@@ -74,12 +74,23 @@ def _seatbelt_string(value: Path) -> str:
     return text.replace("\\", "\\\\").replace('"', '\\"')
 
 
-def build_seatbelt_profile(runtime_root: Path, protected_read_roots: tuple[Path, ...] = ()) -> str:
+def build_seatbelt_profile(
+    runtime_root: Path,
+    protected_read_roots: tuple[Path, ...] = (),
+    *,
+    allow_network: bool = False,
+) -> str:
+    """Build a fail-closed local intelligence profile.
+
+    Prompt or repository content is untrusted. Network egress is therefore
+    denied by default and can only be widened by an explicit PREPARE-time
+    opt-in that becomes part of the frozen profile hash.
+    """
     runtime = _seatbelt_string(runtime_root)
     lines = [
         "(version 1)",
         "(allow default)",
-        "(allow network*)",
+        "(allow network*)" if allow_network else "(deny network*)",
         "(deny file-write*)",
         f'(allow file-write* (subpath "{runtime}"))',
     ]
@@ -123,13 +134,21 @@ def build_spawn_argv(seatbelt_path: Path, profile_path: Path, codex_argv: tuple[
     return (str(seatbelt_path), "-f", str(profile_path), *codex_argv)
 
 
-def sanitize_environment(source: dict[str, str], runtime_root: Path, *, codex_home: Path | None = None) -> dict[str, str]:
+def sanitize_environment(
+    source: dict[str, str],
+    runtime_root: Path,
+    *,
+    codex_home: Path | None = None,
+    home_override: Path | None = None,
+) -> dict[str, str]:
     keep = {"HOME", "USER", "LOGNAME", "PATH", "SHELL", "LANG", "LC_ALL", "LC_CTYPE", "TERM"}
     env = {key: value for key, value in source.items() if key in keep and value}
-    env["TMPDIR"] = str(runtime_root)
+    env["TMPDIR"] = PurePosixPath(str(runtime_root)).as_posix()
     env["PYTHONDONTWRITEBYTECODE"] = "1"
+    if home_override is not None:
+        env["HOME"] = str(home_override)
     if codex_home is not None:
-        env["CODEX_HOME"] = str(codex_home)
+        env["CODEX_HOME"] = PurePosixPath(str(codex_home)).as_posix()
     return env
 
 
@@ -334,6 +353,8 @@ def _load_plan(path: Path) -> dict[str, object]:
 
 
 def _prepare(args: argparse.Namespace) -> int:
+    if args.allow_file_auth_projection:
+        raise ProofError("file_auth_projection_supported_only_by_v2")
     repo_root = Path(_git(Path.cwd(), "rev-parse", "--show-toplevel")).resolve()
     proof_source_sha = _git(repo_root, "rev-parse", "HEAD")
     if _git(repo_root, "status", "--porcelain"):
@@ -375,6 +396,7 @@ def _prepare(args: argparse.Namespace) -> int:
     profile_text = build_seatbelt_profile(
         runtime_root,
         protected_read_roots=(pulpo_home, Path.home() / ".ssh"),
+        allow_network=args.allow_model_network,
     )
     profile_path.write_text(profile_text, encoding="utf-8")
     os.chmod(profile_path, 0o600)
@@ -438,6 +460,13 @@ def _prepare(args: argparse.Namespace) -> int:
         "bound_resource": bound_resource,
         "prompt": args.prompt,
         "timeout_seconds": args.timeout,
+        "allow_model_network": args.allow_model_network,
+        "home_override": None,
+        "prompt_injection_posture": {
+            "network": "explicitly_allowed" if args.allow_model_network else "denied_default",
+            "protected_read_roots": [str(pulpo_home), str(Path.home() / ".ssh")],
+            "semantic_prompt_filter_is_authority": False,
+        },
         "prepared_at_ns": time.time_ns(),
     }
     plan = freeze_plan(plan_body)
@@ -457,6 +486,7 @@ def _prepare(args: argparse.Namespace) -> int:
         "seatbelt_sha256": seatbelt_sha,
         "seatbelt_profile_sha256": seatbelt_profile_sha,
         "expires_at_ns": envelope.expires_at_ns,
+        "network_posture": "explicitly_allowed" if args.allow_model_network else "denied_default",
         "next_boundary": "explicit_fire_exact_envelope_hash",
     }, indent=2, sort_keys=True))
     return 0
@@ -513,7 +543,14 @@ def _revalidate_plan(plan_path: Path, plan: dict[str, object], expected_envelope
     if not state_path.is_file():
         raise ProofError("canonical_local_state_missing_at_fire")
     codex_home = Path(str(plan["codex_home"])).resolve()
-    env = sanitize_environment(dict(os.environ), runtime_root, codex_home=codex_home)
+    home_override_raw = plan.get("home_override")
+    home_override = Path(str(home_override_raw)).resolve() if home_override_raw else None
+    env = sanitize_environment(
+        dict(os.environ),
+        runtime_root,
+        codex_home=codex_home,
+        home_override=home_override,
+    )
     observed_version = _version_probe(
         seatbelt,
         profile_path,
@@ -755,6 +792,16 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--timeout", type=int, default=180)
     parser.add_argument("--expiry-seconds", type=int, default=DEFAULT_EXPIRY_SECONDS)
     parser.add_argument("--prompt", default=DEFAULT_PROMPT)
+    parser.add_argument(
+        "--allow-model-network",
+        action="store_true",
+        help="Explicitly widen the frozen local-intelligence profile to allow network egress",
+    )
+    parser.add_argument(
+        "--allow-file-auth-projection",
+        action="store_true",
+        help="V2 only: explicitly allow staging file-based Codex auth into the disposable runtime",
+    )
     parser.add_argument("--plan", help="Prepared plan.json (fire only)")
     parser.add_argument("--expected-envelope-hash", help="Exact hash echoed by the operator (fire only)")
     args = parser.parse_args(argv)
@@ -768,8 +815,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     else:
         if not args.plan or not args.expected_envelope_hash:
             parser.error("--fire requires --plan and --expected-envelope-hash")
-        if args.target_sha or args.codex:
-            parser.error("--target-sha/--codex are prepare-only; fire reuses the frozen plan")
+        if args.target_sha or args.codex or args.allow_model_network or args.allow_file_auth_projection:
+            parser.error("prepare-time capability flags cannot be changed at fire; fire reuses the frozen plan")
     return args
 
 

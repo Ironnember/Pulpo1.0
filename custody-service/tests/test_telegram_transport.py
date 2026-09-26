@@ -114,6 +114,15 @@ class TelegramBotApiTransportTests(unittest.TestCase):
             with self.assertRaises(TelegramExternalRealityUnknown):
                 self.transport().send_message(message)
 
+    def test_oversized_provider_response_is_external_reality_unknown(self) -> None:
+        message = TelegramOutboundMessage(123456, 123, "governed hello")
+        with patch(
+            "pulpo_custody_service.telegram_transport.urllib_request.urlopen",
+            return_value=FakeResponse(b"x" * 1_000_001),
+        ):
+            with self.assertRaises(TelegramExternalRealityUnknown):
+                self.transport().send_message(message)
+
     def test_malformed_success_response_is_external_reality_unknown(self) -> None:
         message = TelegramOutboundMessage(123456, 123, "governed hello")
         for payload in (

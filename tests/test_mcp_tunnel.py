@@ -48,10 +48,13 @@ class MCPTunnelBindingTests(unittest.TestCase):
                     validate_tunnel_id(value)
 
     def test_stdio_command_targets_only_existing_projection(self):
-        command = build_stdio_command(
-            "/tmp/pulpo data/mcp-read-snapshot.json",
-            python_executable="/usr/bin/python3",
-        )
+        with tempfile.TemporaryDirectory() as directory:
+            snapshot = Path(directory) / "mcp-read-snapshot.json"
+            self.write_snapshot(snapshot)
+            command = build_stdio_command(
+                snapshot,
+                python_executable="/usr/bin/python3",
+            )
         self.assertIn("/usr/bin/python3", command)
         self.assertIn("pulpo.mcp_plugin", command)
         self.assertIn("--snapshot", command)

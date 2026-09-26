@@ -12,7 +12,19 @@ from typing import Mapping
 from urllib import error as urllib_error
 from urllib import request as urllib_request
 
+from pulpo.resource_limits import ResourceLimitError, load_bounded_json
 from pulpo.telegram import TelegramOutboundMessage
+from pulpo.transport import secure_urlopen
+
+_ORIGINAL_URLOPEN = urllib_request.urlopen
+
+
+def urlopen(request, *, timeout):
+    # Keep the existing test injection seam while production uses the
+    # explicit Pulpo transport policy.
+    if urllib_request.urlopen is not _ORIGINAL_URLOPEN:
+        return urllib_request.urlopen(request, timeout=timeout)
+    return secure_urlopen(request, timeout=timeout)
 
 
 TELEGRAM_API_ORIGIN = "https://api.telegram.org"
@@ -132,7 +144,7 @@ class TelegramBotApiTransport:
             method="POST",
         )
         try:
-            with urllib_request.urlopen(request, timeout=TELEGRAM_TIMEOUT_SECONDS) as response:
+            with urlopen(request, timeout=TELEGRAM_TIMEOUT_SECONDS) as response:
                 raw = response.read(_MAX_RESPONSE_BYTES + 1)
         except (urllib_error.HTTPError, urllib_error.URLError, TimeoutError, OSError):
             raise TelegramExternalRealityUnknown(message.message_hash) from None
@@ -140,8 +152,13 @@ class TelegramBotApiTransport:
         if len(raw) > _MAX_RESPONSE_BYTES:
             raise TelegramExternalRealityUnknown(message.message_hash)
         try:
-            decoded = json.loads(raw)
-        except (UnicodeDecodeError, json.JSONDecodeError, TypeError):
+            decoded = load_bounded_json(
+                raw,
+                max_bytes=_MAX_RESPONSE_BYTES,
+                max_depth=16,
+                max_items=2_048,
+            )
+        except (UnicodeDecodeError, json.JSONDecodeError, TypeError, ResourceLimitError):
             raise TelegramExternalRealityUnknown(message.message_hash) from None
         if not isinstance(decoded, dict) or decoded.get("ok") is not True:
             raise TelegramProviderError("telegram provider rejected request")
