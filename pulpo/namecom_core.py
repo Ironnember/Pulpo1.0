@@ -28,6 +28,12 @@ from urllib.parse import quote, urlencode
 from urllib.request import Request, urlopen
 
 from .commerce import DomainPurchaseOrder, RegistrarResult
+from .resource_limits import ResourceLimitError, load_bounded_json
+
+
+MAX_NAMECOM_RESPONSE_BYTES = 1_048_576
+MAX_NAMECOM_JSON_DEPTH = 24
+MAX_NAMECOM_JSON_ITEMS = 4_096
 
 
 class NameComViolation(RuntimeError):
@@ -81,13 +87,13 @@ class UrllibNameComTransport:
                 return NameComResponse(
                     int(response.status),
                     {key: value for key, value in response.headers.items()},
-                    response.read(),
+                    response.read(MAX_NAMECOM_RESPONSE_BYTES + 1),
                 )
         except HTTPError as exc:
             return NameComResponse(
                 int(exc.code),
                 {key: value for key, value in exc.headers.items()} if exc.headers else {},
-                exc.read(),
+                exc.read(MAX_NAMECOM_RESPONSE_BYTES + 1),
             )
         except (URLError, TimeoutError, OSError) as exc:
             # The caller must treat transport ambiguity after a write
@@ -165,10 +171,21 @@ class NameComCoreClient:
             headers,
             body,
         )
+        if len(response.body) > MAX_NAMECOM_RESPONSE_BYTES:
+            raise NameComViolation("namecom_response_too_large")
         try:
-            decoded = json.loads(response.body.decode()) if response.body else {}
-        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-            raise NameComViolation("namecom_response_not_json") from exc
+            decoded = (
+                load_bounded_json(
+                    response.body,
+                    max_bytes=MAX_NAMECOM_RESPONSE_BYTES,
+                    max_depth=MAX_NAMECOM_JSON_DEPTH,
+                    max_items=MAX_NAMECOM_JSON_ITEMS,
+                )
+                if response.body
+                else {}
+            )
+        except (UnicodeDecodeError, json.JSONDecodeError, ResourceLimitError) as exc:
+            raise NameComViolation("namecom_response_not_json_or_out_of_bounds") from exc
         if not isinstance(decoded, dict):
             raise NameComViolation("namecom_response_shape_invalid")
         if not 200 <= response.status < 300:

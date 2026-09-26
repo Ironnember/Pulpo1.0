@@ -153,6 +153,15 @@ class AuthorityApiTests(unittest.TestCase):
         )
         self.assertEqual(403, malformed.status_code)
 
+    def test_oversized_request_body_is_rejected_before_validation(self):
+        oversized = b'{"resource":"' + (b"x" * 300_000) + b'"}'
+        response = self.client.post(
+            "/v1/approval-requests",
+            content=oversized,
+            headers={"Content-Type": "application/json"},
+        )
+        self.assertEqual(413, response.status_code)
+
     def test_http_surface_has_no_denial_or_credential_administration_route(self):
         paths = {route.path for route in self.client.app.routes}
         self.assertNotIn("/human/approval/{request_id}/deny", paths)
