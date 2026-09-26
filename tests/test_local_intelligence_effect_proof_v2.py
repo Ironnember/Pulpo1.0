@@ -1,4 +1,5 @@
 from pathlib import Path
+import os
 import tempfile
 import unittest
 
@@ -57,7 +58,8 @@ class LocalIntelligenceEffectProofV2Tests(unittest.TestCase):
             self.assertEqual(staged.parent, disposable)
             self.assertFalse(staged.is_symlink())
             self.assertEqual(staged.read_text(encoding="utf-8"), auth.read_text(encoding="utf-8"))
-            self.assertEqual(staged.stat().st_mode & 0o777, 0o600)
+            if os.name == "posix":
+                self.assertEqual(staged.stat().st_mode & 0o777, 0o600)
             staged.unlink()
 
     def test_fire_rejects_auth_source_change_after_prepare(self):
