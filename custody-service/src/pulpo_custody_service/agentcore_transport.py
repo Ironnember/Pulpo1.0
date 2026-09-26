@@ -60,7 +60,6 @@ class AgentCoreGatewayHttpTransport:
             raise AgentCoreTransportConfigError("AgentCore gateway ARN is invalid")
         if not isinstance(bearer_token, str) or not bearer_token or any(c.isspace() for c in bearer_token):
             raise AgentCoreTransportConfigError("AgentCore bearer token is invalid")
-        # Reuse canonical validation without retaining an action argument.
         probe = AgentCoreGatewayCall.create(
             gateway_arn,
             gateway_endpoint,
@@ -91,18 +90,25 @@ class AgentCoreGatewayHttpTransport:
             bearer_token=_required("PULPO_AGENTCORE_BEARER_TOKEN", env),
         )
 
-    def call_tool(self, call: AgentCoreGatewayCall) -> Mapping[str, object]:
+    def call_tool(
+        self,
+        call: AgentCoreGatewayCall,
+        *,
+        idempotency_key: str,
+    ) -> Mapping[str, object]:
         if not isinstance(call, AgentCoreGatewayCall):
             raise AgentCoreProviderError("AgentCore call object invalid")
         if call.gateway_arn != self.expected_gateway_arn:
             raise AgentCoreProviderError("AgentCore gateway ARN is outside custody scope")
         if call.gateway_endpoint != self.expected_gateway_endpoint:
             raise AgentCoreProviderError("AgentCore gateway endpoint is outside custody scope")
+        if not isinstance(idempotency_key, str) or not idempotency_key:
+            raise AgentCoreProviderError("AgentCore custody idempotency key missing")
 
         payload = json.dumps(
             {
                 "jsonrpc": "2.0",
-                "id": f"pulpo-{call.call_hash[:24]}",
+                "id": f"pulpo-{idempotency_key[:24]}",
                 "method": "tools/call",
                 "params": {
                     "name": call.tool_name,
@@ -144,8 +150,6 @@ class AgentCoreGatewayHttpTransport:
         if len(raw) > _MAX_RESPONSE_BYTES:
             raise AgentCoreExternalRealityUnknown(call.call_hash)
 
-        # The gateway may negotiate JSON or SSE. We deliberately do not treat
-        # either response as independent proof of the downstream consequence.
         content_type = ""
         try:
             content_type = response.headers.get("Content-Type", "")
@@ -174,6 +178,7 @@ class AgentCoreGatewayHttpTransport:
             "gateway_arn": call.gateway_arn,
             "tool_name": call.tool_name,
             "call_hash": call.call_hash,
+            "request_id": f"pulpo-{idempotency_key[:24]}",
             "response_sha256": sha256(raw).hexdigest(),
             "claim_class": "provider_claim",
         }
