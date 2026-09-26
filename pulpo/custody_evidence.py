@@ -14,6 +14,7 @@ idempotent by custody transition hash.
 
 from __future__ import annotations
 
+from contextlib import closing
 from dataclasses import asdict
 from hashlib import sha256
 import hmac
@@ -61,7 +62,7 @@ class SQLiteCustodyEvidenceConvergence:
 
     def _initialize(self) -> None:
         try:
-            with self._connect() as connection:
+            with closing(self._connect()) as connection:
                 connection.execute("BEGIN IMMEDIATE")
                 # The canonical kernel state must already own this audit table.
                 audit = connection.execute(
@@ -139,6 +140,10 @@ class SQLiteCustodyEvidenceConvergence:
                     END
                     """
                 )
+                # closing() closes the handle but does not provide sqlite3.Connection's
+                # context-manager commit semantics. Commit the schema/trigger setup
+                # explicitly before closing so initialization survives on every platform.
+                connection.commit()
         except CustodyEvidenceViolation:
             raise
         except (OSError, sqlite3.Error) as exc:
@@ -146,7 +151,7 @@ class SQLiteCustodyEvidenceConvergence:
 
     def pending_count(self) -> int:
         try:
-            with self._connect() as connection:
+            with closing(self._connect()) as connection:
                 return int(
                     connection.execute(
                         "SELECT COUNT(*) FROM custody_evidence_outbox WHERE projected = 0"
@@ -307,7 +312,7 @@ class SQLiteCustodyEvidenceConvergence:
 
     def canonical_event_count(self, transition_hash: str) -> int:
         try:
-            with self._connect() as connection:
+            with closing(self._connect()) as connection:
                 rows = connection.execute(
                     "SELECT payload_json FROM audit WHERE event = ?",
                     (self.EVENT,),
