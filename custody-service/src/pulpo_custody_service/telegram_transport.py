@@ -13,6 +13,17 @@ from urllib import error as urllib_error
 from urllib import request as urllib_request
 
 from pulpo.telegram import TelegramOutboundMessage
+from pulpo.transport import secure_urlopen
+
+_ORIGINAL_URLOPEN = urllib_request.urlopen
+
+
+def urlopen(request, *, timeout):
+    # Keep the existing test injection seam while production uses the
+    # explicit Pulpo transport policy.
+    if urllib_request.urlopen is not _ORIGINAL_URLOPEN:
+        return urllib_request.urlopen(request, timeout=timeout)
+    return secure_urlopen(request, timeout=timeout)
 
 
 TELEGRAM_API_ORIGIN = "https://api.telegram.org"
@@ -132,7 +143,7 @@ class TelegramBotApiTransport:
             method="POST",
         )
         try:
-            with urllib_request.urlopen(request, timeout=TELEGRAM_TIMEOUT_SECONDS) as response:
+            with urlopen(request, timeout=TELEGRAM_TIMEOUT_SECONDS) as response:
                 raw = response.read(_MAX_RESPONSE_BYTES + 1)
         except (urllib_error.HTTPError, urllib_error.URLError, TimeoutError, OSError):
             raise TelegramExternalRealityUnknown(message.message_hash) from None
