@@ -54,7 +54,15 @@ def _git_show(commit: str, path: str) -> str:
 def load_freeze() -> tuple[dict[str, object], bytes]:
     raw = FREEZE_PATH.read_bytes()
     frozen_raw = _git("show", f"{FREEZE_COMMIT}:experiments/temporal-transfer-proof-zero/freeze.json").encode()
-    if raw != frozen_raw:
+    # Git may materialize working-tree text with platform-specific line endings
+    # on Windows. Compare the parsed frozen object, while continuing to hash the
+    # current raw bytes in the result bundle.
+    try:
+        current_freeze = json.loads(raw)
+        committed_freeze = json.loads(frozen_raw)
+    except json.JSONDecodeError as exc:
+        raise RuntimeError("freeze manifest invalid") from exc
+    if current_freeze != committed_freeze:
         raise RuntimeError("freeze manifest changed after the freeze commit")
     return json.loads(raw), raw
 

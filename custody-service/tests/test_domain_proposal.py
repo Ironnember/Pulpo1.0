@@ -1,7 +1,6 @@
 import json
 import tempfile
 import unittest
-from dataclasses import asdict
 from pathlib import Path
 
 from fastapi.testclient import TestClient
@@ -12,7 +11,10 @@ from pulpo.kernel import GovernanceKernel, Policy
 from pulpo.namecom_core import NameComCoreClient, NameComCoreConfig, NameComResponse
 from pulpo.namecom_proposal import NameComSandboxProposalBuilder
 from pulpo.state import SQLiteKernelState
-from tests.authority_support import HmacTestVerifier, signed_envelope, trust_for
+try:
+    from .authority_support import HmacTestVerifier, signed_envelope, trust_for
+except ImportError:
+    from authority_support import HmacTestVerifier, signed_envelope, trust_for
 
 from pulpo_custody_service.api import create_app
 from pulpo_custody_service.core import DomainCustodyService
@@ -205,7 +207,7 @@ class DomainProposalApiTests(unittest.TestCase):
             "/v1/domain-attempts",
             json={
                 "proposal_commitment_id": commitment_id,
-                "approval": asdict(envelope),
+                "approval": envelope.as_dict(),
             },
         )
         self.assertEqual(200, authorized.status_code, authorized.text)
@@ -221,7 +223,7 @@ class DomainProposalApiTests(unittest.TestCase):
             "/v1/domain-attempts",
             json={
                 "proposal_commitment_id": commitment_id,
-                "approval": asdict(envelope),
+                "approval": envelope.as_dict(),
             },
         )
         self.assertEqual(403, replay.status_code)

@@ -15,7 +15,11 @@ from .state import ApprovalUse, InMemoryKernelState, KernelState
 
 
 def _canonical(value: Any) -> bytes:
-    return json.dumps(value, sort_keys=True, separators=(",", ":")).encode()
+    return json.dumps(
+        value,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode()
 
 
 @dataclass(frozen=True)
@@ -31,10 +35,10 @@ class Intent:
 class LockedTarget:
     """Immutable proposed consequence recorded before authority evaluation.
 
-    Locking a target creates no permit and has no authority effect.  The target
-    hash binds the exact intent plus target identity, version, and lock time so a
-    later interface can resolve a short command such as ``fire`` to one durable
-    object before asking the kernel for an authorization decision.
+    Locking a target creates no permit and has no authority effect. The target
+    hash binds the exact intent plus target identity, version, and lock time so
+    a later interface can resolve a short command such as ``fire`` to one
+    durable object before asking the kernel for an authorization decision.
     """
 
     target_id: str
@@ -45,7 +49,9 @@ class LockedTarget:
 
     def __post_init__(self) -> None:
         if not self.target_id or self.version <= 0 or self.created_at_ns <= 0:
-            raise ValueError("target identity, version, and lock time must be valid")
+            raise ValueError(
+                "target identity, version, and lock time must be valid"
+            )
         if self.schema != "pulpo.target.v0":
             raise ValueError("unsupported target schema")
 
@@ -76,12 +82,7 @@ class TargetResolution:
 
 @dataclass(frozen=True)
 class AgentGrant:
-    """Least-authority limits for one agent principal.
-
-    Resource prefixes are namespaces such as ``repo:`` or ``evidence:``.  They
-    are evaluated by the same kernel as every other policy condition; this is
-    not a second agent router.
-    """
+    """Least-authority limits for one agent principal."""
 
     principal: str
     allowed_actions: frozenset[str]
@@ -104,17 +105,43 @@ class Policy:
     approval_actions: frozenset[str] = frozenset()
     agent_grants: tuple[AgentGrant, ...] = ()
     authority_trust: AuthorityTrust | None = None
+    permit_ttl_ns: int = 300_000_000_000
 
     def __post_init__(self) -> None:
-        principals = [grant.principal for grant in self.agent_grants]
+        principals = [
+            grant.principal
+            for grant in self.agent_grants
+        ]
+
         if len(principals) != len(set(principals)):
             raise ValueError("agent principals must be unique")
-        if any(not grant.allowed_actions.issubset(self.allowed_actions) for grant in self.agent_grants):
-            raise ValueError("agent actions must be a subset of policy actions")
+
+        if any(
+            not grant.allowed_actions.issubset(self.allowed_actions)
+            for grant in self.agent_grants
+        ):
+            raise ValueError(
+                "agent actions must be a subset of policy actions"
+            )
+
         if self.approval_actions and self.authority_trust is None:
-            raise ValueError("approval actions require a pinned authority trust")
+            raise ValueError(
+                "approval actions require a pinned authority trust"
+            )
+
         if self.authority_trust is not None and not self.approval_actions:
-            raise ValueError("authority trust requires at least one approval action")
+            raise ValueError(
+                "authority trust requires at least one approval action"
+            )
+
+        if (
+            isinstance(self.permit_ttl_ns, bool)
+            or not isinstance(self.permit_ttl_ns, int)
+            or self.permit_ttl_ns <= 0
+        ):
+            raise ValueError(
+                "permit_ttl_ns must be a positive integer"
+            )
 
 
 @dataclass(frozen=True)
@@ -146,17 +173,38 @@ class GovernanceKernel:
     ) -> None:
         self.policy = policy
         self._secret = secret or secrets.token_bytes(32)
+        self._policy_hash = self._compute_policy_hash()
         self._approval_verifier = approval_verifier
         self._clock = clock or time.time_ns
-        self._state = state if state is not None else InMemoryKernelState()
-        if self._approval_verifier is not None and not self._verifier_matches_trust(self._approval_verifier):
-            raise AuthorityTrustError("approval verifier does not match pinned authority trust")
+        self._state = (
+            state
+            if state is not None
+            else InMemoryKernelState()
+        )
+
+        self._verified_audit_token: object | None = None
+
+        if (
+            self._approval_verifier is not None
+            and not self._verifier_matches_trust(
+                self._approval_verifier
+            )
+        ):
+            raise AuthorityTrustError(
+                "approval verifier does not match pinned authority trust"
+            )
+
         try:
             audit_valid = self.verify_audit()
         except Exception as exc:
-            raise StateIntegrityError("kernel state audit chain is invalid") from exc
+            raise StateIntegrityError(
+                "kernel state audit chain is invalid"
+            ) from exc
+
         if not audit_valid:
-            raise StateIntegrityError("kernel state audit chain is invalid")
+            raise StateIntegrityError(
+                "kernel state audit chain is invalid"
+            )
 
     @property
     def audit(self) -> list[dict[str, Any]]:
@@ -164,10 +212,11 @@ class GovernanceKernel:
 
     @staticmethod
     def intent_hash(intent: Intent) -> str:
-        return sha256(_canonical(asdict(intent))).hexdigest()
+        return sha256(
+            _canonical(asdict(intent))
+        ).hexdigest()
 
-    @property
-    def policy_hash(self) -> str:
+    def _compute_policy_hash(self) -> str:
         grants = [
             {
                 "principal": grant.principal,
@@ -175,31 +224,76 @@ class GovernanceKernel:
                 "resource_prefixes": sorted(grant.resource_prefixes),
                 "max_cost": grant.max_cost,
             }
-            for grant in sorted(self.policy.agent_grants, key=lambda item: item.principal)
+            for grant in sorted(
+                self.policy.agent_grants,
+                key=lambda item: item.principal,
+            )
         ]
+
         payload = {
             "schema": "pulpo.policy.v1",
-            "allowed_actions": sorted(self.policy.allowed_actions),
+            "allowed_actions": sorted(
+                self.policy.allowed_actions
+            ),
             "max_cost": self.policy.max_cost,
-            "approval_actions": sorted(self.policy.approval_actions),
+            "approval_actions": sorted(
+                self.policy.approval_actions
+            ),
             "agent_grants": grants,
-            "authority_trust": asdict(self.policy.authority_trust) if self.policy.authority_trust else None,
+            "authority_trust": (
+                asdict(self.policy.authority_trust)
+                if self.policy.authority_trust
+                else None
+            ),
+            "permit_ttl_ns": self.policy.permit_ttl_ns,
         }
-        return sha256(_canonical(payload)).hexdigest()
 
-    def lock_target(self, target_id: str, intent: Intent, *, version: int = 1) -> LockedTarget:
+        return sha256(
+            _canonical(payload)
+        ).hexdigest()
+
+    @property
+    def policy_hash(self) -> str:
+        return self._policy_hash
+
+    def lock_target(
+        self,
+        target_id: str,
+        intent: Intent,
+        *,
+        version: int = 1,
+    ) -> LockedTarget:
         """Record an exact proposed target without granting authority."""
 
-        existing = self.get_locked_target(target_id, version=version)
+        existing = self.get_locked_target(
+            target_id,
+            version=version,
+        )
+
         if existing is not None:
-            if not hmac.compare_digest(self.intent_hash(existing.intent), self.intent_hash(intent)):
-                raise ValueError("target version is immutable")
+            if not hmac.compare_digest(
+                self.intent_hash(existing.intent),
+                self.intent_hash(intent),
+            ):
+                raise ValueError(
+                    "target version is immutable"
+                )
             return existing
 
         now_ns = self._trusted_now()
+
         if now_ns is None:
-            raise RuntimeError("target_clock_invalid")
-        target = LockedTarget(target_id, version, intent, now_ns)
+            raise RuntimeError(
+                "target_clock_invalid"
+            )
+
+        target = LockedTarget(
+            target_id,
+            version,
+            intent,
+            now_ns,
+        )
+
         self._state.append(
             "target_locked",
             {
@@ -208,29 +302,48 @@ class GovernanceKernel:
                 "version": target.version,
                 "target_hash": target.target_hash,
                 "intent": asdict(target.intent),
-                "intent_hash": self.intent_hash(target.intent),
+                "intent_hash": self.intent_hash(
+                    target.intent
+                ),
                 "created_at_ns": target.created_at_ns,
                 "authority_effect": "none",
             },
             now_ns,
         )
+
         return target
 
-    def get_locked_target(self, target_id: str, *, version: int = 1) -> LockedTarget | None:
+    def get_locked_target(
+        self,
+        target_id: str,
+        *,
+        version: int = 1,
+    ) -> LockedTarget | None:
         """Resolve a locked target from the canonical audit chain."""
 
         if not target_id or version <= 0:
             return None
-        if not self.verify_audit():
-            raise StateIntegrityError("kernel state audit chain is invalid")
-        for record in reversed(self.audit):
-            if record.get("event") != "target_locked":
+
+        self._require_audit_integrity()
+
+        for record in self._state.iter_audit(
+            event="target_locked",
+            reverse=True,
+        ):
+            payload = record.get(
+                "payload",
+                {},
+            )
+
+            if (
+                payload.get("target_id") != target_id
+                or payload.get("version") != version
+            ):
                 continue
-            payload = record.get("payload", {})
-            if payload.get("target_id") != target_id or payload.get("version") != version:
-                continue
+
             try:
                 intent_payload = payload["intent"]
+
                 target = LockedTarget(
                     target_id=payload["target_id"],
                     version=payload["version"],
@@ -238,17 +351,46 @@ class GovernanceKernel:
                     created_at_ns=payload["created_at_ns"],
                     schema=payload["schema"],
                 )
-                stored_target_hash = payload["target_hash"]
-                stored_intent_hash = payload["intent_hash"]
-            except (KeyError, TypeError, ValueError) as exc:
-                raise StateIntegrityError("locked target record is invalid") from exc
-            if not hmac.compare_digest(target.target_hash, stored_target_hash):
-                raise StateIntegrityError("locked target hash is invalid")
-            if not hmac.compare_digest(self.intent_hash(target.intent), stored_intent_hash):
-                raise StateIntegrityError("locked target intent hash is invalid")
+
+                stored_target_hash = payload[
+                    "target_hash"
+                ]
+                stored_intent_hash = payload[
+                    "intent_hash"
+                ]
+
+            except (
+                KeyError,
+                TypeError,
+                ValueError,
+            ) as exc:
+                raise StateIntegrityError(
+                    "locked target record is invalid"
+                ) from exc
+
+            if not hmac.compare_digest(
+                target.target_hash,
+                stored_target_hash,
+            ):
+                raise StateIntegrityError(
+                    "locked target hash is invalid"
+                )
+
+            if not hmac.compare_digest(
+                self.intent_hash(target.intent),
+                stored_intent_hash,
+            ):
+                raise StateIntegrityError(
+                    "locked target intent hash is invalid"
+                )
+
             if payload.get("authority_effect") != "none":
-                raise StateIntegrityError("locked target cannot carry authority")
+                raise StateIntegrityError(
+                    "locked target cannot carry authority"
+                )
+
             return target
+
         return None
 
     def resolve_locked_target(
@@ -261,18 +403,70 @@ class GovernanceKernel:
         """Fail closed unless a caller references the exact durable target."""
 
         now_ns = self._trusted_now()
+
         if now_ns is None:
-            return TargetResolution("deny", "target_clock_invalid", target_id, version, expected_target_hash)
-        if not target_id or version <= 0 or not isinstance(expected_target_hash, str) or len(expected_target_hash) != 64:
-            result = TargetResolution("deny", "target_reference_invalid", target_id, version, expected_target_hash)
+            return TargetResolution(
+                "deny",
+                "target_clock_invalid",
+                target_id,
+                version,
+                expected_target_hash,
+            )
+
+        if (
+            not target_id
+            or version <= 0
+            or not isinstance(
+                expected_target_hash,
+                str,
+            )
+            or len(expected_target_hash) != 64
+        ):
+            result = TargetResolution(
+                "deny",
+                "target_reference_invalid",
+                target_id,
+                version,
+                expected_target_hash,
+            )
+
         else:
-            target = self.get_locked_target(target_id, version=version)
+            target = self.get_locked_target(
+                target_id,
+                version=version,
+            )
+
             if target is None:
-                result = TargetResolution("deny", "target_not_locked", target_id, version, expected_target_hash)
-            elif not hmac.compare_digest(target.target_hash, expected_target_hash):
-                result = TargetResolution("deny", "target_hash_mismatch", target_id, version, expected_target_hash)
+                result = TargetResolution(
+                    "deny",
+                    "target_not_locked",
+                    target_id,
+                    version,
+                    expected_target_hash,
+                )
+
+            elif not hmac.compare_digest(
+                target.target_hash,
+                expected_target_hash,
+            ):
+                result = TargetResolution(
+                    "deny",
+                    "target_hash_mismatch",
+                    target_id,
+                    version,
+                    expected_target_hash,
+                )
+
             else:
-                result = TargetResolution("match", "target_exact_match", target_id, version, expected_target_hash, target)
+                result = TargetResolution(
+                    "match",
+                    "target_exact_match",
+                    target_id,
+                    version,
+                    expected_target_hash,
+                    target,
+                )
+
         self._state.append(
             "target_resolution",
             {
@@ -281,11 +475,16 @@ class GovernanceKernel:
                 "target_id": target_id,
                 "version": version,
                 "expected_target_hash": expected_target_hash,
-                "resolved_target_hash": result.target.target_hash if result.target else None,
+                "resolved_target_hash": (
+                    result.target.target_hash
+                    if result.target
+                    else None
+                ),
                 "authority_effect": "none",
             },
             now_ns,
         )
+
         return result
 
     def evaluate_locked_target(
@@ -294,23 +493,61 @@ class GovernanceKernel:
         expected_target_hash: str,
         *,
         version: int = 1,
-    ) -> tuple[TargetResolution, Decision | None]:
+    ) -> tuple[
+        TargetResolution,
+        Decision | None,
+    ]:
         """Resolve an exact target, then delegate authority to the normal evaluator."""
 
-        resolution = self.resolve_locked_target(target_id, expected_target_hash, version=version)
-        if resolution.outcome != "match" or resolution.target is None:
+        resolution = self.resolve_locked_target(
+            target_id,
+            expected_target_hash,
+            version=version,
+        )
+
+        if (
+            resolution.outcome != "match"
+            or resolution.target is None
+        ):
             return resolution, None
-        return resolution, self.evaluate(resolution.target.intent)
 
-    def evaluate(self, intent: Intent) -> Decision:
+        return (
+            resolution,
+            self.evaluate(
+                resolution.target.intent
+            ),
+        )
+
+    def evaluate(
+        self,
+        intent: Intent,
+    ) -> Decision:
         digest = self.intent_hash(intent)
-        failure = self._policy_failure(intent)
-        if failure:
-            return self._decide("deny", failure, digest)
-        if intent.action in self.policy.approval_actions:
-            return self._decide("require_approval", "approval_required", digest)
 
-        return self._issue_permit(digest)
+        failure = self._policy_failure(
+            intent
+        )
+
+        if failure:
+            return self._decide(
+                "deny",
+                failure,
+                digest,
+            )
+
+        if (
+            intent.action
+            in self.policy.approval_actions
+        ):
+            return self._decide(
+                "require_approval",
+                "approval_required",
+                digest,
+            )
+
+        return self._issue_permit(
+            digest
+        )
 
     def evaluate_with_approval(
         self,
@@ -319,68 +556,262 @@ class GovernanceKernel:
     ) -> Decision:
         """Issue a permit only after verification by the configured authority."""
 
-        digest = self.intent_hash(intent)
-        failure = self._policy_failure(intent)
+        digest = self.intent_hash(
+            intent
+        )
+
+        failure = self._policy_failure(
+            intent
+        )
+
         if failure:
-            return self._decide("deny", failure, digest)
-        if intent.action not in self.policy.approval_actions:
-            if not isinstance(envelope, ApprovalEnvelope):
-                return self._decide("deny", "approval_envelope_invalid", digest)
-            return self._approval_decide("approval_not_required", digest, envelope)
-        if not isinstance(envelope, ApprovalEnvelope):
-            return self._decide("deny", "approval_envelope_invalid", digest)
+            return self._decide(
+                "deny",
+                failure,
+                digest,
+            )
+
+        if (
+            intent.action
+            not in self.policy.approval_actions
+        ):
+            if not isinstance(
+                envelope,
+                ApprovalEnvelope,
+            ):
+                return self._decide(
+                    "deny",
+                    "approval_envelope_invalid",
+                    digest,
+                )
+
+            return self._approval_decide(
+                "approval_not_required",
+                digest,
+                envelope,
+            )
+
+        if not isinstance(
+            envelope,
+            ApprovalEnvelope,
+        ):
+            return self._decide(
+                "deny",
+                "approval_envelope_invalid",
+                digest,
+            )
+
         verifier = self._approval_verifier
+
         if verifier is None:
-            return self._approval_decide("approval_verifier_unavailable", digest, envelope)
-        if not self._verifier_matches_trust(verifier):
-            return self._approval_decide("approval_verifier_untrusted", digest, envelope)
+            return self._approval_decide(
+                "approval_verifier_unavailable",
+                digest,
+                envelope,
+            )
+
+        if not self._verifier_matches_trust(
+            verifier
+        ):
+            return self._approval_decide(
+                "approval_verifier_untrusted",
+                digest,
+                envelope,
+            )
+
         if not envelope.signature:
-            return self._approval_decide("approval_signature_missing", digest, envelope)
+            return self._approval_decide(
+                "approval_signature_missing",
+                digest,
+                envelope,
+            )
+
         trust = self.policy.authority_trust
+
         if trust is None:
-            return self._approval_decide("approval_trust_unavailable", digest, envelope)
-        if envelope.authority_id != trust.authority_id:
-            return self._approval_decide("approval_authority_mismatch", digest, envelope)
-        if envelope.verifier_id != trust.verifier_id:
-            return self._approval_decide("approval_verifier_mismatch", digest, envelope)
+            return self._approval_decide(
+                "approval_trust_unavailable",
+                digest,
+                envelope,
+            )
+
+        if (
+            envelope.authority_id
+            != trust.authority_id
+        ):
+            return self._approval_decide(
+                "approval_authority_mismatch",
+                digest,
+                envelope,
+            )
+
+        if (
+            envelope.verifier_id
+            != trust.verifier_id
+        ):
+            return self._approval_decide(
+                "approval_verifier_mismatch",
+                digest,
+                envelope,
+            )
+
         if envelope.key_id != trust.key_id:
-            return self._approval_decide("approval_key_mismatch", digest, envelope)
-        if envelope.deployment_id != trust.deployment_id:
-            return self._approval_decide("approval_deployment_mismatch", digest, envelope)
-        if envelope.trust_hash != trust.trust_hash:
-            return self._approval_decide("approval_trust_mismatch", digest, envelope)
-        if envelope.session_id != intent.session_id:
-            return self._approval_decide("approval_session_mismatch", digest, envelope)
-        if envelope.principal != intent.principal:
-            return self._approval_decide("approval_principal_mismatch", digest, envelope)
+            return self._approval_decide(
+                "approval_key_mismatch",
+                digest,
+                envelope,
+            )
+
+        if (
+            envelope.deployment_id
+            != trust.deployment_id
+        ):
+            return self._approval_decide(
+                "approval_deployment_mismatch",
+                digest,
+                envelope,
+            )
+
+        if (
+            envelope.trust_hash
+            != trust.trust_hash
+        ):
+            return self._approval_decide(
+                "approval_trust_mismatch",
+                digest,
+                envelope,
+            )
+
+        if (
+            envelope.session_id
+            != intent.session_id
+        ):
+            return self._approval_decide(
+                "approval_session_mismatch",
+                digest,
+                envelope,
+            )
+
+        if (
+            envelope.principal
+            != intent.principal
+        ):
+            return self._approval_decide(
+                "approval_principal_mismatch",
+                digest,
+                envelope,
+            )
+
         if envelope.intent_hash != digest:
-            return self._approval_decide("approval_intent_mismatch", digest, envelope)
-        if envelope.policy_hash != self.policy_hash:
-            return self._approval_decide("approval_policy_mismatch", digest, envelope)
+            return self._approval_decide(
+                "approval_intent_mismatch",
+                digest,
+                envelope,
+            )
+
+        if (
+            envelope.policy_hash
+            != self.policy_hash
+        ):
+            return self._approval_decide(
+                "approval_policy_mismatch",
+                digest,
+                envelope,
+            )
+
         now_ns = self._trusted_now()
+
         if now_ns is None:
-            return self._approval_decide("approval_clock_invalid", digest, envelope, timestamp_ns=0)
+            return self._approval_decide(
+                "approval_clock_invalid",
+                digest,
+                envelope,
+                timestamp_ns=0,
+            )
+
         if now_ns < envelope.issued_at_ns:
-            return self._approval_decide("approval_not_yet_valid", digest, envelope, timestamp_ns=now_ns)
-        if envelope.expires_at_ns - envelope.issued_at_ns > trust.max_approval_ttl_ns:
-            return self._approval_decide("approval_ttl_exceeded", digest, envelope, timestamp_ns=now_ns)
+            return self._approval_decide(
+                "approval_not_yet_valid",
+                digest,
+                envelope,
+                timestamp_ns=now_ns,
+            )
+
+        if (
+            envelope.expires_at_ns
+            - envelope.issued_at_ns
+            > trust.max_approval_ttl_ns
+        ):
+            return self._approval_decide(
+                "approval_ttl_exceeded",
+                digest,
+                envelope,
+                timestamp_ns=now_ns,
+            )
+
         if now_ns >= envelope.expires_at_ns:
-            return self._approval_decide("approval_expired", digest, envelope)
-        replay = self._state.approval_replay_reason(envelope.approval_id, envelope.nonce)
+            return self._approval_decide(
+                "approval_expired",
+                digest,
+                envelope,
+            )
+
+        replay = (
+            self._state.approval_replay_reason(
+                envelope.approval_id,
+                envelope.nonce,
+            )
+        )
+
         if replay:
-            return self._approval_decide(replay, digest, envelope)
+            return self._approval_decide(
+                replay,
+                digest,
+                envelope,
+            )
+
         try:
-            signature_valid = verifier.verify(envelope.signing_bytes(), envelope.signature)
+            signature_valid = verifier.verify(
+                envelope.signing_bytes(),
+                envelope.signature,
+            )
+
         except Exception:
-            return self._approval_decide("approval_verifier_failed", digest, envelope)
+            return self._approval_decide(
+                "approval_verifier_failed",
+                digest,
+                envelope,
+            )
+
         if signature_valid is not True:
-            return self._approval_decide("approval_signature_invalid", digest, envelope)
+            return self._approval_decide(
+                "approval_signature_invalid",
+                digest,
+                envelope,
+            )
+
         verified_at_ns = self._trusted_now()
+
         if verified_at_ns is None:
-            return self._approval_decide("approval_clock_invalid", digest, envelope, timestamp_ns=0)
+            return self._approval_decide(
+                "approval_clock_invalid",
+                digest,
+                envelope,
+                timestamp_ns=0,
+            )
+
         if verified_at_ns < now_ns:
-            return self._approval_decide("approval_clock_rollback", digest, envelope, timestamp_ns=verified_at_ns)
-        if verified_at_ns >= envelope.expires_at_ns:
+            return self._approval_decide(
+                "approval_clock_rollback",
+                digest,
+                envelope,
+                timestamp_ns=verified_at_ns,
+            )
+
+        if (
+            verified_at_ns
+            >= envelope.expires_at_ns
+        ):
             return self._approval_decide(
                 "approval_expired_during_verification",
                 digest,
@@ -401,7 +832,9 @@ class GovernanceKernel:
                 "deployment_id": envelope.deployment_id,
                 "trust_hash": envelope.trust_hash,
                 "envelope_hash": envelope.envelope_hash,
-                "signing_payload_hash": envelope.signing_payload_hash,
+                "signing_payload_hash": (
+                    envelope.signing_payload_hash
+                ),
                 "intent_hash": digest,
                 "policy_hash": self.policy_hash,
                 "issued_at_ns": envelope.issued_at_ns,
@@ -409,6 +842,7 @@ class GovernanceKernel:
                 "verified_at_ns": verified_at_ns,
             },
         )
+
         return self._issue_permit(
             digest,
             reason="verified_approval",
@@ -417,10 +851,15 @@ class GovernanceKernel:
             timestamp_ns=verified_at_ns,
         )
 
-    def _verifier_matches_trust(self, verifier: ApprovalVerifier) -> bool:
+    def _verifier_matches_trust(
+        self,
+        verifier: ApprovalVerifier,
+    ) -> bool:
         trust = self.policy.authority_trust
+
         if trust is None:
             return False
+
         try:
             actual = (
                 verifier.authority_id,
@@ -429,8 +868,10 @@ class GovernanceKernel:
                 verifier.algorithm,
                 verifier.key_fingerprint,
             )
+
         except Exception:
             return False
+
         expected = (
             trust.authority_id,
             trust.verifier_id,
@@ -438,34 +879,84 @@ class GovernanceKernel:
             trust.algorithm,
             trust.key_fingerprint,
         )
+
         return actual == expected
 
-    def _trusted_now(self) -> int | None:
+    def _trusted_now(
+        self,
+    ) -> int | None:
         try:
             value = self._clock()
+
         except Exception:
             return None
-        if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+
+        if (
+            isinstance(value, bool)
+            or not isinstance(value, int)
+            or value <= 0
+        ):
             return None
+
         return value
 
-    def _policy_failure(self, intent: Intent) -> str | None:
-        if not intent.principal or not intent.session_id or not intent.action or not intent.resource:
+    def _policy_failure(
+        self,
+        intent: Intent,
+    ) -> str | None:
+        if (
+            not intent.principal
+            or not intent.session_id
+            or not intent.action
+            or not intent.resource
+        ):
             return "incomplete_intent"
-        if intent.cost < 0 or intent.cost > self.policy.max_cost:
+
+        if (
+            intent.cost < 0
+            or intent.cost
+            > self.policy.max_cost
+        ):
             return "budget_exceeded"
-        if intent.action not in self.policy.allowed_actions:
+
+        if (
+            intent.action
+            not in self.policy.allowed_actions
+        ):
             return "action_not_allowed"
+
         if self.policy.agent_grants:
-            grant = next((item for item in self.policy.agent_grants if item.principal == intent.principal), None)
+            grant = next(
+                (
+                    item
+                    for item in self.policy.agent_grants
+                    if item.principal
+                    == intent.principal
+                ),
+                None,
+            )
+
             if grant is None:
                 return "unknown_principal"
-            if intent.action not in grant.allowed_actions:
+
+            if (
+                intent.action
+                not in grant.allowed_actions
+            ):
                 return "agent_action_not_allowed"
-            if not any(intent.resource.startswith(prefix) for prefix in grant.resource_prefixes):
+
+            if not any(
+                intent.resource.startswith(
+                    prefix
+                )
+                for prefix
+                in grant.resource_prefixes
+            ):
                 return "agent_resource_not_allowed"
+
             if intent.cost > grant.max_cost:
                 return "agent_budget_exceeded"
+
         return None
 
     def _issue_permit(
@@ -478,16 +969,65 @@ class GovernanceKernel:
         timestamp_ns: int | None = None,
     ) -> Decision:
         nonce = secrets.token_hex(16)
-        payload = f"{digest}:{nonce}"
-        signature = hmac.new(self._secret, payload.encode(), sha256).hexdigest()
-        permit = f"{payload}:{signature}"
-        issued_at_ns = self._clock() if timestamp_ns is None else timestamp_ns
-        replay = self._state.issue_permit(permit, digest, reason, issued_at_ns, approval)
+
+        payload = (
+            f"{digest}:{nonce}"
+        )
+
+        signature = hmac.new(
+            self._secret,
+            payload.encode(),
+            sha256,
+        ).hexdigest()
+
+        permit = (
+            f"{payload}:{signature}"
+        )
+
+        issued_at_ns = (
+            self._clock()
+            if timestamp_ns is None
+            else timestamp_ns
+        )
+
+        expires_at_ns = (
+            issued_at_ns
+            + self.policy.permit_ttl_ns
+        )
+
+        if envelope is not None:
+            expires_at_ns = min(
+                expires_at_ns,
+                envelope.expires_at_ns,
+            )
+
+        replay = self._state.issue_permit(
+            permit,
+            digest,
+            reason,
+            issued_at_ns,
+            expires_at_ns,
+            approval,
+        )
+
         if replay:
             if envelope is None:
-                raise RuntimeError("state rejected an approval-free permit")
-            return self._approval_decide(replay, digest, envelope)
-        return Decision("allow", reason, digest, permit)
+                raise RuntimeError(
+                    "state rejected an approval-free permit"
+                )
+
+            return self._approval_decide(
+                replay,
+                digest,
+                envelope,
+            )
+
+        return Decision(
+            "allow",
+            reason,
+            digest,
+            permit,
+        )
 
     def _approval_decide(
         self,
@@ -499,54 +1039,237 @@ class GovernanceKernel:
     ) -> Decision:
         if timestamp_ns is None:
             trusted_time = self._trusted_now()
-            rejection_time = 0 if trusted_time is None else trusted_time
+
+            rejection_time = (
+                0
+                if trusted_time is None
+                else trusted_time
+            )
+
         else:
             rejection_time = timestamp_ns
-        self._state.append(
-            "approval_rejected",
-            {
-                "approval_id": envelope.approval_id,
-                "authority_id": envelope.authority_id,
-                "verifier_id": envelope.verifier_id,
-                "key_id": envelope.key_id,
-                "deployment_id": envelope.deployment_id,
-                "trust_hash": envelope.trust_hash,
-                "envelope_hash": envelope.envelope_hash,
-                "signing_payload_hash": envelope.signing_payload_hash,
-                "intent_hash": digest,
-                "policy_hash": self.policy_hash,
-                "reason": reason,
-            },
-            rejection_time,
+
+        rejection_payload = {
+            "approval_id": envelope.approval_id,
+            "authority_id": envelope.authority_id,
+            "verifier_id": envelope.verifier_id,
+            "key_id": envelope.key_id,
+            "deployment_id": envelope.deployment_id,
+            "trust_hash": envelope.trust_hash,
+            "envelope_hash": envelope.envelope_hash,
+            "signing_payload_hash": (
+                envelope.signing_payload_hash
+            ),
+            "intent_hash": digest,
+            "policy_hash": self.policy_hash,
+            "reason": reason,
+        }
+
+        decision = Decision(
+            "deny",
+            reason,
+            digest,
         )
-        decision = Decision("deny", reason, digest)
-        self._state.append(
-            "decision",
-            {"outcome": "deny", "reason": reason, "intent_hash": digest},
-            rejection_time,
+
+        self._state.append_many(
+            [
+                (
+                    "approval_rejected",
+                    rejection_payload,
+                    rejection_time,
+                ),
+                (
+                    "decision",
+                    {
+                        "outcome": "deny",
+                        "reason": reason,
+                        "intent_hash": digest,
+                    },
+                    rejection_time,
+                ),
+            ]
         )
+
         return decision
 
-    def consume(self, permit: str, intent: Intent) -> bool:
-        digest = self.intent_hash(intent)
-        return self._state.consume_permit(permit, digest, self._clock())
+    def consume(
+        self,
+        permit: str,
+        intent: Intent,
+    ) -> bool:
+        digest = self.intent_hash(
+            intent
+        )
 
-    def verify_audit(self) -> bool:
+        return self._state.consume_permit(
+            permit,
+            digest,
+            self._clock(),
+        )
+
+    def _audit_integrity_token(
+        self,
+    ) -> object | None:
+        token_reader = getattr(
+            self._state,
+            "audit_integrity_token",
+            None,
+        )
+
+        if token_reader is None:
+            return None
+
+        return token_reader()
+
+    def _require_audit_integrity(
+        self,
+    ) -> None:
+        current_token = (
+            self._audit_integrity_token()
+        )
+
+        if (
+            current_token is not None
+            and current_token
+            == self._verified_audit_token
+        ):
+            return
+
+        if not self.verify_audit():
+            raise StateIntegrityError(
+                "kernel state audit chain is invalid"
+            )
+
+    def verify_audit(
+        self,
+    ) -> bool:
+        token_before = (
+            self._audit_integrity_token()
+        )
+
         previous = "0" * 64
-        for record in self.audit:
-            body = {key: value for key, value in record.items() if key != "hash"}
+        previous_delta_root = "0" * 64
+
+        for record in self._state.iter_audit():
+            body = {
+                key: value
+                for key, value
+                in record.items()
+                if key != "hash"
+            }
+
             if body["previous_hash"] != previous:
+                self._verified_audit_token = None
                 return False
-            expected = sha256(_canonical(body)).hexdigest()
-            if not hmac.compare_digest(record["hash"], expected):
+
+            expected = sha256(
+                _canonical(body)
+            ).hexdigest()
+
+            if not hmac.compare_digest(
+                record["hash"],
+                expected,
+            ):
+                self._verified_audit_token = None
                 return False
+
+            delta = body.get("delta")
+
+            if delta is not None:
+                if (
+                    body.get(
+                        "previous_delta_root"
+                    )
+                    != previous_delta_root
+                ):
+                    self._verified_audit_token = None
+                    return False
+
+                expected_delta_root = sha256(
+                    _canonical(
+                        {
+                            "previous_delta_root": (
+                                previous_delta_root
+                            ),
+                            "delta": delta,
+                        }
+                    )
+                ).hexdigest()
+
+                if not hmac.compare_digest(
+                    body.get(
+                        "delta_root",
+                        "",
+                    ),
+                    expected_delta_root,
+                ):
+                    self._verified_audit_token = None
+                    return False
+
+                previous_delta_root = (
+                    expected_delta_root
+                )
+
+            else:
+                # Legacy records predate canonical delta logging.
+                # Their audit hash remains authoritative, and the
+                # first delta record after legacy history binds
+                # forward from the legacy audit head.
+                previous_delta_root = (
+                    record["hash"]
+                )
+
             previous = record["hash"]
+
+        token_after = (
+            self._audit_integrity_token()
+        )
+
+        if (
+            token_before is not None
+            and token_before != token_after
+        ):
+            self._verified_audit_token = None
+            return False
+
+        self._verified_audit_token = (
+            token_after
+        )
+
         return True
 
-    def _decide(self, outcome: str, reason: str, digest: str, permit: str | None = None) -> Decision:
-        decision = Decision(outcome, reason, digest, permit)
-        self._append("decision", {"outcome": outcome, "reason": reason, "intent_hash": digest})
+    def _decide(
+        self,
+        outcome: str,
+        reason: str,
+        digest: str,
+        permit: str | None = None,
+    ) -> Decision:
+        decision = Decision(
+            outcome,
+            reason,
+            digest,
+            permit,
+        )
+
+        self._append(
+            "decision",
+            {
+                "outcome": outcome,
+                "reason": reason,
+                "intent_hash": digest,
+            },
+        )
+
         return decision
 
-    def _append(self, event: str, payload: dict[str, Any]) -> None:
-        self._state.append(event, payload, self._clock())
+    def _append(
+        self,
+        event: str,
+        payload: dict[str, Any],
+    ) -> None:
+        self._state.append(
+            event,
+            payload,
+            self._clock(),
+        )

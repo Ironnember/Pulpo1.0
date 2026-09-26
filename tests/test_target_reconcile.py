@@ -62,10 +62,10 @@ class TargetReconciliationTests(unittest.TestCase):
         self.assertEqual("unresolved", self.reconcile.status("deck-v1", self.target.target_hash).state)
 
     def test_nonempty_artifact_records_exact_completion_without_authority_effect(self):
-        with tempfile.NamedTemporaryFile(suffix=".pptx") as handle:
-            handle.write(b"verified deck artifact")
-            handle.flush()
-            completion = self.reconcile.complete_file("deck-v1", self.target.target_hash, handle.name)
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "deck.pptx"
+            path.write_bytes(b"verified deck artifact")
+            completion = self.reconcile.complete_file("deck-v1", self.target.target_hash, path)
 
         status = self.reconcile.status("deck-v1", self.target.target_hash)
         self.assertEqual("completed", status.state)
@@ -120,10 +120,10 @@ class TargetReconciliationTests(unittest.TestCase):
     def test_completion_of_one_version_does_not_complete_another(self):
         second_intent = Intent("agent:builder", "write", "artifact:pitch-deck:v2", 0, "deck-session")
         second = self.kernel.lock_target("deck-v1", second_intent, version=2)
-        with tempfile.NamedTemporaryFile(suffix=".pptx") as handle:
-            handle.write(b"version one deck")
-            handle.flush()
-            self.reconcile.complete_file("deck-v1", self.target.target_hash, handle.name, version=1)
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "deck.pptx"
+            path.write_bytes(b"version one deck")
+            self.reconcile.complete_file("deck-v1", self.target.target_hash, path, version=1)
 
         first_status = self.reconcile.status("deck-v1", self.target.target_hash, version=1)
         second_status = self.reconcile.status("deck-v1", second.target_hash, version=2)
