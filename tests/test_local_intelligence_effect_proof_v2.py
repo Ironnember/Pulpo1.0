@@ -1,11 +1,14 @@
 from pathlib import Path
+import os
 import tempfile
 import unittest
 
 from scripts.run_local_intelligence_effect_proof import sanitize_environment
 from scripts.run_local_intelligence_effect_proof_v2 import (
     AUTH_PROJECTION_MODE,
+    build_injection_hardened_profile,
     prepare_runtime_codex_home,
+    require_auth_projection_opt_in,
     stage_runtime_auth_copy,
     v2_profile_binding,
 )
@@ -19,7 +22,12 @@ class LocalIntelligenceEffectProofV2Tests(unittest.TestCase):
             runtime = root / "runtime"
             real.mkdir()
             runtime.mkdir()
-            disposable, auth_source, auth_sha, mode = prepare_runtime_codex_home(real, runtime)
+
+            disposable, auth_source, auth_sha, mode = prepare_runtime_codex_home(
+                real,
+                runtime,
+            )
+
             self.assertEqual(disposable.parent, runtime.resolve())
             self.assertIsNone(auth_source)
             self.assertIsNone(auth_sha)
@@ -32,14 +40,57 @@ class LocalIntelligenceEffectProofV2Tests(unittest.TestCase):
             runtime = root / "runtime"
             real.mkdir()
             runtime.mkdir()
+
             auth = real / "auth.json"
             auth.write_text('{"token":"secret"}', encoding="utf-8")
-            disposable, auth_source, auth_sha, mode = prepare_runtime_codex_home(real, runtime)
+
+            disposable, auth_source, auth_sha, mode = prepare_runtime_codex_home(
+                real,
+                runtime,
+            )
+
             self.assertEqual(disposable, runtime.resolve() / "codex-home")
             self.assertEqual(auth_source, auth.resolve())
             self.assertIsNotNone(auth_sha)
             self.assertEqual(mode, AUTH_PROJECTION_MODE)
             self.assertFalse((disposable / "auth.json").exists())
+
+    def test_file_auth_projection_requires_explicit_opt_in(self):
+        with tempfile.TemporaryDirectory() as temp:
+            auth = Path(temp) / "auth.json"
+            auth.write_text('{"token":"secret"}', encoding="utf-8")
+
+            with self.assertRaisesRegex(
+                RuntimeError,
+                "file_auth_projection_requires_explicit_opt_in",
+            ):
+                require_auth_projection_opt_in(auth, allowed=False)
+
+            require_auth_projection_opt_in(auth, allowed=True)
+
+    def test_injection_hardened_profile_denies_operator_home_and_network_by_default(self):
+        with tempfile.TemporaryDirectory() as temp:
+            runtime = Path(temp) / "runtime"
+            runtime.mkdir()
+
+            profile = build_injection_hardened_profile(
+                runtime,
+                Path.home() / ".codex",
+                allow_network=False,
+            )
+
+            self.assertIn("(deny network*)", profile)
+
+            home_escaped = (
+                str(Path.home().resolve())
+                .replace("\\", "\\\\")
+                .replace('"', '\\"')
+            )
+
+            self.assertIn(
+                f'(deny file-read* (subpath "{home_escaped}"))',
+                profile,
+            )
 
     def test_fire_stages_private_auth_copy_inside_runtime(self):
         with tempfile.TemporaryDirectory() as temp:
@@ -48,16 +99,37 @@ class LocalIntelligenceEffectProofV2Tests(unittest.TestCase):
             runtime = root / "runtime"
             real.mkdir()
             runtime.mkdir()
+
             auth = real / "auth.json"
             auth.write_text('{"token":"secret"}', encoding="utf-8")
-            disposable, auth_source, auth_sha, _ = prepare_runtime_codex_home(real, runtime)
-            staged = stage_runtime_auth_copy(auth_source, auth_sha, disposable)
+
+            disposable, auth_source, auth_sha, _ = prepare_runtime_codex_home(
+                real,
+                runtime,
+            )
+
+            staged = stage_runtime_auth_copy(
+                auth_source,
+                auth_sha,
+                disposable,
+            )
+
             self.assertIsNotNone(staged)
             assert staged is not None
+
             self.assertEqual(staged.parent, disposable)
             self.assertFalse(staged.is_symlink())
-            self.assertEqual(staged.read_text(encoding="utf-8"), auth.read_text(encoding="utf-8"))
-            self.assertEqual(staged.stat().st_mode & 0o777, 0o600)
+            self.assertEqual(
+                staged.read_text(encoding="utf-8"),
+                auth.read_text(encoding="utf-8"),
+            )
+
+            if os.name == "posix":
+                self.assertEqual(
+                    staged.stat().st_mode & 0o777,
+                    0o600,
+                )
+
             staged.unlink()
 
     def test_fire_rejects_auth_source_change_after_prepare(self):
@@ -67,12 +139,26 @@ class LocalIntelligenceEffectProofV2Tests(unittest.TestCase):
             runtime = root / "runtime"
             real.mkdir()
             runtime.mkdir()
+
             auth = real / "auth.json"
             auth.write_text('{"token":"one"}', encoding="utf-8")
-            disposable, auth_source, auth_sha, _ = prepare_runtime_codex_home(real, runtime)
+
+            disposable, auth_source, auth_sha, _ = prepare_runtime_codex_home(
+                real,
+                runtime,
+            )
+
             auth.write_text('{"token":"two"}', encoding="utf-8")
-            with self.assertRaisesRegex(RuntimeError, "auth_source_changed_after_prepare"):
-                stage_runtime_auth_copy(auth_source, auth_sha, disposable)
+
+            with self.assertRaisesRegex(
+                RuntimeError,
+                "auth_source_changed_after_prepare",
+            ):
+                stage_runtime_auth_copy(
+                    auth_source,
+                    auth_sha,
+                    disposable,
+                )
 
     def test_environment_pins_child_to_disposable_home_and_drops_secrets(self):
         with tempfile.TemporaryDirectory() as temp:
@@ -80,6 +166,7 @@ class LocalIntelligenceEffectProofV2Tests(unittest.TestCase):
             disposable = runtime / "codex-home"
             runtime.mkdir()
             disposable.mkdir()
+
             env = sanitize_environment(
                 {
                     "HOME": "/Users/test",
@@ -90,7 +177,11 @@ class LocalIntelligenceEffectProofV2Tests(unittest.TestCase):
                 runtime,
                 codex_home=disposable,
             )
-            self.assertEqual(env["CODEX_HOME"], str(disposable))
+
+            self.assertEqual(
+                env["CODEX_HOME"],
+                str(disposable),
+            )
             self.assertNotIn("OPENAI_API_KEY", env)
             self.assertNotIn("AWS_SECRET_ACCESS_KEY", env)
 
@@ -103,8 +194,17 @@ class LocalIntelligenceEffectProofV2Tests(unittest.TestCase):
             auth_projection_mode=AUTH_PROJECTION_MODE,
             auth_source_sha256="d" * 64,
         )
-        one = v2_profile_binding(runtime_codex_home=Path("/tmp/one/codex-home"), **common)
-        two = v2_profile_binding(runtime_codex_home=Path("/tmp/two/codex-home"), **common)
+
+        one = v2_profile_binding(
+            runtime_codex_home=Path("/tmp/one/codex-home"),
+            **common,
+        )
+
+        two = v2_profile_binding(
+            runtime_codex_home=Path("/tmp/two/codex-home"),
+            **common,
+        )
+
         self.assertNotEqual(one, two)
 
     def test_profile_binding_changes_when_real_home_projection_or_auth_hash_changes(self):
@@ -114,30 +214,35 @@ class LocalIntelligenceEffectProofV2Tests(unittest.TestCase):
             seatbelt_profile_sha256="c" * 64,
             runtime_codex_home=Path("/tmp/runtime/codex-home"),
         )
+
         one = v2_profile_binding(
             real_codex_home=Path("/real/a/.codex"),
             auth_projection_mode=AUTH_PROJECTION_MODE,
             auth_source_sha256="d" * 64,
             **base,
         )
+
         two = v2_profile_binding(
             real_codex_home=Path("/real/b/.codex"),
             auth_projection_mode=AUTH_PROJECTION_MODE,
             auth_source_sha256="d" * 64,
             **base,
         )
+
         three = v2_profile_binding(
             real_codex_home=Path("/real/a/.codex"),
             auth_projection_mode="none",
             auth_source_sha256=None,
             **base,
         )
+
         four = v2_profile_binding(
             real_codex_home=Path("/real/a/.codex"),
             auth_projection_mode=AUTH_PROJECTION_MODE,
             auth_source_sha256="e" * 64,
             **base,
         )
+
         self.assertNotEqual(one, two)
         self.assertNotEqual(one, three)
         self.assertNotEqual(one, four)
