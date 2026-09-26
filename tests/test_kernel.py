@@ -25,6 +25,46 @@ class GovernanceKernelTests(unittest.TestCase):
         self.assertTrue(self.kernel.consume(decision.permit, intent))
         self.assertFalse(self.kernel.consume(decision.permit, intent))
 
+    def test_unspent_permit_expires_at_policy_ttl(self):
+        now = [1_000_000]
+        kernel = GovernanceKernel(
+            Policy(frozenset({"write"}), 100, permit_ttl_ns=10),
+            secret=b"ttl-test-secret",
+            clock=lambda: now[0],
+        )
+        intent = Intent("agent", "write", "repo:file", 10, "session-ttl")
+        decision = kernel.evaluate(intent)
+        self.assertEqual("allow", decision.outcome)
+
+        now[0] += 9
+        self.assertTrue(kernel.consume(decision.permit, intent))
+
+        second = kernel.evaluate(intent)
+        now[0] += 10
+        self.assertFalse(kernel.consume(second.permit, intent))
+        self.assertEqual("permit_rejected", kernel.audit[-1]["event"])
+        self.assertEqual(
+            now[0],
+            kernel.audit[-1]["payload"]["permit_expires_at_ns"],
+        )
+
+    def test_policy_hash_binds_permit_ttl(self):
+        short = GovernanceKernel(
+            Policy(frozenset({"read"}), 0, permit_ttl_ns=10),
+            secret=b"ttl-policy-secret",
+        )
+        long = GovernanceKernel(
+            Policy(frozenset({"read"}), 0, permit_ttl_ns=20),
+            secret=b"ttl-policy-secret",
+        )
+        self.assertNotEqual(short.policy_hash, long.policy_hash)
+
+    def test_permit_ttl_must_be_positive_integer(self):
+        with self.assertRaisesRegex(ValueError, "permit_ttl_ns"):
+            Policy(frozenset({"read"}), 0, permit_ttl_ns=0)
+        with self.assertRaisesRegex(ValueError, "permit_ttl_ns"):
+            Policy(frozenset({"read"}), 0, permit_ttl_ns=True)
+
     def test_permit_cannot_be_used_for_different_intent(self):
         first = Intent("agent", "read", "repo:a")
         second = Intent("agent", "read", "repo:b")
