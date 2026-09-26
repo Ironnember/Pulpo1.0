@@ -173,6 +173,26 @@ class CustodyServiceApiTests(unittest.TestCase):
             expires_at_ns=order.expires_at_ns,
         )
 
+    def test_oversized_request_body_is_rejected_before_validation(self):
+        oversized = b'{"proposal_commitment_id":"' + (b"x" * 300_000) + b'"}'
+        response = self.build()[0].post(
+            "/v1/domain-attempts",
+            content=oversized,
+            headers={"Content-Type": "application/json"},
+        )
+        self.assertEqual(413, response.status_code)
+
+    def test_oversized_request_target_and_headers_fail_closed(self):
+        client, _, _, _, _, _ = self.build()
+        target = "/v1/domain-attempts/" + ("x" * 9_000)
+        self.assertEqual(414, client.get(target).status_code)
+
+        headers = {"X-Oversized": "x" * 40_000}
+        self.assertEqual(
+            431,
+            client.get("/v1/domain-attempts/unknown", headers=headers).status_code,
+        )
+
     def test_worker_uses_proposal_reference_then_handle_only(self):
         client, service, registrar, observer, _, _ = self.build()
         order = self.order()
