@@ -1,0 +1,25 @@
+name: HELM G5 Alternate Route Gladiator
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  helm-g5:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run HELM v0.8.4 alternate-route experiment
+        shell: bash
+        run: bash experiments/helm_g5_alternate_route.sh
+      - name: Preserve experiment evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: helm-g5-v084-evidence
+          path: artifacts/helm-g5-v084
+          if-no-files-found: warn
