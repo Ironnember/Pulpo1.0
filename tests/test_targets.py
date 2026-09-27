@@ -1,6 +1,8 @@
+import sqlite3
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from pulpo import GovernanceKernel, Intent, Policy, SQLiteKernelState
 
@@ -114,6 +116,90 @@ class TargetLockTests(unittest.TestCase):
             self.assertEqual("match", resolution.outcome)
             self.assertEqual("allow", decision.outcome)
             second_state.close()
+
+    def test_sqlite_lookup_revalidates_once_after_local_append_then_reuses_token(self):
+        intent = Intent("agent:builder", "write", "repo:README.md", 5, "voice-session")
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "pulpo.db"
+            state = SQLiteKernelState(path)
+            kernel = GovernanceKernel(
+                Policy(frozenset({"write"}), 100),
+                secret=b"target-test-secret",
+                clock=lambda: self.now,
+                state=state,
+            )
+            target = kernel.lock_target("T-FAST", intent)
+
+            with mock.patch.object(kernel, "verify_audit", wraps=kernel.verify_audit) as verify:
+                self.assertEqual(target, kernel.get_locked_target("T-FAST"))
+                self.assertEqual(1, verify.call_count)
+                self.assertEqual(target, kernel.get_locked_target("T-FAST"))
+                self.assertEqual(1, verify.call_count)
+            state.close()
+
+    def test_sqlite_external_audit_tamper_invalidates_token_and_fails_closed(self):
+        intent = Intent("agent:builder", "write", "repo:README.md", 5, "voice-session")
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "pulpo.db"
+            state = SQLiteKernelState(path)
+            kernel = GovernanceKernel(
+                Policy(frozenset({"write"}), 100),
+                secret=b"target-test-secret",
+                clock=lambda: self.now,
+                state=state,
+            )
+            target = kernel.lock_target("T-TAMPER", intent)
+            self.assertEqual(target, kernel.get_locked_target("T-TAMPER"))
+
+            outsider = sqlite3.connect(path)
+            try:
+                outsider.execute(
+                    "UPDATE audit SET payload_json = ? WHERE sequence = 1",
+                    ('{"tampered":true}',),
+                )
+                outsider.commit()
+            finally:
+                outsider.close()
+
+            with self.assertRaisesRegex(Exception, "audit chain is invalid"):
+                kernel.get_locked_target("T-TAMPER")
+            state.close()
+
+    def test_sqlite_restart_revalidates_tampered_persisted_delta_audit(self):
+        intent = Intent("agent:builder", "write", "repo:README.md", 5, "voice-session")
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "pulpo.db"
+            first_state = SQLiteKernelState(path)
+            first = GovernanceKernel(
+                Policy(frozenset({"write"}), 100),
+                secret=b"target-test-secret",
+                clock=lambda: self.now,
+                state=first_state,
+            )
+            first.lock_target("T-RESTART-TAMPER", intent)
+            first_state.close()
+
+            outsider = sqlite3.connect(path)
+            try:
+                outsider.execute(
+                    "UPDATE audit SET delta_json = ? WHERE sequence = 1",
+                    ('{"event":"tampered","payload_hash":"0"}',),
+                )
+                outsider.commit()
+            finally:
+                outsider.close()
+
+            second_state = SQLiteKernelState(path)
+            try:
+                with self.assertRaisesRegex(Exception, "audit chain is invalid"):
+                    GovernanceKernel(
+                        Policy(frozenset({"write"}), 100),
+                        secret=b"target-test-secret",
+                        clock=lambda: self.now + 1,
+                        state=second_state,
+                    )
+            finally:
+                second_state.close()
 
     def test_target_version_is_immutable(self):
         first = Intent("agent:builder", "write", "repo:a", 0, "voice-session")
