@@ -1,9 +1,7 @@
 name: HELM G5 Alternate Route Gladiator
 
 on:
-  push:
-    branches:
-      - gladiator-g5-helm-v084
+  pull_request:
   workflow_dispatch:
 
 permissions:
