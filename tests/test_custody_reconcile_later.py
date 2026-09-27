@@ -143,6 +143,7 @@ class LaterEvidenceReconciliationTests(unittest.TestCase):
             receipt_hash="c" * 64,
             privacy_enabled=True,
             dns_state="registered",
+            auto_renew_enabled=False,
         )
         second = reconciler.reconcile(governed, order, later)
         self.assertEqual("success", second.outcome)

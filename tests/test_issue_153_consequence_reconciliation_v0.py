@@ -230,6 +230,7 @@ class Issue153ConsequenceReconciliationV0(unittest.TestCase):
             "receipt_hash": "a" * 64,
             "privacy_enabled": True,
             "dns_state": "registered",
+            "auto_renew_enabled": False,
         }
         values.update(changes)
         return IndependentDomainObservation(**values)
@@ -648,6 +649,7 @@ class Issue153ConsequenceReconciliationV0(unittest.TestCase):
             receipt_hash=None,
             privacy_enabled=None,
             dns_state=None,
+            auto_renew_enabled=None,
         )
         result = self._reconcile_with_canonical_evidence(
             custody,

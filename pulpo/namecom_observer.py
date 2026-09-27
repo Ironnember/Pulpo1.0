@@ -139,6 +139,12 @@ class NameComCoreObserver:
         )
 
         registered = domain_record is not None
+        auto_renew_enabled = (
+            domain_record.get("autorenewEnabled")
+            if domain_record is not None
+            and isinstance(domain_record.get("autorenewEnabled"), bool)
+            else None
+        )
         privacy_enabled = (
             domain_record.get("privacyEnabled")
             if domain_record is not None
@@ -172,4 +178,5 @@ class NameComCoreObserver:
             receipt_hash=receipt_hash,
             privacy_enabled=privacy_enabled,
             dns_state="registered" if registered else None,
+            auto_renew_enabled=auto_renew_enabled,
         )
