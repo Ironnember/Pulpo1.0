@@ -106,3 +106,42 @@ against this exact head.
 - **Recorded:** the historical 2.7x and cache measurements above.
 - **Unknown:** exact CPU, throughput, and latency gains on current hardware until
   exact-head benchmarks are run.
+
+
+## Memory and worker scaling benchmark
+
+The repository includes `scripts/benchmark_memory_scaling.py` to determine where
+additional audit workers stop improving throughput on a specific machine.
+
+The harness disables the digest cache during measured passes so the scaling curve
+reflects worker/process and memory behavior rather than cache hits. It generates
+a valid synthetic audit chain, primes the engine once, then records repeated warm
+verification timings.
+
+For the current DDR4 test machine, run from the repository root:
+
+```powershell
+python scripts\benchmark_memory_scaling.py --sizes 10000 50000 100000 250000 500000 --workers 1 2 4 8 --repeats 3 --memory-label DDR4-3200-CL14-dual-channel --json perf-results\memory-scaling-ddr4-3200-cl14.json
+```
+
+The output records median latency and records/second for each worker-count and
+audit-size combination. The JSON artifact also records Python version, logical
+CPU count, platform information, and total memory when `psutil` is available.
+
+Interpretation:
+
+- throughput rising with worker count indicates useful CPU parallelism;
+- throughput flattening while more workers are added identifies a scaling limit
+  that may involve process overhead, CPU-cache pressure, memory bandwidth, or
+  another shared resource;
+- larger audit sizes help distinguish fixed worker overhead from sustained
+  throughput behavior.
+
+A flattened curve alone does **not** prove DDR bandwidth is the cause. Hardware
+performance counters or a controlled memory-configuration comparison are needed
+before making that attribution.
+
+Do not change JEDEC/XMP settings merely to run the baseline. First capture the
+current stable configuration. Any later JEDEC-versus-XMP experiment should use
+the exact same Pulpo commit, benchmark arguments, and machine configuration
+apart from the intentionally changed memory profile.
