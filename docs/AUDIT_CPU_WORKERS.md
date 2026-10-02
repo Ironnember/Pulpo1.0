@@ -159,3 +159,78 @@ records/second. This is **Recorded** evidence from that development machine. It
 does not establish DDR bandwidth saturation. The leading **Inferred** cause is
 per-record Windows process serialization/IPC overhead. The batched benchmark
 above is the next proof intended to test that inference.
+
+
+## Bounded self-tuning
+
+Pulpo now includes an opt-in audit performance tuner. It detects a hardware/software
+fingerprint, consumes measured benchmark results, and selects only bounded
+computation parameters for the observed audit size.
+
+The tuner may select:
+
+- worker count;
+- audit batch size;
+- parallel threshold;
+- cache sizing supplied by the caller.
+
+It may **not** change policy, approval requirements, permit scope, replay rules,
+evidence acceptance, reconciliation semantics, authority classes, or any other
+governance setting.
+
+The generated profile explicitly records:
+
+`"authority_effect": "none"`
+
+and is rejected when its hardware/software fingerprint does not match the current
+machine unless the caller explicitly chooses otherwise.
+
+For the DDR4-3200 CL14 Windows benchmark recorded during development, the measured
+best configurations were:
+
+| Records | Workers | Batch | Throughput |
+| ---: | ---: | ---: | ---: |
+| 10,000 | 8 | 256 | 425,677 records/s |
+| 50,000 | 8 | 1,024 | 718,961 records/s |
+| 100,000 | 8 | 1,024 | 707,750 records/s |
+| 250,000 | 8 | 1,024 | 702,030 records/s |
+| 500,000 | 8 | 4,096 | 659,506 records/s |
+
+These are **Recorded** results from that machine, not universal defaults.
+
+Build a machine-bound profile from the benchmark JSON:
+
+```powershell
+python scripts\build_audit_performance_profile.py perf-results\memory-scaling-ddr4-3200-cl14-batched.json --output perf-results\audit-performance-profile.json
+```
+
+Load and use the profile:
+
+```python
+from pulpo import AdaptiveAuditVerificationEngine, AuditPerformanceTuner
+
+tuner = AuditPerformanceTuner.load("perf-results/audit-performance-profile.json")
+engine = AdaptiveAuditVerificationEngine(tuner, cache_size=4096)
+```
+
+The adaptive engine keeps separate warm verification engines for the selected
+profiles and chooses among them by audit record count. If a profile is missing,
+invalid, or belongs to a different machine, callers should fall back to
+`AuditPerformanceTuner.conservative()`.
+
+### Explicit calibration
+
+A new machine can also run bounded calibration directly over immutable audit rows:
+
+```python
+tuner = AuditPerformanceTuner.calibrate(
+    audit_rows,
+    sizes=(10000, 50000, 100000),
+    batch_sizes=(256, 1024, 4096),
+    repeats=2,
+)
+tuner.save("perf-results/audit-performance-profile.json")
+```
+
+Calibration is intentionally explicit. It does not run automatically inside a
+governance decision, and performance history never grants authority.
