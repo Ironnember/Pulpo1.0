@@ -8,6 +8,7 @@ from .authority import (
     P256ApprovalVerifier,
 )
 from .authority_client import AuthorityApprovalRequest, AuthorityClient, AuthorityPoll
+from .audit_parallel import AuditDigestCache, AuditVerificationEngine
 from .commerce import SQLiteBudgetAccount
 from .kernel import (
     AgentGrant,
@@ -47,6 +48,8 @@ __all__ = [
     "ApprovalVerifier",
     "AuthorityTrust",
     "AuthorityTrustError",
+    "AuditDigestCache",
+    "AuditVerificationEngine",
     "AuthorizationAttempt",
     "Decision",
     "Ed25519ApprovalVerifier",
