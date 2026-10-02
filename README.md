@@ -1,6 +1,31 @@
-# Pulpo
+# PULPO
 
-Pulpo is the governance and evidence plane between AI intelligence and consequential execution. It turns explicit intent into deterministic governance, binds allowed work to narrowly scoped one-use permits, and preserves durable evidence for verification and reconciliation.
+### Give AI intelligence. Never give it authority.
+
+**Pulpo is a governance and execution-control layer for AI and autonomous systems—built so intelligence can propose actions without gaining the authority to execute them.**
+
+> **Intelligence proposes. Governance disposes. Execution obeys. Evidence reports.**
+
+Pulpo puts a deterministic governance boundary between AI reasoning and real-world consequences. Policies, authority, approvals, one-use permits, execution, evidence, and reconciliation remain separate from the intelligence making recommendations.
+
+**Built for consequential AI:** autonomous agents · robotics · drones · infrastructure · on-prem systems · governed commerce
+
+### Why Pulpo?
+
+Most AI systems ask: **“What should the AI do?”**
+
+Pulpo asks a different question:
+
+**“Even if the AI wants to do it, who gave it the authority?”**
+
+Learning does not grant authority.  
+Success does not grant authority.  
+Memory does not grant authority.  
+Intelligence does not grant authority.
+
+**Capability without authority is just a proposal.**
+
+Pulpo turns explicit intent into deterministic governance, binds allowed work to narrowly scoped one-use permits, and preserves durable evidence for verification and reconciliation.
 
 This repository is the clean canonical Pulpo project. The older `Iron-Ember/pulpo` repository remains historical reference material; its accumulated plans, generated evidence, machine-specific scripts, and CI workarounds are intentionally not imported here.
 
