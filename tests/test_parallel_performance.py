@@ -65,7 +65,7 @@ class AuditParallelTests(unittest.TestCase):
             previous = row[4]
 
         local = AuditVerificationEngine(workers=0, cache_size=0)
-        parallel = AuditVerificationEngine(workers=2, cache_size=0, parallel_threshold=1)
+        parallel = AuditVerificationEngine(workers=2, cache_size=0, parallel_threshold=1, batch_size=7)
         self.addCleanup(local.close)
         self.addCleanup(parallel.close)
 
@@ -74,6 +74,26 @@ class AuditParallelTests(unittest.TestCase):
         # pass exercises the worker pool.
         self.assertTrue(parallel.verify_rows(rows))
         self.assertTrue(parallel.verify_rows(rows))
+
+    def test_invalid_batch_size_is_rejected(self):
+        with self.assertRaises(ValueError):
+            AuditVerificationEngine(workers=2, batch_size=0)
+
+    def test_batched_parallel_path_detects_tampered_stored_hash(self):
+        rows = []
+        previous = "0" * 64
+        for index in range(32):
+            row = audit_row(previous, "event", {"index": index}, index + 1)
+            rows.append(row)
+            previous = row[4]
+        engine = AuditVerificationEngine(workers=2, cache_size=0, parallel_threshold=1, batch_size=5)
+        self.addCleanup(engine.close)
+        self.assertTrue(engine.verify_rows(rows))
+        self.assertTrue(engine.verify_rows(rows))
+        tampered = list(rows)
+        row = tampered[-1]
+        tampered[-1] = (row[0], row[1], row[2], row[3], "f" * 64)
+        self.assertFalse(engine.verify_rows(tampered))
 
 
 class ParallelEvidenceTests(unittest.TestCase):
