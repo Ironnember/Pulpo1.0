@@ -234,3 +234,41 @@ tuner.save("perf-results/audit-performance-profile.json")
 
 Calibration is intentionally explicit. It does not run automatically inside a
 governance decision, and performance history never grants authority.
+
+
+## Turnkey setup for testers and developers
+
+The package exposes a `pulpo setup` command intended for local evaluation and
+developer bootstrap.
+
+```powershell
+pulpo setup --json-report perf-results\pulpo-setup-report.json
+```
+
+Resolution order:
+
+1. detect the current environment fingerprint;
+2. load an existing matching machine-bound performance profile;
+3. reject a stale or mismatched profile;
+4. if a benchmark JSON is supplied, build a profile from that evidence;
+5. otherwise, unless `--no-calibrate` is used, run bounded synthetic calibration;
+6. verify the selected audit path by accepting a valid chain and rejecting a
+   tampered stored hash;
+7. emit a setup report.
+
+A user may skip calibration and force conservative local settings:
+
+```powershell
+pulpo setup --no-calibrate
+```
+
+Or reuse a previously generated benchmark:
+
+```powershell
+pulpo setup --benchmark perf-results\memory-scaling-ddr4-3200-cl14-batched.json
+```
+
+The setup report contains `authority_effect: none`,
+`governance_changes: none`, and `production_readiness_claim: false`.
+Setup therefore configures only bounded computation performance and does not
+promote a test environment into a production or authority claim.
