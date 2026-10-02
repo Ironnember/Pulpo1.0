@@ -11,6 +11,7 @@ import time
 from typing import Any, Callable
 
 from .authority import ApprovalEnvelope, ApprovalVerifier, AuthorityTrust
+from .audit_parallel import AuditVerificationEngine
 from .state import ApprovalUse, InMemoryKernelState, KernelState
 
 
@@ -143,12 +144,14 @@ class GovernanceKernel:
         approval_verifier: ApprovalVerifier | None = None,
         clock: Callable[[], int] | None = None,
         state: KernelState | None = None,
+        audit_verification_engine: AuditVerificationEngine | None = None,
     ) -> None:
         self.policy = policy
         self._secret = secret or secrets.token_bytes(32)
         self._approval_verifier = approval_verifier
         self._clock = clock or time.time_ns
         self._state = state if state is not None else InMemoryKernelState()
+        self._audit_verification_engine = audit_verification_engine
         if self._approval_verifier is not None and not self._verifier_matches_trust(self._approval_verifier):
             raise AuthorityTrustError("approval verifier does not match pinned authority trust")
         try:
@@ -532,6 +535,11 @@ class GovernanceKernel:
         return self._state.consume_permit(permit, digest, self._clock())
 
     def verify_audit(self) -> bool:
+        engine = self._audit_verification_engine
+        raw_reader = getattr(self._state, "audit_verification_rows", None)
+        if engine is not None and callable(raw_reader):
+            return engine.verify_rows(raw_reader())
+
         previous = "0" * 64
         for record in self.audit:
             body = {key: value for key, value in record.items() if key != "hash"}
