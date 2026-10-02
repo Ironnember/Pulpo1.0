@@ -32,7 +32,9 @@ process pool is created lazily only for a later substantial uncached pass. This
 avoids paying worker startup cost for one-shot or small histories.
 
 `parallel_threshold` controls the number of cache misses required before worker
-processes are used. `cache_size` bounds the coordinator-side LRU.
+processes are used. `batch_size` controls how many immutable audit bodies are
+sent per process-pool task, avoiding per-record IPC/pickling overhead on Windows.
+`cache_size` bounds the coordinator-side LRU.
 
 Example:
 
@@ -43,6 +45,7 @@ engine = AuditVerificationEngine(
     workers=4,
     cache_size=4096,
     parallel_threshold=256,
+    batch_size=4096,
 )
 state = SQLiteKernelState("pulpo.sqlite3")
 kernel = GovernanceKernel(
@@ -124,8 +127,9 @@ For the current DDR4 test machine, run from the repository root:
 python scripts\benchmark_memory_scaling.py --sizes 10000 50000 100000 250000 500000 --workers 1 2 4 8 --repeats 3 --memory-label DDR4-3200-CL14-dual-channel --json perf-results\memory-scaling-ddr4-3200-cl14.json
 ```
 
-The output records median latency and records/second for each worker-count and
-audit-size combination. The JSON artifact also records Python version, logical
+The output records median latency and records/second for each worker-count,
+audit-size, and batch-size combination. Multiprocess cases receive one additional
+unmeasured warm-up pass so measured samples do not include process creation. The JSON artifact also records Python version, logical
 CPU count, platform information, and total memory when `psutil` is available.
 
 Interpretation:
@@ -145,3 +149,13 @@ Do not change JEDEC/XMP settings merely to run the baseline. First capture the
 current stable configuration. Any later JEDEC-versus-XMP experiment should use
 the exact same Pulpo commit, benchmark arguments, and machine configuration
 apart from the intentionally changed memory profile.
+
+## Windows per-record IPC finding
+
+A DDR4-3200 CL14 Windows run of the pre-batching implementation showed the
+single-process path sustaining roughly 172k-188k records/second through 500,000
+records, while the process-pool path collapsed to hundreds or low thousands of
+records/second. This is **Recorded** evidence from that development machine. It
+does not establish DDR bandwidth saturation. The leading **Inferred** cause is
+per-record Windows process serialization/IPC overhead. The batched benchmark
+above is the next proof intended to test that inference.
