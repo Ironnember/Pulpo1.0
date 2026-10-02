@@ -18,9 +18,9 @@ Pulpo asks a different question:
 
 **“Even if the AI wants to do it, who gave it the authority?”**
 
-Learning does not grant authority.  
-Success does not grant authority.  
-Memory does not grant authority.  
+Learning does not grant authority.<br>
+Success does not grant authority.<br>
+Memory does not grant authority.<br>
 Intelligence does not grant authority.
 
 **Capability without authority is just a proposal.**
