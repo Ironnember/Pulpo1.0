@@ -76,6 +76,7 @@ This branch adds opt-in performance paths for:
 - **bounded audit digest caching** — exact-input calculations can be reused while current chain links and stored hashes are still checked;
 - **parallel evidence collection** — independent read-only evidence surfaces can be collected concurrently;
 - **sharded evidence-digest caching** — identical canonical snapshot calculations can be reused without treating cached data as fresh observation.
+- **bounded self-tuning** — a machine-bound performance profile can select worker count and batch size by workload without changing governance semantics.
 
 Workers do **not** issue permits, change policy, grant authority, bypass replay protection, reconcile consequences, or append canonical evidence.
 
