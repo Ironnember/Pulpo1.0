@@ -5,6 +5,12 @@ from hashlib import sha256
 from pathlib import Path
 
 from pulpo.audit_parallel import AuditDigestCache, AuditVerificationEngine
+from pulpo.performance_tuning import (
+    AdaptiveAuditVerificationEngine,
+    AuditPerformanceTuner,
+    PerformanceProfile,
+    SystemFingerprint,
+)
 from pulpo.effect_reconcile import (
     EffectEnvelope,
     ParallelEvidenceCollector,
@@ -94,6 +100,100 @@ class AuditParallelTests(unittest.TestCase):
         row = tampered[-1]
         tampered[-1] = (row[0], row[1], row[2], row[3], "f" * 64)
         self.assertFalse(engine.verify_rows(tampered))
+
+
+class AuditPerformanceTunerTests(unittest.TestCase):
+    def benchmark_document(self):
+        fingerprint = SystemFingerprint.detect()
+        return {
+            "schema": "pulpo.memory-scaling-benchmark.v2",
+            "machine": {
+                "platform": fingerprint.platform,
+                "python": fingerprint.python,
+                "cpu_count": fingerprint.cpu_count,
+            },
+            "parallel_threshold": 256,
+            "results": [
+                {
+                    "records": 10000,
+                    "workers": 1,
+                    "batch_size": 256,
+                    "median_seconds": 0.050,
+                    "records_per_second": 200000.0,
+                    "samples_seconds": [0.050],
+                },
+                {
+                    "records": 10000,
+                    "workers": min(4, fingerprint.cpu_count),
+                    "batch_size": 256,
+                    "median_seconds": 0.025,
+                    "records_per_second": 400000.0,
+                    "samples_seconds": [0.025],
+                },
+                {
+                    "records": 50000,
+                    "workers": 1,
+                    "batch_size": 256,
+                    "median_seconds": 0.250,
+                    "records_per_second": 200000.0,
+                    "samples_seconds": [0.250],
+                },
+                {
+                    "records": 50000,
+                    "workers": min(4, fingerprint.cpu_count),
+                    "batch_size": 1024,
+                    "median_seconds": 0.100,
+                    "records_per_second": 500000.0,
+                    "samples_seconds": [0.100],
+                },
+            ],
+        }
+
+    def test_benchmark_selects_workload_specific_profiles(self):
+        tuner = AuditPerformanceTuner.from_benchmark_document(self.benchmark_document())
+        small = tuner.profile_for(10000)
+        large = tuner.profile_for(40000)
+        self.assertEqual(256, small.batch_size)
+        self.assertEqual(1024, large.batch_size)
+        self.assertLessEqual(small.workers, SystemFingerprint.detect().cpu_count)
+        self.assertLessEqual(large.workers, SystemFingerprint.detect().cpu_count)
+
+    def test_profile_document_has_no_authority_effect(self):
+        tuner = AuditPerformanceTuner.from_benchmark_document(self.benchmark_document())
+        document = tuner.to_document()
+        self.assertEqual("none", document["authority_effect"])
+
+    def test_unapproved_batch_size_is_rejected(self):
+        with self.assertRaises(ValueError):
+            AuditPerformanceTuner(
+                (PerformanceProfile(max_records=1000, workers=1, batch_size=999),)
+            )
+
+    def test_adaptive_engine_preserves_verification_semantics(self):
+        rows = []
+        previous = "0" * 64
+        for index in range(16):
+            row = audit_row(previous, "event", {"index": index}, index + 1)
+            rows.append(row)
+            previous = row[4]
+
+        tuner = AuditPerformanceTuner(
+            (
+                PerformanceProfile(
+                    max_records=1000,
+                    workers=1,
+                    batch_size=256,
+                    source="test",
+                ),
+            )
+        )
+        adaptive = AdaptiveAuditVerificationEngine(tuner, cache_size=0)
+        self.addCleanup(adaptive.close)
+        self.assertTrue(adaptive.verify_rows(rows))
+        broken = list(rows)
+        row = broken[-1]
+        broken[-1] = (row[0], row[1], row[2], row[3], "f" * 64)
+        self.assertFalse(adaptive.verify_rows(broken))
 
 
 class ParallelEvidenceTests(unittest.TestCase):
