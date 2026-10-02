@@ -22,6 +22,12 @@ from .kernel import (
     TargetResolution,
 )
 from .namecom import NameComCoreAdapter
+from .performance_tuning import (
+    AdaptiveAuditVerificationEngine,
+    AuditPerformanceTuner,
+    PerformanceProfile,
+    SystemFingerprint,
+)
 from .orchestrator import (
     ApprovalHandle,
     AuthorizationAttempt,
@@ -38,6 +44,7 @@ from .target_reconcile import (
 from .targets import evaluate_locked_target_with_approval
 
 __all__ = [
+    "AdaptiveAuditVerificationEngine",
     "AgentGrant",
     "ApprovalEnvelope",
     "ApprovalHandle",
@@ -50,6 +57,7 @@ __all__ = [
     "AuthorityTrustError",
     "AuditDigestCache",
     "AuditVerificationEngine",
+    "AuditPerformanceTuner",
     "AuthorizationAttempt",
     "Decision",
     "Ed25519ApprovalVerifier",
@@ -63,11 +71,13 @@ __all__ = [
     "NameComCoreAdapter",
     "OrchestrationError",
     "P256ApprovalVerifier",
+    "PerformanceProfile",
     "Policy",
     "PulpoOrchestrator",
     "SQLiteBudgetAccount",
     "SQLiteKernelState",
     "StateIntegrityError",
+    "SystemFingerprint",
     "TargetObligationStatus",
     "TargetResolution",
     "evaluate_locked_target_with_approval",
