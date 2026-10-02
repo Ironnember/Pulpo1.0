@@ -1,13 +1,5 @@
 #!/usr/bin/env python3
-"""Benchmark Pulpo audit verification across worker counts and audit sizes.
-
-This is a measurement harness, not a governance component. It generates a
-synthetic valid audit chain in memory and measures AuditVerificationEngine with
-its digest cache disabled so worker/memory scaling is visible.
-
-Example:
-    python scripts/benchmark_memory_scaling.py --sizes 10000 50000 100000 --workers 1 2 4 8 --repeats 3 --json perf-results/memory-scaling.json
-"""
+"""Benchmark Pulpo audit verification across workers, sizes, and IPC batch sizes."""
 
 from __future__ import annotations
 
@@ -53,23 +45,27 @@ def memory_metadata():
     }
     try:
         import psutil
-        vm = psutil.virtual_memory()
-        data["memory_bytes"] = vm.total
+        data["memory_bytes"] = psutil.virtual_memory().total
     except Exception:
         data["memory_bytes"] = None
     return data
 
 
-def run_case(rows, workers: int, repeats: int, threshold: int):
+def run_case(rows, workers: int, repeats: int, threshold: int, batch_size: int):
     engine = AuditVerificationEngine(
         workers=workers,
         cache_size=0,
         parallel_threshold=threshold,
+        batch_size=batch_size,
     )
     try:
-        # Prime the engine. Its design intentionally keeps the first pass local.
+        # First pass primes engine locally by design.
         if not engine.verify_rows(rows):
             raise RuntimeError("generated audit chain failed verification")
+        # For multiprocessing cases, run one unmeasured pass to create/warm workers.
+        if workers > 1 and len(rows) >= threshold:
+            if not engine.verify_rows(rows):
+                raise RuntimeError("worker warm-up verification failed")
         samples = []
         for _ in range(repeats):
             start = time.perf_counter()
@@ -81,6 +77,7 @@ def run_case(rows, workers: int, repeats: int, threshold: int):
     median = statistics.median(samples)
     return {
         "workers": workers,
+        "batch_size": batch_size,
         "records": len(rows),
         "median_seconds": median,
         "records_per_second": len(rows) / median,
@@ -92,10 +89,11 @@ def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--sizes", nargs="+", type=int, default=[10000, 50000, 100000, 250000])
     parser.add_argument("--workers", nargs="+", type=int, default=[1, 2, 4, 8])
+    parser.add_argument("--batch-sizes", nargs="+", type=int, default=[4096])
     parser.add_argument("--repeats", type=int, default=3)
     parser.add_argument("--parallel-threshold", type=int, default=256)
     parser.add_argument("--json", type=Path)
-    parser.add_argument("--memory-label", default="", help="Optional label such as DDR4-3200-CL14-dual-channel")
+    parser.add_argument("--memory-label", default="")
     return parser.parse_args()
 
 
@@ -105,29 +103,33 @@ def main():
         raise SystemExit("all sizes must be positive")
     if any(worker <= 0 for worker in args.workers):
         raise SystemExit("all worker counts must be positive")
+    if any(batch <= 0 for batch in args.batch_sizes):
+        raise SystemExit("all batch sizes must be positive")
     if args.repeats <= 0:
         raise SystemExit("repeats must be positive")
 
     output = {
-        "schema": "pulpo.memory-scaling-benchmark.v1",
+        "schema": "pulpo.memory-scaling-benchmark.v2",
         "machine": memory_metadata(),
         "memory_label": args.memory_label,
         "parallel_threshold": args.parallel_threshold,
         "results": [],
     }
 
-    print("records  workers  median_ms  records/sec")
-    print("-------  -------  ---------  -----------")
+    print("records  workers  batch_size  median_ms  records/sec")
+    print("-------  -------  ----------  ---------  -----------")
     for size in args.sizes:
         rows = build_rows(size)
         for workers in args.workers:
-            result = run_case(rows, workers, args.repeats, args.parallel_threshold)
-            output["results"].append(result)
-            print(
-                f'{size:7d}  {workers:7d}  '
-                f'{result["median_seconds"] * 1000:9.2f}  '
-                f'{result["records_per_second"]:11.0f}'
-            )
+            batches = [args.batch_sizes[0]] if workers == 1 else args.batch_sizes
+            for batch_size in batches:
+                result = run_case(rows, workers, args.repeats, args.parallel_threshold, batch_size)
+                output["results"].append(result)
+                print(
+                    f'{size:7d}  {workers:7d}  {batch_size:10d}  '
+                    f'{result["median_seconds"] * 1000:9.2f}  '
+                    f'{result["records_per_second"]:11.0f}'
+                )
 
     if args.json:
         args.json.parent.mkdir(parents=True, exist_ok=True)
