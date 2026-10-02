@@ -35,6 +35,11 @@ def _digest_body(key: AuditBodyKey) -> str:
     return sha256(_canonical(body)).hexdigest()
 
 
+def _digest_batch(keys: list[AuditBodyKey]) -> list[str]:
+    """Hash one IPC batch inside a worker process."""
+    return [_digest_body(key) for key in keys]
+
+
 class AuditDigestCache:
     """Bounded exact-input LRU cache for expected audit-record digests."""
 
@@ -77,10 +82,11 @@ class AuditVerificationEngine:
     """Reusable optional accelerator for immutable audit decoding and hashing.
 
     The first uncached verification is intentionally local. A process pool is
-    created lazily only on a later substantial uncached verification, avoiding
-    startup cost for small or one-shot checks. Cache hits reuse only the expected
-    digest for an exact immutable row body; current chain links and stored hashes
-    are still checked every time.
+    created lazily only on a later substantial uncached verification. Parallel
+    work is dispatched in bounded batches to avoid per-record Windows IPC and
+    pickling overhead. Cache hits reuse only the expected digest for an exact
+    immutable row body; current chain links and stored hashes are still checked
+    every time.
     """
 
     def __init__(
@@ -89,13 +95,17 @@ class AuditVerificationEngine:
         workers: int = 0,
         cache_size: int = 4096,
         parallel_threshold: int = 256,
+        batch_size: int = 4096,
     ) -> None:
         if not isinstance(workers, int) or isinstance(workers, bool) or workers < 0:
             raise ValueError("workers must be a non-negative integer")
         if not isinstance(parallel_threshold, int) or isinstance(parallel_threshold, bool) or parallel_threshold <= 0:
             raise ValueError("parallel_threshold must be a positive integer")
+        if not isinstance(batch_size, int) or isinstance(batch_size, bool) or batch_size <= 0:
+            raise ValueError("batch_size must be a positive integer")
         self.workers = workers
         self.parallel_threshold = parallel_threshold
+        self.batch_size = batch_size
         self.cache = AuditDigestCache(cache_size)
         self._executor: ProcessPoolExecutor | None = None
         self._primed = False
@@ -136,7 +146,12 @@ class AuditVerificationEngine:
                 and len(keys) >= self.parallel_threshold
             )
             if use_pool:
-                digests = list(self._executor_for_work().map(_digest_body, keys))
+                batches = [
+                    keys[start : start + self.batch_size]
+                    for start in range(0, len(keys), self.batch_size)
+                ]
+                digest_batches = self._executor_for_work().map(_digest_batch, batches)
+                digests = [digest for batch in digest_batches for digest in batch]
             else:
                 digests = [_digest_body(key) for key in keys]
 
