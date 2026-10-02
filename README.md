@@ -29,38 +29,65 @@ Pulpo turns explicit intent into deterministic governance, binds allowed work to
 
 This repository is the clean canonical Pulpo project. The older `Iron-Ember/pulpo` repository remains historical reference material; its accumulated plans, generated evidence, machine-specific scripts, and CI workarounds are intentionally not imported here.
 
-## Proven now
+## How Pulpo changes the model
 
-The base dependency-free suite and optional asymmetric-authority suite prove:
+Pulpo separates three responsibilities that are often collapsed into one AI system:
 
-- unknown, incomplete, and over-budget intents fail closed;
-- selected high-impact actions require a verifier-backed approval envelope;
-- authority policy pins verifier, key, algorithm, public-key fingerprint,
-  deployment, and maximum approval lifetime;
-- optional Ed25519 verification contains public material only and exposes no
-  signer;
-- caller-controlled boolean approval and authorization timestamps are absent
-  from the evaluation API;
-- permits are bound to the exact intent and cannot be replayed;
-- an optional SQLite state backend preserves approval-ID, nonce, permit, and
-  audit state across process restart in the same canonical kernel;
-- persisted audit-chain tampering fails closed when the kernel restarts;
-- configured agent roles cannot exceed their action, resource, or cost grant.
-- a bounded domain order is bound to its full request, quote, reserved budget, and one-use permit.
-- a configured external verifier checks v2 approval envelopes bound to trust,
-  deployment, intent, policy, principal, session, nonce, issue time, and expiry
-  using the kernel's trusted clock.
-- transactional SQLite commerce state preserves reservations, attempted orders,
-  reconciliation, and spend across restart.
+| Plane | Responsibility |
+| --- | --- |
+| **Intelligence** | Reasons, plans, learns, and proposes. It does not create authority. |
+| **Governance** | Resolves identity, policy, budget, approval, permits, evidence, reconciliation, and governed memory. |
+| **Execution** | Performs only the exact consequence authorized by a valid permit. |
 
-PulpoGit provides a read-only clarity projection for local source state. It
-distinguishes canonical, proposal, stale, diverged, detached, and dirty
-checkouts without inferring tests or authority. See the
-[PulpoGit clarity proof](proofs/git_clarity/README.md).
+The lifecycle is explicit:
+
+`Purpose → Intent → Authority → Policy → Decision → Permit → Execution → Evidence → Reconciliation → Memory → Adaptation → Purpose`
+
+The invariant is simple: **better intelligence can improve a proposal, but it cannot promote itself into greater authority.**
+
+## What the repository proves
+
+The executable test and proof surfaces cover controls including:
+
+- fail-closed handling of unknown, incomplete, over-budget, expired, revoked, mismatched, and replayed requests;
+- exact-intent binding and one-use permits;
+- verifier-backed approval envelopes with pinned trust, key, algorithm, deployment, and lifetime constraints;
+- restart-safe SQLite governance state for approval IDs, nonces, permits, audit history, commerce state, and reconciliation;
+- persisted audit-chain tamper detection;
+- bounded agent grants that cannot exceed configured action, resource, or cost scope;
+- bounded commerce objects tied to request, quote, reserved budget, exact target, and permit;
+- independent custody/evidence paths for consequential execution proofs;
+- reconciliation that distinguishes verified consequences from failure and unresolved external reality;
+- governed outcome memory that records evidence without converting learning into authority.
+
+PulpoGit also provides a read-only clarity projection for local source state. It distinguishes canonical, proposal, stale, diverged, detached, and dirty checkouts without inferring tests or authority. See the [PulpoGit clarity proof](proofs/git_clarity/README.md).
 
 ```bash
 python -m unittest discover -s tests -v
 ```
+
+## Performance without moving the trust boundary
+
+Pulpo's governance boundary does not require every read-only calculation to remain single-core.
+
+This branch adds opt-in performance paths for:
+
+- **multi-core audit verification** — worker processes can decode immutable audit payloads and calculate expected hashes;
+- **bounded audit digest caching** — exact-input calculations can be reused while current chain links and stored hashes are still checked;
+- **parallel evidence collection** — independent read-only evidence surfaces can be collected concurrently;
+- **sharded evidence-digest caching** — identical canonical snapshot calculations can be reused without treating cached data as fresh observation.
+
+Workers do **not** issue permits, change policy, grant authority, bypass replay protection, reconcile consequences, or append canonical evidence.
+
+Historical development measurements recorded about **2.7× faster** verification for a 10,000-record synthetic audit with four warm workers, plus lower repeated-check latency with caching. Those figures are development measurements, not universal performance guarantees. See [multi-core audit verification](docs/AUDIT_CPU_WORKERS.md).
+
+## Designed for consequential systems
+
+Pulpo's architecture is intended for systems where an AI recommendation can eventually reach something that matters: infrastructure, autonomous agents, robotics, drones, governed transactions, APIs, databases, and on-prem execution.
+
+The point is not to make the model less capable.
+
+The point is to make **capability and authority different things**.
 
 ## Minimal example
 
@@ -83,12 +110,11 @@ if decision.outcome == "allow":
 
 ## Boundary
 
-Pulpo currently proves governance, pinned asymmetric external-verifier contract
-semantics, local restart-safe kernel replay state, and restart-durable bounded-
-commerce state with dependency-free SQLite backends. It does not yet claim an
-independently deployed human signer, trusted verifier bootstrap, rollback-proof
-host storage, a real payment rail, network isolation, hostile-code sandboxing,
-distributed identity, or production readiness.
+Pulpo is an active technical governance proof and implementation, not a claim that every production deployment is automatically contained. Repository tests and bounded provider proofs establish specific controls in their tested topology; they do not by themselves prove universal cloud, model-provider, operating-system, hardware, or external-world custody.
+
+Production deployments still require their own trusted bootstrap, capability isolation, credential custody, durable storage guarantees, independent observation, provider-specific integration, and exact-topology validation.
+
+That distinction is intentional: **architecture is not proof, execution is not authority, and evidence is not permission.**
 
 See [project source baseline](docs/PROJECT_SOURCE_BASELINE.md), [architecture](docs/ARCHITECTURE.md), [project governance](docs/GOVERNANCE.md),
 [current state](docs/CURRENT_STATE.md), [canonicalization](docs/CANONICALIZATION.md),
