@@ -29,6 +29,36 @@ Pulpo turns explicit intent into deterministic governance, binds allowed work to
 
 This repository is the clean canonical Pulpo project. The older `Iron-Ember/pulpo` repository remains historical reference material; its accumulated plans, generated evidence, machine-specific scripts, and CI workarounds are intentionally not imported here.
 
+## Quick test drive
+
+For testers and developers, Pulpo can bootstrap a machine-bound performance profile
+without changing governance semantics.
+
+After installing the package in your environment:
+
+```powershell
+pulpo setup --json-report perf-results\pulpo-setup-report.json
+```
+
+`pulpo setup`:
+
+- detects the current OS, Python version, and logical CPU count;
+- reuses an existing matching performance profile when available;
+- rejects stale or mismatched profiles;
+- otherwise runs bounded local calibration over synthetic audit data;
+- verifies that a valid audit passes and a tampered hash fails;
+- saves the local performance profile for later adaptive verification.
+
+If you already have a benchmark artifact, setup can build from that instead of
+recalibrating:
+
+```powershell
+pulpo setup --benchmark perf-results\memory-scaling-ddr4-3200-cl14-batched.json
+```
+
+The setup path reports `Authority changes ........ NONE`. It is a test/developer
+bootstrap and does not claim production readiness.
+
 ## How Pulpo changes the model
 
 Pulpo separates three responsibilities that are often collapsed into one AI system:
