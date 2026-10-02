@@ -9,6 +9,7 @@ authority = ["cryptography==50.0.1"]
 mcp = ["mcp[cli]>=2,<3"]
 
 [project.scripts]
+pulpo = "pulpo.cli:main"
 pulpo-git-clarity = "pulpo.git_clarity:main"
 pulpo-mcp-tunnel = "pulpo.mcp_tunnel:main"
 
