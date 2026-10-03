@@ -1,0 +1,50 @@
+Baseline state backend: 73ec97b68a3228c52ecba717d867a1d99340ab15
+test_durable_budget_requires_stable_path_and_ceiling (tests.test_commerce.CommerceProofTests.test_durable_budget_requires_stable_path_and_ceiling) ... ERROR
+test_clean_canonical_report_is_deterministic_and_self_verifying (tests.test_git_clarity.GitClarityTests.test_clean_canonical_report_is_deterministic_and_self_verifying) ... FAIL
+
+======================================================================
+ERROR: test_durable_budget_requires_stable_path_and_ceiling (tests.test_commerce.CommerceProofTests.test_durable_budget_requires_stable_path_and_ceiling)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Program Files\WindowsApps\PythonSoftwareFoundation.Python.3.12_3.12.2800.0_x64__qbz5n2kfra8p0\Lib\shutil.py", line 633, in _rmtree_unsafe
+    os.unlink(fullname)
+PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\Users\\spike\\AppData\\Local\\Temp\\tmpqr7j1s43\\commerce.sqlite3'
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\spike\Pulpo1.0\tests\test_commerce.py", line 427, in test_durable_budget_requires_stable_path_and_ceiling
+    with TemporaryDirectory() as directory:
+         ^^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\WindowsApps\PythonSoftwareFoundation.Python.3.12_3.12.2800.0_x64__qbz5n2kfra8p0\Lib\tempfile.py", line 950, in __exit__
+    self.cleanup()
+  File "C:\Program Files\WindowsApps\PythonSoftwareFoundation.Python.3.12_3.12.2800.0_x64__qbz5n2kfra8p0\Lib\tempfile.py", line 954, in cleanup
+    self._rmtree(self.name, ignore_errors=self._ignore_cleanup_errors)
+  File "C:\Program Files\WindowsApps\PythonSoftwareFoundation.Python.3.12_3.12.2800.0_x64__qbz5n2kfra8p0\Lib\tempfile.py", line 934, in _rmtree
+    _shutil.rmtree(name, onexc=onexc)
+  File "C:\Program Files\WindowsApps\PythonSoftwareFoundation.Python.3.12_3.12.2800.0_x64__qbz5n2kfra8p0\Lib\shutil.py", line 781, in rmtree
+    return _rmtree_unsafe(path, onexc)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\WindowsApps\PythonSoftwareFoundation.Python.3.12_3.12.2800.0_x64__qbz5n2kfra8p0\Lib\shutil.py", line 635, in _rmtree_unsafe
+    onexc(os.unlink, fullname, err)
+  File "C:\Program Files\WindowsApps\PythonSoftwareFoundation.Python.3.12_3.12.2800.0_x64__qbz5n2kfra8p0\Lib\tempfile.py", line 909, in onexc
+    _os.unlink(path)
+PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\Users\\spike\\AppData\\Local\\Temp\\tmpqr7j1s43\\commerce.sqlite3'
+
+======================================================================
+FAIL: test_clean_canonical_report_is_deterministic_and_self_verifying (tests.test_git_clarity.GitClarityTests.test_clean_canonical_report_is_deterministic_and_self_verifying)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\spike\Pulpo1.0\tests\test_git_clarity.py", line 67, in test_clean_canonical_report_is_deterministic_and_self_verifying
+    self.assertEqual("canonical_commit_clean", first["classification"])
+AssertionError: 'canonical_commit_clean' != 'canonical_commit_dirty'
+- canonical_commit_clean
+?                  ^^^^^
++ canonical_commit_dirty
+?                  ^^^^^
+
+
+----------------------------------------------------------------------
+Ran 2 tests in 1.176s
+
+FAILED (failures=1, errors=1)

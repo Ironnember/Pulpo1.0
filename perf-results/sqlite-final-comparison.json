@@ -1,0 +1,194 @@
+{
+  "label": "mitigated",
+  "python": "3.12.10",
+  "sqlite": "3.49.1",
+  "platform": "Windows-11-10.0.26200-SP0",
+  "iterations": 200,
+  "history": 10000,
+  "repeats": 5,
+  "results": [
+    {
+      "variant": "baseline",
+      "case": "append",
+      "median_seconds": 0.6397695000050589,
+      "operations_per_second": 312.6125893754212,
+      "samples_seconds": [
+        0.6397695000050589,
+        0.6292740000062622,
+        0.82373230002122,
+        0.8300942999776453,
+        0.6283092999947257
+      ],
+      "journal_mode": "delete",
+      "synchronous": 2
+    },
+    {
+      "variant": "mitigated",
+      "case": "append",
+      "median_seconds": 0.6651729000150226,
+      "operations_per_second": 300.67370452927815,
+      "samples_seconds": [
+        0.6115112000261433,
+        1.2334318999783136,
+        0.6160668000229634,
+        0.6651729000150226,
+        0.7560866000130773
+      ],
+      "journal_mode": "delete",
+      "synchronous": 2
+    },
+    {
+      "variant": "mitigated_indexed",
+      "case": "append",
+      "median_seconds": 0.6690499000251293,
+      "operations_per_second": 298.9313651978545,
+      "samples_seconds": [
+        0.8647166999871843,
+        0.6673897000146098,
+        0.6690499000251293,
+        1.0115986000164412,
+        0.6504005999886431
+      ],
+      "journal_mode": "delete",
+      "synchronous": 2
+    },
+    {
+      "variant": "baseline",
+      "case": "issue_and_consume",
+      "median_seconds": 1.81168569996953,
+      "operations_per_second": 110.39442437690141,
+      "samples_seconds": [
+        1.8290635999874212,
+        2.040580899978522,
+        1.5644141000229865,
+        1.81168569996953,
+        1.6220090999850072
+      ],
+      "journal_mode": "delete",
+      "synchronous": 2
+    },
+    {
+      "variant": "mitigated",
+      "case": "issue_and_consume",
+      "median_seconds": 1.548092800017912,
+      "operations_per_second": 129.1912216100262,
+      "samples_seconds": [
+        1.5452798000187613,
+        1.581503099994734,
+        1.5092885000049137,
+        1.548092800017912,
+        2.41052730003139
+      ],
+      "journal_mode": "delete",
+      "synchronous": 2
+    },
+    {
+      "variant": "mitigated_indexed",
+      "case": "issue_and_consume",
+      "median_seconds": 1.8009126000106335,
+      "operations_per_second": 111.05480632364896,
+      "samples_seconds": [
+        1.661406600032933,
+        2.5331156000029296,
+        2.3699759999872185,
+        1.5844831999856979,
+        1.8009126000106335
+      ],
+      "journal_mode": "delete",
+      "synchronous": 2
+    },
+    {
+      "variant": "baseline",
+      "case": "unique_new",
+      "median_seconds": 0.8547071000211872,
+      "operations_per_second": 233.99829016869313,
+      "samples_seconds": [
+        0.8547071000211872,
+        0.7503716999781318,
+        1.1258120000129566,
+        0.7727942999918014,
+        1.1242367000086233
+      ],
+      "journal_mode": "delete",
+      "synchronous": 2
+    },
+    {
+      "variant": "mitigated",
+      "case": "unique_new",
+      "median_seconds": 0.9103239999967627,
+      "operations_per_second": 219.7019962131189,
+      "samples_seconds": [
+        0.7259646000456996,
+        0.9417679000180215,
+        0.7545831999741495,
+        0.9103239999967627,
+        1.140606899978593
+      ],
+      "journal_mode": "delete",
+      "synchronous": 2
+    },
+    {
+      "variant": "mitigated_indexed",
+      "case": "unique_new",
+      "median_seconds": 0.7229196000262164,
+      "operations_per_second": 276.6559379393602,
+      "samples_seconds": [
+        0.9733923000167124,
+        0.662914999993518,
+        0.8836999000050128,
+        0.7229196000262164,
+        0.6779284000513144
+      ],
+      "journal_mode": "delete",
+      "synchronous": 2
+    },
+    {
+      "variant": "baseline",
+      "case": "unique_replay",
+      "median_seconds": 0.08729629998560995,
+      "operations_per_second": 2291.047845475333,
+      "samples_seconds": [
+        0.08697890001349151,
+        0.08690809999825433,
+        0.08799299999373034,
+        0.08729629998560995,
+        0.0941783000016585
+      ],
+      "journal_mode": "delete",
+      "synchronous": 2
+    },
+    {
+      "variant": "mitigated",
+      "case": "unique_replay",
+      "median_seconds": 0.08872279996285215,
+      "operations_per_second": 2254.211996056697,
+      "samples_seconds": [
+        0.08854619995690882,
+        0.08917680004378781,
+        0.08807749999687076,
+        0.08872279996285215,
+        0.0904490000102669
+      ],
+      "journal_mode": "delete",
+      "synchronous": 2
+    },
+    {
+      "variant": "mitigated_indexed",
+      "case": "unique_replay",
+      "median_seconds": 0.01833470002748072,
+      "operations_per_second": 10908.277730218257,
+      "samples_seconds": [
+        0.017766800010576844,
+        0.017786299984436482,
+        0.01833470002748072,
+        0.018981500004883856,
+        0.019241900008637458
+      ],
+      "journal_mode": "delete",
+      "synchronous": 2
+    }
+  ],
+  "state_source_sha256": "9e0f8b10f57ccd3d7e861adc50181db79932f9d55c1c4417847121d09e112e56",
+  "baseline_revision": "73ec97b68a3228c52ecba717d867a1d99340ab15",
+  "baseline_state_source_sha256": "dab57d3ff8640e40b5171462068a66aba483d985048c1570cceae29ecc393cad"
+}
