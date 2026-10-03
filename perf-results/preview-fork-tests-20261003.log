@@ -1,0 +1,1807 @@
+test_metadata_hold_check_runs_even_if_quarantine_fails (test_admission_hold_workflow_trust.AdmissionHoldWorkflowTrustTests.test_metadata_hold_check_runs_even_if_quarantine_fails) ... ok
+test_never_overrides_checkout_to_pr_metadata_or_head (test_admission_hold_workflow_trust.AdmissionHoldWorkflowTrustTests.test_never_overrides_checkout_to_pr_metadata_or_head) ... ok
+test_quarantine_precedes_metadata_denial (test_admission_hold_workflow_trust.AdmissionHoldWorkflowTrustTests.test_quarantine_precedes_metadata_denial) ... ok
+test_targets_main_pull_request_target_only (test_admission_hold_workflow_trust.AdmissionHoldWorkflowTrustTests.test_targets_main_pull_request_target_only) ... ok
+test_workflow_does_not_require_external_credentials (test_admission_hold_workflow_trust.AdmissionHoldWorkflowTrustTests.test_workflow_does_not_require_external_credentials) ... ok
+test_write_scope_is_only_pull_request_mutation_plus_read (test_admission_hold_workflow_trust.AdmissionHoldWorkflowTrustTests.test_write_scope_is_only_pull_request_mutation_plus_read) ... ok
+test_approval_id_and_nonce_are_each_single_use (test_authority.VerifiedApprovalTests.test_approval_id_and_nonce_are_each_single_use) ... ok
+test_approval_path_rejects_actions_that_do_not_need_approval (test_authority.VerifiedApprovalTests.test_approval_path_rejects_actions_that_do_not_need_approval) ... ok
+test_caller_boolean_bypass_is_removed_for_every_kernel (test_authority.VerifiedApprovalTests.test_caller_boolean_bypass_is_removed_for_every_kernel) ... ok
+test_clock_failure_and_rollback_fail_closed_with_evidence (test_authority.VerifiedApprovalTests.test_clock_failure_and_rollback_fail_closed_with_evidence) ... ok
+test_envelope_bindings_fail_closed_even_with_valid_authority_signature (test_authority.VerifiedApprovalTests.test_envelope_bindings_fail_closed_even_with_valid_authority_signature) ... ok
+test_every_intent_field_is_bound_by_the_signed_envelope (test_authority.VerifiedApprovalTests.test_every_intent_field_is_bound_by_the_signed_envelope) ... ok
+test_invalid_or_missing_signature_fails_closed (test_authority.VerifiedApprovalTests.test_invalid_or_missing_signature_fails_closed) ... ok
+test_issued_at_ttl_and_verification_time_fail_closed (test_authority.VerifiedApprovalTests.test_issued_at_ttl_and_verification_time_fail_closed) ... ok
+test_malformed_envelope_is_rejected_before_verification (test_authority.VerifiedApprovalTests.test_malformed_envelope_is_rejected_before_verification) ... ok
+test_malformed_envelope_object_fails_closed (test_authority.VerifiedApprovalTests.test_malformed_envelope_object_fails_closed) ... ok
+test_old_envelope_is_invalid_after_separately_configured_key_rotation (test_authority.VerifiedApprovalTests.test_old_envelope_is_invalid_after_separately_configured_key_rotation) ... ok
+test_policy_hash_is_canonical (test_authority.VerifiedApprovalTests.test_policy_hash_is_canonical) ... ok
+test_policy_requires_and_hashes_pinned_authority_trust (test_authority.VerifiedApprovalTests.test_policy_requires_and_hashes_pinned_authority_trust) ... ok
+test_session_and_time_are_not_caller_controlled (test_authority.VerifiedApprovalTests.test_session_and_time_are_not_caller_controlled) ... ok
+test_substituted_verifier_fails_at_bootstrap (test_authority.VerifiedApprovalTests.test_substituted_verifier_fails_at_bootstrap) ... ok
+test_truthy_non_boolean_verifier_result_is_rejected (test_authority.VerifiedApprovalTests.test_truthy_non_boolean_verifier_result_is_rejected) ... ok
+test_valid_external_envelope_issues_one_bound_permit (test_authority.VerifiedApprovalTests.test_valid_external_envelope_issues_one_bound_permit) ... ok
+test_verified_evidence_records_pinned_public_trust (test_authority.VerifiedApprovalTests.test_verified_evidence_records_pinned_public_trust) ... ok
+test_verifier_exception_fails_closed (test_authority.VerifiedApprovalTests.test_verifier_exception_fails_closed) ... ok
+test_verifier_is_configured_at_kernel_boundary (test_authority.VerifiedApprovalTests.test_verifier_is_configured_at_kernel_boundary) ... ok
+test_verifier_replacement_after_bootstrap_fails_closed (test_authority.VerifiedApprovalTests.test_verifier_replacement_after_bootstrap_fails_closed) ... ok
+test_evidence_is_split_without_recording_private_credentials (test_authority_boundary_decision.AuthorityBoundaryDecisionTests.test_evidence_is_split_without_recording_private_credentials) ... ok
+test_owner_authorization_is_not_misclassified_as_deployment (test_authority_boundary_decision.AuthorityBoundaryDecisionTests.test_owner_authorization_is_not_misclassified_as_deployment) ... ok
+test_owner_selected_exact_origin_and_isolated_managed_cloud_boundary (test_authority_boundary_decision.AuthorityBoundaryDecisionTests.test_owner_selected_exact_origin_and_isolated_managed_cloud_boundary) ... ok
+test_primary_authority_requires_non_syncable_hardware_and_human_verification (test_authority_boundary_decision.AuthorityBoundaryDecisionTests.test_primary_authority_requires_non_syncable_hardware_and_human_verification) ... ok
+test_provider_and_runtime_particulars_remain_unset_before_real_deployment (test_authority_boundary_decision.AuthorityBoundaryDecisionTests.test_provider_and_runtime_particulars_remain_unset_before_real_deployment) ... ok
+test_recovery_cannot_approve_normal_intents (test_authority_boundary_decision.AuthorityBoundaryDecisionTests.test_recovery_cannot_approve_normal_intents) ... ok
+test_worker_can_request_but_cannot_create_or_administer_authority (test_authority_boundary_decision.AuthorityBoundaryDecisionTests.test_worker_can_request_but_cannot_create_or_administer_authority) ... ok
+test_approved_poll_parses_exact_envelope (test_authority_client.AuthorityClientTests.test_approved_poll_parses_exact_envelope) ... ok
+test_client_exposes_only_request_and_poll (test_authority_client.AuthorityClientTests.test_client_exposes_only_request_and_poll) ... ok
+test_non_https_and_cross_origin_human_urls_fail_closed (test_authority_client.AuthorityClientTests.test_non_https_and_cross_origin_human_urls_fail_closed) ... ok
+test_request_and_poll_use_only_fixed_worker_paths (test_authority_client.AuthorityClientTests.test_request_and_poll_use_only_fixed_worker_paths) ... ok
+test_pinned_ed25519_public_key_verifies_exact_envelope_once (test_authority_crypto.Ed25519AuthorityTests.test_pinned_ed25519_public_key_verifies_exact_envelope_once) ... ok
+test_same_authority_with_substituted_public_key_fails_bootstrap (test_authority_crypto.Ed25519AuthorityTests.test_same_authority_with_substituted_public_key_fails_bootstrap) ... ok
+test_signature_and_payload_substitution_fail_closed (test_authority_crypto.Ed25519AuthorityTests.test_signature_and_payload_substitution_fail_closed) ... ok
+test_activation_approval_cannot_be_retargeted (test_capability_activation_authority.CapabilityActivationAuthorityTests.test_activation_approval_cannot_be_retargeted) ... ok
+test_exact_approval_issues_one_bound_activation_permit (test_capability_activation_authority.CapabilityActivationAuthorityTests.test_exact_approval_issues_one_bound_activation_permit) ... ok
+test_inspection_permit_cannot_be_substituted_for_activation (test_capability_activation_authority.CapabilityActivationAuthorityTests.test_inspection_permit_cannot_be_substituted_for_activation) ... ok
+test_read_only_permission_does_not_authorize_capability_activation (test_capability_activation_authority.CapabilityActivationAuthorityTests.test_read_only_permission_does_not_authorize_capability_activation) ... ok
+test_credit_amount_substitution_invalidates_spend_approval (test_capability_activation_authority.WorkModeSpendAuthorityBoundaryTests.test_credit_amount_substitution_invalidates_spend_approval) ... ok
+test_credit_spend_requires_separate_exact_one_use_approval (test_capability_activation_authority.WorkModeSpendAuthorityBoundaryTests.test_credit_spend_requires_separate_exact_one_use_approval) ... ok
+test_parent_task_authority_does_not_authorize_work_or_spend (test_capability_activation_authority.WorkModeSpendAuthorityBoundaryTests.test_parent_task_authority_does_not_authorize_work_or_spend) ... ok
+test_work_activation_approval_cannot_authorize_credit_spend (test_capability_activation_authority.WorkModeSpendAuthorityBoundaryTests.test_work_activation_approval_cannot_authorize_credit_spend) ... ok
+test_duplication_approval_cannot_be_reinterpreted_as_export (test_capability_derivation_duplication.CapabilityDerivationDuplicationTests.test_duplication_approval_cannot_be_reinterpreted_as_export) ... ok
+test_duplication_approval_cannot_be_retargeted (test_capability_derivation_duplication.CapabilityDerivationDuplicationTests.test_duplication_approval_cannot_be_retargeted) ... ok
+test_exact_approval_issues_one_bound_duplication_permit (test_capability_derivation_duplication.CapabilityDerivationDuplicationTests.test_exact_approval_issues_one_bound_duplication_permit) ... ok
+test_use_authority_does_not_authorize_duplication (test_capability_derivation_duplication.CapabilityDerivationDuplicationTests.test_use_authority_does_not_authorize_duplication) ... ok
+test_use_permit_cannot_be_substituted_for_duplication (test_capability_derivation_duplication.CapabilityDerivationDuplicationTests.test_use_permit_cannot_be_substituted_for_duplication) ... ok
+test_ambiguous_identity_and_invalid_inventory_fail_closed (test_cloud_runtime_discovery.CloudRuntimeDiscoveryTests.test_ambiguous_identity_and_invalid_inventory_fail_closed) ... ok
+test_exact_read_only_inventory_produces_bounded_evidence (test_cloud_runtime_discovery.CloudRuntimeDiscoveryTests.test_exact_read_only_inventory_produces_bounded_evidence) ... ok
+test_substituted_or_mutating_commands_are_rejected (test_cloud_runtime_discovery.CloudRuntimeDiscoveryTests.test_substituted_or_mutating_commands_are_rejected) ... ok
+test_wrong_operator_fails_before_project_or_inventory (test_cloud_runtime_discovery.CloudRuntimeDiscoveryTests.test_wrong_operator_fails_before_project_or_inventory) ... ok
+test_wrong_project_fails_before_resource_inventory (test_cloud_runtime_discovery.CloudRuntimeDiscoveryTests.test_wrong_project_fails_before_resource_inventory) ... ok
+test_acceptance_requires_independent_ownership_period_privacy_and_dns (test_commerce.CommerceProofTests.test_acceptance_requires_independent_ownership_period_privacy_and_dns) ... ok
+test_authorized_paid_delivered_accepted_and_valuable_are_separate (test_commerce.CommerceProofTests.test_authorized_paid_delivered_accepted_and_valuable_are_separate) ... ok
+test_budget_reservation_rejects_duplicate_insufficient_and_mismatch (test_commerce.CommerceProofTests.test_budget_reservation_rejects_duplicate_insufficient_and_mismatch) ... ok
+test_bundle_projects_kernel_audit_without_becoming_a_second_ledger (test_commerce.CommerceProofTests.test_bundle_projects_kernel_audit_without_becoming_a_second_ledger) ... ok
+test_durable_budget_requires_stable_path_and_ceiling (test_commerce.CommerceProofTests.test_durable_budget_requires_stable_path_and_ceiling) ... ok
+test_durable_budget_reservation_is_atomic_between_workers (test_commerce.CommerceProofTests.test_durable_budget_reservation_is_atomic_between_workers) ... ok
+test_durable_budget_survives_restart_and_blocks_attempt_replay (test_commerce.CommerceProofTests.test_durable_budget_survives_restart_and_blocks_attempt_replay) ... ok
+test_durable_reconciliation_survives_restart (test_commerce.CommerceProofTests.test_durable_reconciliation_survives_restart) ... ok
+test_exact_order_hash_blocks_substitution (test_commerce.CommerceProofTests.test_exact_order_hash_blocks_substitution) ... ok
+test_exact_order_requires_approval_and_uses_one_permit (test_commerce.CommerceProofTests.test_exact_order_requires_approval_and_uses_one_permit) ... ok
+test_expiration_ownership_privacy_and_credential_fail_closed (test_commerce.CommerceProofTests.test_expiration_ownership_privacy_and_credential_fail_closed) ... ok
+test_hard_pilot_ceiling_denies_30_01 (test_commerce.CommerceProofTests.test_hard_pilot_ceiling_denies_30_01) ... ok
+test_malformed_quote_prices_and_upsells_fail_closed (test_commerce.CommerceProofTests.test_malformed_quote_prices_and_upsells_fail_closed) ... ok
+test_order_binds_complete_request_and_quote_hashes (test_commerce.CommerceProofTests.test_order_binds_complete_request_and_quote_hashes) ... ok
+test_payment_rail_rejects_provider_charge_above_exact_cap (test_commerce.CommerceProofTests.test_payment_rail_rejects_provider_charge_above_exact_cap) ... ok
+test_unapproved_domain_registrar_renewal_and_upsell_are_distinct_denials (test_commerce.CommerceProofTests.test_unapproved_domain_registrar_renewal_and_upsell_are_distinct_denials) ... ok
+test_uncertain_external_result_cannot_be_blindly_retried_after_restart (test_commerce.CommerceProofTests.test_uncertain_external_result_cannot_be_blindly_retried_after_restart) ... ok
+test_randomized_sqlite_sequence_preserves_constitutional_invariants (test_constitutional_sequences.ConstitutionalSequenceTests.test_randomized_sqlite_sequence_preserves_constitutional_invariants) ... Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682b95210>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/decoder.py", line 345, in decode
+    obj, end = self.raw_decode(s, idx=_w(s, 0).end())
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682b95210>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682b95120>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/decoder.py", line 345, in decode
+    obj, end = self.raw_decode(s, idx=_w(s, 0).end())
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682b95120>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682b95300>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/decoder.py", line 345, in decode
+    obj, end = self.raw_decode(s, idx=_w(s, 0).end())
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682b95300>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682b956c0>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/decoder.py", line 345, in decode
+    obj, end = self.raw_decode(s, idx=_w(s, 0).end())
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682b956c0>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682b957b0>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/decoder.py", line 345, in decode
+    obj, end = self.raw_decode(s, idx=_w(s, 0).end())
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682b957b0>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682b958a0>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/decoder.py", line 345, in decode
+    obj, end = self.raw_decode(s, idx=_w(s, 0).end())
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682b958a0>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682b95990>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/decoder.py", line 345, in decode
+    obj, end = self.raw_decode(s, idx=_w(s, 0).end())
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682b95990>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682b953f0>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/decoder.py", line 345, in decode
+    obj, end = self.raw_decode(s, idx=_w(s, 0).end())
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682b953f0>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682b954e0>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/decoder.py", line 345, in decode
+    obj, end = self.raw_decode(s, idx=_w(s, 0).end())
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682b954e0>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682b955d0>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/decoder.py", line 345, in decode
+    obj, end = self.raw_decode(s, idx=_w(s, 0).end())
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682b955d0>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682b95a80>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/decoder.py", line 345, in decode
+    obj, end = self.raw_decode(s, idx=_w(s, 0).end())
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682b95a80>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682b95b70>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/decoder.py", line 345, in decode
+    obj, end = self.raw_decode(s, idx=_w(s, 0).end())
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682b95b70>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682b95c60>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/decoder.py", line 345, in decode
+    obj, end = self.raw_decode(s, idx=_w(s, 0).end())
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682b95c60>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682b95d50>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/decoder.py", line 345, in decode
+    obj, end = self.raw_decode(s, idx=_w(s, 0).end())
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682b95d50>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682b95e40>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/decoder.py", line 345, in decode
+    obj, end = self.raw_decode(s, idx=_w(s, 0).end())
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682b95e40>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682b95f30>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/decoder.py", line 345, in decode
+    obj, end = self.raw_decode(s, idx=_w(s, 0).end())
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682b95f30>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682b96020>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/decoder.py", line 345, in decode
+    obj, end = self.raw_decode(s, idx=_w(s, 0).end())
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682b96020>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682b96110>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/decoder.py", line 345, in decode
+    obj, end = self.raw_decode(s, idx=_w(s, 0).end())
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682b96110>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682b96200>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/decoder.py", line 345, in decode
+    obj, end = self.raw_decode(s, idx=_w(s, 0).end())
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682b96200>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682b962f0>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/decoder.py", line 345, in decode
+    obj, end = self.raw_decode(s, idx=_w(s, 0).end())
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682b962f0>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682b963e0>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/decoder.py", line 345, in decode
+    obj, end = self.raw_decode(s, idx=_w(s, 0).end())
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682b963e0>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682b964d0>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/decoder.py", line 345, in decode
+    obj, end = self.raw_decode(s, idx=_w(s, 0).end())
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682b964d0>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682b965c0>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/decoder.py", line 345, in decode
+    obj, end = self.raw_decode(s, idx=_w(s, 0).end())
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682b965c0>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682b966b0>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/decoder.py", line 345, in decode
+    obj, end = self.raw_decode(s, idx=_w(s, 0).end())
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682b966b0>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f86835c94e0>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/decoder.py", line 345, in decode
+    obj, end = self.raw_decode(s, idx=_w(s, 0).end())
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f86835c94e0>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682b967a0>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/decoder.py", line 345, in decode
+    obj, end = self.raw_decode(s, idx=_w(s, 0).end())
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682b967a0>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682b96890>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/decoder.py", line 345, in decode
+    obj, end = self.raw_decode(s, idx=_w(s, 0).end())
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682b96890>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682b96980>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/decoder.py", line 345, in decode
+    obj, end = self.raw_decode(s, idx=_w(s, 0).end())
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682b96980>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682b96b60>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/decoder.py", line 345, in decode
+    obj, end = self.raw_decode(s, idx=_w(s, 0).end())
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682b96b60>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682b96c50>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/decoder.py", line 345, in decode
+    obj, end = self.raw_decode(s, idx=_w(s, 0).end())
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682b96c50>
+ok
+test_custody_clock_regression_fails_closed (test_custody.CustodyProofTests.test_custody_clock_regression_fails_closed) ... ok
+test_forked_worker_cannot_authorize_same_object_twice (test_custody.CustodyProofTests.test_forked_worker_cannot_authorize_same_object_twice) ... ok
+test_one_attempt_can_be_claimed_by_only_one_executor (test_custody.CustodyProofTests.test_one_attempt_can_be_claimed_by_only_one_executor) ... ok
+test_transmission_right_is_released_once_and_lost_response_requires_reconciliation (test_custody.CustodyProofTests.test_transmission_right_is_released_once_and_lost_response_requires_reconciliation) ... ok
+test_two_workers_racing_same_head_yield_one_authorization (test_custody.CustodyProofTests.test_two_workers_racing_same_head_yield_one_authorization) ... ok
+test_worker_cannot_claim_reconciled_success_without_observer_evidence (test_custody.CustodyProofTests.test_worker_cannot_claim_reconciled_success_without_observer_evidence) ... ok
+test_worker_rollback_does_not_restore_execution_right (test_custody.CustodyProofTests.test_worker_rollback_does_not_restore_execution_right) ... ok
+test_concurrent_reservations_cannot_oversubscribe_protected_budget (test_custody_domain.CustodyDomainIntegrationTests.test_concurrent_reservations_cannot_oversubscribe_protected_budget) ... ok
+test_exact_locked_domain_permit_and_budget_are_consumed_before_custody_attempt (test_custody_domain.CustodyDomainIntegrationTests.test_exact_locked_domain_permit_and_budget_are_consumed_before_custody_attempt) ... ok
+test_revoked_directive_is_revalidated_before_budget_attempt_and_custody_attempt (test_custody_domain.CustodyDomainIntegrationTests.test_revoked_directive_is_revalidated_before_budget_attempt_and_custody_attempt) ... ok
+test_substituted_domain_order_fails_before_budget_or_permit_consumption (test_custody_domain.CustodyDomainIntegrationTests.test_substituted_domain_order_fails_before_budget_or_permit_consumption) ... ok
+test_worker_rollback_after_restart_cannot_restore_budget_or_domain_permit (test_custody_domain.CustodyDomainIntegrationTests.test_worker_rollback_after_restart_cannot_restore_budget_or_domain_permit) ... ok
+test_abort_before_custody_commit_creates_neither_mutation_nor_obligation (test_custody_evidence.CustodyEvidenceConvergenceTests.test_abort_before_custody_commit_creates_neither_mutation_nor_obligation) ... ok
+test_committed_obligation_blocks_next_transition_until_projection (test_custody_evidence.CustodyEvidenceConvergenceTests.test_committed_obligation_blocks_next_transition_until_projection) ... ok
+test_crash_during_projection_restarts_without_duplicate_canonical_event (test_custody_evidence.CustodyEvidenceConvergenceTests.test_crash_during_projection_restarts_without_duplicate_canonical_event) ... ok
+test_duplicate_projection_is_idempotent_by_transition_hash (test_custody_evidence.CustodyEvidenceConvergenceTests.test_duplicate_projection_is_idempotent_by_transition_hash) ... ok
+test_tampered_obligation_is_denied_and_blocks_custody (test_custody_evidence.CustodyEvidenceConvergenceTests.test_tampered_obligation_is_denied_and_blocks_custody) ... ok
+test_crash_after_transmission_release_never_releases_second_network_right (test_custody_executor.CustodyExecutorTests.test_crash_after_transmission_release_never_releases_second_network_right) ... ok
+test_crash_before_transmission_can_resume_same_executor_identity_only (test_custody_executor.CustodyExecutorTests.test_crash_before_transmission_can_resume_same_executor_identity_only) ... ok
+test_lost_provider_response_is_unknown_and_cannot_retry_or_release_budget (test_custody_executor.CustodyExecutorTests.test_lost_provider_response_is_unknown_and_cannot_retry_or_release_budget) ... ok
+test_preflight_failure_releases_no_network_transmission_right (test_custody_executor.CustodyExecutorTests.test_preflight_failure_releases_no_network_transmission_right) ... ok
+test_provider_success_is_only_a_claim_and_still_requires_reconciliation (test_custody_executor.CustodyExecutorTests.test_provider_success_is_only_a_claim_and_still_requires_reconciliation) ... ok
+test_substituted_order_never_reaches_credential_adapter (test_custody_executor.CustodyExecutorTests.test_substituted_order_never_reaches_credential_adapter) ... ok
+test_exact_independent_observation_reconciles_success_and_settles_budget (test_custody_reconcile.CustodyReconciliationTests.test_exact_independent_observation_reconciles_success_and_settles_budget) ... ok
+test_explicit_provider_failure_without_observed_effect_is_failure_but_budget_remains_held (test_custody_reconcile.CustodyReconciliationTests.test_explicit_provider_failure_without_observed_effect_is_failure_but_budget_remains_held) ... ok
+test_not_found_lookup_cannot_be_inferred_as_known_failure (test_custody_reconcile.CustodyReconciliationTests.test_not_found_lookup_cannot_be_inferred_as_known_failure) ... ok
+test_observed_substitution_is_failure_and_does_not_reopen_budget (test_custody_reconcile.CustodyReconciliationTests.test_observed_substitution_is_failure_and_does_not_reopen_budget) ... ok
+test_provider_success_without_complete_external_observation_stays_unresolved_and_holds_budget (test_custody_reconcile.CustodyReconciliationTests.test_provider_success_without_complete_external_observation_stays_unresolved_and_holds_budget) ... ok
+test_unresolved_consequence_can_later_resolve_without_reopening_execution (test_custody_reconcile_later.LaterEvidenceReconciliationTests.test_unresolved_consequence_can_later_resolve_without_reopening_execution) ... ok
+test_case_matrix_has_one_unique_case_per_required_lens (test_dark_mirror_proof_v0.DarkMirrorProofV0Tests.test_case_matrix_has_one_unique_case_per_required_lens) ... ok
+test_packet_binds_results_and_preserves_no_external_effect_boundary (test_dark_mirror_proof_v0.DarkMirrorProofV0Tests.test_packet_binds_results_and_preserves_no_external_effect_boundary) ... ok
+test_packet_hash_detects_result_substitution (test_dark_mirror_proof_v0.DarkMirrorProofV0Tests.test_packet_hash_detects_result_substitution) ... ok
+test_attachment_is_hash_covered_and_preserves_audit_tip (test_decision_evidence.DecisionEvidenceTests.test_attachment_is_hash_covered_and_preserves_audit_tip) ... ok
+test_attachment_rejects_authority_substitution (test_decision_evidence.DecisionEvidenceTests.test_attachment_rejects_authority_substitution) ... ok
+test_attachment_rejects_substituted_order_boundary (test_decision_evidence.DecisionEvidenceTests.test_attachment_rejects_substituted_order_boundary) ... ok
+test_attachment_rejects_tampered_bundle (test_decision_evidence.DecisionEvidenceTests.test_attachment_rejects_tampered_bundle) ... ok
+test_boundary_hash_is_deterministic (test_decision_evidence.DecisionEvidenceTests.test_boundary_hash_is_deterministic) ... ok
+test_boundary_requires_evidence (test_decision_evidence.DecisionEvidenceTests.test_boundary_requires_evidence) ... ok
+test_cross_task_interaction_is_rejected (test_decision_evidence.DecisionEvidenceTests.test_cross_task_interaction_is_rejected) ... ok
+test_interaction_cannot_grant_authority (test_decision_evidence.DecisionEvidenceTests.test_interaction_cannot_grant_authority) ... ok
+test_projection_binds_interaction_to_boundary (test_decision_evidence.DecisionEvidenceTests.test_projection_binds_interaction_to_boundary) ... ok
+test_self_interaction_is_rejected (test_decision_evidence.DecisionEvidenceTests.test_self_interaction_is_rejected) ... ok
+test_substituted_boundary_is_rejected (test_decision_evidence.DecisionEvidenceTests.test_substituted_boundary_is_rejected) ... ok
+test_parent_revoked_between_precheck_and_mutation_denies_child (test_directive_parent_activation_race.DirectiveParentActivationRaceTests.test_parent_revoked_between_precheck_and_mutation_denies_child) ... ok
+test_activation_requires_verified_external_authority (test_directives.DirectiveProofTests.test_activation_requires_verified_external_authority) ... ok
+test_active_directive_bound_permit_consumes_once_with_identity_evidence (test_directives.DirectiveProofTests.test_active_directive_bound_permit_consumes_once_with_identity_evidence) ... ok
+test_approval_is_bound_to_exact_directive_digest (test_directives.DirectiveProofTests.test_approval_is_bound_to_exact_directive_digest) ... ok
+test_authorized_directive_constrains_but_does_not_replace_kernel (test_directives.DirectiveProofTests.test_authorized_directive_constrains_but_does_not_replace_kernel) ... ok
+test_chat_or_retrieval_cannot_create_authority (test_directives.DirectiveProofTests.test_chat_or_retrieval_cannot_create_authority) ... ok
+test_delegated_scope_cannot_be_broadened_by_substitution (test_directives.DirectiveProofTests.test_delegated_scope_cannot_be_broadened_by_substitution) ... ok
+test_derived_directive_can_only_narrow_parent_scope (test_directives.DirectiveProofTests.test_derived_directive_can_only_narrow_parent_scope) ... ok
+test_derived_directive_requires_exact_active_parent_before_authority_use (test_directives.DirectiveProofTests.test_derived_directive_requires_exact_active_parent_before_authority_use) ... ok
+test_directive_components_reject_parallel_state_and_clock_injection (test_directives.DirectiveProofTests.test_directive_components_reject_parallel_state_and_clock_injection) ... ok
+test_model_summary_or_retrieval_score_cannot_raise_authority (test_directives.DirectiveProofTests.test_model_summary_or_retrieval_score_cannot_raise_authority) ... ok
+test_narrow_derived_directive_activates_and_records_parent_hash (test_directives.DirectiveProofTests.test_narrow_derived_directive_activates_and_records_parent_hash) ... ok
+test_parent_revocation_invalidates_child_and_preissued_child_permit (test_directives.DirectiveProofTests.test_parent_revocation_invalidates_child_and_preissued_child_permit) ... ok
+test_parent_revocation_keeps_child_permit_invalid_after_restart (test_directives.DirectiveProofTests.test_parent_revocation_keeps_child_permit_invalid_after_restart) ... ok
+test_preissued_permit_stays_invalid_after_revocation_and_restart (test_directives.DirectiveProofTests.test_preissued_permit_stays_invalid_after_revocation_and_restart) ... ok
+test_revocation_requires_new_authority_and_survives_restart (test_directives.DirectiveProofTests.test_revocation_requires_new_authority_and_survives_restart) ... ok
+test_revoked_directive_invalidates_previously_issued_permit (test_directives.DirectiveProofTests.test_revoked_directive_invalidates_previously_issued_permit) ... ok
+test_sqlite_existing_permit_directive_table_migrates_parent_hash_column (test_directives.DirectiveProofTests.test_sqlite_existing_permit_directive_table_migrates_parent_hash_column) ... ok
+test_untrusted_issuer_is_denied_even_with_valid_approval (test_directives.DirectiveProofTests.test_untrusted_issuer_is_denied_even_with_valid_approval) ... ok
+test_ambiguous_overlapping_roots_are_rejected (test_effect_reconcile.PermitBoundEffectReconciliationTests.test_ambiguous_overlapping_roots_are_rejected) ... ok
+test_canonical_evidence_surface_may_change_without_trusting_child (test_effect_reconcile.PermitBoundEffectReconciliationTests.test_canonical_evidence_surface_may_change_without_trusting_child) ... ok
+test_effect_resource_cannot_be_bound_twice (test_effect_reconcile.PermitBoundEffectReconciliationTests.test_effect_resource_cannot_be_bound_twice) ... ok
+test_envelope_hash_is_order_independent_for_surface_declaration (test_effect_reconcile.PermitBoundEffectReconciliationTests.test_envelope_hash_is_order_independent_for_surface_declaration) ... ok
+test_execution_identity_mismatch_is_mismatch_without_effect (test_effect_reconcile.PermitBoundEffectReconciliationTests.test_execution_identity_mismatch_is_mismatch_without_effect) ... ok
+test_existing_one_use_permit_is_cryptographically_bound_to_effect_envelope (test_effect_reconcile.PermitBoundEffectReconciliationTests.test_existing_one_use_permit_is_cryptographically_bound_to_effect_envelope) ... ok
+test_expired_permit_is_mismatch (test_effect_reconcile.PermitBoundEffectReconciliationTests.test_expired_permit_is_mismatch) ... ok
+test_generator_observations_do_not_create_false_duplicate_uncertainty (test_effect_reconcile.PermitBoundEffectReconciliationTests.test_generator_observations_do_not_create_false_duplicate_uncertainty) ... ok
+test_incomplete_observer_fails_closed_as_uncertain (test_effect_reconcile.PermitBoundEffectReconciliationTests.test_incomplete_observer_fails_closed_as_uncertain) ... ok
+test_missing_surface_observation_is_uncertain (test_effect_reconcile.PermitBoundEffectReconciliationTests.test_missing_surface_observation_is_uncertain) ... ok
+test_nested_writable_is_allowed_only_when_parent_protected_surface_excludes_it (test_effect_reconcile.PermitBoundEffectReconciliationTests.test_nested_writable_is_allowed_only_when_parent_protected_surface_excludes_it) ... ok
+test_observed_path_outside_envelope_is_undeclared_mismatch (test_effect_reconcile.PermitBoundEffectReconciliationTests.test_observed_path_outside_envelope_is_undeclared_mismatch) ... ok
+test_protected_worktree_write_is_mismatch_even_when_runtime_write_is_allowed (test_effect_reconcile.PermitBoundEffectReconciliationTests.test_protected_worktree_write_is_mismatch_even_when_runtime_write_is_allowed) ... ok
+test_symlink_snapshot_does_not_follow_target (test_effect_reconcile.PermitBoundEffectReconciliationTests.test_symlink_snapshot_does_not_follow_target) ... ok
+test_unattested_write_to_evidence_surface_is_mismatch (test_effect_reconcile.PermitBoundEffectReconciliationTests.test_unattested_write_to_evidence_surface_is_mismatch) ... ok
+test_writes_inside_declared_runtime_surface_are_verified (test_effect_reconcile.PermitBoundEffectReconciliationTests.test_writes_inside_declared_runtime_surface_are_verified) ... ok
+test_bound_resource_carries_exact_context_hash (test_execution_context_binding.ExecutionContextBindingTests.test_bound_resource_carries_exact_context_hash) ... ok
+test_context_retargeting_changes_intent_and_invalidates_existing_permit (test_execution_context_binding.ExecutionContextBindingTests.test_context_retargeting_changes_intent_and_invalidates_existing_permit) ... ok
+test_exact_observed_context_consumes_one_use_permit (test_execution_context_binding.ExecutionContextBindingTests.test_exact_observed_context_consumes_one_use_permit) ... ok
+test_missing_observation_fails_closed_without_spending_permit (test_execution_context_binding.ExecutionContextBindingTests.test_missing_observation_fails_closed_without_spending_permit) ... ok
+test_same_owner_and_connection_do_not_expand_workspace_authority (test_execution_context_binding.ExecutionContextBindingTests.test_same_owner_and_connection_do_not_expand_workspace_authority) ... ok
+test_surface_substitution_fails_closed (test_execution_context_binding.ExecutionContextBindingTests.test_surface_substitution_fails_closed) ... ok
+test_unbound_resource_is_not_accepted_by_context_gate (test_execution_context_binding.ExecutionContextBindingTests.test_unbound_resource_is_not_accepted_by_context_gate) ... ok
+test_wrong_authority_scope_denies_before_permit_consumption (test_execution_context_binding.ExecutionContextBindingTests.test_wrong_authority_scope_denies_before_permit_consumption) ... ok
+test_evidence_mismatch_stops_before_governance (test_expense_workflow.FieldExpenseGovernedEffectProofTests.test_evidence_mismatch_stops_before_governance) ... ok
+test_exact_submission_and_evidence_bind_the_locked_target (test_expense_workflow.FieldExpenseGovernedEffectProofTests.test_exact_submission_and_evidence_bind_the_locked_target) ... ok
+test_high_confidence_cannot_raise_directive_budget (test_expense_workflow.FieldExpenseGovernedEffectProofTests.test_high_confidence_cannot_raise_directive_budget) ... ok
+test_hostile_worker_note_and_model_summary_cannot_create_authority (test_expense_workflow.FieldExpenseGovernedEffectProofTests.test_hostile_worker_note_and_model_summary_cannot_create_authority) ... ok
+test_live_directive_allows_one_exact_effect_and_permit_replay_fails (test_expense_workflow.FieldExpenseGovernedEffectProofTests.test_live_directive_allows_one_exact_effect_and_permit_replay_fails) ... ok
+test_revocation_after_issue_prevents_effect_and_survives_restart (test_expense_workflow.FieldExpenseGovernedEffectProofTests.test_revocation_after_issue_prevents_effect_and_survives_restart) ... ok
+test_wrong_job_cannot_use_job_4021_directive (test_expense_workflow.FieldExpenseGovernedEffectProofTests.test_wrong_job_cannot_use_job_4021_directive) ... ok
+test_clean_canonical_report_is_deterministic_and_self_verifying (test_git_clarity.GitClarityTests.test_clean_canonical_report_is_deterministic_and_self_verifying) ... ok
+test_clean_proposal_reports_ahead_commit_and_paths (test_git_clarity.GitClarityTests.test_clean_proposal_reports_ahead_commit_and_paths) ... ok
+test_cli_can_require_clean_state (test_git_clarity.GitClarityTests.test_cli_can_require_clean_state) ... ok
+test_cli_output_must_remain_outside_observed_repository (test_git_clarity.GitClarityTests.test_cli_output_must_remain_outside_observed_repository) ... ok
+test_collection_disables_fsmonitor_and_external_diff_programs (test_git_clarity.GitClarityTests.test_collection_disables_fsmonitor_and_external_diff_programs) ... ok
+test_collection_does_not_run_repository_hooks (test_git_clarity.GitClarityTests.test_collection_does_not_run_repository_hooks) ... ok
+test_credential_bearing_remote_is_rejected_without_echoing_secret (test_git_clarity.GitClarityTests.test_credential_bearing_remote_is_rejected_without_echoing_secret) ... ok
+test_detached_head_is_explicit (test_git_clarity.GitClarityTests.test_detached_head_is_explicit) ... ok
+test_dirty_paths_are_visible_but_contents_are_not_claimed_bound (test_git_clarity.GitClarityTests.test_dirty_paths_are_visible_but_contents_are_not_claimed_bound) ... ok
+test_divergence_is_not_mislabeled_as_a_proposal (test_git_clarity.GitClarityTests.test_divergence_is_not_mislabeled_as_a_proposal) ... ok
+test_git_environment_cannot_substitute_same_origin_repository (test_git_clarity.GitClarityTests.test_git_environment_cannot_substitute_same_origin_repository) ... ok
+test_missing_canonical_ref_fails_closed (test_git_clarity.GitClarityTests.test_missing_canonical_ref_fails_closed) ... ok
+test_remote_identity_substitution_fails_closed (test_git_clarity.GitClarityTests.test_remote_identity_substitution_fails_closed) ... ok
+test_report_cannot_claim_tests_or_authority (test_git_clarity.GitClarityTests.test_report_cannot_claim_tests_or_authority) ... ok
+test_tampered_report_does_not_verify (test_git_clarity.GitClarityTests.test_tampered_report_does_not_verify) ... ok
+test_exact_provider_metadata_builds_stable_repository_context (test_github_execution_context.GitHubExecutionContextTests.test_exact_provider_metadata_builds_stable_repository_context) ... ok
+test_missing_authenticated_identity_fails_closed (test_github_execution_context.GitHubExecutionContextTests.test_missing_authenticated_identity_fails_closed) ... ok
+test_observed_github_context_gates_existing_one_use_permit (test_github_execution_context.GitHubExecutionContextTests.test_observed_github_context_gates_existing_one_use_permit) ... ok
+test_provider_failure_yields_no_context (test_github_execution_context.GitHubExecutionContextTests.test_provider_failure_yields_no_context) ... ok
+test_provider_returned_owner_substitution_fails_closed (test_github_execution_context.GitHubExecutionContextTests.test_provider_returned_owner_substitution_fails_closed) ... ok
+test_provider_returned_repository_substitution_fails_closed (test_github_execution_context.GitHubExecutionContextTests.test_provider_returned_repository_substitution_fails_closed) ... ok
+test_reader_exposes_only_get_metadata_requests_for_exact_bound_repo (test_github_execution_context.GitHubExecutionContextTests.test_reader_exposes_only_get_metadata_requests_for_exact_bound_repo) ... ok
+test_repository_numeric_identity_changes_context_even_when_name_matches (test_github_execution_context.GitHubExecutionContextTests.test_repository_numeric_identity_changes_context_even_when_name_matches) ... ok
+test_capability_stripped_projection_cannot_mutate_canonical_state (test_governed_effect_boundary.GovernedEffectBoundaryTests.test_capability_stripped_projection_cannot_mutate_canonical_state)
+Ephemeral proposal transport must leave the canonical chain unchanged. ... ok
+test_frozen_projection_does_not_gain_future_canonical_state (test_governed_effect_boundary.GovernedEffectBoundaryTests.test_frozen_projection_does_not_gain_future_canonical_state)
+Later canonical writes must not appear through a retained hidden reference. ... ok
+test_no_permit_does_not_mean_no_governed_effect (test_governed_effect_boundary.GovernedEffectBoundaryTests.test_no_permit_does_not_mean_no_governed_effect)
+A canonical target lock mutates state even though no permit exists. ... ok
+test_no_write_route_does_not_mean_no_write_capability (test_governed_effect_boundary.GovernedEffectBoundaryTests.test_no_write_route_does_not_mean_no_write_capability)
+A transport object must not retain a writer even if its methods are read-only. ... ok
+test_01_valid_directive_exact_permit_and_observation_reconcile_verified_success (test_issue_153_consequence_reconciliation_v0.Issue153ConsequenceReconciliationV0.test_01_valid_directive_exact_permit_and_observation_reconcile_verified_success) ... ok
+test_02_executor_success_plus_substituted_observation_is_mismatch_and_nonreusable_memory (test_issue_153_consequence_reconciliation_v0.Issue153ConsequenceReconciliationV0.test_02_executor_success_plus_substituted_observation_is_mismatch_and_nonreusable_memory) ... ok
+test_03_executor_success_plus_incomplete_evidence_is_unknown_and_nonreusable_memory (test_issue_153_consequence_reconciliation_v0.Issue153ConsequenceReconciliationV0.test_03_executor_success_plus_incomplete_evidence_is_unknown_and_nonreusable_memory) ... ok
+test_04_mismatch_and_unknown_state_and_memory_survive_restart_without_retry_authority (test_issue_153_consequence_reconciliation_v0.Issue153ConsequenceReconciliationV0.test_04_mismatch_and_unknown_state_and_memory_survive_restart_without_retry_authority) ... ok
+test_05_replay_substitution_expiry_revocation_and_widening_do_not_create_fresh_authority (test_issue_153_consequence_reconciliation_v0.Issue153ConsequenceReconciliationV0.test_05_replay_substitution_expiry_revocation_and_widening_do_not_create_fresh_authority) ... ok
+test_06_chat_retrieval_and_prior_success_are_not_authority_inputs (test_issue_153_consequence_reconciliation_v0.Issue153ConsequenceReconciliationV0.test_06_chat_retrieval_and_prior_success_are_not_authority_inputs) ... ok
+test_07_outcome_memory_rejects_result_substitution_and_conflicting_replacement (test_issue_153_consequence_reconciliation_v0.Issue153ConsequenceReconciliationV0.test_07_outcome_memory_rejects_result_substitution_and_conflicting_replacement) ... ok
+test_08_independently_observed_provider_failure_is_failure_class_memory_not_success (test_issue_153_consequence_reconciliation_v0.Issue153ConsequenceReconciliationV0.test_08_independently_observed_provider_failure_is_failure_class_memory_not_success) ... Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682b96c50>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/encoder.py", line 263, in iterencode
+    return _iterencode(o, 0)
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682b96c50>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682b966b0>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/encoder.py", line 263, in iterencode
+    return _iterencode(o, 0)
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682b966b0>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682b967a0>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/encoder.py", line 263, in iterencode
+    return _iterencode(o, 0)
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682b967a0>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682b964d0>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/encoder.py", line 263, in iterencode
+    return _iterencode(o, 0)
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682b964d0>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682b963e0>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/encoder.py", line 263, in iterencode
+    return _iterencode(o, 0)
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682b963e0>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682b96b60>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/encoder.py", line 263, in iterencode
+    return _iterencode(o, 0)
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682b96b60>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682b96890>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/encoder.py", line 263, in iterencode
+    return _iterencode(o, 0)
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682b96890>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682b96980>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/encoder.py", line 263, in iterencode
+    return _iterencode(o, 0)
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682b96980>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682b962f0>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/encoder.py", line 263, in iterencode
+    return _iterencode(o, 0)
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682b962f0>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682b96200>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/encoder.py", line 263, in iterencode
+    return _iterencode(o, 0)
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682b96200>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682b96110>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/encoder.py", line 263, in iterencode
+    return _iterencode(o, 0)
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682b96110>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682b96020>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/encoder.py", line 263, in iterencode
+    return _iterencode(o, 0)
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682b96020>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682b95f30>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/encoder.py", line 263, in iterencode
+    return _iterencode(o, 0)
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682b95f30>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682b95e40>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/encoder.py", line 263, in iterencode
+    return _iterencode(o, 0)
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682b95e40>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682b965c0>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/encoder.py", line 263, in iterencode
+    return _iterencode(o, 0)
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682b965c0>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682b95c60>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/encoder.py", line 263, in iterencode
+    return _iterencode(o, 0)
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682b95c60>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682b95b70>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/encoder.py", line 263, in iterencode
+    return _iterencode(o, 0)
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682b95b70>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682b95a80>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/encoder.py", line 263, in iterencode
+    return _iterencode(o, 0)
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682b95a80>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682b95d50>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/encoder.py", line 263, in iterencode
+    return _iterencode(o, 0)
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682b95d50>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682b953f0>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/encoder.py", line 263, in iterencode
+    return _iterencode(o, 0)
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682b953f0>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682b95990>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/encoder.py", line 263, in iterencode
+    return _iterencode(o, 0)
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682b95990>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682b958a0>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/encoder.py", line 263, in iterencode
+    return _iterencode(o, 0)
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682b958a0>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682b955d0>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/encoder.py", line 263, in iterencode
+    return _iterencode(o, 0)
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682b955d0>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682b95300>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/encoder.py", line 263, in iterencode
+    return _iterencode(o, 0)
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682b95300>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682b95120>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/encoder.py", line 263, in iterencode
+    return _iterencode(o, 0)
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682b95120>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682b95210>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/encoder.py", line 263, in iterencode
+    return _iterencode(o, 0)
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682b95210>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682b96d40>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/encoder.py", line 263, in iterencode
+    return _iterencode(o, 0)
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682b96d40>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682b96e30>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/encoder.py", line 263, in iterencode
+    return _iterencode(o, 0)
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682b96e30>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682b97010>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/encoder.py", line 263, in iterencode
+    return _iterencode(o, 0)
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682b97010>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682b97100>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/encoder.py", line 263, in iterencode
+    return _iterencode(o, 0)
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682b97100>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682b971f0>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/encoder.py", line 263, in iterencode
+    return _iterencode(o, 0)
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682b971f0>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682b956c0>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/encoder.py", line 263, in iterencode
+    return _iterencode(o, 0)
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682b956c0>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682b957b0>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/encoder.py", line 263, in iterencode
+    return _iterencode(o, 0)
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682b957b0>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682b972e0>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/encoder.py", line 263, in iterencode
+    return _iterencode(o, 0)
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682b972e0>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682b973d0>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/encoder.py", line 263, in iterencode
+    return _iterencode(o, 0)
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682b973d0>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682b974c0>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/encoder.py", line 263, in iterencode
+    return _iterencode(o, 0)
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682b974c0>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682b976a0>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/encoder.py", line 263, in iterencode
+    return _iterencode(o, 0)
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682b976a0>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682b97790>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/encoder.py", line 263, in iterencode
+    return _iterencode(o, 0)
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682b97790>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682b97880>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/encoder.py", line 263, in iterencode
+    return _iterencode(o, 0)
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682b97880>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682b97970>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/encoder.py", line 263, in iterencode
+    return _iterencode(o, 0)
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682b97970>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682b97a60>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/encoder.py", line 263, in iterencode
+    return _iterencode(o, 0)
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682b97a60>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682b97c40>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/encoder.py", line 263, in iterencode
+    return _iterencode(o, 0)
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682b97c40>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682b97d30>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/encoder.py", line 263, in iterencode
+    return _iterencode(o, 0)
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682b97d30>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682b97e20>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/encoder.py", line 263, in iterencode
+    return _iterencode(o, 0)
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682b97e20>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682b97f10>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/encoder.py", line 263, in iterencode
+    return _iterencode(o, 0)
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682b97f10>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682be0040>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/encoder.py", line 263, in iterencode
+    return _iterencode(o, 0)
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682be0040>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682be0220>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/encoder.py", line 263, in iterencode
+    return _iterencode(o, 0)
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682be0220>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682be0130>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/encoder.py", line 263, in iterencode
+    return _iterencode(o, 0)
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682be0130>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682be0400>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/encoder.py", line 263, in iterencode
+    return _iterencode(o, 0)
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682be0400>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682be0310>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/encoder.py", line 263, in iterencode
+    return _iterencode(o, 0)
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682be0310>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682be04f0>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/encoder.py", line 263, in iterencode
+    return _iterencode(o, 0)
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682be04f0>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682be06d0>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/encoder.py", line 263, in iterencode
+    return _iterencode(o, 0)
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682be06d0>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682be07c0>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/encoder.py", line 263, in iterencode
+    return _iterencode(o, 0)
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682be07c0>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682be08b0>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/encoder.py", line 263, in iterencode
+    return _iterencode(o, 0)
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682be08b0>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682be09a0>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/encoder.py", line 263, in iterencode
+    return _iterencode(o, 0)
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682be09a0>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682be0c70>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/encoder.py", line 263, in iterencode
+    return _iterencode(o, 0)
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682be0c70>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682be0a90>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/encoder.py", line 263, in iterencode
+    return _iterencode(o, 0)
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682be0a90>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682be0d60>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/encoder.py", line 263, in iterencode
+    return _iterencode(o, 0)
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682be0d60>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682be0e50>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/encoder.py", line 263, in iterencode
+    return _iterencode(o, 0)
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682be0e50>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682be1030>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/encoder.py", line 263, in iterencode
+    return _iterencode(o, 0)
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682be1030>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682be1120>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/encoder.py", line 263, in iterencode
+    return _iterencode(o, 0)
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682be1120>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682be1210>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/encoder.py", line 263, in iterencode
+    return _iterencode(o, 0)
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682be1210>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682be1300>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/encoder.py", line 263, in iterencode
+    return _iterencode(o, 0)
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682be1300>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682be13f0>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/encoder.py", line 263, in iterencode
+    return _iterencode(o, 0)
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682be13f0>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682be14e0>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/encoder.py", line 263, in iterencode
+    return _iterencode(o, 0)
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682be14e0>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682be15d0>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/encoder.py", line 263, in iterencode
+    return _iterencode(o, 0)
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682be15d0>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682be17b0>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/encoder.py", line 263, in iterencode
+    return _iterencode(o, 0)
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682be17b0>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682be18a0>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/encoder.py", line 263, in iterencode
+    return _iterencode(o, 0)
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682be18a0>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682be1990>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/encoder.py", line 263, in iterencode
+    return _iterencode(o, 0)
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682be1990>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682be1a80>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/encoder.py", line 263, in iterencode
+    return _iterencode(o, 0)
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682be1a80>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682be1c60>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/encoder.py", line 263, in iterencode
+    return _iterencode(o, 0)
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682be1c60>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682be1d50>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/encoder.py", line 263, in iterencode
+    return _iterencode(o, 0)
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682be1d50>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682be1e40>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/encoder.py", line 263, in iterencode
+    return _iterencode(o, 0)
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682be1e40>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682be1b70>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/encoder.py", line 263, in iterencode
+    return _iterencode(o, 0)
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682be1b70>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682be1f30>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/encoder.py", line 263, in iterencode
+    return _iterencode(o, 0)
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682be1f30>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682be2020>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/encoder.py", line 263, in iterencode
+    return _iterencode(o, 0)
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682be2020>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682be22f0>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/encoder.py", line 263, in iterencode
+    return _iterencode(o, 0)
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682be22f0>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682be23e0>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/encoder.py", line 263, in iterencode
+    return _iterencode(o, 0)
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682be23e0>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682be24d0>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/encoder.py", line 263, in iterencode
+    return _iterencode(o, 0)
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682be24d0>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682be2200>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/encoder.py", line 263, in iterencode
+    return _iterencode(o, 0)
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682be2200>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682be25c0>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/encoder.py", line 263, in iterencode
+    return _iterencode(o, 0)
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682be25c0>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682be26b0>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/encoder.py", line 263, in iterencode
+    return _iterencode(o, 0)
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682be26b0>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682be27a0>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/encoder.py", line 263, in iterencode
+    return _iterencode(o, 0)
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682be27a0>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682be2890>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/encoder.py", line 263, in iterencode
+    return _iterencode(o, 0)
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682be2890>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682be2980>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/encoder.py", line 263, in iterencode
+    return _iterencode(o, 0)
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682be2980>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682be2a70>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/encoder.py", line 263, in iterencode
+    return _iterencode(o, 0)
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682be2a70>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682be2b60>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/encoder.py", line 263, in iterencode
+    return _iterencode(o, 0)
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682be2b60>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682be2c50>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/encoder.py", line 263, in iterencode
+    return _iterencode(o, 0)
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682be2c50>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682be2d40>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/encoder.py", line 263, in iterencode
+    return _iterencode(o, 0)
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682be2d40>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682be2f20>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/encoder.py", line 263, in iterencode
+    return _iterencode(o, 0)
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682be2f20>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682be3010>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/encoder.py", line 263, in iterencode
+    return _iterencode(o, 0)
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682be3010>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682be3100>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/encoder.py", line 263, in iterencode
+    return _iterencode(o, 0)
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682be3100>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682be32e0>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/encoder.py", line 263, in iterencode
+    return _iterencode(o, 0)
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682be32e0>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682be33d0>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/encoder.py", line 263, in iterencode
+    return _iterencode(o, 0)
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682be33d0>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682be2e30>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/encoder.py", line 263, in iterencode
+    return _iterencode(o, 0)
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682be2e30>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682be34c0>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/encoder.py", line 263, in iterencode
+    return _iterencode(o, 0)
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682be34c0>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682be35b0>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/encoder.py", line 263, in iterencode
+    return _iterencode(o, 0)
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682be35b0>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682be36a0>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/encoder.py", line 263, in iterencode
+    return _iterencode(o, 0)
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682be36a0>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682be3880>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/encoder.py", line 263, in iterencode
+    return _iterencode(o, 0)
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682be3880>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682be31f0>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/encoder.py", line 263, in iterencode
+    return _iterencode(o, 0)
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682be31f0>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682be3970>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/encoder.py", line 263, in iterencode
+    return _iterencode(o, 0)
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682be3970>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682be3a60>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/encoder.py", line 263, in iterencode
+    return _iterencode(o, 0)
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682be3a60>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682be3b50>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/encoder.py", line 263, in iterencode
+    return _iterencode(o, 0)
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682be3b50>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682be3c40>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/encoder.py", line 263, in iterencode
+    return _iterencode(o, 0)
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682be3c40>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682be3790>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/encoder.py", line 263, in iterencode
+    return _iterencode(o, 0)
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682be3790>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682be3e20>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/encoder.py", line 263, in iterencode
+    return _iterencode(o, 0)
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682be3e20>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682be3f10>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/encoder.py", line 263, in iterencode
+    return _iterencode(o, 0)
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682be3f10>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682bd8040>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/encoder.py", line 263, in iterencode
+    return _iterencode(o, 0)
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682bd8040>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682bd8130>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/encoder.py", line 263, in iterencode
+    return _iterencode(o, 0)
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682bd8130>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682bd8220>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/encoder.py", line 263, in iterencode
+    return _iterencode(o, 0)
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682bd8220>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682bd8310>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/encoder.py", line 263, in iterencode
+    return _iterencode(o, 0)
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682bd8310>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682bd8400>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/encoder.py", line 263, in iterencode
+    return _iterencode(o, 0)
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682bd8400>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682be3d30>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/encoder.py", line 263, in iterencode
+    return _iterencode(o, 0)
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682be3d30>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682bd85e0>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/encoder.py", line 263, in iterencode
+    return _iterencode(o, 0)
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682bd85e0>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682bd86d0>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/encoder.py", line 263, in iterencode
+    return _iterencode(o, 0)
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682bd86d0>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682bd87c0>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/encoder.py", line 263, in iterencode
+    return _iterencode(o, 0)
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682bd87c0>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682bd88b0>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/encoder.py", line 263, in iterencode
+    return _iterencode(o, 0)
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682bd88b0>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682bd89a0>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/encoder.py", line 263, in iterencode
+    return _iterencode(o, 0)
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682bd89a0>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682bd8a90>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/encoder.py", line 263, in iterencode
+    return _iterencode(o, 0)
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682bd8a90>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682bd8b80>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/encoder.py", line 263, in iterencode
+    return _iterencode(o, 0)
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682bd8b80>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682bd93f0>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/encoder.py", line 263, in iterencode
+    return _iterencode(o, 0)
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682bd93f0>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682bd94e0>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/encoder.py", line 263, in iterencode
+    return _iterencode(o, 0)
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682bd94e0>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682bd95d0>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/encoder.py", line 263, in iterencode
+    return _iterencode(o, 0)
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682bd95d0>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682bd96c0>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/encoder.py", line 263, in iterencode
+    return _iterencode(o, 0)
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682bd96c0>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682bd97b0>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/encoder.py", line 263, in iterencode
+    return _iterencode(o, 0)
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682bd97b0>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682bd98a0>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/encoder.py", line 263, in iterencode
+    return _iterencode(o, 0)
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682bd98a0>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682bd9990>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/encoder.py", line 263, in iterencode
+    return _iterencode(o, 0)
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682bd9990>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682bd9a80>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/encoder.py", line 263, in iterencode
+    return _iterencode(o, 0)
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682bd9a80>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682bd9b70>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/encoder.py", line 263, in iterencode
+    return _iterencode(o, 0)
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682bd9b70>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682bd9c60>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/encoder.py", line 263, in iterencode
+    return _iterencode(o, 0)
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682bd9c60>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682bd9d50>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/encoder.py", line 263, in iterencode
+    return _iterencode(o, 0)
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682bd9d50>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682bd9210>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/encoder.py", line 263, in iterencode
+    return _iterencode(o, 0)
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682bd9210>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682bd9f30>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/encoder.py", line 263, in iterencode
+    return _iterencode(o, 0)
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682bd9f30>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682bda020>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/encoder.py", line 263, in iterencode
+    return _iterencode(o, 0)
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682bda020>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682bda110>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/encoder.py", line 263, in iterencode
+    return _iterencode(o, 0)
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682bda110>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682bda200>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/encoder.py", line 263, in iterencode
+    return _iterencode(o, 0)
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682bda200>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682bda2f0>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/encoder.py", line 263, in iterencode
+    return _iterencode(o, 0)
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682bda2f0>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682bda3e0>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/encoder.py", line 263, in iterencode
+    return _iterencode(o, 0)
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682bda3e0>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682bda4d0>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/encoder.py", line 263, in iterencode
+    return _iterencode(o, 0)
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682bda4d0>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682bda5c0>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/encoder.py", line 263, in iterencode
+    return _iterencode(o, 0)
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682bda5c0>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682bda6b0>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/encoder.py", line 263, in iterencode
+    return _iterencode(o, 0)
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682bda6b0>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682bd9e40>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/encoder.py", line 263, in iterencode
+    return _iterencode(o, 0)
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682bd9e40>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682bda890>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/encoder.py", line 263, in iterencode
+    return _iterencode(o, 0)
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682bda890>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682bda980>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/encoder.py", line 263, in iterencode
+    return _iterencode(o, 0)
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682bda980>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682bdaa70>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/encoder.py", line 263, in iterencode
+    return _iterencode(o, 0)
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682bdaa70>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682bdab60>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/encoder.py", line 263, in iterencode
+    return _iterencode(o, 0)
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682bdab60>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682bdac50>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/encoder.py", line 263, in iterencode
+    return _iterencode(o, 0)
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682bdac50>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682bdad40>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/encoder.py", line 263, in iterencode
+    return _iterencode(o, 0)
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682bdad40>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682bdae30>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/encoder.py", line 263, in iterencode
+    return _iterencode(o, 0)
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682bdae30>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682bda7a0>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/encoder.py", line 263, in iterencode
+    return _iterencode(o, 0)
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682bda7a0>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682bdb010>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/encoder.py", line 263, in iterencode
+    return _iterencode(o, 0)
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682bdb010>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682bdb100>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/encoder.py", line 263, in iterencode
+    return _iterencode(o, 0)
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682bdb100>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682bdb1f0>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/encoder.py", line 263, in iterencode
+    return _iterencode(o, 0)
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682bdb1f0>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682bdb4c0>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/encoder.py", line 263, in iterencode
+    return _iterencode(o, 0)
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682bdb4c0>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682bdb6a0>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/encoder.py", line 263, in iterencode
+    return _iterencode(o, 0)
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682bdb6a0>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682bdb790>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/encoder.py", line 263, in iterencode
+    return _iterencode(o, 0)
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682bdb790>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682bdb880>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/encoder.py", line 263, in iterencode
+    return _iterencode(o, 0)
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682bdb880>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682bdb970>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/encoder.py", line 263, in iterencode
+    return _iterencode(o, 0)
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682bdb970>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682bdba60>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/encoder.py", line 263, in iterencode
+    return _iterencode(o, 0)
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682bdba60>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682bdbb50>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/encoder.py", line 263, in iterencode
+    return _iterencode(o, 0)
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682bdbb50>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682bdbd30>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/encoder.py", line 263, in iterencode
+    return _iterencode(o, 0)
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682bdbd30>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682bdbe20>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/encoder.py", line 263, in iterencode
+    return _iterencode(o, 0)
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682bdbe20>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682bdbf10>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/encoder.py", line 263, in iterencode
+    return _iterencode(o, 0)
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682bdbf10>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f86818d4040>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/encoder.py", line 263, in iterencode
+    return _iterencode(o, 0)
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f86818d4040>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f86818d4130>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/encoder.py", line 263, in iterencode
+    return _iterencode(o, 0)
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f86818d4130>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f86818d4310>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/encoder.py", line 263, in iterencode
+    return _iterencode(o, 0)
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f86818d4310>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f86818d4400>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/encoder.py", line 263, in iterencode
+    return _iterencode(o, 0)
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f86818d4400>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682bdb3d0>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/encoder.py", line 263, in iterencode
+    return _iterencode(o, 0)
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682bdb3d0>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682bdb2e0>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/encoder.py", line 263, in iterencode
+    return _iterencode(o, 0)
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682bdb2e0>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682bdbc40>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/encoder.py", line 263, in iterencode
+    return _iterencode(o, 0)
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682bdbc40>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682bdb5b0>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/encoder.py", line 263, in iterencode
+    return _iterencode(o, 0)
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682bdb5b0>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f86818d4220>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/encoder.py", line 263, in iterencode
+    return _iterencode(o, 0)
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f86818d4220>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f86818d44f0>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/encoder.py", line 263, in iterencode
+    return _iterencode(o, 0)
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f86818d44f0>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f86818d45e0>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/encoder.py", line 263, in iterencode
+    return _iterencode(o, 0)
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f86818d45e0>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f86818d47c0>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/encoder.py", line 263, in iterencode
+    return _iterencode(o, 0)
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f86818d47c0>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f86818d46d0>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/encoder.py", line 263, in iterencode
+    return _iterencode(o, 0)
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f86818d46d0>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f86818d48b0>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/encoder.py", line 263, in iterencode
+    return _iterencode(o, 0)
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f86818d48b0>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f86818d49a0>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/encoder.py", line 263, in iterencode
+    return _iterencode(o, 0)
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f86818d49a0>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682bdaf20>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/encoder.py", line 263, in iterencode
+    return _iterencode(o, 0)
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682bdaf20>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f86818d4b80>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/encoder.py", line 263, in iterencode
+    return _iterencode(o, 0)
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f86818d4b80>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f86818d4c70>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/encoder.py", line 263, in iterencode
+    return _iterencode(o, 0)
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f86818d4c70>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f86818d4d60>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/encoder.py", line 263, in iterencode
+    return _iterencode(o, 0)
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f86818d4d60>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f86818d4e50>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/encoder.py", line 263, in iterencode
+    return _iterencode(o, 0)
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f86818d4e50>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f86818d4f40>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/encoder.py", line 263, in iterencode
+    return _iterencode(o, 0)
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f86818d4f40>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f86818d5030>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/encoder.py", line 263, in iterencode
+    return _iterencode(o, 0)
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f86818d5030>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f86818d5120>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/json/encoder.py", line 263, in iterencode
+    return _iterencode(o, 0)
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f86818d5120>
+ok
+test_09_successful_outcome_memory_cannot_authorize_an_otherwise_denied_intent (test_issue_153_consequence_reconciliation_v0.Issue153ConsequenceReconciliationV0.test_09_successful_outcome_memory_cannot_authorize_an_otherwise_denied_intent) ... ok
+test_10_outcome_memory_denied_until_exact_reconciliation_evidence_is_canonical (test_issue_153_outcome_memory_hostile_v0.Issue153OutcomeMemoryHostileV0.test_10_outcome_memory_denied_until_exact_reconciliation_evidence_is_canonical) ... ok
+test_11_concurrent_identical_recording_creates_exactly_one_canonical_memory_event (test_issue_153_outcome_memory_hostile_v0.Issue153OutcomeMemoryHostileV0.test_11_concurrent_identical_recording_creates_exactly_one_canonical_memory_event) ... ok
+test_agent_budget_is_stricter_than_global_budget (test_kernel.GovernanceKernelTests.test_agent_budget_is_stricter_than_global_budget) ... ok
+test_agent_grants_fail_closed_for_unknown_principal (test_kernel.GovernanceKernelTests.test_agent_grants_fail_closed_for_unknown_principal) ... ok
+test_agent_role_cannot_expand_its_action_or_resource (test_kernel.GovernanceKernelTests.test_agent_role_cannot_expand_its_action_or_resource) ... ok
+test_allowed_intent_gets_bound_one_use_permit (test_kernel.GovernanceKernelTests.test_allowed_intent_gets_bound_one_use_permit) ... ok
+test_approval_is_explicit (test_kernel.GovernanceKernelTests.test_approval_is_explicit) ... ok
+test_audit_chain_detects_tampering (test_kernel.GovernanceKernelTests.test_audit_chain_detects_tampering) ... ok
+test_default_profiles_do_not_create_an_approver_agent (test_kernel.GovernanceKernelTests.test_default_profiles_do_not_create_an_approver_agent) ... ok
+test_fail_closed_policy_boundaries (test_kernel.GovernanceKernelTests.test_fail_closed_policy_boundaries) ... ok
+test_github_access_is_read_only_and_role_scoped (test_kernel.GovernanceKernelTests.test_github_access_is_read_only_and_role_scoped) ... ok
+test_malformed_or_duplicate_agent_grants_are_rejected (test_kernel.GovernanceKernelTests.test_malformed_or_duplicate_agent_grants_are_rejected) ... ok
+test_permit_cannot_be_used_for_different_intent (test_kernel.GovernanceKernelTests.test_permit_cannot_be_used_for_different_intent) ... ok
+test_plugin_profiles_are_declarations_not_connection_claims (test_kernel.GovernanceKernelTests.test_plugin_profiles_are_declarations_not_connection_claims) ... ok
+test_codex_exec_argv_freezes_ephemeral_readonly_update_and_hook_controls (test_local_intelligence_effect_proof.LocalIntelligenceEffectProofScriptTests.test_codex_exec_argv_freezes_ephemeral_readonly_update_and_hook_controls) ... ok
+test_envelope_plan_roundtrip_preserves_exact_hash (test_local_intelligence_effect_proof.LocalIntelligenceEffectProofScriptTests.test_envelope_plan_roundtrip_preserves_exact_hash) ... ok
+test_environment_drops_secret_like_variables_and_pins_codex_home (test_local_intelligence_effect_proof.LocalIntelligenceEffectProofScriptTests.test_environment_drops_secret_like_variables_and_pins_codex_home) ... ok
+test_overall_pass_requires_execution_reconciliation_replay_and_audit (test_local_intelligence_effect_proof.LocalIntelligenceEffectProofScriptTests.test_overall_pass_requires_execution_reconciliation_replay_and_audit) ... ok
+test_plan_hash_fails_if_any_frozen_field_changes (test_local_intelligence_effect_proof.LocalIntelligenceEffectProofScriptTests.test_plan_hash_fails_if_any_frozen_field_changes) ... ok
+test_profile_binding_changes_for_any_containment_identity_change (test_local_intelligence_effect_proof.LocalIntelligenceEffectProofScriptTests.test_profile_binding_changes_for_any_containment_identity_change) ... ok
+test_seatbelt_denies_global_writes_and_allows_only_runtime (test_local_intelligence_effect_proof.LocalIntelligenceEffectProofScriptTests.test_seatbelt_denies_global_writes_and_allows_only_runtime) ... ok
+test_disposable_codex_home_is_inside_runtime (test_local_intelligence_effect_proof_v2.LocalIntelligenceEffectProofV2Tests.test_disposable_codex_home_is_inside_runtime) ... ok
+test_environment_pins_child_to_disposable_home_and_drops_secrets (test_local_intelligence_effect_proof_v2.LocalIntelligenceEffectProofV2Tests.test_environment_pins_child_to_disposable_home_and_drops_secrets) ... ok
+test_fire_rejects_auth_source_change_after_prepare (test_local_intelligence_effect_proof_v2.LocalIntelligenceEffectProofV2Tests.test_fire_rejects_auth_source_change_after_prepare) ... ok
+test_fire_stages_private_auth_copy_inside_runtime (test_local_intelligence_effect_proof_v2.LocalIntelligenceEffectProofV2Tests.test_fire_stages_private_auth_copy_inside_runtime) ... ok
+test_prepare_binds_auth_hash_without_copying_secret_material (test_local_intelligence_effect_proof_v2.LocalIntelligenceEffectProofV2Tests.test_prepare_binds_auth_hash_without_copying_secret_material) ... ok
+test_profile_binding_changes_when_real_home_projection_or_auth_hash_changes (test_local_intelligence_effect_proof_v2.LocalIntelligenceEffectProofV2Tests.test_profile_binding_changes_when_real_home_projection_or_auth_hash_changes) ... ok
+test_profile_binding_changes_when_runtime_home_changes (test_local_intelligence_effect_proof_v2.LocalIntelligenceEffectProofV2Tests.test_profile_binding_changes_when_runtime_home_changes) ... ok
+test_export_anchors_temporary_file_to_opened_parent_if_path_swaps (test_mcp_boundary.MCPBoundaryTests.test_export_anchors_temporary_file_to_opened_parent_if_path_swaps) ... ok
+test_export_rejects_parent_swapped_before_open (test_mcp_boundary.MCPBoundaryTests.test_export_rejects_parent_swapped_before_open) ... ok
+test_export_rejects_relative_or_linked_destination (test_mcp_boundary.MCPBoundaryTests.test_export_rejects_relative_or_linked_destination) ... ok
+test_export_rejects_symlinked_parent (test_mcp_boundary.MCPBoundaryTests.test_export_rejects_symlinked_parent) ... ok
+test_export_reports_clean_failure_before_atomic_replace (test_mcp_boundary.MCPBoundaryTests.test_export_reports_clean_failure_before_atomic_replace) ... ok
+test_export_reports_commit_unknown_if_directory_sync_fails (test_mcp_boundary.MCPBoundaryTests.test_export_reports_commit_unknown_if_directory_sync_fails) ... ok
+test_export_reports_commit_unknown_if_parent_swapped_after_open (test_mcp_boundary.MCPBoundaryTests.test_export_reports_commit_unknown_if_parent_swapped_after_open) ... ok
+test_exported_file_remains_frozen_after_canonical_mutation (test_mcp_boundary.MCPBoundaryTests.test_exported_file_remains_frozen_after_canonical_mutation) ... ok
+test_frozen_evidence_cannot_follow_later_canonical_mutation (test_mcp_boundary.MCPBoundaryTests.test_frozen_evidence_cannot_follow_later_canonical_mutation) ... ok
+test_invalid_payload_fails_closed_without_state_change (test_mcp_boundary.MCPBoundaryTests.test_invalid_payload_fails_closed_without_state_change) ... ok
+test_mcp_proposal_is_ephemeral_and_cannot_mutate_canonical_state (test_mcp_boundary.MCPBoundaryTests.test_mcp_proposal_is_ephemeral_and_cannot_mutate_canonical_state) ... ok
+test_projection_rejects_write_capable_dependency_or_authority_injection (test_mcp_boundary.MCPBoundaryTests.test_projection_rejects_write_capable_dependency_or_authority_injection) ... ok
+test_repeated_or_changed_mcp_proposals_remain_non_mutating (test_mcp_boundary.MCPBoundaryTests.test_repeated_or_changed_mcp_proposals_remain_non_mutating) ... ok
+test_sdk_factory_registers_only_capability_stripped_frozen_tools (test_mcp_boundary.MCPBoundaryTests.test_sdk_factory_registers_only_capability_stripped_frozen_tools) ... ok
+test_snapshot_contains_only_frozen_primitive_read_metadata (test_mcp_boundary.MCPBoundaryTests.test_snapshot_contains_only_frozen_primitive_read_metadata) ... ok
+test_trusted_export_is_exact_private_and_non_mutating (test_mcp_boundary.MCPBoundaryTests.test_trusted_export_is_exact_private_and_non_mutating) ... ok
+test_loads_exact_private_frozen_snapshot (test_mcp_plugin.MCPPluginTests.test_loads_exact_private_frozen_snapshot) ... ok
+test_main_runs_existing_mcp_server_over_stdio_only (test_mcp_plugin.MCPPluginTests.test_main_runs_existing_mcp_server_over_stdio_only) ... ok
+test_portable_plugin_manifest_and_stdio_config (test_mcp_plugin.MCPPluginTests.test_portable_plugin_manifest_and_stdio_config) ... ok
+test_rejects_extra_missing_invalid_or_duplicate_snapshot_fields (test_mcp_plugin.MCPPluginTests.test_rejects_extra_missing_invalid_or_duplicate_snapshot_fields) ... ok
+test_rejects_relative_path_and_symlinked_parent_or_file (test_mcp_plugin.MCPPluginTests.test_rejects_relative_path_and_symlinked_parent_or_file) ... ok
+test_rejects_snapshot_readable_by_group_or_world (test_mcp_plugin.MCPPluginTests.test_rejects_snapshot_readable_by_group_or_world) ... ok
+test_binding_fails_closed_without_runtime_key (test_mcp_tunnel.MCPTunnelBindingTests.test_binding_fails_closed_without_runtime_key) ... ok
+test_binding_rejects_snapshot_before_transport_launch (test_mcp_tunnel.MCPTunnelBindingTests.test_binding_rejects_snapshot_before_transport_launch) ... ok
+test_binding_uses_exact_tunnel_and_sanitized_environment (test_mcp_tunnel.MCPTunnelBindingTests.test_binding_uses_exact_tunnel_and_sanitized_environment) ... ok
+test_stdio_command_targets_only_existing_projection (test_mcp_tunnel.MCPTunnelBindingTests.test_stdio_command_targets_only_existing_projection) ... ok
+test_tunnel_id_matches_control_plane_contract_exactly (test_mcp_tunnel.MCPTunnelBindingTests.test_tunnel_id_matches_control_plane_contract_exactly) ... ok
+test_discovery_rejects_substitution_premium_type_unavailable_and_bad_money (test_namecom.NameComCoreAdapterTests.test_discovery_rejects_substitution_premium_type_unavailable_and_bad_money) ... ok
+test_discovery_uses_exact_registration_endpoint_and_decimal_cents (test_namecom.NameComCoreAdapterTests.test_discovery_uses_exact_registration_endpoint_and_decimal_cents) ... ok
+test_origin_credential_and_cap_are_exactly_pinned (test_namecom.NameComCoreAdapterTests.test_origin_credential_and_cap_are_exactly_pinned) ... ok
+test_production_fails_before_provider_when_hard_cap_is_unavailable (test_namecom.NameComCoreAdapterTests.test_production_fails_before_provider_when_hard_cap_is_unavailable) ... ok
+test_sandbox_purchase_uses_idempotency_without_purchase_price (test_namecom.NameComCoreAdapterTests.test_sandbox_purchase_uses_idempotency_without_purchase_price) ... ok
+test_sandbox_response_still_fails_closed_on_cap_privacy_and_delivery (test_namecom.NameComCoreAdapterTests.test_sandbox_response_still_fails_closed_on_cap_privacy_and_delivery) ... ok
+test_create_domain_uses_exact_core_endpoint_basic_auth_and_idempotency_key (test_namecom_core.NameComCoreTests.test_create_domain_uses_exact_core_endpoint_basic_auth_and_idempotency_key) ... ok
+test_http_error_is_not_retried_inside_adapter (test_namecom_core.NameComCoreTests.test_http_error_is_not_retried_inside_adapter) ... ok
+test_preflight_rejects_price_drift_or_unavailable_domain_before_write (test_namecom_core.NameComCoreTests.test_preflight_rejects_price_drift_or_unavailable_domain_before_write) ... ok
+test_preflight_uses_registration_filter_and_hashes_exact_live_prices (test_namecom_core.NameComCoreTests.test_preflight_uses_registration_filter_and_hashes_exact_live_prices) ... ok
+test_provider_overcharge_is_detected_and_never_normalized_into_success (test_namecom_core.NameComCoreTests.test_provider_overcharge_is_detected_and_never_normalized_into_success) ... ok
+test_readback_endpoints_are_separate_provider_observation_calls (test_namecom_core.NameComCoreTests.test_readback_endpoints_are_separate_provider_observation_calls) ... ok
+test_sandbox_requires_test_username_and_production_requires_explicit_enable (test_namecom_core.NameComCoreTests.test_sandbox_requires_test_username_and_production_requires_explicit_enable) ... ok
+test_ambiguous_multiple_registration_orders_never_guess_attribution (test_namecom_observer.NameComObserverTests.test_ambiguous_multiple_registration_orders_never_guess_attribution) ... ok
+test_exact_order_and_get_domain_readback_can_drive_verified_reconciliation (test_namecom_observer.NameComObserverTests.test_exact_order_and_get_domain_readback_can_drive_verified_reconciliation) ... ok
+test_failed_registration_order_with_no_domain_readback_is_known_failure (test_namecom_observer.NameComObserverTests.test_failed_registration_order_with_no_domain_readback_is_known_failure) ... ok
+test_non_registration_order_for_same_domain_is_ignored (test_namecom_observer.NameComObserverTests.test_non_registration_order_for_same_domain_is_ignored) ... ok
+test_success_order_without_domain_readback_stays_unknown (test_namecom_observer.NameComObserverTests.test_success_order_without_domain_readback_stays_unknown) ... ok
+test_domain_only_discovery_builds_exact_bounded_order_without_provider_write (test_namecom_proposal.NameComProposalTests.test_domain_only_discovery_builds_exact_bounded_order_without_provider_write) ... ok
+test_premium_unavailable_and_over_budget_inventory_fail_before_order_exists (test_namecom_proposal.NameComProposalTests.test_premium_unavailable_and_over_budget_inventory_fail_before_order_exists) ... ok
+test_worker_domain_input_must_be_normalized_and_v0_builder_cannot_use_production_client (test_namecom_proposal.NameComProposalTests.test_worker_domain_input_must_be_normalized_and_v0_builder_cannot_use_production_client) ... ok
+test_empty_allowlist_rejects_every_listener (test_network_exposure.NetworkExposureTests.test_empty_allowlist_rejects_every_listener) ... ok
+test_evidence_is_machine_readable_and_classifies_exposure (test_network_exposure.NetworkExposureTests.test_evidence_is_machine_readable_and_classifies_exposure) ... ok
+test_exact_loopback_allowlist_allows_only_exact_listener (test_network_exposure.NetworkExposureTests.test_exact_loopback_allowlist_allows_only_exact_listener) ... ok
+test_invalid_allowlist_fails_closed (test_network_exposure.NetworkExposureTests.test_invalid_allowlist_fails_closed) ... ok
+test_parse_allowlist_supports_ipv4_and_ipv6 (test_network_exposure.NetworkExposureTests.test_parse_allowlist_supports_ipv4_and_ipv6) ... ok
+test_parse_linux_ss (test_network_exposure.NetworkExposureTests.test_parse_linux_ss) ... ok
+test_parse_windows_json (test_network_exposure.NetworkExposureTests.test_parse_windows_json) ... ok
+test_wildcard_binding_is_external (test_network_exposure.NetworkExposureTests.test_wildcard_binding_is_external) ... ok
+test_directive_path_uses_kernel_canonical_state_only (test_orchestrator.OrchestratorProofTests.test_directive_path_uses_kernel_canonical_state_only) ... ok
+test_exact_purchase_executes_once_and_substitution_fails_before_provider (test_orchestrator.OrchestratorProofTests.test_exact_purchase_executes_once_and_substitution_fails_before_provider) ... ok
+test_exact_target_authority_request_is_hash_bound_and_one_use (test_orchestrator.OrchestratorProofTests.test_exact_target_authority_request_is_hash_bound_and_one_use) ... ok
+test_orchestrator_rejects_parallel_governance_and_executor_injection (test_orchestrator.OrchestratorProofTests.test_orchestrator_rejects_parallel_governance_and_executor_injection) ... ok
+test_pending_or_denied_authority_never_reaches_permit_issuance (test_orchestrator.OrchestratorProofTests.test_pending_or_denied_authority_never_reaches_permit_issuance) ... ok
+test_target_mismatch_stops_before_authority_poll (test_orchestrator.OrchestratorProofTests.test_target_mismatch_stops_before_authority_poll) ... ok
+test_demo_exercises_must_fix_boundaries (test_orchestrator_demo.OrchestratorDemoTests.test_demo_exercises_must_fix_boundaries) ... ok
+test_batched_parallel_path_detects_tampered_stored_hash (test_parallel_performance.AuditParallelTests.test_batched_parallel_path_detects_tampered_stored_hash) ... {
+  "audit_records": 22,
+  "audit_tip": "cb3f65d5d8238507c5b872ae1f406e81e9b8a9ea9750c3b20d4e75b1404d00b6",
+  "audit_valid": true,
+  "authority_polls_after_tamper": 0,
+  "claim_boundary": "test-only authority semantics; no deployed independent authority, protected storage, external containment, or production execution",
+  "exact_target_authorized": "allow",
+  "first_permit_consume": true,
+  "replay_permit_consume": false,
+  "revoked_preissued_directive_permit": false,
+  "schema": "pulpo.orchestrator-demo.result.v0",
+  "target_mismatch_denied": "target_hash_mismatch"
+}
+ok
+test_cached_digest_never_skips_current_chain_check (test_parallel_performance.AuditParallelTests.test_cached_digest_never_skips_current_chain_check) ... ok
+test_cached_digest_never_skips_stored_hash_check (test_parallel_performance.AuditParallelTests.test_cached_digest_never_skips_stored_hash_check) ... ok
+test_digest_cache_is_bounded (test_parallel_performance.AuditParallelTests.test_digest_cache_is_bounded) ... ok
+test_invalid_batch_size_is_rejected (test_parallel_performance.AuditParallelTests.test_invalid_batch_size_is_rejected) ... ok
+test_multi_process_result_matches_local_result (test_parallel_performance.AuditParallelTests.test_multi_process_result_matches_local_result) ... ok
+test_adaptive_engine_preserves_verification_semantics (test_parallel_performance.AuditPerformanceTunerTests.test_adaptive_engine_preserves_verification_semantics) ... ok
+test_benchmark_selects_workload_specific_profiles (test_parallel_performance.AuditPerformanceTunerTests.test_benchmark_selects_workload_specific_profiles) ... ok
+test_profile_document_has_no_authority_effect (test_parallel_performance.AuditPerformanceTunerTests.test_profile_document_has_no_authority_effect) ... ok
+test_unapproved_batch_size_is_rejected (test_parallel_performance.AuditPerformanceTunerTests.test_unapproved_batch_size_is_rejected) ... ok
+test_parallel_collection_matches_serial_collection (test_parallel_performance.ParallelEvidenceTests.test_parallel_collection_matches_serial_collection) ... ok
+test_sharded_cache_does_not_hide_changed_evidence (test_parallel_performance.ParallelEvidenceTests.test_sharded_cache_does_not_hide_changed_evidence) ... ok
+test_sharded_digest_cache_reuses_only_exact_canonical_payload (test_parallel_performance.ParallelEvidenceTests.test_sharded_digest_cache_reuses_only_exact_canonical_payload) ... ok
+test_approval_and_permit_replay_remain_denied_after_restart (test_persistence.IndexedRestartSafeStateTests.test_approval_and_permit_replay_remain_denied_after_restart) ... ok
+test_concurrent_consumption_succeeds_once (test_persistence.IndexedRestartSafeStateTests.test_concurrent_consumption_succeeds_once) ... ok
+test_concurrent_identical_approval_allows_exactly_once (test_persistence.IndexedRestartSafeStateTests.test_concurrent_identical_approval_allows_exactly_once) ... ok
+test_existing_database_gets_index_without_changing_audit (test_persistence.IndexedRestartSafeStateTests.test_existing_database_gets_index_without_changing_audit) ... ok
+test_failed_audit_write_rolls_back_approval_and_permit (test_persistence.IndexedRestartSafeStateTests.test_failed_audit_write_rolls_back_approval_and_permit) ... ok
+test_failed_commit_rolls_back_approval_permit_and_audit (test_persistence.IndexedRestartSafeStateTests.test_failed_commit_rolls_back_approval_permit_and_audit) ... ok
+test_failed_consumption_audit_rolls_back_spent_permit (test_persistence.IndexedRestartSafeStateTests.test_failed_consumption_audit_rolls_back_spent_permit) ... ok
+test_failed_second_audit_insert_rolls_back_entire_issuance (test_persistence.IndexedRestartSafeStateTests.test_failed_second_audit_insert_rolls_back_entire_issuance) ... ok
+test_issuance_reads_tip_once_and_preserves_event_order (test_persistence.IndexedRestartSafeStateTests.test_issuance_reads_tip_once_and_preserves_event_order) ... ok
+test_malformed_persisted_audit_raises_integrity_error_at_restart (test_persistence.IndexedRestartSafeStateTests.test_malformed_persisted_audit_raises_integrity_error_at_restart) ... ok
+test_overlapping_connections_serialize_audit_tip_selection (test_persistence.IndexedRestartSafeStateTests.test_overlapping_connections_serialize_audit_tip_selection) ... ok
+test_replay_reason_uses_one_snapshot_with_id_precedence (test_persistence.IndexedRestartSafeStateTests.test_replay_reason_uses_one_snapshot_with_id_precedence) ... ok
+test_tampered_persisted_audit_fails_closed_at_restart (test_persistence.IndexedRestartSafeStateTests.test_tampered_persisted_audit_fails_closed_at_restart) ... ok
+test_verified_approval_and_permit_are_committed_with_one_transaction (test_persistence.IndexedRestartSafeStateTests.test_verified_approval_and_permit_are_committed_with_one_transaction) ... ok
+test_approval_and_permit_replay_remain_denied_after_restart (test_persistence.RestartSafeStateTests.test_approval_and_permit_replay_remain_denied_after_restart) ... ok
+test_concurrent_consumption_succeeds_once (test_persistence.RestartSafeStateTests.test_concurrent_consumption_succeeds_once) ... ok
+test_concurrent_identical_approval_allows_exactly_once (test_persistence.RestartSafeStateTests.test_concurrent_identical_approval_allows_exactly_once) ... ok
+test_existing_database_gets_index_without_changing_audit (test_persistence.RestartSafeStateTests.test_existing_database_gets_index_without_changing_audit) ... ok
+test_failed_audit_write_rolls_back_approval_and_permit (test_persistence.RestartSafeStateTests.test_failed_audit_write_rolls_back_approval_and_permit) ... ok
+test_failed_commit_rolls_back_approval_permit_and_audit (test_persistence.RestartSafeStateTests.test_failed_commit_rolls_back_approval_permit_and_audit) ... ok
+test_failed_consumption_audit_rolls_back_spent_permit (test_persistence.RestartSafeStateTests.test_failed_consumption_audit_rolls_back_spent_permit) ... ok
+test_failed_second_audit_insert_rolls_back_entire_issuance (test_persistence.RestartSafeStateTests.test_failed_second_audit_insert_rolls_back_entire_issuance) ... ok
+test_issuance_reads_tip_once_and_preserves_event_order (test_persistence.RestartSafeStateTests.test_issuance_reads_tip_once_and_preserves_event_order) ... ok
+test_malformed_persisted_audit_raises_integrity_error_at_restart (test_persistence.RestartSafeStateTests.test_malformed_persisted_audit_raises_integrity_error_at_restart) ... ok
+test_overlapping_connections_serialize_audit_tip_selection (test_persistence.RestartSafeStateTests.test_overlapping_connections_serialize_audit_tip_selection) ... ok
+test_replay_reason_uses_one_snapshot_with_id_precedence (test_persistence.RestartSafeStateTests.test_replay_reason_uses_one_snapshot_with_id_precedence) ... ok
+test_tampered_persisted_audit_fails_closed_at_restart (test_persistence.RestartSafeStateTests.test_tampered_persisted_audit_fails_closed_at_restart) ... ok
+test_verified_approval_and_permit_are_committed_with_one_transaction (test_persistence.RestartSafeStateTests.test_verified_approval_and_permit_are_committed_with_one_transaction) ... ok
+test_already_closed_pr_needs_no_mutation (test_pr_admission_enforcement.PullRequestAdmissionEnforcementTests.test_already_closed_pr_needs_no_mutation) ... ok
+test_already_draft_pr_needs_no_mutation (test_pr_admission_enforcement.PullRequestAdmissionEnforcementTests.test_already_draft_pr_needs_no_mutation) ... ok
+test_close_binds_exact_repository_number_and_state (test_pr_admission_enforcement.PullRequestAdmissionEnforcementTests.test_close_binds_exact_repository_number_and_state) ... ok
+test_hold_label_requires_quarantine (test_pr_admission_enforcement.PullRequestAdmissionEnforcementTests.test_hold_label_requires_quarantine) ... ok
+test_legacy_held_non_draft_pr_requires_quarantine (test_pr_admission_enforcement.PullRequestAdmissionEnforcementTests.test_legacy_held_non_draft_pr_requires_quarantine) ... ok
+test_machine_held_non_draft_pr_requires_quarantine (test_pr_admission_enforcement.PullRequestAdmissionEnforcementTests.test_machine_held_non_draft_pr_requires_quarantine) ... ok
+test_missing_number_fails_closed_when_mutation_is_needed (test_pr_admission_enforcement.PullRequestAdmissionEnforcementTests.test_missing_number_fails_closed_when_mutation_is_needed) ... ok
+test_missing_repository_fails_closed_when_mutation_is_needed (test_pr_admission_enforcement.PullRequestAdmissionEnforcementTests.test_missing_repository_fails_closed_when_mutation_is_needed) ... ok
+test_non_pr_event_is_noop (test_pr_admission_enforcement.PullRequestAdmissionEnforcementTests.test_non_pr_event_is_noop) ... ok
+test_open_pr_is_not_mutated (test_pr_admission_enforcement.PullRequestAdmissionEnforcementTests.test_open_pr_is_not_mutated) ... ok
+test_rest_error_fails_closed (test_pr_admission_enforcement.PullRequestAdmissionEnforcementTests.test_rest_error_fails_closed) ... ok
+test_unverified_closed_state_fails_closed (test_pr_admission_enforcement.PullRequestAdmissionEnforcementTests.test_unverified_closed_state_fails_closed) ... ok
+test_github_draft_fails_closed (test_pr_admission_hold.PullRequestAdmissionHoldTests.test_github_draft_fails_closed) ... ok
+test_hold_title_and_label_fail_closed (test_pr_admission_hold.PullRequestAdmissionHoldTests.test_hold_title_and_label_fail_closed) ... ok
+test_legacy_draft_hold_fails_closed (test_pr_admission_hold.PullRequestAdmissionHoldTests.test_legacy_draft_hold_fails_closed) ... ok
+test_legacy_process_hold_fails_closed (test_pr_admission_hold.PullRequestAdmissionHoldTests.test_legacy_process_hold_fails_closed) ... ok
+test_machine_hold_marker_fails_closed (test_pr_admission_hold.PullRequestAdmissionHoldTests.test_machine_hold_marker_fails_closed) ... ok
+test_narrative_historical_mention_does_not_create_hold (test_pr_admission_hold.PullRequestAdmissionHoldTests.test_narrative_historical_mention_does_not_create_hold) ... ok
+test_non_pr_event_is_noop (test_pr_admission_hold.PullRequestAdmissionHoldTests.test_non_pr_event_is_noop) ... ok
+test_normal_ready_pr_is_open (test_pr_admission_hold.PullRequestAdmissionHoldTests.test_normal_ready_pr_is_open) ... ok
+test_exact_live_directive_remains_positive_control_and_permit_is_one_use (test_projection_non_elevation.ProjectionNonElevationTests.test_exact_live_directive_remains_positive_control_and_permit_is_one_use) ... ok
+test_high_relevance_lossy_summary_cannot_raise_scope_or_budget (test_projection_non_elevation.ProjectionNonElevationTests.test_high_relevance_lossy_summary_cannot_raise_scope_or_budget) ... ok
+test_projection_claim_cannot_activate_an_unactivated_directive (test_projection_non_elevation.ProjectionNonElevationTests.test_projection_claim_cannot_activate_an_unactivated_directive) ... ok
+test_stale_pre_revocation_projection_cannot_restore_authority_after_restart (test_projection_non_elevation.ProjectionNonElevationTests.test_stale_pre_revocation_projection_cannot_restore_authority_after_restart) ... ok
+test_expired_ratification_is_insufficient_evidence (test_ratification.NonSovereignRatificationTests.test_expired_ratification_is_insufficient_evidence) ... ok
+test_governance_identity_cannot_self_ratify_even_with_valid_signature (test_ratification.NonSovereignRatificationTests.test_governance_identity_cannot_self_ratify_even_with_valid_signature) ... ok
+test_independent_trusted_ratifier_can_ratify_exact_verified_reconciliation (test_ratification.NonSovereignRatificationTests.test_independent_trusted_ratifier_can_ratify_exact_verified_reconciliation) ... ok
+test_invalid_ratifier_signature_cannot_create_finality (test_ratification.NonSovereignRatificationTests.test_invalid_ratifier_signature_cannot_create_finality) ... ok
+test_non_verified_reconciliation_cannot_be_repaired_by_ratification (test_ratification.NonSovereignRatificationTests.test_non_verified_reconciliation_cannot_be_repaired_by_ratification) ... ok
+test_ratifier_cannot_substitute_constitutional_proof (test_ratification.NonSovereignRatificationTests.test_ratifier_cannot_substitute_constitutional_proof) ... ok
+test_ratifier_cannot_substitute_effect_envelope (test_ratification.NonSovereignRatificationTests.test_ratifier_cannot_substitute_effect_envelope) ... ok
+test_ratifier_cannot_substitute_reconciliation (test_ratification.NonSovereignRatificationTests.test_ratifier_cannot_substitute_reconciliation) ... ok
+test_ratifier_rejection_is_terminal_for_this_attestation (test_ratification.NonSovereignRatificationTests.test_ratifier_rejection_is_terminal_for_this_attestation) ... ok
+test_trust_configuration_rejects_same_key_as_governor_and_ratifier (test_ratification.NonSovereignRatificationTests.test_trust_configuration_rejects_same_key_as_governor_and_ratifier) ... ok
+test_uncertain_reconciliation_cannot_be_repaired_by_ratification (test_ratification.NonSovereignRatificationTests.test_uncertain_reconciliation_cannot_be_repaired_by_ratification) ... ok
+test_untrusted_ratifier_cannot_create_finality (test_ratification.NonSovereignRatificationTests.test_untrusted_ratifier_cannot_create_finality) ... ok
+test_verified_reconciliation_is_not_final_without_independent_ratification (test_ratification.NonSovereignRatificationTests.test_verified_reconciliation_is_not_final_without_independent_ratification) ... ok
+test_verifier_unavailability_never_becomes_success (test_ratification.NonSovereignRatificationTests.test_verifier_unavailability_never_becomes_success) ... ok
+test_amount_substitution_is_denied_before_provider_call (test_redsys_sandbox_governance.RedsysSandboxGovernanceTests.test_amount_substitution_is_denied_before_provider_call) ... ok
+test_currency_substitution_is_denied_before_provider_call (test_redsys_sandbox_governance.RedsysSandboxGovernanceTests.test_currency_substitution_is_denied_before_provider_call) ... ok
+test_exact_positive_control_makes_one_call_and_returns_evidence_only (test_redsys_sandbox_governance.RedsysSandboxGovernanceTests.test_exact_positive_control_makes_one_call_and_returns_evidence_only) ... ok
+test_execution_context_mismatch_is_denied_before_provider_call (test_redsys_sandbox_governance.RedsysSandboxGovernanceTests.test_execution_context_mismatch_is_denied_before_provider_call) ... ok
+test_external_approval_cannot_be_reused_after_restart (test_redsys_sandbox_governance.RedsysSandboxGovernanceTests.test_external_approval_cannot_be_reused_after_restart) ... ok
+test_external_approval_for_one_payment_cannot_authorize_substitution (test_redsys_sandbox_governance.RedsysSandboxGovernanceTests.test_external_approval_for_one_payment_cannot_authorize_substitution) ... ok
+test_external_approval_is_required_for_payment_permit (test_redsys_sandbox_governance.RedsysSandboxGovernanceTests.test_external_approval_is_required_for_payment_permit) ... ok
+test_merchant_or_terminal_substitution_is_denied_before_provider_call (test_redsys_sandbox_governance.RedsysSandboxGovernanceTests.test_merchant_or_terminal_substitution_is_denied_before_provider_call) ... ok
+test_mismatched_provider_response_is_not_accepted_or_retryable (test_redsys_sandbox_governance.RedsysSandboxGovernanceTests.test_mismatched_provider_response_is_not_accepted_or_retryable) ... ok
+test_network_ambiguity_consumes_authority_and_never_auto_retries (test_redsys_sandbox_governance.RedsysSandboxGovernanceTests.test_network_ambiguity_consumes_authority_and_never_auto_retries) ... ok
+test_no_permit_makes_zero_provider_calls (test_redsys_sandbox_governance.RedsysSandboxGovernanceTests.test_no_permit_makes_zero_provider_calls) ... ok
+test_one_use_replay_cannot_make_second_provider_call (test_redsys_sandbox_governance.RedsysSandboxGovernanceTests.test_one_use_replay_cannot_make_second_provider_call) ... ok
+test_operation_mode_substitution_is_rejected_before_authority (test_redsys_sandbox_governance.RedsysSandboxGovernanceTests.test_operation_mode_substitution_is_rejected_before_authority) ... ok
+test_order_substitution_is_denied_before_provider_call (test_redsys_sandbox_governance.RedsysSandboxGovernanceTests.test_order_substitution_is_denied_before_provider_call) ... ok
+test_payment_permit_does_not_authorize_refund (test_redsys_sandbox_governance.RedsysSandboxGovernanceTests.test_payment_permit_does_not_authorize_refund) ... ok
+test_processed_response_shape_is_classified_without_authority_effect (test_redsys_sandbox_governance.RedsysSandboxGovernanceTests.test_processed_response_shape_is_classified_without_authority_effect) ... ok
+test_production_origin_is_rejected_at_adapter_construction (test_redsys_sandbox_governance.RedsysSandboxGovernanceTests.test_production_origin_is_rejected_at_adapter_construction) ... ok
+test_restart_does_not_restore_spent_payment_authority (test_redsys_sandbox_governance.RedsysSandboxGovernanceTests.test_restart_does_not_restore_spent_payment_authority) ... ok
+test_revocation_after_permit_issue_denies_before_provider_call (test_redsys_sandbox_governance.RedsysSandboxGovernanceTests.test_revocation_after_permit_issue_denies_before_provider_call) ... ok
+test_unknown_response_shape_remains_unknown (test_redsys_sandbox_governance.RedsysSandboxGovernanceTests.test_unknown_response_shape_remains_unknown) ... ok
+test_unprocessed_error_shape_is_classified_without_becoming_success (test_redsys_sandbox_governance.RedsysSandboxGovernanceTests.test_unprocessed_error_shape_is_classified_without_becoming_success) ... ok
+test_alternate_plausible_reconstruction_cannot_reuse_exact_target (test_semantic_authority_corruption.SemanticAuthorityCorruptionTests.test_alternate_plausible_reconstruction_cannot_reuse_exact_target) ... ok
+test_high_confidence_reconstruction_is_only_a_locked_proposal (test_semantic_authority_corruption.SemanticAuthorityCorruptionTests.test_high_confidence_reconstruction_is_only_a_locked_proposal) ... ok
+test_repeated_reconstruction_never_upgrades_authority (test_semantic_authority_corruption.SemanticAuthorityCorruptionTests.test_repeated_reconstruction_never_upgrades_authority) ... ok
+test_resolving_exact_reconstruction_does_not_inherit_authority (test_semantic_authority_corruption.SemanticAuthorityCorruptionTests.test_resolving_exact_reconstruction_does_not_inherit_authority) ... ok
+test_invalid_profile_falls_back_conservatively_without_authority_change (test_setup.PulpoSetupTests.test_invalid_profile_falls_back_conservatively_without_authority_change) ... ok
+test_setup_builds_profile_from_matching_benchmark (test_setup.PulpoSetupTests.test_setup_builds_profile_from_matching_benchmark) ... ok
+test_setup_reuses_matching_profile (test_setup.PulpoSetupTests.test_setup_reuses_matching_profile) ... ok
+test_approval_for_different_intent_cannot_authorize_locked_target (test_target_authority.TargetAuthorityTests.test_approval_for_different_intent_cannot_authorize_locked_target) ... ok
+test_exact_locked_target_can_use_existing_approval_path (test_target_authority.TargetAuthorityTests.test_exact_locked_target_can_use_existing_approval_path) ... ok
+test_target_hash_mismatch_stops_before_approval_is_consumed (test_target_authority.TargetAuthorityTests.test_target_hash_mismatch_stops_before_approval_is_consumed) ... ok
+test_verified_approval_replay_remains_denied_with_canonical_reason (test_target_authority.TargetAuthorityTests.test_verified_approval_replay_remains_denied_with_canonical_reason) ... ok
+test_artifact_mutation_during_observation_fails_closed (test_target_reconcile.TargetReconciliationTests.test_artifact_mutation_during_observation_fails_closed) ... Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682bdaf20>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/unittest/mock.py", line 2259, in __init__
+    def __init__(self, name, parent):
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682bdaf20>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682bdbc40>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/unittest/mock.py", line 2259, in __init__
+    def __init__(self, name, parent):
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682bdbc40>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682bdb2e0>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/unittest/mock.py", line 2259, in __init__
+    def __init__(self, name, parent):
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682bdb2e0>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682bdb3d0>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/unittest/mock.py", line 2259, in __init__
+    def __init__(self, name, parent):
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682bdb3d0>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682bdbf10>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/unittest/mock.py", line 2259, in __init__
+    def __init__(self, name, parent):
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682bdbf10>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682bdbe20>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/unittest/mock.py", line 2259, in __init__
+    def __init__(self, name, parent):
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682bdbe20>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682bdbd30>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/unittest/mock.py", line 2259, in __init__
+    def __init__(self, name, parent):
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682bdbd30>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682bdbb50>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/unittest/mock.py", line 2259, in __init__
+    def __init__(self, name, parent):
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682bdbb50>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682bdba60>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/unittest/mock.py", line 2259, in __init__
+    def __init__(self, name, parent):
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682bdba60>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682bdb5b0>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/unittest/mock.py", line 2259, in __init__
+    def __init__(self, name, parent):
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682bdb5b0>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682bdb880>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/unittest/mock.py", line 2259, in __init__
+    def __init__(self, name, parent):
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682bdb880>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682bdb790>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/unittest/mock.py", line 2259, in __init__
+    def __init__(self, name, parent):
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682bdb790>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682bdb6a0>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/unittest/mock.py", line 2259, in __init__
+    def __init__(self, name, parent):
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682bdb6a0>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682bdb4c0>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/unittest/mock.py", line 2259, in __init__
+    def __init__(self, name, parent):
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682bdb4c0>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682bdb1f0>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/unittest/mock.py", line 2259, in __init__
+    def __init__(self, name, parent):
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682bdb1f0>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682bdb100>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/unittest/mock.py", line 2259, in __init__
+    def __init__(self, name, parent):
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682bdb100>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682bdb010>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/unittest/mock.py", line 2259, in __init__
+    def __init__(self, name, parent):
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682bdb010>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682bdae30>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/unittest/mock.py", line 2259, in __init__
+    def __init__(self, name, parent):
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682bdae30>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682bdad40>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/unittest/mock.py", line 2259, in __init__
+    def __init__(self, name, parent):
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682bdad40>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682bdb970>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/unittest/mock.py", line 2259, in __init__
+    def __init__(self, name, parent):
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682bdb970>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682bdac50>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/unittest/mock.py", line 2259, in __init__
+    def __init__(self, name, parent):
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682bdac50>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682bdab60>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/unittest/mock.py", line 2259, in __init__
+    def __init__(self, name, parent):
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682bdab60>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682bdaa70>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/unittest/mock.py", line 2259, in __init__
+    def __init__(self, name, parent):
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682bdaa70>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682bda980>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/unittest/mock.py", line 2259, in __init__
+    def __init__(self, name, parent):
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682bda980>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682bd9e40>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/unittest/mock.py", line 2259, in __init__
+    def __init__(self, name, parent):
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682bd9e40>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682bda890>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/unittest/mock.py", line 2259, in __init__
+    def __init__(self, name, parent):
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682bda890>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682bd9210>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/unittest/mock.py", line 2259, in __init__
+    def __init__(self, name, parent):
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682bd9210>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682bd98a0>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/unittest/mock.py", line 2259, in __init__
+    def __init__(self, name, parent):
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682bd98a0>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682bd97b0>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/unittest/mock.py", line 2259, in __init__
+    def __init__(self, name, parent):
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682bd97b0>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682bd96c0>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/unittest/mock.py", line 2259, in __init__
+    def __init__(self, name, parent):
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682bd96c0>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682bd94e0>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/unittest/mock.py", line 2259, in __init__
+    def __init__(self, name, parent):
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682bd94e0>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682bd93f0>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/unittest/mock.py", line 2259, in __init__
+    def __init__(self, name, parent):
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682bd93f0>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682bd95d0>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/unittest/mock.py", line 2259, in __init__
+    def __init__(self, name, parent):
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682bd95d0>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682bd9300>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/unittest/mock.py", line 2259, in __init__
+    def __init__(self, name, parent):
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682bd9300>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682bd8e50>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/unittest/mock.py", line 2259, in __init__
+    def __init__(self, name, parent):
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682bd8e50>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682bd8d60>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/unittest/mock.py", line 2259, in __init__
+    def __init__(self, name, parent):
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682bd8d60>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682bd9120>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/unittest/mock.py", line 2259, in __init__
+    def __init__(self, name, parent):
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682bd9120>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682bd8b80>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/unittest/mock.py", line 2259, in __init__
+    def __init__(self, name, parent):
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682bd8b80>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682bd8a90>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/unittest/mock.py", line 2259, in __init__
+    def __init__(self, name, parent):
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682bd8a90>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682bd89a0>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/unittest/mock.py", line 2259, in __init__
+    def __init__(self, name, parent):
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682bd89a0>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682bd88b0>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/unittest/mock.py", line 2259, in __init__
+    def __init__(self, name, parent):
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682bd88b0>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682bd87c0>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/unittest/mock.py", line 2259, in __init__
+    def __init__(self, name, parent):
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682bd87c0>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682bd85e0>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/unittest/mock.py", line 2259, in __init__
+    def __init__(self, name, parent):
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682bd85e0>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682bd86d0>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/unittest/mock.py", line 2259, in __init__
+    def __init__(self, name, parent):
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682bd86d0>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682bd8310>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/unittest/mock.py", line 2259, in __init__
+    def __init__(self, name, parent):
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682bd8310>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682bd8220>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/unittest/mock.py", line 2259, in __init__
+    def __init__(self, name, parent):
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682bd8220>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682bd8130>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/unittest/mock.py", line 2259, in __init__
+    def __init__(self, name, parent):
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682bd8130>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682bd8400>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/unittest/mock.py", line 2259, in __init__
+    def __init__(self, name, parent):
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682bd8400>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682be3d30>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/unittest/mock.py", line 2259, in __init__
+    def __init__(self, name, parent):
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682be3d30>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682be3f10>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/unittest/mock.py", line 2259, in __init__
+    def __init__(self, name, parent):
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682be3f10>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682be3e20>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/unittest/mock.py", line 2259, in __init__
+    def __init__(self, name, parent):
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682be3e20>
+Exception ignored while finalizing database connection <sqlite3.Connection object at 0x7f8682be3790>:
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/unittest/mock.py", line 2259, in __init__
+    def __init__(self, name, parent):
+ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f8682be3790>
+ok
+test_completion_of_one_version_does_not_complete_another (test_target_reconcile.TargetReconciliationTests.test_completion_of_one_version_does_not_complete_another) ... ok
+test_completion_requires_exact_target_hash (test_target_reconcile.TargetReconciliationTests.test_completion_requires_exact_target_hash) ... ok
+test_locked_target_remains_unresolved_without_completion_evidence (test_target_reconcile.TargetReconciliationTests.test_locked_target_remains_unresolved_without_completion_evidence) ... ok
+test_memory_or_chat_claim_does_not_complete_target (test_target_reconcile.TargetReconciliationTests.test_memory_or_chat_claim_does_not_complete_target) ... ok
+test_missing_or_empty_artifact_cannot_complete_target (test_target_reconcile.TargetReconciliationTests.test_missing_or_empty_artifact_cannot_complete_target) ... ok
+test_nonempty_artifact_records_exact_completion_without_authority_effect (test_target_reconcile.TargetReconciliationTests.test_nonempty_artifact_records_exact_completion_without_authority_effect) ... ok
+test_same_artifact_completion_is_idempotent_but_replacement_is_denied (test_target_reconcile.TargetReconciliationTests.test_same_artifact_completion_is_idempotent_but_replacement_is_denied) ... ok
+test_unresolved_and_completed_state_survive_sqlite_restart (test_target_reconcile.TargetReconciliationTests.test_unresolved_and_completed_state_survive_sqlite_restart) ... ok
+test_exact_target_resolves_but_hash_mismatch_fails_closed (test_targets.TargetLockTests.test_exact_target_resolves_but_hash_mismatch_fails_closed) ... ok
+test_fire_path_cannot_bypass_policy (test_targets.TargetLockTests.test_fire_path_cannot_bypass_policy) ... ok
+test_fire_path_delegates_to_kernel_policy_and_one_use_permit (test_targets.TargetLockTests.test_fire_path_delegates_to_kernel_policy_and_one_use_permit) ... ok
+test_lock_records_exact_target_without_granting_authority (test_targets.TargetLockTests.test_lock_records_exact_target_without_granting_authority) ... ok
+test_locked_target_survives_sqlite_restart (test_targets.TargetLockTests.test_locked_target_survives_sqlite_restart) ... ok
+test_mismatched_target_never_reaches_authority_evaluation (test_targets.TargetLockTests.test_mismatched_target_never_reaches_authority_evaluation) ... ok
+test_same_target_retry_is_idempotent_when_clock_advances (test_targets.TargetLockTests.test_same_target_retry_is_idempotent_when_clock_advances) ... ok
+test_target_version_is_immutable (test_targets.TargetLockTests.test_target_version_is_immutable) ... ok
+test_activation_permit_cannot_be_retargeted (test_telegram_capability_activation_prep.TelegramCapabilityActivationPrepTests.test_activation_permit_cannot_be_retargeted) ... ok
+test_activation_permit_cannot_be_retargeted_to_another_bot (test_telegram_capability_activation_prep.TelegramCapabilityActivationPrepTests.test_activation_permit_cannot_be_retargeted_to_another_bot) ... ok
+test_available_capability_without_activation_approval_creates_zero_provider_calls (test_telegram_capability_activation_prep.TelegramCapabilityActivationPrepTests.test_available_capability_without_activation_approval_creates_zero_provider_calls) ... ok
+test_exact_activation_and_message_permits_allow_one_provider_call (test_telegram_capability_activation_prep.TelegramCapabilityActivationPrepTests.test_exact_activation_and_message_permits_allow_one_provider_call) ... ok
+test_exact_activation_does_not_authorize_message_send (test_telegram_capability_activation_prep.TelegramCapabilityActivationPrepTests.test_exact_activation_does_not_authorize_message_send) ... ok
+test_message_authorization_without_activation_cannot_reach_provider (test_telegram_capability_activation_prep.TelegramCapabilityActivationPrepTests.test_message_authorization_without_activation_cannot_reach_provider) ... ok
+test_message_permit_cannot_be_retargeted (test_telegram_capability_activation_prep.TelegramCapabilityActivationPrepTests.test_message_permit_cannot_be_retargeted) ... ok
+test_message_permit_cannot_be_retargeted_to_another_bot (test_telegram_capability_activation_prep.TelegramCapabilityActivationPrepTests.test_message_permit_cannot_be_retargeted_to_another_bot) ... ok
+test_read_permission_cannot_release_telegram_send_capability (test_telegram_capability_activation_prep.TelegramCapabilityActivationPrepTests.test_read_permission_cannot_release_telegram_send_capability) ... ok
+test_transport_identity_mismatch_is_rejected_before_permit_consumption (test_telegram_capability_activation_prep.TelegramCapabilityActivationPrepTests.test_transport_identity_mismatch_is_rejected_before_permit_consumption) ... ok
+test_all_frozen_success_conditions_hold (test_temporal_transfer_proof_zero.TemporalTransferProofZeroTests.test_all_frozen_success_conditions_hold) ... ok
+test_expected_temporal_competence_shape (test_temporal_transfer_proof_zero.TemporalTransferProofZeroTests.test_expected_temporal_competence_shape) ... ok
+test_freeze_precedes_evaluator_and_remains_unchanged (test_temporal_transfer_proof_zero.TemporalTransferProofZeroTests.test_freeze_precedes_evaluator_and_remains_unchanged) ... ok
+test_future_input_cannot_rewrite_past_or_self_authorize (test_temporal_transfer_proof_zero.TemporalTransferProofZeroTests.test_future_input_cannot_rewrite_past_or_self_authorize) ... ok
+test_highest_relevance_poison_is_rejected (test_temporal_transfer_proof_zero.TemporalTransferProofZeroTests.test_highest_relevance_poison_is_rejected) ... ok
+test_valid_future_lesson_changes_competence_not_historical_state (test_temporal_transfer_proof_zero.TemporalTransferProofZeroTests.test_valid_future_lesson_changes_competence_not_historical_state) ... ok
+test_ambient_ca_configuration_is_rejected_without_explicit_policy (test_transport_security.TransportSecurityTests.test_ambient_ca_configuration_is_rejected_without_explicit_policy) ... ok
+test_ca_bundle_requires_an_absolute_existing_file (test_transport_security.TransportSecurityTests.test_ca_bundle_requires_an_absolute_existing_file) ... ok
+test_sanitized_environment_removes_ambient_proxy_and_ca_controls (test_transport_security.TransportSecurityTests.test_sanitized_environment_removes_ambient_proxy_and_ca_controls) ... ok
+test_tunnel_environment_cannot_reintroduce_proxy_or_ca_overrides (test_transport_security.TransportSecurityTests.test_tunnel_environment_cannot_reintroduce_proxy_or_ca_overrides) ... ok
+
+----------------------------------------------------------------------
+Ran 445 tests in 20.995s
+
+OK

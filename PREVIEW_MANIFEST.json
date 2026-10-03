@@ -453,5 +453,26 @@
       "draft": true,
       "reason": "draft excluded"
     }
-  ]
+  ],
+  "local_copy_audit": {
+    "local_head": "d95a2ef3180a2d5186ddeebce108ae6b49ea7274",
+    "local_tracked_source_changes": 0,
+    "local_already_in_preview": true,
+    "comparison": "LOCAL_PR_COMPARISON.json",
+    "report": "LOCAL_PR_COMPARISON.md",
+    "historical_evidence_tag": "preview-evidence-temporal-freeze",
+    "historical_evidence_sha": "0eb1266fecf586c79457e0fcaf412bc6345545a2",
+    "prior_hosted_run": "37141212204",
+    "prior_hosted_result": "failure: missing historical Git checkpoint; unit-tests plus dependent gate",
+    "runtime_code_changed": false,
+    "fresh_fork_validation": {
+      "claim": "Verified",
+      "tested_preview_sha": "4bc47c63ccf4a959b0f963cd75e3b4a88b8db49c",
+      "checkpoint_tag": "preview-evidence-temporal-freeze",
+      "tests": 445,
+      "result": "OK",
+      "elapsed_seconds": 20.995,
+      "log": "perf-results/preview-fork-tests-20261003.log"
+    }
+  }
 }

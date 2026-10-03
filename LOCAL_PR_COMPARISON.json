@@ -1,0 +1,4887 @@
+{
+  "local_head": "d95a2ef3180a2d5186ddeebce108ae6b49ea7274",
+  "preview_head": "4bc47c63ccf4a959b0f963cd75e3b4a88b8db49c",
+  "local_in_preview_history": true,
+  "method": "Exact ancestry and read-only reverse patch checks; failing reverse checks do not prove semantic absence; whole-head blob matches can include unchanged portions. Draft PRs excluded.",
+  "prs": [
+    {
+      "number": 295,
+      "title": "perf: reduce SQLite audit overhead with an opt-in event index",
+      "base_sha": "73ec97b68a3228c52ecba717d867a1d99340ab15",
+      "head_sha": "d95a2ef3180a2d5186ddeebce108ae6b49ea7274",
+      "base": "perf/audit-cpu-workers-cache",
+      "merge_base": "73ec97b68a3228c52ecba717d867a1d99340ab15",
+      "changed_files": [
+        "README.md",
+        "docs/PERSISTENCE.md",
+        "perf-results/sqlite-baseline.json",
+        "perf-results/sqlite-comparison.json",
+        "perf-results/sqlite-cpu-current.json",
+        "perf-results/sqlite-cpu-profile.json",
+        "perf-results/sqlite-evidence-reconciliation.json",
+        "perf-results/sqlite-final-comparison.json",
+        "perf-results/sqlite-full-tests-baseline.json",
+        "perf-results/sqlite-full-tests-baseline.log",
+        "perf-results/sqlite-full-tests-final.log",
+        "perf-results/sqlite-full-tests.log",
+        "perf-results/sqlite-mitigated.json",
+        "perf-results/sqlite-persistence-final.log",
+        "perf-results/sqlite-persistence-pr.log",
+        "perf-results/sqlite-pr-evidence-draft.txt",
+        "perf-results/sqlite-preexisting-failures.log",
+        "perf-results/sqlite-suite-comparison.json",
+        "pulpo/state.py",
+        "scripts/benchmark_sqlite_state.py",
+        "tests/test_persistence.py"
+      ],
+      "targets": {
+        "local": {
+          "head_in_history": true,
+          "full_delta_present": true,
+          "classification": "included_history",
+          "files": [
+            {
+              "path": "README.md",
+              "head_blob_equal": true,
+              "delta_reverse_applies": true,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "docs/PERSISTENCE.md",
+              "head_blob_equal": true,
+              "delta_reverse_applies": true,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "perf-results/sqlite-baseline.json",
+              "head_blob_equal": true,
+              "delta_reverse_applies": true,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "perf-results/sqlite-comparison.json",
+              "head_blob_equal": true,
+              "delta_reverse_applies": true,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "perf-results/sqlite-cpu-current.json",
+              "head_blob_equal": true,
+              "delta_reverse_applies": true,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "perf-results/sqlite-cpu-profile.json",
+              "head_blob_equal": true,
+              "delta_reverse_applies": true,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "perf-results/sqlite-evidence-reconciliation.json",
+              "head_blob_equal": true,
+              "delta_reverse_applies": true,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "perf-results/sqlite-final-comparison.json",
+              "head_blob_equal": true,
+              "delta_reverse_applies": true,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "perf-results/sqlite-full-tests-baseline.json",
+              "head_blob_equal": true,
+              "delta_reverse_applies": true,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "perf-results/sqlite-full-tests-baseline.log",
+              "head_blob_equal": true,
+              "delta_reverse_applies": true,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "perf-results/sqlite-full-tests-final.log",
+              "head_blob_equal": true,
+              "delta_reverse_applies": true,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "perf-results/sqlite-full-tests.log",
+              "head_blob_equal": true,
+              "delta_reverse_applies": true,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "perf-results/sqlite-mitigated.json",
+              "head_blob_equal": true,
+              "delta_reverse_applies": true,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "perf-results/sqlite-persistence-final.log",
+              "head_blob_equal": true,
+              "delta_reverse_applies": true,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "perf-results/sqlite-persistence-pr.log",
+              "head_blob_equal": true,
+              "delta_reverse_applies": true,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "perf-results/sqlite-pr-evidence-draft.txt",
+              "head_blob_equal": true,
+              "delta_reverse_applies": true,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "perf-results/sqlite-preexisting-failures.log",
+              "head_blob_equal": true,
+              "delta_reverse_applies": true,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "perf-results/sqlite-suite-comparison.json",
+              "head_blob_equal": true,
+              "delta_reverse_applies": true,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "pulpo/state.py",
+              "head_blob_equal": true,
+              "delta_reverse_applies": true,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "scripts/benchmark_sqlite_state.py",
+              "head_blob_equal": true,
+              "delta_reverse_applies": true,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "tests/test_persistence.py",
+              "head_blob_equal": true,
+              "delta_reverse_applies": true,
+              "new_file_missing": false,
+              "file_exists": true
+            }
+          ]
+        },
+        "preview": {
+          "head_in_history": true,
+          "full_delta_present": true,
+          "classification": "included_history",
+          "files": [
+            {
+              "path": "README.md",
+              "head_blob_equal": false,
+              "delta_reverse_applies": true,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "docs/PERSISTENCE.md",
+              "head_blob_equal": true,
+              "delta_reverse_applies": true,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "perf-results/sqlite-baseline.json",
+              "head_blob_equal": true,
+              "delta_reverse_applies": true,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "perf-results/sqlite-comparison.json",
+              "head_blob_equal": true,
+              "delta_reverse_applies": true,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "perf-results/sqlite-cpu-current.json",
+              "head_blob_equal": true,
+              "delta_reverse_applies": true,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "perf-results/sqlite-cpu-profile.json",
+              "head_blob_equal": true,
+              "delta_reverse_applies": true,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "perf-results/sqlite-evidence-reconciliation.json",
+              "head_blob_equal": true,
+              "delta_reverse_applies": true,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "perf-results/sqlite-final-comparison.json",
+              "head_blob_equal": true,
+              "delta_reverse_applies": true,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "perf-results/sqlite-full-tests-baseline.json",
+              "head_blob_equal": true,
+              "delta_reverse_applies": true,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "perf-results/sqlite-full-tests-baseline.log",
+              "head_blob_equal": true,
+              "delta_reverse_applies": true,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "perf-results/sqlite-full-tests-final.log",
+              "head_blob_equal": true,
+              "delta_reverse_applies": true,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "perf-results/sqlite-full-tests.log",
+              "head_blob_equal": true,
+              "delta_reverse_applies": true,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "perf-results/sqlite-mitigated.json",
+              "head_blob_equal": true,
+              "delta_reverse_applies": true,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "perf-results/sqlite-persistence-final.log",
+              "head_blob_equal": true,
+              "delta_reverse_applies": true,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "perf-results/sqlite-persistence-pr.log",
+              "head_blob_equal": true,
+              "delta_reverse_applies": true,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "perf-results/sqlite-pr-evidence-draft.txt",
+              "head_blob_equal": true,
+              "delta_reverse_applies": true,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "perf-results/sqlite-preexisting-failures.log",
+              "head_blob_equal": true,
+              "delta_reverse_applies": true,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "perf-results/sqlite-suite-comparison.json",
+              "head_blob_equal": true,
+              "delta_reverse_applies": true,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "pulpo/state.py",
+              "head_blob_equal": true,
+              "delta_reverse_applies": true,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "scripts/benchmark_sqlite_state.py",
+              "head_blob_equal": true,
+              "delta_reverse_applies": true,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "tests/test_persistence.py",
+              "head_blob_equal": true,
+              "delta_reverse_applies": true,
+              "new_file_missing": false,
+              "file_exists": true
+            }
+          ]
+        }
+      }
+    },
+    {
+      "number": 294,
+      "title": "docs: state host bound vs Pulpo bound",
+      "base_sha": "d674dbb7a00b471d69bcca84d2f034cf74705e1a",
+      "head_sha": "ea73035f44ac07c313a2330b74d653efb3aef02d",
+      "base": "main",
+      "merge_base": "d674dbb7a00b471d69bcca84d2f034cf74705e1a",
+      "changed_files": [
+        "README.md",
+        "docs/AUTHORITY_BOUNDARY_DECISION.md"
+      ],
+      "targets": {
+        "local": {
+          "head_in_history": false,
+          "full_delta_present": false,
+          "classification": "not_exactly_present",
+          "files": [
+            {
+              "path": "README.md",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "docs/AUTHORITY_BOUNDARY_DECISION.md",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            }
+          ]
+        },
+        "preview": {
+          "head_in_history": true,
+          "full_delta_present": false,
+          "classification": "included_history",
+          "files": [
+            {
+              "path": "README.md",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "docs/AUTHORITY_BOUNDARY_DECISION.md",
+              "head_blob_equal": true,
+              "delta_reverse_applies": true,
+              "new_file_missing": false,
+              "file_exists": true
+            }
+          ]
+        }
+      }
+    },
+    {
+      "number": 293,
+      "title": "perf: add multi-core audit verification and parallel evidence collection",
+      "base_sha": "d674dbb7a00b471d69bcca84d2f034cf74705e1a",
+      "head_sha": "73ec97b68a3228c52ecba717d867a1d99340ab15",
+      "base": "main",
+      "merge_base": "d674dbb7a00b471d69bcca84d2f034cf74705e1a",
+      "changed_files": [
+        "README.md",
+        "docs/AUDIT_CPU_WORKERS.md",
+        "pulpo/__init__.py",
+        "pulpo/audit_parallel.py",
+        "pulpo/cli.py",
+        "pulpo/effect_reconcile.py",
+        "pulpo/kernel.py",
+        "pulpo/performance_tuning.py",
+        "pulpo/setup.py",
+        "pulpo/state.py",
+        "pyproject.toml",
+        "scripts/benchmark_memory_scaling.py",
+        "scripts/build_audit_performance_profile.py",
+        "tests/test_parallel_performance.py",
+        "tests/test_setup.py"
+      ],
+      "targets": {
+        "local": {
+          "head_in_history": true,
+          "full_delta_present": false,
+          "classification": "included_history",
+          "files": [
+            {
+              "path": "README.md",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "docs/AUDIT_CPU_WORKERS.md",
+              "head_blob_equal": true,
+              "delta_reverse_applies": true,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "pulpo/__init__.py",
+              "head_blob_equal": true,
+              "delta_reverse_applies": true,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "pulpo/audit_parallel.py",
+              "head_blob_equal": true,
+              "delta_reverse_applies": true,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "pulpo/cli.py",
+              "head_blob_equal": true,
+              "delta_reverse_applies": true,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "pulpo/effect_reconcile.py",
+              "head_blob_equal": true,
+              "delta_reverse_applies": true,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "pulpo/kernel.py",
+              "head_blob_equal": true,
+              "delta_reverse_applies": true,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "pulpo/performance_tuning.py",
+              "head_blob_equal": true,
+              "delta_reverse_applies": true,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "pulpo/setup.py",
+              "head_blob_equal": true,
+              "delta_reverse_applies": true,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "pulpo/state.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": true,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "pyproject.toml",
+              "head_blob_equal": true,
+              "delta_reverse_applies": true,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "scripts/benchmark_memory_scaling.py",
+              "head_blob_equal": true,
+              "delta_reverse_applies": true,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "scripts/build_audit_performance_profile.py",
+              "head_blob_equal": true,
+              "delta_reverse_applies": true,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "tests/test_parallel_performance.py",
+              "head_blob_equal": true,
+              "delta_reverse_applies": true,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "tests/test_setup.py",
+              "head_blob_equal": true,
+              "delta_reverse_applies": true,
+              "new_file_missing": false,
+              "file_exists": true
+            }
+          ]
+        },
+        "preview": {
+          "head_in_history": true,
+          "full_delta_present": false,
+          "classification": "included_history",
+          "files": [
+            {
+              "path": "README.md",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "docs/AUDIT_CPU_WORKERS.md",
+              "head_blob_equal": true,
+              "delta_reverse_applies": true,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "pulpo/__init__.py",
+              "head_blob_equal": true,
+              "delta_reverse_applies": true,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "pulpo/audit_parallel.py",
+              "head_blob_equal": true,
+              "delta_reverse_applies": true,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "pulpo/cli.py",
+              "head_blob_equal": true,
+              "delta_reverse_applies": true,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "pulpo/effect_reconcile.py",
+              "head_blob_equal": true,
+              "delta_reverse_applies": true,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "pulpo/kernel.py",
+              "head_blob_equal": true,
+              "delta_reverse_applies": true,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "pulpo/performance_tuning.py",
+              "head_blob_equal": true,
+              "delta_reverse_applies": true,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "pulpo/setup.py",
+              "head_blob_equal": true,
+              "delta_reverse_applies": true,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "pulpo/state.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": true,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "pyproject.toml",
+              "head_blob_equal": true,
+              "delta_reverse_applies": true,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "scripts/benchmark_memory_scaling.py",
+              "head_blob_equal": true,
+              "delta_reverse_applies": true,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "scripts/build_audit_performance_profile.py",
+              "head_blob_equal": true,
+              "delta_reverse_applies": true,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "tests/test_parallel_performance.py",
+              "head_blob_equal": true,
+              "delta_reverse_applies": true,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "tests/test_setup.py",
+              "head_blob_equal": true,
+              "delta_reverse_applies": true,
+              "new_file_missing": false,
+              "file_exists": true
+            }
+          ]
+        }
+      }
+    },
+    {
+      "number": 292,
+      "title": "docs: add Pulpo user guide PDF",
+      "base_sha": "d674dbb7a00b471d69bcca84d2f034cf74705e1a",
+      "head_sha": "1238aa66fff8faf1dea8f099094faa8aa36210a2",
+      "base": "main",
+      "merge_base": "d674dbb7a00b471d69bcca84d2f034cf74705e1a",
+      "changed_files": [
+        "docs/Pulpo_User_Guide.pdf"
+      ],
+      "targets": {
+        "local": {
+          "head_in_history": false,
+          "full_delta_present": false,
+          "classification": "not_exactly_present",
+          "files": [
+            {
+              "path": "docs/Pulpo_User_Guide.pdf",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": true,
+              "file_exists": false
+            }
+          ]
+        },
+        "preview": {
+          "head_in_history": false,
+          "full_delta_present": false,
+          "classification": "not_exactly_present",
+          "files": [
+            {
+              "path": "docs/Pulpo_User_Guide.pdf",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": true,
+              "file_exists": false
+            }
+          ]
+        }
+      }
+    },
+    {
+      "number": 278,
+      "title": "Split #258: enforce temporal validity of permits",
+      "base_sha": "d674dbb7a00b471d69bcca84d2f034cf74705e1a",
+      "head_sha": "e23c75109a2ab6868e66e7840cb80e052aedaeb3",
+      "base": "main",
+      "merge_base": "d674dbb7a00b471d69bcca84d2f034cf74705e1a",
+      "changed_files": [
+        "pulpo/kernel.py",
+        "pulpo/state.py",
+        "tests/test_kernel.py",
+        "tests/test_persistence.py"
+      ],
+      "targets": {
+        "local": {
+          "head_in_history": false,
+          "full_delta_present": false,
+          "classification": "not_exactly_present",
+          "files": [
+            {
+              "path": "pulpo/kernel.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "pulpo/state.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "tests/test_kernel.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "tests/test_persistence.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            }
+          ]
+        },
+        "preview": {
+          "head_in_history": false,
+          "full_delta_present": false,
+          "classification": "not_exactly_present",
+          "files": [
+            {
+              "path": "pulpo/kernel.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "pulpo/state.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "tests/test_kernel.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "tests/test_persistence.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            }
+          ]
+        }
+      }
+    },
+    {
+      "number": 277,
+      "title": "Split #258: add network exposure proof",
+      "base_sha": "d674dbb7a00b471d69bcca84d2f034cf74705e1a",
+      "head_sha": "21742d3d2f9340074533b36d97844b17effa1830",
+      "base": "main",
+      "merge_base": "d674dbb7a00b471d69bcca84d2f034cf74705e1a",
+      "changed_files": [
+        ".github/workflows/ci.yml",
+        "pulpo/network_exposure.py",
+        "scripts/check_network_exposure.py",
+        "tests/test_network_exposure.py"
+      ],
+      "targets": {
+        "local": {
+          "head_in_history": false,
+          "full_delta_present": false,
+          "classification": "not_exactly_present",
+          "files": [
+            {
+              "path": ".github/workflows/ci.yml",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "pulpo/network_exposure.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": true,
+              "file_exists": false
+            },
+            {
+              "path": "scripts/check_network_exposure.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": true,
+              "file_exists": false
+            },
+            {
+              "path": "tests/test_network_exposure.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": true,
+              "file_exists": false
+            }
+          ]
+        },
+        "preview": {
+          "head_in_history": true,
+          "full_delta_present": true,
+          "classification": "included_history",
+          "files": [
+            {
+              "path": ".github/workflows/ci.yml",
+              "head_blob_equal": false,
+              "delta_reverse_applies": true,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "pulpo/network_exposure.py",
+              "head_blob_equal": true,
+              "delta_reverse_applies": true,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "scripts/check_network_exposure.py",
+              "head_blob_equal": true,
+              "delta_reverse_applies": true,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "tests/test_network_exposure.py",
+              "head_blob_equal": true,
+              "delta_reverse_applies": true,
+              "new_file_missing": false,
+              "file_exists": true
+            }
+          ]
+        }
+      }
+    },
+    {
+      "number": 253,
+      "title": "Proof: bind registrar auto-renew to exact commerce object v2",
+      "base_sha": "063ca1c5df20172d8637991b609e9842ea4008c7",
+      "head_sha": "4523d66377661d2f71fd23235b26ca98bb503d7e",
+      "base": "main",
+      "merge_base": "063ca1c5df20172d8637991b609e9842ea4008c7",
+      "changed_files": [
+        "custody-service/tests/test_api.py",
+        "pulpo/commerce.py",
+        "pulpo/custody_reconcile.py",
+        "pulpo/namecom.py",
+        "pulpo/namecom_core.py",
+        "pulpo/namecom_observer.py",
+        "tests/test_commerce.py",
+        "tests/test_commerce_autorenew_boundary.py",
+        "tests/test_custody_reconcile.py",
+        "tests/test_custody_reconcile_later.py",
+        "tests/test_issue_153_consequence_reconciliation_v0.py"
+      ],
+      "targets": {
+        "local": {
+          "head_in_history": false,
+          "full_delta_present": false,
+          "classification": "not_exactly_present",
+          "files": [
+            {
+              "path": "custody-service/tests/test_api.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "pulpo/commerce.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "pulpo/custody_reconcile.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "pulpo/namecom.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "pulpo/namecom_core.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "pulpo/namecom_observer.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "tests/test_commerce.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "tests/test_commerce_autorenew_boundary.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": true,
+              "file_exists": false
+            },
+            {
+              "path": "tests/test_custody_reconcile.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "tests/test_custody_reconcile_later.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "tests/test_issue_153_consequence_reconciliation_v0.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            }
+          ]
+        },
+        "preview": {
+          "head_in_history": false,
+          "full_delta_present": false,
+          "classification": "not_exactly_present",
+          "files": [
+            {
+              "path": "custody-service/tests/test_api.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "pulpo/commerce.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "pulpo/custody_reconcile.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "pulpo/namecom.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "pulpo/namecom_core.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "pulpo/namecom_observer.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "tests/test_commerce.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "tests/test_commerce_autorenew_boundary.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": true,
+              "file_exists": false
+            },
+            {
+              "path": "tests/test_custody_reconcile.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "tests/test_custody_reconcile_later.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "tests/test_issue_153_consequence_reconciliation_v0.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            }
+          ]
+        }
+      }
+    },
+    {
+      "number": 280,
+      "title": "Proof: expose ceremony provenance gap",
+      "base_sha": "d674dbb7a00b471d69bcca84d2f034cf74705e1a",
+      "head_sha": "91a2def8bbbd1138fe67e54e79e1302b7b51477b",
+      "base": "main",
+      "merge_base": "d674dbb7a00b471d69bcca84d2f034cf74705e1a",
+      "changed_files": [
+        "tests/test_ceremony_provenance_gap.py"
+      ],
+      "targets": {
+        "local": {
+          "head_in_history": false,
+          "full_delta_present": false,
+          "classification": "not_exactly_present",
+          "files": [
+            {
+              "path": "tests/test_ceremony_provenance_gap.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": true,
+              "file_exists": false
+            }
+          ]
+        },
+        "preview": {
+          "head_in_history": false,
+          "full_delta_present": false,
+          "classification": "not_exactly_present",
+          "files": [
+            {
+              "path": "tests/test_ceremony_provenance_gap.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": true,
+              "file_exists": false
+            }
+          ]
+        }
+      }
+    },
+    {
+      "number": 281,
+      "title": "Split #258: establish explicit outbound transport trust",
+      "base_sha": "d674dbb7a00b471d69bcca84d2f034cf74705e1a",
+      "head_sha": "13832729b070d326d3166c239ed05d62c294d4d5",
+      "base": "main",
+      "merge_base": "d674dbb7a00b471d69bcca84d2f034cf74705e1a",
+      "changed_files": [
+        "pulpo/mcp_tunnel.py",
+        "pulpo/transport.py",
+        "tests/test_transport_security.py"
+      ],
+      "targets": {
+        "local": {
+          "head_in_history": false,
+          "full_delta_present": false,
+          "classification": "not_exactly_present",
+          "files": [
+            {
+              "path": "pulpo/mcp_tunnel.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "pulpo/transport.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": true,
+              "file_exists": false
+            },
+            {
+              "path": "tests/test_transport_security.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": true,
+              "file_exists": false
+            }
+          ]
+        },
+        "preview": {
+          "head_in_history": false,
+          "full_delta_present": true,
+          "classification": "full_delta_present",
+          "files": [
+            {
+              "path": "pulpo/mcp_tunnel.py",
+              "head_blob_equal": true,
+              "delta_reverse_applies": true,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "pulpo/transport.py",
+              "head_blob_equal": true,
+              "delta_reverse_applies": true,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "tests/test_transport_security.py",
+              "head_blob_equal": true,
+              "delta_reverse_applies": true,
+              "new_file_missing": false,
+              "file_exists": true
+            }
+          ]
+        }
+      }
+    },
+    {
+      "number": 282,
+      "title": "Split #258: add bounded JSON resource limits",
+      "base_sha": "d674dbb7a00b471d69bcca84d2f034cf74705e1a",
+      "head_sha": "1b3c7f8f0d32a00fbe26df70f0eadbad43295881",
+      "base": "main",
+      "merge_base": "d674dbb7a00b471d69bcca84d2f034cf74705e1a",
+      "changed_files": [
+        "pulpo/resource_limits.py",
+        "tests/test_resource_limits.py"
+      ],
+      "targets": {
+        "local": {
+          "head_in_history": false,
+          "full_delta_present": false,
+          "classification": "not_exactly_present",
+          "files": [
+            {
+              "path": "pulpo/resource_limits.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": true,
+              "file_exists": false
+            },
+            {
+              "path": "tests/test_resource_limits.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": true,
+              "file_exists": false
+            }
+          ]
+        },
+        "preview": {
+          "head_in_history": false,
+          "full_delta_present": false,
+          "classification": "not_exactly_present",
+          "files": [
+            {
+              "path": "pulpo/resource_limits.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": true,
+              "file_exists": false
+            },
+            {
+              "path": "tests/test_resource_limits.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": true,
+              "file_exists": false
+            }
+          ]
+        }
+      }
+    },
+    {
+      "number": 284,
+      "title": "Split #258: harden custody evidence SQLite durability",
+      "base_sha": "d674dbb7a00b471d69bcca84d2f034cf74705e1a",
+      "head_sha": "adb8fc984abd29eb88856d8d95705b1208a884d6",
+      "base": "main",
+      "merge_base": "d674dbb7a00b471d69bcca84d2f034cf74705e1a",
+      "changed_files": [
+        "pulpo/custody_evidence.py",
+        "tests/test_custody_evidence.py"
+      ],
+      "targets": {
+        "local": {
+          "head_in_history": false,
+          "full_delta_present": false,
+          "classification": "not_exactly_present",
+          "files": [
+            {
+              "path": "pulpo/custody_evidence.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "tests/test_custody_evidence.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            }
+          ]
+        },
+        "preview": {
+          "head_in_history": false,
+          "full_delta_present": false,
+          "classification": "not_exactly_present",
+          "files": [
+            {
+              "path": "pulpo/custody_evidence.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "tests/test_custody_evidence.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            }
+          ]
+        }
+      }
+    },
+    {
+      "number": 285,
+      "title": "Split #258: bound effect-reconciliation snapshots",
+      "base_sha": "d674dbb7a00b471d69bcca84d2f034cf74705e1a",
+      "head_sha": "7e2495397b3e7607824291d1fdd650887b46d864",
+      "base": "main",
+      "merge_base": "d674dbb7a00b471d69bcca84d2f034cf74705e1a",
+      "changed_files": [
+        "pulpo/effect_reconcile.py",
+        "tests/test_effect_reconcile.py"
+      ],
+      "targets": {
+        "local": {
+          "head_in_history": false,
+          "full_delta_present": false,
+          "classification": "not_exactly_present",
+          "files": [
+            {
+              "path": "pulpo/effect_reconcile.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "tests/test_effect_reconcile.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            }
+          ]
+        },
+        "preview": {
+          "head_in_history": false,
+          "full_delta_present": false,
+          "classification": "not_exactly_present",
+          "files": [
+            {
+              "path": "pulpo/effect_reconcile.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "tests/test_effect_reconcile.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            }
+          ]
+        }
+      }
+    },
+    {
+      "number": 286,
+      "title": "Split #258: make proposal commitment durability explicit",
+      "base_sha": "d674dbb7a00b471d69bcca84d2f034cf74705e1a",
+      "head_sha": "e56ee58323d1a861cb51a826e489f9dcb122c7b6",
+      "base": "main",
+      "merge_base": "d674dbb7a00b471d69bcca84d2f034cf74705e1a",
+      "changed_files": [
+        "pulpo/proposal_commitment.py"
+      ],
+      "targets": {
+        "local": {
+          "head_in_history": false,
+          "full_delta_present": false,
+          "classification": "not_exactly_present",
+          "files": [
+            {
+              "path": "pulpo/proposal_commitment.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            }
+          ]
+        },
+        "preview": {
+          "head_in_history": false,
+          "full_delta_present": false,
+          "classification": "not_exactly_present",
+          "files": [
+            {
+              "path": "pulpo/proposal_commitment.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            }
+          ]
+        }
+      }
+    },
+    {
+      "number": 287,
+      "title": "Split #258: harden local intelligence containment",
+      "base_sha": "d674dbb7a00b471d69bcca84d2f034cf74705e1a",
+      "head_sha": "68b045584c75f5717585c870af6752b8c1849a96",
+      "base": "main",
+      "merge_base": "d674dbb7a00b471d69bcca84d2f034cf74705e1a",
+      "changed_files": [
+        "scripts/run_local_intelligence_effect_proof.py",
+        "scripts/run_local_intelligence_effect_proof_v2.py",
+        "tests/test_local_intelligence_effect_proof.py",
+        "tests/test_local_intelligence_effect_proof_v2.py"
+      ],
+      "targets": {
+        "local": {
+          "head_in_history": false,
+          "full_delta_present": false,
+          "classification": "not_exactly_present",
+          "files": [
+            {
+              "path": "scripts/run_local_intelligence_effect_proof.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "scripts/run_local_intelligence_effect_proof_v2.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "tests/test_local_intelligence_effect_proof.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "tests/test_local_intelligence_effect_proof_v2.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            }
+          ]
+        },
+        "preview": {
+          "head_in_history": false,
+          "full_delta_present": false,
+          "classification": "not_exactly_present",
+          "files": [
+            {
+              "path": "scripts/run_local_intelligence_effect_proof.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "scripts/run_local_intelligence_effect_proof_v2.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "tests/test_local_intelligence_effect_proof.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "tests/test_local_intelligence_effect_proof_v2.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            }
+          ]
+        }
+      }
+    },
+    {
+      "number": 276,
+      "title": "Split #258: harden MCP snapshot publication",
+      "base_sha": "d674dbb7a00b471d69bcca84d2f034cf74705e1a",
+      "head_sha": "298e9b24d885a442dc4e0b95336b38bda74a0ea2",
+      "base": "main",
+      "merge_base": "d674dbb7a00b471d69bcca84d2f034cf74705e1a",
+      "changed_files": [
+        "pulpo/mcp_boundary.py",
+        "tests/test_mcp_boundary.py"
+      ],
+      "targets": {
+        "local": {
+          "head_in_history": false,
+          "full_delta_present": false,
+          "classification": "not_exactly_present",
+          "files": [
+            {
+              "path": "pulpo/mcp_boundary.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "tests/test_mcp_boundary.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            }
+          ]
+        },
+        "preview": {
+          "head_in_history": true,
+          "full_delta_present": true,
+          "classification": "included_history",
+          "files": [
+            {
+              "path": "pulpo/mcp_boundary.py",
+              "head_blob_equal": true,
+              "delta_reverse_applies": true,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "tests/test_mcp_boundary.py",
+              "head_blob_equal": true,
+              "delta_reverse_applies": true,
+              "new_file_missing": false,
+              "file_exists": true
+            }
+          ]
+        }
+      }
+    },
+    {
+      "number": 275,
+      "title": "Split #258: bound authority HTTP request admission",
+      "base_sha": "d674dbb7a00b471d69bcca84d2f034cf74705e1a",
+      "head_sha": "9902d17c7c39b9a30b20b1fc6fb73e96eefe73d5",
+      "base": "main",
+      "merge_base": "d674dbb7a00b471d69bcca84d2f034cf74705e1a",
+      "changed_files": [
+        "authority-service/src/pulpo_authority_service/api.py",
+        "authority-service/src/pulpo_authority_service/request_limits.py",
+        "authority-service/tests/test_api.py"
+      ],
+      "targets": {
+        "local": {
+          "head_in_history": false,
+          "full_delta_present": false,
+          "classification": "not_exactly_present",
+          "files": [
+            {
+              "path": "authority-service/src/pulpo_authority_service/api.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "authority-service/src/pulpo_authority_service/request_limits.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": true,
+              "file_exists": false
+            },
+            {
+              "path": "authority-service/tests/test_api.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            }
+          ]
+        },
+        "preview": {
+          "head_in_history": true,
+          "full_delta_present": true,
+          "classification": "included_history",
+          "files": [
+            {
+              "path": "authority-service/src/pulpo_authority_service/api.py",
+              "head_blob_equal": true,
+              "delta_reverse_applies": true,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "authority-service/src/pulpo_authority_service/request_limits.py",
+              "head_blob_equal": true,
+              "delta_reverse_applies": true,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "authority-service/tests/test_api.py",
+              "head_blob_equal": true,
+              "delta_reverse_applies": true,
+              "new_file_missing": false,
+              "file_exists": true
+            }
+          ]
+        }
+      }
+    },
+    {
+      "number": 289,
+      "title": "docs: clarify current Pulpo state and PR direction",
+      "base_sha": "d674dbb7a00b471d69bcca84d2f034cf74705e1a",
+      "head_sha": "312e73c0515f45ee070bf13046270d60bfffe5b6",
+      "base": "main",
+      "merge_base": "d674dbb7a00b471d69bcca84d2f034cf74705e1a",
+      "changed_files": [
+        "README.md"
+      ],
+      "targets": {
+        "local": {
+          "head_in_history": false,
+          "full_delta_present": false,
+          "classification": "not_exactly_present",
+          "files": [
+            {
+              "path": "README.md",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            }
+          ]
+        },
+        "preview": {
+          "head_in_history": true,
+          "full_delta_present": true,
+          "classification": "included_history",
+          "files": [
+            {
+              "path": "README.md",
+              "head_blob_equal": false,
+              "delta_reverse_applies": true,
+              "new_file_missing": false,
+              "file_exists": true
+            }
+          ]
+        }
+      }
+    },
+    {
+      "number": 235,
+      "title": "Proof: govern Redsys sandbox payment with exact Pulpo authority",
+      "base_sha": "ab08c5bbee1a2e6dc329ccea9c36db5e68bc02be",
+      "head_sha": "4c5305de5bc7e6fdbe20ee39dc2c3a10345eb528",
+      "base": "main",
+      "merge_base": "ab08c5bbee1a2e6dc329ccea9c36db5e68bc02be",
+      "changed_files": [
+        ".github/workflows/redsys-sandbox-live-proof.yml",
+        "pulpo/redsys.py",
+        "scripts/run_redsys_sandbox_live_v0.py",
+        "tests/test_redsys_sandbox_governance.py"
+      ],
+      "targets": {
+        "local": {
+          "head_in_history": false,
+          "full_delta_present": false,
+          "classification": "not_exactly_present",
+          "files": [
+            {
+              "path": ".github/workflows/redsys-sandbox-live-proof.yml",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": true,
+              "file_exists": false
+            },
+            {
+              "path": "pulpo/redsys.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": true,
+              "file_exists": false
+            },
+            {
+              "path": "scripts/run_redsys_sandbox_live_v0.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": true,
+              "file_exists": false
+            },
+            {
+              "path": "tests/test_redsys_sandbox_governance.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": true,
+              "file_exists": false
+            }
+          ]
+        },
+        "preview": {
+          "head_in_history": true,
+          "full_delta_present": true,
+          "classification": "included_history",
+          "files": [
+            {
+              "path": ".github/workflows/redsys-sandbox-live-proof.yml",
+              "head_blob_equal": true,
+              "delta_reverse_applies": true,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "pulpo/redsys.py",
+              "head_blob_equal": true,
+              "delta_reverse_applies": true,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "scripts/run_redsys_sandbox_live_v0.py",
+              "head_blob_equal": true,
+              "delta_reverse_applies": true,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "tests/test_redsys_sandbox_governance.py",
+              "head_blob_equal": true,
+              "delta_reverse_applies": true,
+              "new_file_missing": false,
+              "file_exists": true
+            }
+          ]
+        }
+      }
+    },
+    {
+      "number": 258,
+      "title": "Feature/gpu governance audit",
+      "base_sha": "ab08c5bbee1a2e6dc329ccea9c36db5e68bc02be",
+      "head_sha": "5c258b332c414cfa22af10cf6f959e57aabaaf17",
+      "base": "main",
+      "merge_base": "ab08c5bbee1a2e6dc329ccea9c36db5e68bc02be",
+      "changed_files": [
+        ".github/workflows/ci.yml",
+        ".github/workflows/performance-benchmark.yml",
+        ".gitignore",
+        "README.md",
+        "authority-service/pyproject.toml",
+        "authority-service/src/pulpo_authority_service/api.py",
+        "authority-service/src/pulpo_authority_service/request_limits.py",
+        "authority-service/tests/__init__.py",
+        "authority-service/tests/test_api.py",
+        "custody-service/Dockerfile",
+        "custody-service/pyproject.toml",
+        "custody-service/src/pulpo_custody_service/api.py",
+        "custody-service/src/pulpo_custody_service/request_limits.py",
+        "custody-service/src/pulpo_custody_service/telegram_transport.py",
+        "custody-service/tests/__init__.py",
+        "custody-service/tests/authority_support.py",
+        "custody-service/tests/conftest.py",
+        "custody-service/tests/test_api.py",
+        "custody-service/tests/test_api_custody.py",
+        "custody-service/tests/test_approval_challenge.py",
+        "custody-service/tests/test_domain_proposal.py",
+        "custody-service/tests/test_telegram_transport.py",
+        "custody-service/tests/test_utils.py",
+        "docs/performance-benchmark.md",
+        "experiments/temporal-transfer-proof-zero/run.py",
+        "pulpo/authority_client.py",
+        "pulpo/commerce.py",
+        "pulpo/custody_evidence.py",
+        "pulpo/effect_reconcile.py",
+        "pulpo/exceptions.py",
+        "pulpo/kernel.py",
+        "pulpo/mcp_boundary.py",
+        "pulpo/mcp_plugin.py",
+        "pulpo/mcp_tunnel.py",
+        "pulpo/namecom_core.py",
+        "pulpo/network_exposure.py",
+        "pulpo/proposal_commitment.py",
+        "pulpo/resource_limits.py",
+        "pulpo/state.py",
+        "pulpo/transport.py",
+        "pyproject.toml",
+        "requirements-audit.txt",
+        "scripts/benchmark_performance.py",
+        "scripts/check_network_exposure.py",
+        "scripts/compare_performance.py",
+        "scripts/run_constitutional_mutations.py",
+        "scripts/run_local_intelligence_effect_proof.py",
+        "scripts/run_local_intelligence_effect_proof_v2.py",
+        "tests/conftest.py",
+        "tests/test_authority_client.py",
+        "tests/test_custody_evidence.py",
+        "tests/test_delta_audit_performance.py",
+        "tests/test_directives.py",
+        "tests/test_effect_reconcile.py",
+        "tests/test_git_clarity.py",
+        "tests/test_kernel.py",
+        "tests/test_local_intelligence_effect_proof.py",
+        "tests/test_local_intelligence_effect_proof_v2.py",
+        "tests/test_mcp_boundary.py",
+        "tests/test_mcp_tunnel.py",
+        "tests/test_namecom_core.py",
+        "tests/test_network_exposure.py",
+        "tests/test_persistence.py",
+        "tests/test_projection_non_elevation.py",
+        "tests/test_resource_limits.py",
+        "tests/test_target_reconcile.py",
+        "tests/test_targets.py",
+        "tests/test_transport_security.py"
+      ],
+      "targets": {
+        "local": {
+          "head_in_history": false,
+          "full_delta_present": false,
+          "classification": "not_exactly_present",
+          "files": [
+            {
+              "path": ".github/workflows/ci.yml",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": ".github/workflows/performance-benchmark.yml",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": true,
+              "file_exists": false
+            },
+            {
+              "path": ".gitignore",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "README.md",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "authority-service/pyproject.toml",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "authority-service/src/pulpo_authority_service/api.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "authority-service/src/pulpo_authority_service/request_limits.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": true,
+              "file_exists": false
+            },
+            {
+              "path": "authority-service/tests/__init__.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": true,
+              "file_exists": false
+            },
+            {
+              "path": "authority-service/tests/test_api.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "custody-service/Dockerfile",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "custody-service/pyproject.toml",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "custody-service/src/pulpo_custody_service/api.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "custody-service/src/pulpo_custody_service/request_limits.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": true,
+              "file_exists": false
+            },
+            {
+              "path": "custody-service/src/pulpo_custody_service/telegram_transport.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "custody-service/tests/__init__.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": true,
+              "file_exists": false
+            },
+            {
+              "path": "custody-service/tests/authority_support.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": true,
+              "file_exists": false
+            },
+            {
+              "path": "custody-service/tests/conftest.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": true,
+              "file_exists": false
+            },
+            {
+              "path": "custody-service/tests/test_api.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "custody-service/tests/test_api_custody.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": true,
+              "file_exists": false
+            },
+            {
+              "path": "custody-service/tests/test_approval_challenge.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "custody-service/tests/test_domain_proposal.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "custody-service/tests/test_telegram_transport.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "custody-service/tests/test_utils.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": true,
+              "file_exists": false
+            },
+            {
+              "path": "docs/performance-benchmark.md",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": true,
+              "file_exists": false
+            },
+            {
+              "path": "experiments/temporal-transfer-proof-zero/run.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "pulpo/authority_client.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "pulpo/commerce.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "pulpo/custody_evidence.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "pulpo/effect_reconcile.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "pulpo/exceptions.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": true,
+              "file_exists": false
+            },
+            {
+              "path": "pulpo/kernel.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "pulpo/mcp_boundary.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "pulpo/mcp_plugin.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "pulpo/mcp_tunnel.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "pulpo/namecom_core.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "pulpo/network_exposure.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": true,
+              "file_exists": false
+            },
+            {
+              "path": "pulpo/proposal_commitment.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "pulpo/resource_limits.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": true,
+              "file_exists": false
+            },
+            {
+              "path": "pulpo/state.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "pulpo/transport.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": true,
+              "file_exists": false
+            },
+            {
+              "path": "pyproject.toml",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "requirements-audit.txt",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": true,
+              "file_exists": false
+            },
+            {
+              "path": "scripts/benchmark_performance.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": true,
+              "file_exists": false
+            },
+            {
+              "path": "scripts/check_network_exposure.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": true,
+              "file_exists": false
+            },
+            {
+              "path": "scripts/compare_performance.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": true,
+              "file_exists": false
+            },
+            {
+              "path": "scripts/run_constitutional_mutations.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "scripts/run_local_intelligence_effect_proof.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "scripts/run_local_intelligence_effect_proof_v2.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "tests/conftest.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": true,
+              "file_exists": false
+            },
+            {
+              "path": "tests/test_authority_client.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "tests/test_custody_evidence.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "tests/test_delta_audit_performance.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": true,
+              "file_exists": false
+            },
+            {
+              "path": "tests/test_directives.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "tests/test_effect_reconcile.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "tests/test_git_clarity.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "tests/test_kernel.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "tests/test_local_intelligence_effect_proof.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "tests/test_local_intelligence_effect_proof_v2.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "tests/test_mcp_boundary.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "tests/test_mcp_tunnel.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "tests/test_namecom_core.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "tests/test_network_exposure.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": true,
+              "file_exists": false
+            },
+            {
+              "path": "tests/test_persistence.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "tests/test_projection_non_elevation.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "tests/test_resource_limits.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": true,
+              "file_exists": false
+            },
+            {
+              "path": "tests/test_target_reconcile.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "tests/test_targets.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "tests/test_transport_security.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": true,
+              "file_exists": false
+            }
+          ]
+        },
+        "preview": {
+          "head_in_history": false,
+          "full_delta_present": false,
+          "classification": "partial_or_different",
+          "files": [
+            {
+              "path": ".github/workflows/ci.yml",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": ".github/workflows/performance-benchmark.yml",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": true,
+              "file_exists": false
+            },
+            {
+              "path": ".gitignore",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "README.md",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "authority-service/pyproject.toml",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "authority-service/src/pulpo_authority_service/api.py",
+              "head_blob_equal": true,
+              "delta_reverse_applies": true,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "authority-service/src/pulpo_authority_service/request_limits.py",
+              "head_blob_equal": true,
+              "delta_reverse_applies": true,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "authority-service/tests/__init__.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": true,
+              "file_exists": false
+            },
+            {
+              "path": "authority-service/tests/test_api.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "custody-service/Dockerfile",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "custody-service/pyproject.toml",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "custody-service/src/pulpo_custody_service/api.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "custody-service/src/pulpo_custody_service/request_limits.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": true,
+              "file_exists": false
+            },
+            {
+              "path": "custody-service/src/pulpo_custody_service/telegram_transport.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "custody-service/tests/__init__.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": true,
+              "file_exists": false
+            },
+            {
+              "path": "custody-service/tests/authority_support.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": true,
+              "file_exists": false
+            },
+            {
+              "path": "custody-service/tests/conftest.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": true,
+              "file_exists": false
+            },
+            {
+              "path": "custody-service/tests/test_api.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "custody-service/tests/test_api_custody.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": true,
+              "file_exists": false
+            },
+            {
+              "path": "custody-service/tests/test_approval_challenge.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "custody-service/tests/test_domain_proposal.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "custody-service/tests/test_telegram_transport.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "custody-service/tests/test_utils.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": true,
+              "file_exists": false
+            },
+            {
+              "path": "docs/performance-benchmark.md",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": true,
+              "file_exists": false
+            },
+            {
+              "path": "experiments/temporal-transfer-proof-zero/run.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "pulpo/authority_client.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "pulpo/commerce.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "pulpo/custody_evidence.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "pulpo/effect_reconcile.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "pulpo/exceptions.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": true,
+              "file_exists": false
+            },
+            {
+              "path": "pulpo/kernel.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "pulpo/mcp_boundary.py",
+              "head_blob_equal": true,
+              "delta_reverse_applies": true,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "pulpo/mcp_plugin.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "pulpo/mcp_tunnel.py",
+              "head_blob_equal": true,
+              "delta_reverse_applies": true,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "pulpo/namecom_core.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "pulpo/network_exposure.py",
+              "head_blob_equal": true,
+              "delta_reverse_applies": true,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "pulpo/proposal_commitment.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "pulpo/resource_limits.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": true,
+              "file_exists": false
+            },
+            {
+              "path": "pulpo/state.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "pulpo/transport.py",
+              "head_blob_equal": true,
+              "delta_reverse_applies": true,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "pyproject.toml",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "requirements-audit.txt",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": true,
+              "file_exists": false
+            },
+            {
+              "path": "scripts/benchmark_performance.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": true,
+              "file_exists": false
+            },
+            {
+              "path": "scripts/check_network_exposure.py",
+              "head_blob_equal": true,
+              "delta_reverse_applies": true,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "scripts/compare_performance.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": true,
+              "file_exists": false
+            },
+            {
+              "path": "scripts/run_constitutional_mutations.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "scripts/run_local_intelligence_effect_proof.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "scripts/run_local_intelligence_effect_proof_v2.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "tests/conftest.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": true,
+              "file_exists": false
+            },
+            {
+              "path": "tests/test_authority_client.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "tests/test_custody_evidence.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "tests/test_delta_audit_performance.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": true,
+              "file_exists": false
+            },
+            {
+              "path": "tests/test_directives.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "tests/test_effect_reconcile.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "tests/test_git_clarity.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "tests/test_kernel.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "tests/test_local_intelligence_effect_proof.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "tests/test_local_intelligence_effect_proof_v2.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "tests/test_mcp_boundary.py",
+              "head_blob_equal": true,
+              "delta_reverse_applies": true,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "tests/test_mcp_tunnel.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "tests/test_namecom_core.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "tests/test_network_exposure.py",
+              "head_blob_equal": true,
+              "delta_reverse_applies": true,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "tests/test_persistence.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "tests/test_projection_non_elevation.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "tests/test_resource_limits.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": true,
+              "file_exists": false
+            },
+            {
+              "path": "tests/test_target_reconcile.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "tests/test_targets.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "tests/test_transport_security.py",
+              "head_blob_equal": true,
+              "delta_reverse_applies": true,
+              "new_file_missing": false,
+              "file_exists": true
+            }
+          ]
+        }
+      }
+    },
+    {
+      "number": 267,
+      "title": "feat: add portable GPU audit integrity acceleration",
+      "base_sha": "5c258b332c414cfa22af10cf6f959e57aabaaf17",
+      "head_sha": "ebc72e02d35b97428754e61edf4cc534b6cf9e89",
+      "base": "feature/gpu-governance-audit",
+      "merge_base": "5c258b332c414cfa22af10cf6f959e57aabaaf17",
+      "changed_files": [
+        "README.md",
+        "docs/COMMERCE_PROOF.md",
+        "docs/CURRENT_STATE.md",
+        "docs/GPU_ACCELERATION.md",
+        "docs/TESTING.md",
+        "pulpo/commerce.py",
+        "pulpo/gpu_acceleration.py",
+        "pulpo/gpu_triton.py",
+        "pulpo/kernel.py",
+        "pulpo/namecom_core.py",
+        "pulpo/state.py",
+        "pyproject.toml",
+        "scripts/aggregate_gpu_benchmarks.py",
+        "scripts/benchmark_gpu.py",
+        "scripts/run_constitutional_mutations.py",
+        "tests/conftest.py",
+        "tests/test_commerce.py",
+        "tests/test_delta_audit_performance.py",
+        "tests/test_expense_workflow.py",
+        "tests/test_gpu_acceleration.py",
+        "tests/test_gpu_benchmark_tools.py",
+        "tests/test_namecom_core.py"
+      ],
+      "targets": {
+        "local": {
+          "head_in_history": false,
+          "full_delta_present": false,
+          "classification": "partial_or_different",
+          "files": [
+            {
+              "path": "README.md",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "docs/COMMERCE_PROOF.md",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "docs/CURRENT_STATE.md",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "docs/GPU_ACCELERATION.md",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": true,
+              "file_exists": false
+            },
+            {
+              "path": "docs/TESTING.md",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": true,
+              "file_exists": false
+            },
+            {
+              "path": "pulpo/commerce.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "pulpo/gpu_acceleration.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": true,
+              "file_exists": false
+            },
+            {
+              "path": "pulpo/gpu_triton.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": true,
+              "file_exists": false
+            },
+            {
+              "path": "pulpo/kernel.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "pulpo/namecom_core.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "pulpo/state.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "pyproject.toml",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "scripts/aggregate_gpu_benchmarks.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": true,
+              "file_exists": false
+            },
+            {
+              "path": "scripts/benchmark_gpu.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": true,
+              "file_exists": false
+            },
+            {
+              "path": "scripts/run_constitutional_mutations.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "tests/conftest.py",
+              "head_blob_equal": true,
+              "delta_reverse_applies": true,
+              "new_file_missing": false,
+              "file_exists": false
+            },
+            {
+              "path": "tests/test_commerce.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "tests/test_delta_audit_performance.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": false
+            },
+            {
+              "path": "tests/test_expense_workflow.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "tests/test_gpu_acceleration.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": true,
+              "file_exists": false
+            },
+            {
+              "path": "tests/test_gpu_benchmark_tools.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": true,
+              "file_exists": false
+            },
+            {
+              "path": "tests/test_namecom_core.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            }
+          ]
+        },
+        "preview": {
+          "head_in_history": false,
+          "full_delta_present": false,
+          "classification": "partial_or_different",
+          "files": [
+            {
+              "path": "README.md",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "docs/COMMERCE_PROOF.md",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "docs/CURRENT_STATE.md",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "docs/GPU_ACCELERATION.md",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": true,
+              "file_exists": false
+            },
+            {
+              "path": "docs/TESTING.md",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": true,
+              "file_exists": false
+            },
+            {
+              "path": "pulpo/commerce.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "pulpo/gpu_acceleration.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": true,
+              "file_exists": false
+            },
+            {
+              "path": "pulpo/gpu_triton.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": true,
+              "file_exists": false
+            },
+            {
+              "path": "pulpo/kernel.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "pulpo/namecom_core.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "pulpo/state.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "pyproject.toml",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "scripts/aggregate_gpu_benchmarks.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": true,
+              "file_exists": false
+            },
+            {
+              "path": "scripts/benchmark_gpu.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": true,
+              "file_exists": false
+            },
+            {
+              "path": "scripts/run_constitutional_mutations.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "tests/conftest.py",
+              "head_blob_equal": true,
+              "delta_reverse_applies": true,
+              "new_file_missing": false,
+              "file_exists": false
+            },
+            {
+              "path": "tests/test_commerce.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "tests/test_delta_audit_performance.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": false
+            },
+            {
+              "path": "tests/test_expense_workflow.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "tests/test_gpu_acceleration.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": true,
+              "file_exists": false
+            },
+            {
+              "path": "tests/test_gpu_benchmark_tools.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": true,
+              "file_exists": false
+            },
+            {
+              "path": "tests/test_namecom_core.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            }
+          ]
+        }
+      }
+    },
+    {
+      "number": 236,
+      "title": "Harden dependency auditing for Pulpo AI governance",
+      "base_sha": "ab08c5bbee1a2e6dc329ccea9c36db5e68bc02be",
+      "head_sha": "24a1d16a925b86376ff03f0dcf75b3b9b46a1ac6",
+      "base": "main",
+      "merge_base": "ab08c5bbee1a2e6dc329ccea9c36db5e68bc02be",
+      "changed_files": [
+        ".github/workflows/ci.yml",
+        "README.md",
+        "authority-service/pyproject.toml",
+        "custody-service/pyproject.toml",
+        "pyproject.toml",
+        "requirements-audit.txt"
+      ],
+      "targets": {
+        "local": {
+          "head_in_history": false,
+          "full_delta_present": false,
+          "classification": "not_exactly_present",
+          "files": [
+            {
+              "path": ".github/workflows/ci.yml",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "README.md",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "authority-service/pyproject.toml",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "custody-service/pyproject.toml",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "pyproject.toml",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "requirements-audit.txt",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": true,
+              "file_exists": false
+            }
+          ]
+        },
+        "preview": {
+          "head_in_history": false,
+          "full_delta_present": false,
+          "classification": "not_exactly_present",
+          "files": [
+            {
+              "path": ".github/workflows/ci.yml",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "README.md",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "authority-service/pyproject.toml",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "custody-service/pyproject.toml",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "pyproject.toml",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "requirements-audit.txt",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": true,
+              "file_exists": false
+            }
+          ]
+        }
+      }
+    },
+    {
+      "number": 219,
+      "title": "Review patch for local proof and snapshot portability",
+      "base_sha": "c254dd9e3b66a1dd89ee1a7949b8102c69ae58de",
+      "head_sha": "eb4e3c7b4136827d5616b5e2aaa199565f4c39e9",
+      "base": "main",
+      "merge_base": "c254dd9e3b66a1dd89ee1a7949b8102c69ae58de",
+      "changed_files": [
+        "pulpo/mcp_boundary.py",
+        "scripts/run_local_intelligence_effect_proof.py"
+      ],
+      "targets": {
+        "local": {
+          "head_in_history": false,
+          "full_delta_present": false,
+          "classification": "not_exactly_present",
+          "files": [
+            {
+              "path": "pulpo/mcp_boundary.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "scripts/run_local_intelligence_effect_proof.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            }
+          ]
+        },
+        "preview": {
+          "head_in_history": false,
+          "full_delta_present": false,
+          "classification": "not_exactly_present",
+          "files": [
+            {
+              "path": "pulpo/mcp_boundary.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "scripts/run_local_intelligence_effect_proof.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            }
+          ]
+        }
+      }
+    },
+    {
+      "number": 238,
+      "title": "Security: enforce zero unnecessary inbound listeners",
+      "base_sha": "8e1aab5daaba55228189c994ddad5b86b5aed8ae",
+      "head_sha": "b7b3eac5447b46b9614b799d4cb76d8c6e2415eb",
+      "base": "main",
+      "merge_base": "8e1aab5daaba55228189c994ddad5b86b5aed8ae",
+      "changed_files": [
+        ".github/workflows/ci.yml",
+        "pulpo/network_exposure.py",
+        "scripts/check_network_exposure.py",
+        "tests/test_network_exposure.py"
+      ],
+      "targets": {
+        "local": {
+          "head_in_history": false,
+          "full_delta_present": false,
+          "classification": "not_exactly_present",
+          "files": [
+            {
+              "path": ".github/workflows/ci.yml",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "pulpo/network_exposure.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": true,
+              "file_exists": false
+            },
+            {
+              "path": "scripts/check_network_exposure.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": true,
+              "file_exists": false
+            },
+            {
+              "path": "tests/test_network_exposure.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": true,
+              "file_exists": false
+            }
+          ]
+        },
+        "preview": {
+          "head_in_history": true,
+          "full_delta_present": true,
+          "classification": "included_history",
+          "files": [
+            {
+              "path": ".github/workflows/ci.yml",
+              "head_blob_equal": false,
+              "delta_reverse_applies": true,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "pulpo/network_exposure.py",
+              "head_blob_equal": true,
+              "delta_reverse_applies": true,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "scripts/check_network_exposure.py",
+              "head_blob_equal": true,
+              "delta_reverse_applies": true,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "tests/test_network_exposure.py",
+              "head_blob_equal": true,
+              "delta_reverse_applies": true,
+              "new_file_missing": false,
+              "file_exists": true
+            }
+          ]
+        }
+      }
+    },
+    {
+      "number": 249,
+      "title": "Governance: enter Phase II operational hardening and external reproduction",
+      "base_sha": "8e1aab5daaba55228189c994ddad5b86b5aed8ae",
+      "head_sha": "74dc36d0076591c66a4913b339927e71461b94e3",
+      "base": "main",
+      "merge_base": "8e1aab5daaba55228189c994ddad5b86b5aed8ae",
+      "changed_files": [
+        "docs/CURRENT_STATE.md",
+        "docs/GOVERNANCE.md",
+        "docs/NEXT_PHASE.md"
+      ],
+      "targets": {
+        "local": {
+          "head_in_history": false,
+          "full_delta_present": false,
+          "classification": "not_exactly_present",
+          "files": [
+            {
+              "path": "docs/CURRENT_STATE.md",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "docs/GOVERNANCE.md",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "docs/NEXT_PHASE.md",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": true,
+              "file_exists": false
+            }
+          ]
+        },
+        "preview": {
+          "head_in_history": true,
+          "full_delta_present": true,
+          "classification": "included_history",
+          "files": [
+            {
+              "path": "docs/CURRENT_STATE.md",
+              "head_blob_equal": true,
+              "delta_reverse_applies": true,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "docs/GOVERNANCE.md",
+              "head_blob_equal": true,
+              "delta_reverse_applies": true,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "docs/NEXT_PHASE.md",
+              "head_blob_equal": true,
+              "delta_reverse_applies": true,
+              "new_file_missing": false,
+              "file_exists": true
+            }
+          ]
+        }
+      }
+    },
+    {
+      "number": 251,
+      "title": "Perf: synthesize delta audit and integrity fast path",
+      "base_sha": "8e1aab5daaba55228189c994ddad5b86b5aed8ae",
+      "head_sha": "c431177cbd3c3d76aeffc28d1f421ff22c31c0e4",
+      "base": "main",
+      "merge_base": "8e1aab5daaba55228189c994ddad5b86b5aed8ae",
+      "changed_files": [
+        ".github/workflows/performance-benchmark.yml",
+        "docs/AUDIT_INTEGRITY_SYNTHESIS.md",
+        "docs/performance-benchmark.md",
+        "pulpo/kernel.py",
+        "pulpo/state.py",
+        "scripts/benchmark_performance.py",
+        "scripts/compare_performance.py",
+        "scripts/run_constitutional_mutations.py",
+        "tests/test_delta_audit_performance.py",
+        "tests/test_targets.py"
+      ],
+      "targets": {
+        "local": {
+          "head_in_history": false,
+          "full_delta_present": false,
+          "classification": "not_exactly_present",
+          "files": [
+            {
+              "path": ".github/workflows/performance-benchmark.yml",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": true,
+              "file_exists": false
+            },
+            {
+              "path": "docs/AUDIT_INTEGRITY_SYNTHESIS.md",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": true,
+              "file_exists": false
+            },
+            {
+              "path": "docs/performance-benchmark.md",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": true,
+              "file_exists": false
+            },
+            {
+              "path": "pulpo/kernel.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "pulpo/state.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "scripts/benchmark_performance.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": true,
+              "file_exists": false
+            },
+            {
+              "path": "scripts/compare_performance.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": true,
+              "file_exists": false
+            },
+            {
+              "path": "scripts/run_constitutional_mutations.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "tests/test_delta_audit_performance.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": true,
+              "file_exists": false
+            },
+            {
+              "path": "tests/test_targets.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            }
+          ]
+        },
+        "preview": {
+          "head_in_history": false,
+          "full_delta_present": false,
+          "classification": "not_exactly_present",
+          "files": [
+            {
+              "path": ".github/workflows/performance-benchmark.yml",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": true,
+              "file_exists": false
+            },
+            {
+              "path": "docs/AUDIT_INTEGRITY_SYNTHESIS.md",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": true,
+              "file_exists": false
+            },
+            {
+              "path": "docs/performance-benchmark.md",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": true,
+              "file_exists": false
+            },
+            {
+              "path": "pulpo/kernel.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "pulpo/state.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "scripts/benchmark_performance.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": true,
+              "file_exists": false
+            },
+            {
+              "path": "scripts/compare_performance.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": true,
+              "file_exists": false
+            },
+            {
+              "path": "scripts/run_constitutional_mutations.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "tests/test_delta_audit_performance.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": true,
+              "file_exists": false
+            },
+            {
+              "path": "tests/test_targets.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            }
+          ]
+        }
+      }
+    },
+    {
+      "number": 239,
+      "title": "Proof: bind semantic provenance to exact intent authority",
+      "base_sha": "8e1aab5daaba55228189c994ddad5b86b5aed8ae",
+      "head_sha": "cd79f4b1370d87d678bdc9eccb834d69f4755978",
+      "base": "main",
+      "merge_base": "8e1aab5daaba55228189c994ddad5b86b5aed8ae",
+      "changed_files": [
+        "authority-service/src/pulpo_authority_service/api.py",
+        "authority-service/src/pulpo_authority_service/core.py",
+        "authority-service/src/pulpo_authority_service/human_ui.py",
+        "authority-service/tests/test_service.py",
+        "docs/SEMANTIC_PROVENANCE_PROOF.md",
+        "pulpo/__init__.py",
+        "pulpo/authority_client.py",
+        "pulpo/custody_reconcile.py",
+        "pulpo/kernel.py",
+        "pulpo/mcp_boundary.py",
+        "pulpo/provenance.py",
+        "tests/test_authority_client.py",
+        "tests/test_semantic_provenance_binding.py"
+      ],
+      "targets": {
+        "local": {
+          "head_in_history": false,
+          "full_delta_present": false,
+          "classification": "not_exactly_present",
+          "files": [
+            {
+              "path": "authority-service/src/pulpo_authority_service/api.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "authority-service/src/pulpo_authority_service/core.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "authority-service/src/pulpo_authority_service/human_ui.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "authority-service/tests/test_service.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "docs/SEMANTIC_PROVENANCE_PROOF.md",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": true,
+              "file_exists": false
+            },
+            {
+              "path": "pulpo/__init__.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "pulpo/authority_client.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "pulpo/custody_reconcile.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "pulpo/kernel.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "pulpo/mcp_boundary.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "pulpo/provenance.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": true,
+              "file_exists": false
+            },
+            {
+              "path": "tests/test_authority_client.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "tests/test_semantic_provenance_binding.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": true,
+              "file_exists": false
+            }
+          ]
+        },
+        "preview": {
+          "head_in_history": false,
+          "full_delta_present": false,
+          "classification": "not_exactly_present",
+          "files": [
+            {
+              "path": "authority-service/src/pulpo_authority_service/api.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "authority-service/src/pulpo_authority_service/core.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "authority-service/src/pulpo_authority_service/human_ui.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "authority-service/tests/test_service.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "docs/SEMANTIC_PROVENANCE_PROOF.md",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": true,
+              "file_exists": false
+            },
+            {
+              "path": "pulpo/__init__.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "pulpo/authority_client.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "pulpo/custody_reconcile.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "pulpo/kernel.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "pulpo/mcp_boundary.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "pulpo/provenance.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": true,
+              "file_exists": false
+            },
+            {
+              "path": "tests/test_authority_client.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "tests/test_semantic_provenance_binding.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": true,
+              "file_exists": false
+            }
+          ]
+        }
+      }
+    },
+    {
+      "number": 250,
+      "title": "Consolidate recent governance, security, portability, and performance hardening",
+      "base_sha": "8e1aab5daaba55228189c994ddad5b86b5aed8ae",
+      "head_sha": "962033d51c7d2756471aa004bfc0554021d74fa5",
+      "base": "main",
+      "merge_base": "8e1aab5daaba55228189c994ddad5b86b5aed8ae",
+      "changed_files": [
+        ".github/workflows/ci.yml",
+        ".github/workflows/performance-benchmark.yml",
+        "README.md",
+        "authority-service/pyproject.toml",
+        "authority-service/src/pulpo_authority_service/api.py",
+        "authority-service/src/pulpo_authority_service/request_limits.py",
+        "authority-service/tests/test_api.py",
+        "custody-service/Dockerfile",
+        "custody-service/pyproject.toml",
+        "custody-service/src/pulpo_custody_service/api.py",
+        "custody-service/src/pulpo_custody_service/request_limits.py",
+        "custody-service/src/pulpo_custody_service/telegram_transport.py",
+        "custody-service/tests/test_api.py",
+        "custody-service/tests/test_telegram_transport.py",
+        "docs/performance-benchmark.md",
+        "experiments/temporal-transfer-proof-zero/run.py",
+        "pulpo/authority_client.py",
+        "pulpo/commerce.py",
+        "pulpo/custody_evidence.py",
+        "pulpo/effect_reconcile.py",
+        "pulpo/kernel.py",
+        "pulpo/mcp_boundary.py",
+        "pulpo/mcp_plugin.py",
+        "pulpo/mcp_tunnel.py",
+        "pulpo/namecom_core.py",
+        "pulpo/network_exposure.py",
+        "pulpo/resource_limits.py",
+        "pulpo/state.py",
+        "pulpo/transport.py",
+        "pyproject.toml",
+        "requirements-audit.txt",
+        "scripts/benchmark_performance.py",
+        "scripts/check_network_exposure.py",
+        "scripts/compare_performance.py",
+        "scripts/run_constitutional_mutations.py",
+        "scripts/run_local_intelligence_effect_proof.py",
+        "scripts/run_local_intelligence_effect_proof_v2.py",
+        "tests/test_authority_client.py",
+        "tests/test_custody_evidence.py",
+        "tests/test_delta_audit_performance.py",
+        "tests/test_directives.py",
+        "tests/test_effect_reconcile.py",
+        "tests/test_kernel.py",
+        "tests/test_local_intelligence_effect_proof.py",
+        "tests/test_local_intelligence_effect_proof_v2.py",
+        "tests/test_mcp_boundary.py",
+        "tests/test_mcp_tunnel.py",
+        "tests/test_namecom_core.py",
+        "tests/test_network_exposure.py",
+        "tests/test_persistence.py",
+        "tests/test_projection_non_elevation.py",
+        "tests/test_resource_limits.py",
+        "tests/test_target_reconcile.py",
+        "tests/test_targets.py",
+        "tests/test_transport_security.py"
+      ],
+      "targets": {
+        "local": {
+          "head_in_history": false,
+          "full_delta_present": false,
+          "classification": "not_exactly_present",
+          "files": [
+            {
+              "path": ".github/workflows/ci.yml",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": ".github/workflows/performance-benchmark.yml",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": true,
+              "file_exists": false
+            },
+            {
+              "path": "README.md",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "authority-service/pyproject.toml",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "authority-service/src/pulpo_authority_service/api.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "authority-service/src/pulpo_authority_service/request_limits.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": true,
+              "file_exists": false
+            },
+            {
+              "path": "authority-service/tests/test_api.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "custody-service/Dockerfile",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "custody-service/pyproject.toml",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "custody-service/src/pulpo_custody_service/api.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "custody-service/src/pulpo_custody_service/request_limits.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": true,
+              "file_exists": false
+            },
+            {
+              "path": "custody-service/src/pulpo_custody_service/telegram_transport.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "custody-service/tests/test_api.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "custody-service/tests/test_telegram_transport.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "docs/performance-benchmark.md",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": true,
+              "file_exists": false
+            },
+            {
+              "path": "experiments/temporal-transfer-proof-zero/run.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "pulpo/authority_client.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "pulpo/commerce.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "pulpo/custody_evidence.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "pulpo/effect_reconcile.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "pulpo/kernel.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "pulpo/mcp_boundary.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "pulpo/mcp_plugin.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "pulpo/mcp_tunnel.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "pulpo/namecom_core.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "pulpo/network_exposure.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": true,
+              "file_exists": false
+            },
+            {
+              "path": "pulpo/resource_limits.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": true,
+              "file_exists": false
+            },
+            {
+              "path": "pulpo/state.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "pulpo/transport.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": true,
+              "file_exists": false
+            },
+            {
+              "path": "pyproject.toml",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "requirements-audit.txt",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": true,
+              "file_exists": false
+            },
+            {
+              "path": "scripts/benchmark_performance.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": true,
+              "file_exists": false
+            },
+            {
+              "path": "scripts/check_network_exposure.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": true,
+              "file_exists": false
+            },
+            {
+              "path": "scripts/compare_performance.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": true,
+              "file_exists": false
+            },
+            {
+              "path": "scripts/run_constitutional_mutations.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "scripts/run_local_intelligence_effect_proof.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "scripts/run_local_intelligence_effect_proof_v2.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "tests/test_authority_client.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "tests/test_custody_evidence.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "tests/test_delta_audit_performance.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": true,
+              "file_exists": false
+            },
+            {
+              "path": "tests/test_directives.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "tests/test_effect_reconcile.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "tests/test_kernel.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "tests/test_local_intelligence_effect_proof.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "tests/test_local_intelligence_effect_proof_v2.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "tests/test_mcp_boundary.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "tests/test_mcp_tunnel.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "tests/test_namecom_core.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "tests/test_network_exposure.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": true,
+              "file_exists": false
+            },
+            {
+              "path": "tests/test_persistence.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "tests/test_projection_non_elevation.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "tests/test_resource_limits.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": true,
+              "file_exists": false
+            },
+            {
+              "path": "tests/test_target_reconcile.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "tests/test_targets.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "tests/test_transport_security.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": true,
+              "file_exists": false
+            }
+          ]
+        },
+        "preview": {
+          "head_in_history": false,
+          "full_delta_present": false,
+          "classification": "partial_or_different",
+          "files": [
+            {
+              "path": ".github/workflows/ci.yml",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": ".github/workflows/performance-benchmark.yml",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": true,
+              "file_exists": false
+            },
+            {
+              "path": "README.md",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "authority-service/pyproject.toml",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "authority-service/src/pulpo_authority_service/api.py",
+              "head_blob_equal": true,
+              "delta_reverse_applies": true,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "authority-service/src/pulpo_authority_service/request_limits.py",
+              "head_blob_equal": true,
+              "delta_reverse_applies": true,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "authority-service/tests/test_api.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "custody-service/Dockerfile",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "custody-service/pyproject.toml",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "custody-service/src/pulpo_custody_service/api.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "custody-service/src/pulpo_custody_service/request_limits.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": true,
+              "file_exists": false
+            },
+            {
+              "path": "custody-service/src/pulpo_custody_service/telegram_transport.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "custody-service/tests/test_api.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "custody-service/tests/test_telegram_transport.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "docs/performance-benchmark.md",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": true,
+              "file_exists": false
+            },
+            {
+              "path": "experiments/temporal-transfer-proof-zero/run.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "pulpo/authority_client.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "pulpo/commerce.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "pulpo/custody_evidence.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "pulpo/effect_reconcile.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "pulpo/kernel.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "pulpo/mcp_boundary.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "pulpo/mcp_plugin.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "pulpo/mcp_tunnel.py",
+              "head_blob_equal": true,
+              "delta_reverse_applies": true,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "pulpo/namecom_core.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "pulpo/network_exposure.py",
+              "head_blob_equal": true,
+              "delta_reverse_applies": true,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "pulpo/resource_limits.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": true,
+              "file_exists": false
+            },
+            {
+              "path": "pulpo/state.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "pulpo/transport.py",
+              "head_blob_equal": true,
+              "delta_reverse_applies": true,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "pyproject.toml",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "requirements-audit.txt",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": true,
+              "file_exists": false
+            },
+            {
+              "path": "scripts/benchmark_performance.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": true,
+              "file_exists": false
+            },
+            {
+              "path": "scripts/check_network_exposure.py",
+              "head_blob_equal": true,
+              "delta_reverse_applies": true,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "scripts/compare_performance.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": true,
+              "file_exists": false
+            },
+            {
+              "path": "scripts/run_constitutional_mutations.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "scripts/run_local_intelligence_effect_proof.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "scripts/run_local_intelligence_effect_proof_v2.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "tests/test_authority_client.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "tests/test_custody_evidence.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "tests/test_delta_audit_performance.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": true,
+              "file_exists": false
+            },
+            {
+              "path": "tests/test_directives.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "tests/test_effect_reconcile.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "tests/test_kernel.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "tests/test_local_intelligence_effect_proof.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "tests/test_local_intelligence_effect_proof_v2.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "tests/test_mcp_boundary.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "tests/test_mcp_tunnel.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "tests/test_namecom_core.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "tests/test_network_exposure.py",
+              "head_blob_equal": true,
+              "delta_reverse_applies": true,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "tests/test_persistence.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "tests/test_projection_non_elevation.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "tests/test_resource_limits.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": true,
+              "file_exists": false
+            },
+            {
+              "path": "tests/test_target_reconcile.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "tests/test_targets.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "tests/test_transport_security.py",
+              "head_blob_equal": true,
+              "delta_reverse_applies": true,
+              "new_file_missing": false,
+              "file_exists": true
+            }
+          ]
+        }
+      }
+    },
+    {
+      "number": 237,
+      "title": "Security: harden AI/governance outbound transport trust",
+      "base_sha": "8e1aab5daaba55228189c994ddad5b86b5aed8ae",
+      "head_sha": "0edb88cf6eb8368462d5cbfa5c96da31a7c1b60e",
+      "base": "main",
+      "merge_base": "8e1aab5daaba55228189c994ddad5b86b5aed8ae",
+      "changed_files": [
+        "custody-service/src/pulpo_custody_service/telegram_transport.py",
+        "pulpo/authority_client.py",
+        "pulpo/mcp_tunnel.py",
+        "pulpo/namecom_core.py",
+        "pulpo/transport.py",
+        "tests/test_transport_security.py"
+      ],
+      "targets": {
+        "local": {
+          "head_in_history": false,
+          "full_delta_present": false,
+          "classification": "not_exactly_present",
+          "files": [
+            {
+              "path": "custody-service/src/pulpo_custody_service/telegram_transport.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "pulpo/authority_client.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "pulpo/mcp_tunnel.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "pulpo/namecom_core.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "pulpo/transport.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": true,
+              "file_exists": false
+            },
+            {
+              "path": "tests/test_transport_security.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": true,
+              "file_exists": false
+            }
+          ]
+        },
+        "preview": {
+          "head_in_history": true,
+          "full_delta_present": true,
+          "classification": "included_history",
+          "files": [
+            {
+              "path": "custody-service/src/pulpo_custody_service/telegram_transport.py",
+              "head_blob_equal": true,
+              "delta_reverse_applies": true,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "pulpo/authority_client.py",
+              "head_blob_equal": true,
+              "delta_reverse_applies": true,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "pulpo/mcp_tunnel.py",
+              "head_blob_equal": true,
+              "delta_reverse_applies": true,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "pulpo/namecom_core.py",
+              "head_blob_equal": true,
+              "delta_reverse_applies": true,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "pulpo/transport.py",
+              "head_blob_equal": true,
+              "delta_reverse_applies": true,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "tests/test_transport_security.py",
+              "head_blob_equal": true,
+              "delta_reverse_applies": true,
+              "new_file_missing": false,
+              "file_exists": true
+            }
+          ]
+        }
+      }
+    },
+    {
+      "number": 230,
+      "title": "Proof: add Dark Mirror software ceremony v0",
+      "base_sha": "8e1aab5daaba55228189c994ddad5b86b5aed8ae",
+      "head_sha": "cd5392c070848988e1c29365eecd704b5a8d27f5",
+      "base": "main",
+      "merge_base": "8e1aab5daaba55228189c994ddad5b86b5aed8ae",
+      "changed_files": [
+        "scripts/prove_dark_mirror_v0.py",
+        "scripts/verify_dark_mirror_v0.py",
+        "tests/test_dark_mirror_proof_v0.py"
+      ],
+      "targets": {
+        "local": {
+          "head_in_history": false,
+          "full_delta_present": false,
+          "classification": "not_exactly_present",
+          "files": [
+            {
+              "path": "scripts/prove_dark_mirror_v0.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": true,
+              "file_exists": false
+            },
+            {
+              "path": "scripts/verify_dark_mirror_v0.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": true,
+              "file_exists": false
+            },
+            {
+              "path": "tests/test_dark_mirror_proof_v0.py",
+              "head_blob_equal": false,
+              "delta_reverse_applies": false,
+              "new_file_missing": true,
+              "file_exists": false
+            }
+          ]
+        },
+        "preview": {
+          "head_in_history": true,
+          "full_delta_present": true,
+          "classification": "included_history",
+          "files": [
+            {
+              "path": "scripts/prove_dark_mirror_v0.py",
+              "head_blob_equal": true,
+              "delta_reverse_applies": true,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "scripts/verify_dark_mirror_v0.py",
+              "head_blob_equal": true,
+              "delta_reverse_applies": true,
+              "new_file_missing": false,
+              "file_exists": true
+            },
+            {
+              "path": "tests/test_dark_mirror_proof_v0.py",
+              "head_blob_equal": true,
+              "delta_reverse_applies": true,
+              "new_file_missing": false,
+              "file_exists": true
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

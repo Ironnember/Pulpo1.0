@@ -48,3 +48,7 @@ Official development and releases remain at [Ironnember/Pulpo1.0](https://github
 This is a dated snapshot, not an automatically updating channel. For the next snapshot: refresh upstream main and PR head/check evidence, reject drafts/holds and nonpassing checks, combine only compatible changes, rerun combined validation, and publish a new manifest. Preserve review and governance invariants throughout. Official merge/release approval remains separate.
 
 Incremental SQL/component efficiency changes should be benchmarked and externally reproduced before stacking the next optimization. No governance invariant is weakened for performance. Do not execute live-provider ceremonies or supply production credentials merely to try this preview.
+
+## Local-copy comparison and checkpoint update
+
+See [local vs PR comparison](LOCAL_PR_COMPARISON.md). The local checkout is already included; no production source is replaced. A historical evidence-only tag supplies the exact checkpoint missing from the first hosted test run. That run failed, so consult the new hosted validation before claiming a green preview.
