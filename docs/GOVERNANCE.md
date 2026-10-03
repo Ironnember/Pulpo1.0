@@ -27,6 +27,50 @@ Canonical `main` must be protected as part of Pulpo's constitutional change-cont
 
 Until GitHub reports those controls as enabled, canonical branch protection is **Blocked**, not **Proven**. Documentation or workflow files must not imply that CI is merge-enforced merely because CI exists.
 
+## Reconciliation before admission
+
+Passing CI demonstrates candidate behavior. It does not prove that the candidate is the correct constitutional mechanism to admit.
+
+Before a Ready/open candidate is admitted, reviewers must check the current open-proof surface for overlapping or competing implementations that touch the same authority, evidence, state, canonicalization, custody, or audit invariant.
+
+When overlap exists:
+
+1. identify the shared invariant and the exact competing mechanisms;
+2. select one mechanism, synthesize one bounded replacement, or explicitly supersede the redundant candidate;
+3. restage/retest the selected object against the current canonical head when required;
+4. preserve one canonical authority/state/evidence truth;
+5. record the disposition of the losing/redundant branch;
+6. do not merge both merely because both pass.
+
+Examples include competing semantic-provenance primitives, audit fast paths, portability paths, provider adapters, or duplicate evidence projections.
+
+`TWO_GREEN_IMPLEMENTATIONS != TWO_CANONICAL_TRUTHS`
+
+Performance, portability, and convenience changes may introduce non-authoritative indexes, caches, projections, or bounded helpers, but they may not silently become a second authority source, ledger, replay state, reconciliation truth, or historical-integrity root.
+
+## Phase-transition discipline
+
+A project phase transition is a governance change in priority, not an expansion of runtime authority.
+
+A phase contract may:
+
+- define proof priorities;
+- freeze new feature families;
+- order admission/reproduction work;
+- state exit criteria;
+- narrow public claim language.
+
+A phase contract may not:
+
+- authorize provider mutation;
+- authorize spending;
+- issue or consume a runtime permit;
+- waive repository admission gates;
+- convert held/recorded evidence into canonical or Verified evidence;
+- transfer historical credentials, approvals, or authority into future executions.
+
+Current Phase II is defined in [NEXT_PHASE.md](NEXT_PHASE.md).
+
 ## Proposal automation
 
 An automation identity may prepare a reviewable change, but it cannot convert
