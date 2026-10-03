@@ -124,6 +124,7 @@ class LaterEvidenceReconciliationTests(unittest.TestCase):
             receipt_hash=None,
             privacy_enabled=None,
             dns_state=None,
+            auto_renew_enabled=None,
         )
         first = reconciler.reconcile(governed, order, unresolved)
         self.assertEqual("unresolved", first.outcome)
@@ -143,6 +144,7 @@ class LaterEvidenceReconciliationTests(unittest.TestCase):
             receipt_hash="c" * 64,
             privacy_enabled=True,
             dns_state="registered",
+            auto_renew_enabled=order.auto_renew_enabled,
         )
         second = reconciler.reconcile(governed, order, later)
         self.assertEqual("success", second.outcome)
