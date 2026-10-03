@@ -200,6 +200,7 @@ jobs:
     if: ${{ always() }}
     needs:
       - unit-tests
+      - network_exposure_proof
       - hostile-worker-custody
       - hostile-worker-container-isolation
     runs-on: ubuntu-latest
@@ -209,10 +210,12 @@ jobs:
         env:
           UNIT_RESULT: ${{ needs.unit-tests.result }}
           CUSTODY_RESULT: ${{ needs.hostile-worker-custody.result }}
+          NETWORK_RESULT: ${{ needs.network_exposure_proof.result }}
           CONTAINER_RESULT: ${{ needs.hostile-worker-container-isolation.result }}
         shell: bash
         run: |
           set -euo pipefail
           test "$UNIT_RESULT" = "success"
+          test "$NETWORK_RESULT" = "success"
           test "$CUSTODY_RESULT" = "success"
           test "$CONTAINER_RESULT" = "success"
