@@ -1,0 +1,2754 @@
+{
+  "normalization": "CRLF to LF; generated temporary basenames only; complete exception-chain signatures hashed",
+  "final": {
+    "rows": [
+      {
+        "kind": "ERROR",
+        "id": "test_01_valid_directive_exact_permit_and_observation_reconcile_verified_success (test_issue_153_consequence_reconciliation_v0.Issue153ConsequenceReconciliationV0.test_01_valid_directive_exact_permit_and_observation_reconcile_verified_success)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3-shm'",
+        "signature_sha256": "365F2A15C0D892BD2C14B30975B4A4DEBEF6EF596BEC08FE751A330C896D1A2C",
+        "lines": [
+          1371
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_01_valid_directive_exact_permit_and_observation_reconcile_verified_success (test_issue_153_consequence_reconciliation_v0.Issue153ConsequenceReconciliationV0.test_01_valid_directive_exact_permit_and_observation_reconcile_verified_success)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3-wal'",
+        "signature_sha256": "60C8D2BD314289AEFD0CF48759C94EBD933DEA61AD5C01D30256C42D6843BED8",
+        "lines": [
+          1382
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_01_valid_directive_exact_permit_and_observation_reconcile_verified_success (test_issue_153_consequence_reconciliation_v0.Issue153ConsequenceReconciliationV0.test_01_valid_directive_exact_permit_and_observation_reconcile_verified_success)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3'",
+        "signature_sha256": "C1E568F01039734F6A2B3E9BA5D097961F4ABB16913AF14921F98DEC6C43FFD5",
+        "lines": [
+          1393
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_02_executor_success_plus_substituted_observation_is_mismatch_and_nonreusable_memory (test_issue_153_consequence_reconciliation_v0.Issue153ConsequenceReconciliationV0.test_02_executor_success_plus_substituted_observation_is_mismatch_and_nonreusable_memory)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3-shm'",
+        "signature_sha256": "365F2A15C0D892BD2C14B30975B4A4DEBEF6EF596BEC08FE751A330C896D1A2C",
+        "lines": [
+          1404
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_02_executor_success_plus_substituted_observation_is_mismatch_and_nonreusable_memory (test_issue_153_consequence_reconciliation_v0.Issue153ConsequenceReconciliationV0.test_02_executor_success_plus_substituted_observation_is_mismatch_and_nonreusable_memory)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3-wal'",
+        "signature_sha256": "60C8D2BD314289AEFD0CF48759C94EBD933DEA61AD5C01D30256C42D6843BED8",
+        "lines": [
+          1415
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_02_executor_success_plus_substituted_observation_is_mismatch_and_nonreusable_memory (test_issue_153_consequence_reconciliation_v0.Issue153ConsequenceReconciliationV0.test_02_executor_success_plus_substituted_observation_is_mismatch_and_nonreusable_memory)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3'",
+        "signature_sha256": "C1E568F01039734F6A2B3E9BA5D097961F4ABB16913AF14921F98DEC6C43FFD5",
+        "lines": [
+          1426
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_03_executor_success_plus_incomplete_evidence_is_unknown_and_nonreusable_memory (test_issue_153_consequence_reconciliation_v0.Issue153ConsequenceReconciliationV0.test_03_executor_success_plus_incomplete_evidence_is_unknown_and_nonreusable_memory)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3-shm'",
+        "signature_sha256": "365F2A15C0D892BD2C14B30975B4A4DEBEF6EF596BEC08FE751A330C896D1A2C",
+        "lines": [
+          1437
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_03_executor_success_plus_incomplete_evidence_is_unknown_and_nonreusable_memory (test_issue_153_consequence_reconciliation_v0.Issue153ConsequenceReconciliationV0.test_03_executor_success_plus_incomplete_evidence_is_unknown_and_nonreusable_memory)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3-wal'",
+        "signature_sha256": "60C8D2BD314289AEFD0CF48759C94EBD933DEA61AD5C01D30256C42D6843BED8",
+        "lines": [
+          1448
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_03_executor_success_plus_incomplete_evidence_is_unknown_and_nonreusable_memory (test_issue_153_consequence_reconciliation_v0.Issue153ConsequenceReconciliationV0.test_03_executor_success_plus_incomplete_evidence_is_unknown_and_nonreusable_memory)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3'",
+        "signature_sha256": "C1E568F01039734F6A2B3E9BA5D097961F4ABB16913AF14921F98DEC6C43FFD5",
+        "lines": [
+          1459
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_04_mismatch_and_unknown_state_and_memory_survive_restart_without_retry_authority (test_issue_153_consequence_reconciliation_v0.Issue153ConsequenceReconciliationV0.test_04_mismatch_and_unknown_state_and_memory_survive_restart_without_retry_authority)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3-shm'",
+        "signature_sha256": "365F2A15C0D892BD2C14B30975B4A4DEBEF6EF596BEC08FE751A330C896D1A2C",
+        "lines": [
+          1470,
+          1503
+        ],
+        "count": 2
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_04_mismatch_and_unknown_state_and_memory_survive_restart_without_retry_authority (test_issue_153_consequence_reconciliation_v0.Issue153ConsequenceReconciliationV0.test_04_mismatch_and_unknown_state_and_memory_survive_restart_without_retry_authority)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3-wal'",
+        "signature_sha256": "60C8D2BD314289AEFD0CF48759C94EBD933DEA61AD5C01D30256C42D6843BED8",
+        "lines": [
+          1481,
+          1514
+        ],
+        "count": 2
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_04_mismatch_and_unknown_state_and_memory_survive_restart_without_retry_authority (test_issue_153_consequence_reconciliation_v0.Issue153ConsequenceReconciliationV0.test_04_mismatch_and_unknown_state_and_memory_survive_restart_without_retry_authority)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3'",
+        "signature_sha256": "C1E568F01039734F6A2B3E9BA5D097961F4ABB16913AF14921F98DEC6C43FFD5",
+        "lines": [
+          1492,
+          1525
+        ],
+        "count": 2
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_07_outcome_memory_rejects_result_substitution_and_conflicting_replacement (test_issue_153_consequence_reconciliation_v0.Issue153ConsequenceReconciliationV0.test_07_outcome_memory_rejects_result_substitution_and_conflicting_replacement)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3-shm'",
+        "signature_sha256": "365F2A15C0D892BD2C14B30975B4A4DEBEF6EF596BEC08FE751A330C896D1A2C",
+        "lines": [
+          1536
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_07_outcome_memory_rejects_result_substitution_and_conflicting_replacement (test_issue_153_consequence_reconciliation_v0.Issue153ConsequenceReconciliationV0.test_07_outcome_memory_rejects_result_substitution_and_conflicting_replacement)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3-wal'",
+        "signature_sha256": "60C8D2BD314289AEFD0CF48759C94EBD933DEA61AD5C01D30256C42D6843BED8",
+        "lines": [
+          1547
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_07_outcome_memory_rejects_result_substitution_and_conflicting_replacement (test_issue_153_consequence_reconciliation_v0.Issue153ConsequenceReconciliationV0.test_07_outcome_memory_rejects_result_substitution_and_conflicting_replacement)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3'",
+        "signature_sha256": "C1E568F01039734F6A2B3E9BA5D097961F4ABB16913AF14921F98DEC6C43FFD5",
+        "lines": [
+          1558
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_08_independently_observed_provider_failure_is_failure_class_memory_not_success (test_issue_153_consequence_reconciliation_v0.Issue153ConsequenceReconciliationV0.test_08_independently_observed_provider_failure_is_failure_class_memory_not_success)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3-shm'",
+        "signature_sha256": "365F2A15C0D892BD2C14B30975B4A4DEBEF6EF596BEC08FE751A330C896D1A2C",
+        "lines": [
+          1569
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_08_independently_observed_provider_failure_is_failure_class_memory_not_success (test_issue_153_consequence_reconciliation_v0.Issue153ConsequenceReconciliationV0.test_08_independently_observed_provider_failure_is_failure_class_memory_not_success)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3-wal'",
+        "signature_sha256": "60C8D2BD314289AEFD0CF48759C94EBD933DEA61AD5C01D30256C42D6843BED8",
+        "lines": [
+          1580
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_08_independently_observed_provider_failure_is_failure_class_memory_not_success (test_issue_153_consequence_reconciliation_v0.Issue153ConsequenceReconciliationV0.test_08_independently_observed_provider_failure_is_failure_class_memory_not_success)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3'",
+        "signature_sha256": "C1E568F01039734F6A2B3E9BA5D097961F4ABB16913AF14921F98DEC6C43FFD5",
+        "lines": [
+          1591
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_09_successful_outcome_memory_cannot_authorize_an_otherwise_denied_intent (test_issue_153_consequence_reconciliation_v0.Issue153ConsequenceReconciliationV0.test_09_successful_outcome_memory_cannot_authorize_an_otherwise_denied_intent)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3-shm'",
+        "signature_sha256": "365F2A15C0D892BD2C14B30975B4A4DEBEF6EF596BEC08FE751A330C896D1A2C",
+        "lines": [
+          1602
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_09_successful_outcome_memory_cannot_authorize_an_otherwise_denied_intent (test_issue_153_consequence_reconciliation_v0.Issue153ConsequenceReconciliationV0.test_09_successful_outcome_memory_cannot_authorize_an_otherwise_denied_intent)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3-wal'",
+        "signature_sha256": "60C8D2BD314289AEFD0CF48759C94EBD933DEA61AD5C01D30256C42D6843BED8",
+        "lines": [
+          1613
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_09_successful_outcome_memory_cannot_authorize_an_otherwise_denied_intent (test_issue_153_consequence_reconciliation_v0.Issue153ConsequenceReconciliationV0.test_09_successful_outcome_memory_cannot_authorize_an_otherwise_denied_intent)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3'",
+        "signature_sha256": "C1E568F01039734F6A2B3E9BA5D097961F4ABB16913AF14921F98DEC6C43FFD5",
+        "lines": [
+          1624
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_10_outcome_memory_denied_until_exact_reconciliation_evidence_is_canonical (test_issue_153_outcome_memory_hostile_v0.Issue153OutcomeMemoryHostileV0.test_10_outcome_memory_denied_until_exact_reconciliation_evidence_is_canonical)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3-shm'",
+        "signature_sha256": "365F2A15C0D892BD2C14B30975B4A4DEBEF6EF596BEC08FE751A330C896D1A2C",
+        "lines": [
+          1635
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_10_outcome_memory_denied_until_exact_reconciliation_evidence_is_canonical (test_issue_153_outcome_memory_hostile_v0.Issue153OutcomeMemoryHostileV0.test_10_outcome_memory_denied_until_exact_reconciliation_evidence_is_canonical)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3-wal'",
+        "signature_sha256": "60C8D2BD314289AEFD0CF48759C94EBD933DEA61AD5C01D30256C42D6843BED8",
+        "lines": [
+          1646
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_10_outcome_memory_denied_until_exact_reconciliation_evidence_is_canonical (test_issue_153_outcome_memory_hostile_v0.Issue153OutcomeMemoryHostileV0.test_10_outcome_memory_denied_until_exact_reconciliation_evidence_is_canonical)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3'",
+        "signature_sha256": "C1E568F01039734F6A2B3E9BA5D097961F4ABB16913AF14921F98DEC6C43FFD5",
+        "lines": [
+          1657
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_11_concurrent_identical_recording_creates_exactly_one_canonical_memory_event (test_issue_153_outcome_memory_hostile_v0.Issue153OutcomeMemoryHostileV0.test_11_concurrent_identical_recording_creates_exactly_one_canonical_memory_event)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3-shm'",
+        "signature_sha256": "365F2A15C0D892BD2C14B30975B4A4DEBEF6EF596BEC08FE751A330C896D1A2C",
+        "lines": [
+          1668
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_11_concurrent_identical_recording_creates_exactly_one_canonical_memory_event (test_issue_153_outcome_memory_hostile_v0.Issue153OutcomeMemoryHostileV0.test_11_concurrent_identical_recording_creates_exactly_one_canonical_memory_event)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3-wal'",
+        "signature_sha256": "60C8D2BD314289AEFD0CF48759C94EBD933DEA61AD5C01D30256C42D6843BED8",
+        "lines": [
+          1679
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_11_concurrent_identical_recording_creates_exactly_one_canonical_memory_event (test_issue_153_outcome_memory_hostile_v0.Issue153OutcomeMemoryHostileV0.test_11_concurrent_identical_recording_creates_exactly_one_canonical_memory_event)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3'",
+        "signature_sha256": "C1E568F01039734F6A2B3E9BA5D097961F4ABB16913AF14921F98DEC6C43FFD5",
+        "lines": [
+          1690
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_abort_before_custody_commit_creates_neither_mutation_nor_obligation (test_custody_evidence.CustodyEvidenceConvergenceTests.test_abort_before_custody_commit_creates_neither_mutation_nor_obligation)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3-shm'",
+        "signature_sha256": "365F2A15C0D892BD2C14B30975B4A4DEBEF6EF596BEC08FE751A330C896D1A2C",
+        "lines": [
+          797
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_abort_before_custody_commit_creates_neither_mutation_nor_obligation (test_custody_evidence.CustodyEvidenceConvergenceTests.test_abort_before_custody_commit_creates_neither_mutation_nor_obligation)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3-wal'",
+        "signature_sha256": "60C8D2BD314289AEFD0CF48759C94EBD933DEA61AD5C01D30256C42D6843BED8",
+        "lines": [
+          808
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_abort_before_custody_commit_creates_neither_mutation_nor_obligation (test_custody_evidence.CustodyEvidenceConvergenceTests.test_abort_before_custody_commit_creates_neither_mutation_nor_obligation)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3'",
+        "signature_sha256": "C1E568F01039734F6A2B3E9BA5D097961F4ABB16913AF14921F98DEC6C43FFD5",
+        "lines": [
+          819
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_ambiguous_multiple_registration_orders_never_guess_attribution (test_namecom_observer.NameComObserverTests.test_ambiguous_multiple_registration_orders_never_guess_attribution)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3-shm'",
+        "signature_sha256": "365F2A15C0D892BD2C14B30975B4A4DEBEF6EF596BEC08FE751A330C896D1A2C",
+        "lines": [
+          1809
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_ambiguous_multiple_registration_orders_never_guess_attribution (test_namecom_observer.NameComObserverTests.test_ambiguous_multiple_registration_orders_never_guess_attribution)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3-wal'",
+        "signature_sha256": "60C8D2BD314289AEFD0CF48759C94EBD933DEA61AD5C01D30256C42D6843BED8",
+        "lines": [
+          1820
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_ambiguous_multiple_registration_orders_never_guess_attribution (test_namecom_observer.NameComObserverTests.test_ambiguous_multiple_registration_orders_never_guess_attribution)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3'",
+        "signature_sha256": "C1E568F01039734F6A2B3E9BA5D097961F4ABB16913AF14921F98DEC6C43FFD5",
+        "lines": [
+          1831
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_binding_fails_closed_without_runtime_key (test_mcp_tunnel.MCPTunnelBindingTests.test_binding_fails_closed_without_runtime_key)",
+        "signature": "PermissionError: [Errno 13] Permission denied: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>' | pulpo.mcp_boundary.MCPBoundaryError: mcp_plugin_snapshot_parent_invalid",
+        "signature_sha256": "6E90E93DC885A7C9867D4D2AA7D0CAF92A44E0E3C5E92624B20121CD44314F11",
+        "lines": [
+          1757
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_binding_uses_exact_tunnel_and_sanitized_environment (test_mcp_tunnel.MCPTunnelBindingTests.test_binding_uses_exact_tunnel_and_sanitized_environment)",
+        "signature": "PermissionError: [Errno 13] Permission denied: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>' | pulpo.mcp_boundary.MCPBoundaryError: mcp_plugin_snapshot_parent_invalid",
+        "signature_sha256": "6E90E93DC885A7C9867D4D2AA7D0CAF92A44E0E3C5E92624B20121CD44314F11",
+        "lines": [
+          1777
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_committed_obligation_blocks_next_transition_until_projection (test_custody_evidence.CustodyEvidenceConvergenceTests.test_committed_obligation_blocks_next_transition_until_projection)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3-shm'",
+        "signature_sha256": "365F2A15C0D892BD2C14B30975B4A4DEBEF6EF596BEC08FE751A330C896D1A2C",
+        "lines": [
+          830
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_committed_obligation_blocks_next_transition_until_projection (test_custody_evidence.CustodyEvidenceConvergenceTests.test_committed_obligation_blocks_next_transition_until_projection)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3-wal'",
+        "signature_sha256": "60C8D2BD314289AEFD0CF48759C94EBD933DEA61AD5C01D30256C42D6843BED8",
+        "lines": [
+          841
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_completion_of_one_version_does_not_complete_another (test_target_reconcile.TargetReconciliationTests.test_completion_of_one_version_does_not_complete_another)",
+        "signature": "PermissionError: [Errno 13] Permission denied: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.pptx' | ValueError: artifact_unreadable",
+        "signature_sha256": "1ECADD6D3DE20F462A1F0935AE672285E66C9D305D6F48A9500CF8ED95FF36A8",
+        "lines": [
+          1986
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_concurrent_reservations_cannot_oversubscribe_protected_budget (test_custody_domain.CustodyDomainIntegrationTests.test_concurrent_reservations_cannot_oversubscribe_protected_budget)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3-shm'",
+        "signature_sha256": "365F2A15C0D892BD2C14B30975B4A4DEBEF6EF596BEC08FE751A330C896D1A2C",
+        "lines": [
+          632
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_concurrent_reservations_cannot_oversubscribe_protected_budget (test_custody_domain.CustodyDomainIntegrationTests.test_concurrent_reservations_cannot_oversubscribe_protected_budget)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3-wal'",
+        "signature_sha256": "60C8D2BD314289AEFD0CF48759C94EBD933DEA61AD5C01D30256C42D6843BED8",
+        "lines": [
+          643
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_concurrent_reservations_cannot_oversubscribe_protected_budget (test_custody_domain.CustodyDomainIntegrationTests.test_concurrent_reservations_cannot_oversubscribe_protected_budget)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3'",
+        "signature_sha256": "C1E568F01039734F6A2B3E9BA5D097961F4ABB16913AF14921F98DEC6C43FFD5",
+        "lines": [
+          654
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_crash_after_transmission_release_never_releases_second_network_right (test_custody_executor.CustodyExecutorTests.test_crash_after_transmission_release_never_releases_second_network_right)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3-shm'",
+        "signature_sha256": "365F2A15C0D892BD2C14B30975B4A4DEBEF6EF596BEC08FE751A330C896D1A2C",
+        "lines": [
+          951
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_crash_after_transmission_release_never_releases_second_network_right (test_custody_executor.CustodyExecutorTests.test_crash_after_transmission_release_never_releases_second_network_right)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3-wal'",
+        "signature_sha256": "60C8D2BD314289AEFD0CF48759C94EBD933DEA61AD5C01D30256C42D6843BED8",
+        "lines": [
+          962
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_crash_after_transmission_release_never_releases_second_network_right (test_custody_executor.CustodyExecutorTests.test_crash_after_transmission_release_never_releases_second_network_right)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3'",
+        "signature_sha256": "C1E568F01039734F6A2B3E9BA5D097961F4ABB16913AF14921F98DEC6C43FFD5",
+        "lines": [
+          973
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_crash_during_projection_restarts_without_duplicate_canonical_event (test_custody_evidence.CustodyEvidenceConvergenceTests.test_crash_during_projection_restarts_without_duplicate_canonical_event)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3-shm'",
+        "signature_sha256": "365F2A15C0D892BD2C14B30975B4A4DEBEF6EF596BEC08FE751A330C896D1A2C",
+        "lines": [
+          852
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_crash_during_projection_restarts_without_duplicate_canonical_event (test_custody_evidence.CustodyEvidenceConvergenceTests.test_crash_during_projection_restarts_without_duplicate_canonical_event)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3-wal'",
+        "signature_sha256": "60C8D2BD314289AEFD0CF48759C94EBD933DEA61AD5C01D30256C42D6843BED8",
+        "lines": [
+          863
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_crash_during_projection_restarts_without_duplicate_canonical_event (test_custody_evidence.CustodyEvidenceConvergenceTests.test_crash_during_projection_restarts_without_duplicate_canonical_event)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3'",
+        "signature_sha256": "C1E568F01039734F6A2B3E9BA5D097961F4ABB16913AF14921F98DEC6C43FFD5",
+        "lines": [
+          874
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_duplicate_projection_is_idempotent_by_transition_hash (test_custody_evidence.CustodyEvidenceConvergenceTests.test_duplicate_projection_is_idempotent_by_transition_hash)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3-shm'",
+        "signature_sha256": "365F2A15C0D892BD2C14B30975B4A4DEBEF6EF596BEC08FE751A330C896D1A2C",
+        "lines": [
+          885
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_duplicate_projection_is_idempotent_by_transition_hash (test_custody_evidence.CustodyEvidenceConvergenceTests.test_duplicate_projection_is_idempotent_by_transition_hash)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3-wal'",
+        "signature_sha256": "60C8D2BD314289AEFD0CF48759C94EBD933DEA61AD5C01D30256C42D6843BED8",
+        "lines": [
+          896
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_duplicate_projection_is_idempotent_by_transition_hash (test_custody_evidence.CustodyEvidenceConvergenceTests.test_duplicate_projection_is_idempotent_by_transition_hash)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3'",
+        "signature_sha256": "C1E568F01039734F6A2B3E9BA5D097961F4ABB16913AF14921F98DEC6C43FFD5",
+        "lines": [
+          907
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_durable_budget_requires_stable_path_and_ceiling (test_commerce.CommerceProofTests.test_durable_budget_requires_stable_path_and_ceiling)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>\\\\commerce.sqlite3' | PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>\\\\commerce.sqlite3'",
+        "signature_sha256": "99FF5663BC7D13F29028E678ACB47EE0792AEF7CBA93A97DE680749685131CC2",
+        "lines": [
+          487
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_durable_budget_reservation_is_atomic_between_workers (test_commerce.CommerceProofTests.test_durable_budget_reservation_is_atomic_between_workers)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>\\\\commerce.sqlite3' | PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>\\\\commerce.sqlite3'",
+        "signature_sha256": "99FF5663BC7D13F29028E678ACB47EE0792AEF7CBA93A97DE680749685131CC2",
+        "lines": [
+          516
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_durable_budget_survives_restart_and_blocks_attempt_replay (test_commerce.CommerceProofTests.test_durable_budget_survives_restart_and_blocks_attempt_replay)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>\\\\commerce.sqlite3' | PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>\\\\commerce.sqlite3'",
+        "signature_sha256": "99FF5663BC7D13F29028E678ACB47EE0792AEF7CBA93A97DE680749685131CC2",
+        "lines": [
+          545
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_durable_reconciliation_survives_restart (test_commerce.CommerceProofTests.test_durable_reconciliation_survives_restart)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>\\\\commerce.sqlite3' | PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>\\\\commerce.sqlite3'",
+        "signature_sha256": "99FF5663BC7D13F29028E678ACB47EE0792AEF7CBA93A97DE680749685131CC2",
+        "lines": [
+          574
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_exact_independent_observation_reconciles_success_and_settles_budget (test_custody_reconcile.CustodyReconciliationTests.test_exact_independent_observation_reconciles_success_and_settles_budget)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3-shm'",
+        "signature_sha256": "365F2A15C0D892BD2C14B30975B4A4DEBEF6EF596BEC08FE751A330C896D1A2C",
+        "lines": [
+          1116
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_exact_independent_observation_reconciles_success_and_settles_budget (test_custody_reconcile.CustodyReconciliationTests.test_exact_independent_observation_reconciles_success_and_settles_budget)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3-wal'",
+        "signature_sha256": "60C8D2BD314289AEFD0CF48759C94EBD933DEA61AD5C01D30256C42D6843BED8",
+        "lines": [
+          1127
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_exact_independent_observation_reconciles_success_and_settles_budget (test_custody_reconcile.CustodyReconciliationTests.test_exact_independent_observation_reconciles_success_and_settles_budget)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3'",
+        "signature_sha256": "C1E568F01039734F6A2B3E9BA5D097961F4ABB16913AF14921F98DEC6C43FFD5",
+        "lines": [
+          1138
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_exact_locked_domain_permit_and_budget_are_consumed_before_custody_attempt (test_custody_domain.CustodyDomainIntegrationTests.test_exact_locked_domain_permit_and_budget_are_consumed_before_custody_attempt)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3-shm'",
+        "signature_sha256": "365F2A15C0D892BD2C14B30975B4A4DEBEF6EF596BEC08FE751A330C896D1A2C",
+        "lines": [
+          665
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_exact_locked_domain_permit_and_budget_are_consumed_before_custody_attempt (test_custody_domain.CustodyDomainIntegrationTests.test_exact_locked_domain_permit_and_budget_are_consumed_before_custody_attempt)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3-wal'",
+        "signature_sha256": "60C8D2BD314289AEFD0CF48759C94EBD933DEA61AD5C01D30256C42D6843BED8",
+        "lines": [
+          676
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_exact_locked_domain_permit_and_budget_are_consumed_before_custody_attempt (test_custody_domain.CustodyDomainIntegrationTests.test_exact_locked_domain_permit_and_budget_are_consumed_before_custody_attempt)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3'",
+        "signature_sha256": "C1E568F01039734F6A2B3E9BA5D097961F4ABB16913AF14921F98DEC6C43FFD5",
+        "lines": [
+          687
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_exact_order_and_get_domain_readback_can_drive_verified_reconciliation (test_namecom_observer.NameComObserverTests.test_exact_order_and_get_domain_readback_can_drive_verified_reconciliation)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3-shm'",
+        "signature_sha256": "365F2A15C0D892BD2C14B30975B4A4DEBEF6EF596BEC08FE751A330C896D1A2C",
+        "lines": [
+          1842
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_exact_order_and_get_domain_readback_can_drive_verified_reconciliation (test_namecom_observer.NameComObserverTests.test_exact_order_and_get_domain_readback_can_drive_verified_reconciliation)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3-wal'",
+        "signature_sha256": "60C8D2BD314289AEFD0CF48759C94EBD933DEA61AD5C01D30256C42D6843BED8",
+        "lines": [
+          1853
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_exact_order_and_get_domain_readback_can_drive_verified_reconciliation (test_namecom_observer.NameComObserverTests.test_exact_order_and_get_domain_readback_can_drive_verified_reconciliation)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3'",
+        "signature_sha256": "C1E568F01039734F6A2B3E9BA5D097961F4ABB16913AF14921F98DEC6C43FFD5",
+        "lines": [
+          1864
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_explicit_provider_failure_without_observed_effect_is_failure_but_budget_remains_held (test_custody_reconcile.CustodyReconciliationTests.test_explicit_provider_failure_without_observed_effect_is_failure_but_budget_remains_held)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3-shm'",
+        "signature_sha256": "365F2A15C0D892BD2C14B30975B4A4DEBEF6EF596BEC08FE751A330C896D1A2C",
+        "lines": [
+          1149
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_explicit_provider_failure_without_observed_effect_is_failure_but_budget_remains_held (test_custody_reconcile.CustodyReconciliationTests.test_explicit_provider_failure_without_observed_effect_is_failure_but_budget_remains_held)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3-wal'",
+        "signature_sha256": "60C8D2BD314289AEFD0CF48759C94EBD933DEA61AD5C01D30256C42D6843BED8",
+        "lines": [
+          1160
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_explicit_provider_failure_without_observed_effect_is_failure_but_budget_remains_held (test_custody_reconcile.CustodyReconciliationTests.test_explicit_provider_failure_without_observed_effect_is_failure_but_budget_remains_held)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3'",
+        "signature_sha256": "C1E568F01039734F6A2B3E9BA5D097961F4ABB16913AF14921F98DEC6C43FFD5",
+        "lines": [
+          1171
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_exported_file_remains_frozen_after_canonical_mutation (test_mcp_boundary.MCPBoundaryTests.test_exported_file_remains_frozen_after_canonical_mutation)",
+        "signature": "PermissionError: [Errno 13] Permission denied: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>' | pulpo.mcp_boundary.MCPBoundaryError: mcp_snapshot_parent_invalid",
+        "signature_sha256": "6472BF2AC76FFE6EBC1D5CAF1295D41DC8A0E68DCCB8ED84B87548D81524606B",
+        "lines": [
+          1701
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_failed_registration_order_with_no_domain_readback_is_known_failure (test_namecom_observer.NameComObserverTests.test_failed_registration_order_with_no_domain_readback_is_known_failure)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3-shm'",
+        "signature_sha256": "365F2A15C0D892BD2C14B30975B4A4DEBEF6EF596BEC08FE751A330C896D1A2C",
+        "lines": [
+          1875
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_failed_registration_order_with_no_domain_readback_is_known_failure (test_namecom_observer.NameComObserverTests.test_failed_registration_order_with_no_domain_readback_is_known_failure)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3-wal'",
+        "signature_sha256": "60C8D2BD314289AEFD0CF48759C94EBD933DEA61AD5C01D30256C42D6843BED8",
+        "lines": [
+          1886
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_failed_registration_order_with_no_domain_readback_is_known_failure (test_namecom_observer.NameComObserverTests.test_failed_registration_order_with_no_domain_readback_is_known_failure)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3'",
+        "signature_sha256": "C1E568F01039734F6A2B3E9BA5D097961F4ABB16913AF14921F98DEC6C43FFD5",
+        "lines": [
+          1897
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_loads_exact_private_frozen_snapshot (test_mcp_plugin.MCPPluginTests.test_loads_exact_private_frozen_snapshot)",
+        "signature": "PermissionError: [Errno 13] Permission denied: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>' | pulpo.mcp_boundary.MCPBoundaryError: mcp_plugin_snapshot_parent_invalid",
+        "signature_sha256": "6E90E93DC885A7C9867D4D2AA7D0CAF92A44E0E3C5E92624B20121CD44314F11",
+        "lines": [
+          1738
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_lost_provider_response_is_unknown_and_cannot_retry_or_release_budget (test_custody_executor.CustodyExecutorTests.test_lost_provider_response_is_unknown_and_cannot_retry_or_release_budget)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3-shm'",
+        "signature_sha256": "365F2A15C0D892BD2C14B30975B4A4DEBEF6EF596BEC08FE751A330C896D1A2C",
+        "lines": [
+          984
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_lost_provider_response_is_unknown_and_cannot_retry_or_release_budget (test_custody_executor.CustodyExecutorTests.test_lost_provider_response_is_unknown_and_cannot_retry_or_release_budget)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3-wal'",
+        "signature_sha256": "60C8D2BD314289AEFD0CF48759C94EBD933DEA61AD5C01D30256C42D6843BED8",
+        "lines": [
+          995
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_lost_provider_response_is_unknown_and_cannot_retry_or_release_budget (test_custody_executor.CustodyExecutorTests.test_lost_provider_response_is_unknown_and_cannot_retry_or_release_budget)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3'",
+        "signature_sha256": "C1E568F01039734F6A2B3E9BA5D097961F4ABB16913AF14921F98DEC6C43FFD5",
+        "lines": [
+          1006
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_non_registration_order_for_same_domain_is_ignored (test_namecom_observer.NameComObserverTests.test_non_registration_order_for_same_domain_is_ignored)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3-shm'",
+        "signature_sha256": "365F2A15C0D892BD2C14B30975B4A4DEBEF6EF596BEC08FE751A330C896D1A2C",
+        "lines": [
+          1908
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_non_registration_order_for_same_domain_is_ignored (test_namecom_observer.NameComObserverTests.test_non_registration_order_for_same_domain_is_ignored)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3-wal'",
+        "signature_sha256": "60C8D2BD314289AEFD0CF48759C94EBD933DEA61AD5C01D30256C42D6843BED8",
+        "lines": [
+          1919
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_non_registration_order_for_same_domain_is_ignored (test_namecom_observer.NameComObserverTests.test_non_registration_order_for_same_domain_is_ignored)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3'",
+        "signature_sha256": "C1E568F01039734F6A2B3E9BA5D097961F4ABB16913AF14921F98DEC6C43FFD5",
+        "lines": [
+          1930
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_nonempty_artifact_records_exact_completion_without_authority_effect (test_target_reconcile.TargetReconciliationTests.test_nonempty_artifact_records_exact_completion_without_authority_effect)",
+        "signature": "PermissionError: [Errno 13] Permission denied: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.pptx' | ValueError: artifact_unreadable",
+        "signature_sha256": "1ECADD6D3DE20F462A1F0935AE672285E66C9D305D6F48A9500CF8ED95FF36A8",
+        "lines": [
+          2007
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_not_found_lookup_cannot_be_inferred_as_known_failure (test_custody_reconcile.CustodyReconciliationTests.test_not_found_lookup_cannot_be_inferred_as_known_failure)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3-shm'",
+        "signature_sha256": "365F2A15C0D892BD2C14B30975B4A4DEBEF6EF596BEC08FE751A330C896D1A2C",
+        "lines": [
+          1182
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_not_found_lookup_cannot_be_inferred_as_known_failure (test_custody_reconcile.CustodyReconciliationTests.test_not_found_lookup_cannot_be_inferred_as_known_failure)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3-wal'",
+        "signature_sha256": "60C8D2BD314289AEFD0CF48759C94EBD933DEA61AD5C01D30256C42D6843BED8",
+        "lines": [
+          1193
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_not_found_lookup_cannot_be_inferred_as_known_failure (test_custody_reconcile.CustodyReconciliationTests.test_not_found_lookup_cannot_be_inferred_as_known_failure)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3'",
+        "signature_sha256": "C1E568F01039734F6A2B3E9BA5D097961F4ABB16913AF14921F98DEC6C43FFD5",
+        "lines": [
+          1204
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_observed_substitution_is_failure_and_does_not_reopen_budget (test_custody_reconcile.CustodyReconciliationTests.test_observed_substitution_is_failure_and_does_not_reopen_budget)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3-shm'",
+        "signature_sha256": "365F2A15C0D892BD2C14B30975B4A4DEBEF6EF596BEC08FE751A330C896D1A2C",
+        "lines": [
+          1215
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_observed_substitution_is_failure_and_does_not_reopen_budget (test_custody_reconcile.CustodyReconciliationTests.test_observed_substitution_is_failure_and_does_not_reopen_budget)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3-wal'",
+        "signature_sha256": "60C8D2BD314289AEFD0CF48759C94EBD933DEA61AD5C01D30256C42D6843BED8",
+        "lines": [
+          1226
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_observed_substitution_is_failure_and_does_not_reopen_budget (test_custody_reconcile.CustodyReconciliationTests.test_observed_substitution_is_failure_and_does_not_reopen_budget)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3'",
+        "signature_sha256": "C1E568F01039734F6A2B3E9BA5D097961F4ABB16913AF14921F98DEC6C43FFD5",
+        "lines": [
+          1237
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_parent_revocation_keeps_child_permit_invalid_after_restart (test_directives.DirectiveProofTests.test_parent_revocation_keeps_child_permit_invalid_after_restart)",
+        "signature": "sqlite3.OperationalError: unable to open database file",
+        "signature_sha256": "5AE5F6B88C926DDDD9E939A593346947E555C7E9EEA2139939BBA1E2FD0A41DD",
+        "lines": [
+          1314
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_preflight_failure_releases_no_network_transmission_right (test_custody_executor.CustodyExecutorTests.test_preflight_failure_releases_no_network_transmission_right)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3-shm'",
+        "signature_sha256": "365F2A15C0D892BD2C14B30975B4A4DEBEF6EF596BEC08FE751A330C896D1A2C",
+        "lines": [
+          1017
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_preflight_failure_releases_no_network_transmission_right (test_custody_executor.CustodyExecutorTests.test_preflight_failure_releases_no_network_transmission_right)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3-wal'",
+        "signature_sha256": "60C8D2BD314289AEFD0CF48759C94EBD933DEA61AD5C01D30256C42D6843BED8",
+        "lines": [
+          1028
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_preflight_failure_releases_no_network_transmission_right (test_custody_executor.CustodyExecutorTests.test_preflight_failure_releases_no_network_transmission_right)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3'",
+        "signature_sha256": "C1E568F01039734F6A2B3E9BA5D097961F4ABB16913AF14921F98DEC6C43FFD5",
+        "lines": [
+          1039
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_preissued_permit_stays_invalid_after_revocation_and_restart (test_directives.DirectiveProofTests.test_preissued_permit_stays_invalid_after_revocation_and_restart)",
+        "signature": "sqlite3.OperationalError: unable to open database file",
+        "signature_sha256": "5AE5F6B88C926DDDD9E939A593346947E555C7E9EEA2139939BBA1E2FD0A41DD",
+        "lines": [
+          1326
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_provider_success_is_only_a_claim_and_still_requires_reconciliation (test_custody_executor.CustodyExecutorTests.test_provider_success_is_only_a_claim_and_still_requires_reconciliation)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3-shm'",
+        "signature_sha256": "365F2A15C0D892BD2C14B30975B4A4DEBEF6EF596BEC08FE751A330C896D1A2C",
+        "lines": [
+          1050
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_provider_success_is_only_a_claim_and_still_requires_reconciliation (test_custody_executor.CustodyExecutorTests.test_provider_success_is_only_a_claim_and_still_requires_reconciliation)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3-wal'",
+        "signature_sha256": "60C8D2BD314289AEFD0CF48759C94EBD933DEA61AD5C01D30256C42D6843BED8",
+        "lines": [
+          1061
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_provider_success_is_only_a_claim_and_still_requires_reconciliation (test_custody_executor.CustodyExecutorTests.test_provider_success_is_only_a_claim_and_still_requires_reconciliation)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3'",
+        "signature_sha256": "C1E568F01039734F6A2B3E9BA5D097961F4ABB16913AF14921F98DEC6C43FFD5",
+        "lines": [
+          1072
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_provider_success_without_complete_external_observation_stays_unresolved_and_holds_budget (test_custody_reconcile.CustodyReconciliationTests.test_provider_success_without_complete_external_observation_stays_unresolved_and_holds_budget)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3-shm'",
+        "signature_sha256": "365F2A15C0D892BD2C14B30975B4A4DEBEF6EF596BEC08FE751A330C896D1A2C",
+        "lines": [
+          1248
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_provider_success_without_complete_external_observation_stays_unresolved_and_holds_budget (test_custody_reconcile.CustodyReconciliationTests.test_provider_success_without_complete_external_observation_stays_unresolved_and_holds_budget)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3-wal'",
+        "signature_sha256": "60C8D2BD314289AEFD0CF48759C94EBD933DEA61AD5C01D30256C42D6843BED8",
+        "lines": [
+          1259
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_provider_success_without_complete_external_observation_stays_unresolved_and_holds_budget (test_custody_reconcile.CustodyReconciliationTests.test_provider_success_without_complete_external_observation_stays_unresolved_and_holds_budget)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3'",
+        "signature_sha256": "C1E568F01039734F6A2B3E9BA5D097961F4ABB16913AF14921F98DEC6C43FFD5",
+        "lines": [
+          1270
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_revocation_after_issue_prevents_effect_and_survives_restart (test_expense_workflow.FieldExpenseGovernedEffectProofTests.test_revocation_after_issue_prevents_effect_and_survives_restart)",
+        "signature": "sqlite3.OperationalError: unable to open database file",
+        "signature_sha256": "5AE5F6B88C926DDDD9E939A593346947E555C7E9EEA2139939BBA1E2FD0A41DD",
+        "lines": [
+          1359
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_revocation_requires_new_authority_and_survives_restart (test_directives.DirectiveProofTests.test_revocation_requires_new_authority_and_survives_restart)",
+        "signature": "sqlite3.OperationalError: unable to open database file",
+        "signature_sha256": "5AE5F6B88C926DDDD9E939A593346947E555C7E9EEA2139939BBA1E2FD0A41DD",
+        "lines": [
+          1338
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_revoked_directive_is_revalidated_before_budget_attempt_and_custody_attempt (test_custody_domain.CustodyDomainIntegrationTests.test_revoked_directive_is_revalidated_before_budget_attempt_and_custody_attempt)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3-shm'",
+        "signature_sha256": "365F2A15C0D892BD2C14B30975B4A4DEBEF6EF596BEC08FE751A330C896D1A2C",
+        "lines": [
+          698
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_revoked_directive_is_revalidated_before_budget_attempt_and_custody_attempt (test_custody_domain.CustodyDomainIntegrationTests.test_revoked_directive_is_revalidated_before_budget_attempt_and_custody_attempt)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3-wal'",
+        "signature_sha256": "60C8D2BD314289AEFD0CF48759C94EBD933DEA61AD5C01D30256C42D6843BED8",
+        "lines": [
+          709
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_revoked_directive_is_revalidated_before_budget_attempt_and_custody_attempt (test_custody_domain.CustodyDomainIntegrationTests.test_revoked_directive_is_revalidated_before_budget_attempt_and_custody_attempt)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3'",
+        "signature_sha256": "C1E568F01039734F6A2B3E9BA5D097961F4ABB16913AF14921F98DEC6C43FFD5",
+        "lines": [
+          720
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_sqlite_existing_permit_directive_table_migrates_parent_hash_column (test_directives.DirectiveProofTests.test_sqlite_existing_permit_directive_table_migrates_parent_hash_column)",
+        "signature": "sqlite3.OperationalError: unable to open database file",
+        "signature_sha256": "5AE5F6B88C926DDDD9E939A593346947E555C7E9EEA2139939BBA1E2FD0A41DD",
+        "lines": [
+          1350
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_stale_pre_revocation_projection_cannot_restore_authority_after_restart (test_projection_non_elevation.ProjectionNonElevationTests.test_stale_pre_revocation_projection_cannot_restore_authority_after_restart)",
+        "signature": "sqlite3.OperationalError: unable to open database file",
+        "signature_sha256": "5AE5F6B88C926DDDD9E939A593346947E555C7E9EEA2139939BBA1E2FD0A41DD",
+        "lines": [
+          1974
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_stdio_command_targets_only_existing_projection (test_mcp_tunnel.MCPTunnelBindingTests.test_stdio_command_targets_only_existing_projection)",
+        "signature": "pulpo.mcp_tunnel.MCPTunnelBindingError: pulpo_tunnel_snapshot_path_invalid",
+        "signature_sha256": "D143F03184A58F70F2601D893346B9E731FD2A6F8938510FE9E504D2DFE1BBBF",
+        "lines": [
+          1798
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_substituted_domain_order_fails_before_budget_or_permit_consumption (test_custody_domain.CustodyDomainIntegrationTests.test_substituted_domain_order_fails_before_budget_or_permit_consumption)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3-shm'",
+        "signature_sha256": "365F2A15C0D892BD2C14B30975B4A4DEBEF6EF596BEC08FE751A330C896D1A2C",
+        "lines": [
+          731
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_substituted_domain_order_fails_before_budget_or_permit_consumption (test_custody_domain.CustodyDomainIntegrationTests.test_substituted_domain_order_fails_before_budget_or_permit_consumption)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3-wal'",
+        "signature_sha256": "60C8D2BD314289AEFD0CF48759C94EBD933DEA61AD5C01D30256C42D6843BED8",
+        "lines": [
+          742
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_substituted_domain_order_fails_before_budget_or_permit_consumption (test_custody_domain.CustodyDomainIntegrationTests.test_substituted_domain_order_fails_before_budget_or_permit_consumption)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3'",
+        "signature_sha256": "C1E568F01039734F6A2B3E9BA5D097961F4ABB16913AF14921F98DEC6C43FFD5",
+        "lines": [
+          753
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_substituted_order_never_reaches_credential_adapter (test_custody_executor.CustodyExecutorTests.test_substituted_order_never_reaches_credential_adapter)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3-shm'",
+        "signature_sha256": "365F2A15C0D892BD2C14B30975B4A4DEBEF6EF596BEC08FE751A330C896D1A2C",
+        "lines": [
+          1083
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_substituted_order_never_reaches_credential_adapter (test_custody_executor.CustodyExecutorTests.test_substituted_order_never_reaches_credential_adapter)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3-wal'",
+        "signature_sha256": "60C8D2BD314289AEFD0CF48759C94EBD933DEA61AD5C01D30256C42D6843BED8",
+        "lines": [
+          1094
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_substituted_order_never_reaches_credential_adapter (test_custody_executor.CustodyExecutorTests.test_substituted_order_never_reaches_credential_adapter)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3'",
+        "signature_sha256": "C1E568F01039734F6A2B3E9BA5D097961F4ABB16913AF14921F98DEC6C43FFD5",
+        "lines": [
+          1105
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_success_order_without_domain_readback_stays_unknown (test_namecom_observer.NameComObserverTests.test_success_order_without_domain_readback_stays_unknown)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3-shm'",
+        "signature_sha256": "365F2A15C0D892BD2C14B30975B4A4DEBEF6EF596BEC08FE751A330C896D1A2C",
+        "lines": [
+          1941
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_success_order_without_domain_readback_stays_unknown (test_namecom_observer.NameComObserverTests.test_success_order_without_domain_readback_stays_unknown)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3-wal'",
+        "signature_sha256": "60C8D2BD314289AEFD0CF48759C94EBD933DEA61AD5C01D30256C42D6843BED8",
+        "lines": [
+          1952
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_success_order_without_domain_readback_stays_unknown (test_namecom_observer.NameComObserverTests.test_success_order_without_domain_readback_stays_unknown)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3'",
+        "signature_sha256": "C1E568F01039734F6A2B3E9BA5D097961F4ABB16913AF14921F98DEC6C43FFD5",
+        "lines": [
+          1963
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_tampered_obligation_is_denied_and_blocks_custody (test_custody_evidence.CustodyEvidenceConvergenceTests.test_tampered_obligation_is_denied_and_blocks_custody)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3-shm'",
+        "signature_sha256": "365F2A15C0D892BD2C14B30975B4A4DEBEF6EF596BEC08FE751A330C896D1A2C",
+        "lines": [
+          918
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_tampered_obligation_is_denied_and_blocks_custody (test_custody_evidence.CustodyEvidenceConvergenceTests.test_tampered_obligation_is_denied_and_blocks_custody)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3-wal'",
+        "signature_sha256": "60C8D2BD314289AEFD0CF48759C94EBD933DEA61AD5C01D30256C42D6843BED8",
+        "lines": [
+          929
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_tampered_obligation_is_denied_and_blocks_custody (test_custody_evidence.CustodyEvidenceConvergenceTests.test_tampered_obligation_is_denied_and_blocks_custody)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3'",
+        "signature_sha256": "C1E568F01039734F6A2B3E9BA5D097961F4ABB16913AF14921F98DEC6C43FFD5",
+        "lines": [
+          940
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_trusted_export_is_exact_private_and_non_mutating (test_mcp_boundary.MCPBoundaryTests.test_trusted_export_is_exact_private_and_non_mutating)",
+        "signature": "PermissionError: [Errno 13] Permission denied: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>' | pulpo.mcp_boundary.MCPBoundaryError: mcp_snapshot_parent_invalid",
+        "signature_sha256": "6472BF2AC76FFE6EBC1D5CAF1295D41DC8A0E68DCCB8ED84B87548D81524606B",
+        "lines": [
+          1719
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_uncertain_external_result_cannot_be_blindly_retried_after_restart (test_commerce.CommerceProofTests.test_uncertain_external_result_cannot_be_blindly_retried_after_restart)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>\\\\commerce.sqlite3' | PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>\\\\commerce.sqlite3'",
+        "signature_sha256": "99FF5663BC7D13F29028E678ACB47EE0792AEF7CBA93A97DE680749685131CC2",
+        "lines": [
+          603
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_unresolved_consequence_can_later_resolve_without_reopening_execution (test_custody_reconcile_later.LaterEvidenceReconciliationTests.test_unresolved_consequence_can_later_resolve_without_reopening_execution)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3-shm'",
+        "signature_sha256": "365F2A15C0D892BD2C14B30975B4A4DEBEF6EF596BEC08FE751A330C896D1A2C",
+        "lines": [
+          1281
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_unresolved_consequence_can_later_resolve_without_reopening_execution (test_custody_reconcile_later.LaterEvidenceReconciliationTests.test_unresolved_consequence_can_later_resolve_without_reopening_execution)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3-wal'",
+        "signature_sha256": "60C8D2BD314289AEFD0CF48759C94EBD933DEA61AD5C01D30256C42D6843BED8",
+        "lines": [
+          1292
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_unresolved_consequence_can_later_resolve_without_reopening_execution (test_custody_reconcile_later.LaterEvidenceReconciliationTests.test_unresolved_consequence_can_later_resolve_without_reopening_execution)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3'",
+        "signature_sha256": "C1E568F01039734F6A2B3E9BA5D097961F4ABB16913AF14921F98DEC6C43FFD5",
+        "lines": [
+          1303
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_worker_rollback_after_restart_cannot_restore_budget_or_domain_permit (test_custody_domain.CustodyDomainIntegrationTests.test_worker_rollback_after_restart_cannot_restore_budget_or_domain_permit)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3-shm'",
+        "signature_sha256": "365F2A15C0D892BD2C14B30975B4A4DEBEF6EF596BEC08FE751A330C896D1A2C",
+        "lines": [
+          764
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_worker_rollback_after_restart_cannot_restore_budget_or_domain_permit (test_custody_domain.CustodyDomainIntegrationTests.test_worker_rollback_after_restart_cannot_restore_budget_or_domain_permit)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3-wal'",
+        "signature_sha256": "60C8D2BD314289AEFD0CF48759C94EBD933DEA61AD5C01D30256C42D6843BED8",
+        "lines": [
+          775
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_worker_rollback_after_restart_cannot_restore_budget_or_domain_permit (test_custody_domain.CustodyDomainIntegrationTests.test_worker_rollback_after_restart_cannot_restore_budget_or_domain_permit)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3'",
+        "signature_sha256": "C1E568F01039734F6A2B3E9BA5D097961F4ABB16913AF14921F98DEC6C43FFD5",
+        "lines": [
+          786
+        ],
+        "count": 1
+      },
+      {
+        "kind": "FAIL",
+        "id": "test_clean_canonical_report_is_deterministic_and_self_verifying (test_git_clarity.GitClarityTests.test_clean_canonical_report_is_deterministic_and_self_verifying)",
+        "signature": "AssertionError: 'canonical_commit_clean' != 'canonical_commit_dirty'",
+        "signature_sha256": "38A4D21CBB97B5B6854A7FF39776526D0839BEA45DABF220FC534912C5307839",
+        "lines": [
+          2029
+        ],
+        "count": 1
+      },
+      {
+        "kind": "FAIL",
+        "id": "test_clean_proposal_reports_ahead_commit_and_paths (test_git_clarity.GitClarityTests.test_clean_proposal_reports_ahead_commit_and_paths)",
+        "signature": "AssertionError: 'proposal_clean' != 'proposal_dirty'",
+        "signature_sha256": "6649E26327E4011192661891EDD650FFBC04F0AF0C1FF9E503DA8F5C4E49A006",
+        "lines": [
+          2042
+        ],
+        "count": 1
+      },
+      {
+        "kind": "FAIL",
+        "id": "test_detached_head_is_explicit (test_git_clarity.GitClarityTests.test_detached_head_is_explicit)",
+        "signature": "AssertionError: 'detached_canonical_commit_clean' != 'detached_canonical_commit_dirty'",
+        "signature_sha256": "1D7B157AEC7A4F271F7281BFC3A46A1D24DC67928BC2073BC8FB226950CB098A",
+        "lines": [
+          2053
+        ],
+        "count": 1
+      },
+      {
+        "kind": "FAIL",
+        "id": "test_divergence_is_not_mislabeled_as_a_proposal (test_git_clarity.GitClarityTests.test_divergence_is_not_mislabeled_as_a_proposal)",
+        "signature": "AssertionError: 'diverged_clean' != 'diverged_dirty'",
+        "signature_sha256": "0A4E7D31A97AB08B262313CD4D4BDB2B4F5A3A785F8ABEBD1CF9820E3AC5E834",
+        "lines": [
+          2066
+        ],
+        "count": 1
+      },
+      {
+        "kind": "FAIL",
+        "id": "test_environment_drops_secret_like_variables_and_pins_codex_home (test_local_intelligence_effect_proof.LocalIntelligenceEffectProofScriptTests.test_environment_drops_secret_like_variables_and_pins_codex_home)",
+        "signature": "AssertionError: '\\\\tmp\\\\runtime' != '/tmp/runtime'",
+        "signature_sha256": "76ED222D67F2BCB416000E295FD2C0FE86FCF15A776F4104DAC1DE0199EE381E",
+        "lines": [
+          2077
+        ],
+        "count": 1
+      },
+      {
+        "kind": "FAIL",
+        "id": "test_export_rejects_relative_or_linked_destination (test_mcp_boundary.MCPBoundaryTests.test_export_rejects_relative_or_linked_destination)",
+        "signature": "pulpo.mcp_boundary.MCPBoundaryError: mcp_snapshot_destination_not_absolute | AssertionError: \"mcp_snapshot_destination_invalid\" does not match \"mcp_snapshot_destination_not_absolute\"",
+        "signature_sha256": "932A71E8E7B6C1A9239AE6D397D48FD94019D8AFD9EE6FB2D7D9E690DD99B708",
+        "lines": [
+          2106
+        ],
+        "count": 1
+      },
+      {
+        "kind": "FAIL",
+        "id": "test_export_reports_clean_failure_before_atomic_replace (test_mcp_boundary.MCPBoundaryTests.test_export_reports_clean_failure_before_atomic_replace)",
+        "signature": "PermissionError: [Errno 13] Permission denied: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>' | pulpo.mcp_boundary.MCPBoundaryError: mcp_snapshot_parent_invalid | AssertionError: \"mcp_snapshot_export_failed\" does not match \"mcp_snapshot_parent_invalid\"",
+        "signature_sha256": "B49D6D44D4EA2910F2182E7F8146BAAF7A85C8ED6FFECF8E56ACB081773D873D",
+        "lines": [
+          2119
+        ],
+        "count": 1
+      },
+      {
+        "kind": "FAIL",
+        "id": "test_export_reports_commit_unknown_if_directory_sync_fails (test_mcp_boundary.MCPBoundaryTests.test_export_reports_commit_unknown_if_directory_sync_fails)",
+        "signature": "PermissionError: [Errno 13] Permission denied: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>' | pulpo.mcp_boundary.MCPBoundaryError: mcp_snapshot_parent_invalid | AssertionError: \"mcp_snapshot_export_commit_unknown\" does not match \"mcp_snapshot_parent_invalid\"",
+        "signature_sha256": "4830E1E4DA4C29F3E864963314196EEC4ED3CC6468FE009335DBD5D9F34EA6D4",
+        "lines": [
+          2140
+        ],
+        "count": 1
+      },
+      {
+        "kind": "FAIL",
+        "id": "test_export_reports_commit_unknown_if_parent_swapped_after_open (test_mcp_boundary.MCPBoundaryTests.test_export_reports_commit_unknown_if_parent_swapped_after_open)",
+        "signature": "PermissionError: [Errno 13] Permission denied: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>\\\\trusted' | pulpo.mcp_boundary.MCPBoundaryError: mcp_snapshot_parent_invalid | AssertionError: \"mcp_snapshot_export_commit_unknown\" does not match \"mcp_snapshot_parent_invalid\"",
+        "signature_sha256": "AD39FB57E256C826E67920D75725DA220923F9E482E5B95E4695C3697916A6B0",
+        "lines": [
+          2161
+        ],
+        "count": 1
+      },
+      {
+        "kind": "FAIL",
+        "id": "test_fire_stages_private_auth_copy_inside_runtime (test_local_intelligence_effect_proof_v2.LocalIntelligenceEffectProofV2Tests.test_fire_stages_private_auth_copy_inside_runtime)",
+        "signature": "AssertionError: 438 != 384",
+        "signature_sha256": "9D2F62AC1EE5E0C886C82B7A9F6D4CDD2512ACEB8E125A5A9A2480650D7247A8",
+        "lines": [
+          2098
+        ],
+        "count": 1
+      },
+      {
+        "kind": "FAIL",
+        "id": "test_rejects_extra_missing_invalid_or_duplicate_snapshot_fields (test_mcp_plugin.MCPPluginTests.test_rejects_extra_missing_invalid_or_duplicate_snapshot_fields)",
+        "signature": "PermissionError: [Errno 13] Permission denied: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>' | pulpo.mcp_boundary.MCPBoundaryError: mcp_plugin_snapshot_parent_invalid | AssertionError: \"mcp_plugin_snapshot_invalid\" does not match \"mcp_plugin_snapshot_parent_invalid\"",
+        "signature_sha256": "9A09CDDDE09EB913F938F37D64AA0F5D71D64DAA5932C801F72855FAFDAB4D99",
+        "lines": [
+          2182
+        ],
+        "count": 1
+      },
+      {
+        "kind": "FAIL",
+        "id": "test_rejects_relative_path_and_symlinked_parent_or_file (test_mcp_plugin.MCPPluginTests.test_rejects_relative_path_and_symlinked_parent_or_file)",
+        "signature": "PermissionError: [Errno 13] Permission denied: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>\\\\real' | pulpo.mcp_boundary.MCPBoundaryError: mcp_plugin_snapshot_parent_invalid | AssertionError: \"mcp_plugin_snapshot_open_failed\" does not match \"mcp_plugin_snapshot_parent_invalid\"",
+        "signature_sha256": "EB597117378721558BC8911B3565B3AEEA2B28A4F438ECC6C093D819402780C4",
+        "lines": [
+          2203
+        ],
+        "count": 1
+      },
+      {
+        "kind": "FAIL",
+        "id": "test_seatbelt_denies_global_writes_and_allows_only_runtime (test_local_intelligence_effect_proof.LocalIntelligenceEffectProofScriptTests.test_seatbelt_denies_global_writes_and_allows_only_runtime)",
+        "signature": "AssertionError: '(allow file-write* (subpath \"C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>\\\\runtime\"))' not found in '(version 1)\\n(allow default)\\n(allow network*)\\n(deny file-write*)\\n(allow file-write* (subpath \"C:\\\\\\\\Users\\\\\\\\spike\\\\\\\\Pulpo1.0\\\\\\\\work\\\\\\\\<TEMP>\\\\\\\\runtime\"))\\n(deny file-read* (subpath \"C:\\\\\\\\Users\\\\\\\\spike\\\\\\\\Pulpo1.0\\\\\\\\work\\\\\\\\<TEMP>\\\\\\\\protected\"))\\n'",
+        "signature_sha256": "1D0646B27F46B0E85A89DA0B7A45B60A790922F8BB7F857C38EA02EE95EBF83E",
+        "lines": [
+          2090
+        ],
+        "count": 1
+      }
+    ],
+    "blocks": 139,
+    "summary": [
+      "Ran 408 tests in 51.764s",
+      "FAILED (failures=13, errors=126, skipped=1)"
+    ]
+  },
+  "interim": {
+    "rows": [],
+    "blocks": 0,
+    "summary": []
+  },
+  "claim": "Verified stored log equivalence; executions Recorded",
+  "baseline": {
+    "rows": [
+      {
+        "kind": "ERROR",
+        "id": "test_01_valid_directive_exact_permit_and_observation_reconcile_verified_success (test_issue_153_consequence_reconciliation_v0.Issue153ConsequenceReconciliationV0.test_01_valid_directive_exact_permit_and_observation_reconcile_verified_success)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3-shm'",
+        "signature_sha256": "365F2A15C0D892BD2C14B30975B4A4DEBEF6EF596BEC08FE751A330C896D1A2C",
+        "lines": [
+          1345
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_01_valid_directive_exact_permit_and_observation_reconcile_verified_success (test_issue_153_consequence_reconciliation_v0.Issue153ConsequenceReconciliationV0.test_01_valid_directive_exact_permit_and_observation_reconcile_verified_success)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3-wal'",
+        "signature_sha256": "60C8D2BD314289AEFD0CF48759C94EBD933DEA61AD5C01D30256C42D6843BED8",
+        "lines": [
+          1356
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_01_valid_directive_exact_permit_and_observation_reconcile_verified_success (test_issue_153_consequence_reconciliation_v0.Issue153ConsequenceReconciliationV0.test_01_valid_directive_exact_permit_and_observation_reconcile_verified_success)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3'",
+        "signature_sha256": "C1E568F01039734F6A2B3E9BA5D097961F4ABB16913AF14921F98DEC6C43FFD5",
+        "lines": [
+          1367
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_02_executor_success_plus_substituted_observation_is_mismatch_and_nonreusable_memory (test_issue_153_consequence_reconciliation_v0.Issue153ConsequenceReconciliationV0.test_02_executor_success_plus_substituted_observation_is_mismatch_and_nonreusable_memory)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3-shm'",
+        "signature_sha256": "365F2A15C0D892BD2C14B30975B4A4DEBEF6EF596BEC08FE751A330C896D1A2C",
+        "lines": [
+          1378
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_02_executor_success_plus_substituted_observation_is_mismatch_and_nonreusable_memory (test_issue_153_consequence_reconciliation_v0.Issue153ConsequenceReconciliationV0.test_02_executor_success_plus_substituted_observation_is_mismatch_and_nonreusable_memory)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3-wal'",
+        "signature_sha256": "60C8D2BD314289AEFD0CF48759C94EBD933DEA61AD5C01D30256C42D6843BED8",
+        "lines": [
+          1389
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_02_executor_success_plus_substituted_observation_is_mismatch_and_nonreusable_memory (test_issue_153_consequence_reconciliation_v0.Issue153ConsequenceReconciliationV0.test_02_executor_success_plus_substituted_observation_is_mismatch_and_nonreusable_memory)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3'",
+        "signature_sha256": "C1E568F01039734F6A2B3E9BA5D097961F4ABB16913AF14921F98DEC6C43FFD5",
+        "lines": [
+          1400
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_03_executor_success_plus_incomplete_evidence_is_unknown_and_nonreusable_memory (test_issue_153_consequence_reconciliation_v0.Issue153ConsequenceReconciliationV0.test_03_executor_success_plus_incomplete_evidence_is_unknown_and_nonreusable_memory)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3-shm'",
+        "signature_sha256": "365F2A15C0D892BD2C14B30975B4A4DEBEF6EF596BEC08FE751A330C896D1A2C",
+        "lines": [
+          1411
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_03_executor_success_plus_incomplete_evidence_is_unknown_and_nonreusable_memory (test_issue_153_consequence_reconciliation_v0.Issue153ConsequenceReconciliationV0.test_03_executor_success_plus_incomplete_evidence_is_unknown_and_nonreusable_memory)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3-wal'",
+        "signature_sha256": "60C8D2BD314289AEFD0CF48759C94EBD933DEA61AD5C01D30256C42D6843BED8",
+        "lines": [
+          1422
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_03_executor_success_plus_incomplete_evidence_is_unknown_and_nonreusable_memory (test_issue_153_consequence_reconciliation_v0.Issue153ConsequenceReconciliationV0.test_03_executor_success_plus_incomplete_evidence_is_unknown_and_nonreusable_memory)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3'",
+        "signature_sha256": "C1E568F01039734F6A2B3E9BA5D097961F4ABB16913AF14921F98DEC6C43FFD5",
+        "lines": [
+          1433
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_04_mismatch_and_unknown_state_and_memory_survive_restart_without_retry_authority (test_issue_153_consequence_reconciliation_v0.Issue153ConsequenceReconciliationV0.test_04_mismatch_and_unknown_state_and_memory_survive_restart_without_retry_authority)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3-shm'",
+        "signature_sha256": "365F2A15C0D892BD2C14B30975B4A4DEBEF6EF596BEC08FE751A330C896D1A2C",
+        "lines": [
+          1444,
+          1477
+        ],
+        "count": 2
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_04_mismatch_and_unknown_state_and_memory_survive_restart_without_retry_authority (test_issue_153_consequence_reconciliation_v0.Issue153ConsequenceReconciliationV0.test_04_mismatch_and_unknown_state_and_memory_survive_restart_without_retry_authority)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3-wal'",
+        "signature_sha256": "60C8D2BD314289AEFD0CF48759C94EBD933DEA61AD5C01D30256C42D6843BED8",
+        "lines": [
+          1455,
+          1488
+        ],
+        "count": 2
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_04_mismatch_and_unknown_state_and_memory_survive_restart_without_retry_authority (test_issue_153_consequence_reconciliation_v0.Issue153ConsequenceReconciliationV0.test_04_mismatch_and_unknown_state_and_memory_survive_restart_without_retry_authority)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3'",
+        "signature_sha256": "C1E568F01039734F6A2B3E9BA5D097961F4ABB16913AF14921F98DEC6C43FFD5",
+        "lines": [
+          1466,
+          1499
+        ],
+        "count": 2
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_07_outcome_memory_rejects_result_substitution_and_conflicting_replacement (test_issue_153_consequence_reconciliation_v0.Issue153ConsequenceReconciliationV0.test_07_outcome_memory_rejects_result_substitution_and_conflicting_replacement)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3-shm'",
+        "signature_sha256": "365F2A15C0D892BD2C14B30975B4A4DEBEF6EF596BEC08FE751A330C896D1A2C",
+        "lines": [
+          1510
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_07_outcome_memory_rejects_result_substitution_and_conflicting_replacement (test_issue_153_consequence_reconciliation_v0.Issue153ConsequenceReconciliationV0.test_07_outcome_memory_rejects_result_substitution_and_conflicting_replacement)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3-wal'",
+        "signature_sha256": "60C8D2BD314289AEFD0CF48759C94EBD933DEA61AD5C01D30256C42D6843BED8",
+        "lines": [
+          1521
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_07_outcome_memory_rejects_result_substitution_and_conflicting_replacement (test_issue_153_consequence_reconciliation_v0.Issue153ConsequenceReconciliationV0.test_07_outcome_memory_rejects_result_substitution_and_conflicting_replacement)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3'",
+        "signature_sha256": "C1E568F01039734F6A2B3E9BA5D097961F4ABB16913AF14921F98DEC6C43FFD5",
+        "lines": [
+          1532
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_08_independently_observed_provider_failure_is_failure_class_memory_not_success (test_issue_153_consequence_reconciliation_v0.Issue153ConsequenceReconciliationV0.test_08_independently_observed_provider_failure_is_failure_class_memory_not_success)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3-shm'",
+        "signature_sha256": "365F2A15C0D892BD2C14B30975B4A4DEBEF6EF596BEC08FE751A330C896D1A2C",
+        "lines": [
+          1543
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_08_independently_observed_provider_failure_is_failure_class_memory_not_success (test_issue_153_consequence_reconciliation_v0.Issue153ConsequenceReconciliationV0.test_08_independently_observed_provider_failure_is_failure_class_memory_not_success)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3-wal'",
+        "signature_sha256": "60C8D2BD314289AEFD0CF48759C94EBD933DEA61AD5C01D30256C42D6843BED8",
+        "lines": [
+          1554
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_08_independently_observed_provider_failure_is_failure_class_memory_not_success (test_issue_153_consequence_reconciliation_v0.Issue153ConsequenceReconciliationV0.test_08_independently_observed_provider_failure_is_failure_class_memory_not_success)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3'",
+        "signature_sha256": "C1E568F01039734F6A2B3E9BA5D097961F4ABB16913AF14921F98DEC6C43FFD5",
+        "lines": [
+          1565
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_09_successful_outcome_memory_cannot_authorize_an_otherwise_denied_intent (test_issue_153_consequence_reconciliation_v0.Issue153ConsequenceReconciliationV0.test_09_successful_outcome_memory_cannot_authorize_an_otherwise_denied_intent)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3-shm'",
+        "signature_sha256": "365F2A15C0D892BD2C14B30975B4A4DEBEF6EF596BEC08FE751A330C896D1A2C",
+        "lines": [
+          1576
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_09_successful_outcome_memory_cannot_authorize_an_otherwise_denied_intent (test_issue_153_consequence_reconciliation_v0.Issue153ConsequenceReconciliationV0.test_09_successful_outcome_memory_cannot_authorize_an_otherwise_denied_intent)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3-wal'",
+        "signature_sha256": "60C8D2BD314289AEFD0CF48759C94EBD933DEA61AD5C01D30256C42D6843BED8",
+        "lines": [
+          1587
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_09_successful_outcome_memory_cannot_authorize_an_otherwise_denied_intent (test_issue_153_consequence_reconciliation_v0.Issue153ConsequenceReconciliationV0.test_09_successful_outcome_memory_cannot_authorize_an_otherwise_denied_intent)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3'",
+        "signature_sha256": "C1E568F01039734F6A2B3E9BA5D097961F4ABB16913AF14921F98DEC6C43FFD5",
+        "lines": [
+          1598
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_10_outcome_memory_denied_until_exact_reconciliation_evidence_is_canonical (test_issue_153_outcome_memory_hostile_v0.Issue153OutcomeMemoryHostileV0.test_10_outcome_memory_denied_until_exact_reconciliation_evidence_is_canonical)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3-shm'",
+        "signature_sha256": "365F2A15C0D892BD2C14B30975B4A4DEBEF6EF596BEC08FE751A330C896D1A2C",
+        "lines": [
+          1609
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_10_outcome_memory_denied_until_exact_reconciliation_evidence_is_canonical (test_issue_153_outcome_memory_hostile_v0.Issue153OutcomeMemoryHostileV0.test_10_outcome_memory_denied_until_exact_reconciliation_evidence_is_canonical)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3-wal'",
+        "signature_sha256": "60C8D2BD314289AEFD0CF48759C94EBD933DEA61AD5C01D30256C42D6843BED8",
+        "lines": [
+          1620
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_10_outcome_memory_denied_until_exact_reconciliation_evidence_is_canonical (test_issue_153_outcome_memory_hostile_v0.Issue153OutcomeMemoryHostileV0.test_10_outcome_memory_denied_until_exact_reconciliation_evidence_is_canonical)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3'",
+        "signature_sha256": "C1E568F01039734F6A2B3E9BA5D097961F4ABB16913AF14921F98DEC6C43FFD5",
+        "lines": [
+          1631
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_11_concurrent_identical_recording_creates_exactly_one_canonical_memory_event (test_issue_153_outcome_memory_hostile_v0.Issue153OutcomeMemoryHostileV0.test_11_concurrent_identical_recording_creates_exactly_one_canonical_memory_event)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3-shm'",
+        "signature_sha256": "365F2A15C0D892BD2C14B30975B4A4DEBEF6EF596BEC08FE751A330C896D1A2C",
+        "lines": [
+          1642
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_11_concurrent_identical_recording_creates_exactly_one_canonical_memory_event (test_issue_153_outcome_memory_hostile_v0.Issue153OutcomeMemoryHostileV0.test_11_concurrent_identical_recording_creates_exactly_one_canonical_memory_event)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3-wal'",
+        "signature_sha256": "60C8D2BD314289AEFD0CF48759C94EBD933DEA61AD5C01D30256C42D6843BED8",
+        "lines": [
+          1653
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_11_concurrent_identical_recording_creates_exactly_one_canonical_memory_event (test_issue_153_outcome_memory_hostile_v0.Issue153OutcomeMemoryHostileV0.test_11_concurrent_identical_recording_creates_exactly_one_canonical_memory_event)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3'",
+        "signature_sha256": "C1E568F01039734F6A2B3E9BA5D097961F4ABB16913AF14921F98DEC6C43FFD5",
+        "lines": [
+          1664
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_abort_before_custody_commit_creates_neither_mutation_nor_obligation (test_custody_evidence.CustodyEvidenceConvergenceTests.test_abort_before_custody_commit_creates_neither_mutation_nor_obligation)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3-shm'",
+        "signature_sha256": "365F2A15C0D892BD2C14B30975B4A4DEBEF6EF596BEC08FE751A330C896D1A2C",
+        "lines": [
+          779
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_abort_before_custody_commit_creates_neither_mutation_nor_obligation (test_custody_evidence.CustodyEvidenceConvergenceTests.test_abort_before_custody_commit_creates_neither_mutation_nor_obligation)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3-wal'",
+        "signature_sha256": "60C8D2BD314289AEFD0CF48759C94EBD933DEA61AD5C01D30256C42D6843BED8",
+        "lines": [
+          790
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_abort_before_custody_commit_creates_neither_mutation_nor_obligation (test_custody_evidence.CustodyEvidenceConvergenceTests.test_abort_before_custody_commit_creates_neither_mutation_nor_obligation)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3'",
+        "signature_sha256": "C1E568F01039734F6A2B3E9BA5D097961F4ABB16913AF14921F98DEC6C43FFD5",
+        "lines": [
+          801
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_ambiguous_multiple_registration_orders_never_guess_attribution (test_namecom_observer.NameComObserverTests.test_ambiguous_multiple_registration_orders_never_guess_attribution)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3-shm'",
+        "signature_sha256": "365F2A15C0D892BD2C14B30975B4A4DEBEF6EF596BEC08FE751A330C896D1A2C",
+        "lines": [
+          1783
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_ambiguous_multiple_registration_orders_never_guess_attribution (test_namecom_observer.NameComObserverTests.test_ambiguous_multiple_registration_orders_never_guess_attribution)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3-wal'",
+        "signature_sha256": "60C8D2BD314289AEFD0CF48759C94EBD933DEA61AD5C01D30256C42D6843BED8",
+        "lines": [
+          1794
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_ambiguous_multiple_registration_orders_never_guess_attribution (test_namecom_observer.NameComObserverTests.test_ambiguous_multiple_registration_orders_never_guess_attribution)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3'",
+        "signature_sha256": "C1E568F01039734F6A2B3E9BA5D097961F4ABB16913AF14921F98DEC6C43FFD5",
+        "lines": [
+          1805
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_binding_fails_closed_without_runtime_key (test_mcp_tunnel.MCPTunnelBindingTests.test_binding_fails_closed_without_runtime_key)",
+        "signature": "PermissionError: [Errno 13] Permission denied: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>' | pulpo.mcp_boundary.MCPBoundaryError: mcp_plugin_snapshot_parent_invalid",
+        "signature_sha256": "6E90E93DC885A7C9867D4D2AA7D0CAF92A44E0E3C5E92624B20121CD44314F11",
+        "lines": [
+          1731
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_binding_uses_exact_tunnel_and_sanitized_environment (test_mcp_tunnel.MCPTunnelBindingTests.test_binding_uses_exact_tunnel_and_sanitized_environment)",
+        "signature": "PermissionError: [Errno 13] Permission denied: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>' | pulpo.mcp_boundary.MCPBoundaryError: mcp_plugin_snapshot_parent_invalid",
+        "signature_sha256": "6E90E93DC885A7C9867D4D2AA7D0CAF92A44E0E3C5E92624B20121CD44314F11",
+        "lines": [
+          1751
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_committed_obligation_blocks_next_transition_until_projection (test_custody_evidence.CustodyEvidenceConvergenceTests.test_committed_obligation_blocks_next_transition_until_projection)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3-shm'",
+        "signature_sha256": "365F2A15C0D892BD2C14B30975B4A4DEBEF6EF596BEC08FE751A330C896D1A2C",
+        "lines": [
+          812
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_committed_obligation_blocks_next_transition_until_projection (test_custody_evidence.CustodyEvidenceConvergenceTests.test_committed_obligation_blocks_next_transition_until_projection)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3-wal'",
+        "signature_sha256": "60C8D2BD314289AEFD0CF48759C94EBD933DEA61AD5C01D30256C42D6843BED8",
+        "lines": [
+          823
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_completion_of_one_version_does_not_complete_another (test_target_reconcile.TargetReconciliationTests.test_completion_of_one_version_does_not_complete_another)",
+        "signature": "PermissionError: [Errno 13] Permission denied: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.pptx' | ValueError: artifact_unreadable",
+        "signature_sha256": "1ECADD6D3DE20F462A1F0935AE672285E66C9D305D6F48A9500CF8ED95FF36A8",
+        "lines": [
+          1958
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_concurrent_reservations_cannot_oversubscribe_protected_budget (test_custody_domain.CustodyDomainIntegrationTests.test_concurrent_reservations_cannot_oversubscribe_protected_budget)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3-shm'",
+        "signature_sha256": "365F2A15C0D892BD2C14B30975B4A4DEBEF6EF596BEC08FE751A330C896D1A2C",
+        "lines": [
+          614
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_concurrent_reservations_cannot_oversubscribe_protected_budget (test_custody_domain.CustodyDomainIntegrationTests.test_concurrent_reservations_cannot_oversubscribe_protected_budget)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3-wal'",
+        "signature_sha256": "60C8D2BD314289AEFD0CF48759C94EBD933DEA61AD5C01D30256C42D6843BED8",
+        "lines": [
+          625
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_concurrent_reservations_cannot_oversubscribe_protected_budget (test_custody_domain.CustodyDomainIntegrationTests.test_concurrent_reservations_cannot_oversubscribe_protected_budget)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3'",
+        "signature_sha256": "C1E568F01039734F6A2B3E9BA5D097961F4ABB16913AF14921F98DEC6C43FFD5",
+        "lines": [
+          636
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_crash_after_transmission_release_never_releases_second_network_right (test_custody_executor.CustodyExecutorTests.test_crash_after_transmission_release_never_releases_second_network_right)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3-shm'",
+        "signature_sha256": "365F2A15C0D892BD2C14B30975B4A4DEBEF6EF596BEC08FE751A330C896D1A2C",
+        "lines": [
+          933
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_crash_after_transmission_release_never_releases_second_network_right (test_custody_executor.CustodyExecutorTests.test_crash_after_transmission_release_never_releases_second_network_right)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3-wal'",
+        "signature_sha256": "60C8D2BD314289AEFD0CF48759C94EBD933DEA61AD5C01D30256C42D6843BED8",
+        "lines": [
+          944
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_crash_after_transmission_release_never_releases_second_network_right (test_custody_executor.CustodyExecutorTests.test_crash_after_transmission_release_never_releases_second_network_right)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3'",
+        "signature_sha256": "C1E568F01039734F6A2B3E9BA5D097961F4ABB16913AF14921F98DEC6C43FFD5",
+        "lines": [
+          955
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_crash_during_projection_restarts_without_duplicate_canonical_event (test_custody_evidence.CustodyEvidenceConvergenceTests.test_crash_during_projection_restarts_without_duplicate_canonical_event)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3-shm'",
+        "signature_sha256": "365F2A15C0D892BD2C14B30975B4A4DEBEF6EF596BEC08FE751A330C896D1A2C",
+        "lines": [
+          834
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_crash_during_projection_restarts_without_duplicate_canonical_event (test_custody_evidence.CustodyEvidenceConvergenceTests.test_crash_during_projection_restarts_without_duplicate_canonical_event)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3-wal'",
+        "signature_sha256": "60C8D2BD314289AEFD0CF48759C94EBD933DEA61AD5C01D30256C42D6843BED8",
+        "lines": [
+          845
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_crash_during_projection_restarts_without_duplicate_canonical_event (test_custody_evidence.CustodyEvidenceConvergenceTests.test_crash_during_projection_restarts_without_duplicate_canonical_event)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3'",
+        "signature_sha256": "C1E568F01039734F6A2B3E9BA5D097961F4ABB16913AF14921F98DEC6C43FFD5",
+        "lines": [
+          856
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_duplicate_projection_is_idempotent_by_transition_hash (test_custody_evidence.CustodyEvidenceConvergenceTests.test_duplicate_projection_is_idempotent_by_transition_hash)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3-shm'",
+        "signature_sha256": "365F2A15C0D892BD2C14B30975B4A4DEBEF6EF596BEC08FE751A330C896D1A2C",
+        "lines": [
+          867
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_duplicate_projection_is_idempotent_by_transition_hash (test_custody_evidence.CustodyEvidenceConvergenceTests.test_duplicate_projection_is_idempotent_by_transition_hash)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3-wal'",
+        "signature_sha256": "60C8D2BD314289AEFD0CF48759C94EBD933DEA61AD5C01D30256C42D6843BED8",
+        "lines": [
+          878
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_duplicate_projection_is_idempotent_by_transition_hash (test_custody_evidence.CustodyEvidenceConvergenceTests.test_duplicate_projection_is_idempotent_by_transition_hash)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3'",
+        "signature_sha256": "C1E568F01039734F6A2B3E9BA5D097961F4ABB16913AF14921F98DEC6C43FFD5",
+        "lines": [
+          889
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_durable_budget_requires_stable_path_and_ceiling (test_commerce.CommerceProofTests.test_durable_budget_requires_stable_path_and_ceiling)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>\\\\commerce.sqlite3' | PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>\\\\commerce.sqlite3'",
+        "signature_sha256": "99FF5663BC7D13F29028E678ACB47EE0792AEF7CBA93A97DE680749685131CC2",
+        "lines": [
+          469
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_durable_budget_reservation_is_atomic_between_workers (test_commerce.CommerceProofTests.test_durable_budget_reservation_is_atomic_between_workers)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>\\\\commerce.sqlite3' | PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>\\\\commerce.sqlite3'",
+        "signature_sha256": "99FF5663BC7D13F29028E678ACB47EE0792AEF7CBA93A97DE680749685131CC2",
+        "lines": [
+          498
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_durable_budget_survives_restart_and_blocks_attempt_replay (test_commerce.CommerceProofTests.test_durable_budget_survives_restart_and_blocks_attempt_replay)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>\\\\commerce.sqlite3' | PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>\\\\commerce.sqlite3'",
+        "signature_sha256": "99FF5663BC7D13F29028E678ACB47EE0792AEF7CBA93A97DE680749685131CC2",
+        "lines": [
+          527
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_durable_reconciliation_survives_restart (test_commerce.CommerceProofTests.test_durable_reconciliation_survives_restart)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>\\\\commerce.sqlite3' | PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>\\\\commerce.sqlite3'",
+        "signature_sha256": "99FF5663BC7D13F29028E678ACB47EE0792AEF7CBA93A97DE680749685131CC2",
+        "lines": [
+          556
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_exact_independent_observation_reconciles_success_and_settles_budget (test_custody_reconcile.CustodyReconciliationTests.test_exact_independent_observation_reconciles_success_and_settles_budget)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3-shm'",
+        "signature_sha256": "365F2A15C0D892BD2C14B30975B4A4DEBEF6EF596BEC08FE751A330C896D1A2C",
+        "lines": [
+          1098
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_exact_independent_observation_reconciles_success_and_settles_budget (test_custody_reconcile.CustodyReconciliationTests.test_exact_independent_observation_reconciles_success_and_settles_budget)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3-wal'",
+        "signature_sha256": "60C8D2BD314289AEFD0CF48759C94EBD933DEA61AD5C01D30256C42D6843BED8",
+        "lines": [
+          1109
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_exact_independent_observation_reconciles_success_and_settles_budget (test_custody_reconcile.CustodyReconciliationTests.test_exact_independent_observation_reconciles_success_and_settles_budget)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3'",
+        "signature_sha256": "C1E568F01039734F6A2B3E9BA5D097961F4ABB16913AF14921F98DEC6C43FFD5",
+        "lines": [
+          1120
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_exact_locked_domain_permit_and_budget_are_consumed_before_custody_attempt (test_custody_domain.CustodyDomainIntegrationTests.test_exact_locked_domain_permit_and_budget_are_consumed_before_custody_attempt)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3-shm'",
+        "signature_sha256": "365F2A15C0D892BD2C14B30975B4A4DEBEF6EF596BEC08FE751A330C896D1A2C",
+        "lines": [
+          647
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_exact_locked_domain_permit_and_budget_are_consumed_before_custody_attempt (test_custody_domain.CustodyDomainIntegrationTests.test_exact_locked_domain_permit_and_budget_are_consumed_before_custody_attempt)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3-wal'",
+        "signature_sha256": "60C8D2BD314289AEFD0CF48759C94EBD933DEA61AD5C01D30256C42D6843BED8",
+        "lines": [
+          658
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_exact_locked_domain_permit_and_budget_are_consumed_before_custody_attempt (test_custody_domain.CustodyDomainIntegrationTests.test_exact_locked_domain_permit_and_budget_are_consumed_before_custody_attempt)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3'",
+        "signature_sha256": "C1E568F01039734F6A2B3E9BA5D097961F4ABB16913AF14921F98DEC6C43FFD5",
+        "lines": [
+          669
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_exact_order_and_get_domain_readback_can_drive_verified_reconciliation (test_namecom_observer.NameComObserverTests.test_exact_order_and_get_domain_readback_can_drive_verified_reconciliation)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3-shm'",
+        "signature_sha256": "365F2A15C0D892BD2C14B30975B4A4DEBEF6EF596BEC08FE751A330C896D1A2C",
+        "lines": [
+          1816
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_exact_order_and_get_domain_readback_can_drive_verified_reconciliation (test_namecom_observer.NameComObserverTests.test_exact_order_and_get_domain_readback_can_drive_verified_reconciliation)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3-wal'",
+        "signature_sha256": "60C8D2BD314289AEFD0CF48759C94EBD933DEA61AD5C01D30256C42D6843BED8",
+        "lines": [
+          1827
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_exact_order_and_get_domain_readback_can_drive_verified_reconciliation (test_namecom_observer.NameComObserverTests.test_exact_order_and_get_domain_readback_can_drive_verified_reconciliation)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3'",
+        "signature_sha256": "C1E568F01039734F6A2B3E9BA5D097961F4ABB16913AF14921F98DEC6C43FFD5",
+        "lines": [
+          1838
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_explicit_provider_failure_without_observed_effect_is_failure_but_budget_remains_held (test_custody_reconcile.CustodyReconciliationTests.test_explicit_provider_failure_without_observed_effect_is_failure_but_budget_remains_held)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3-shm'",
+        "signature_sha256": "365F2A15C0D892BD2C14B30975B4A4DEBEF6EF596BEC08FE751A330C896D1A2C",
+        "lines": [
+          1131
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_explicit_provider_failure_without_observed_effect_is_failure_but_budget_remains_held (test_custody_reconcile.CustodyReconciliationTests.test_explicit_provider_failure_without_observed_effect_is_failure_but_budget_remains_held)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3-wal'",
+        "signature_sha256": "60C8D2BD314289AEFD0CF48759C94EBD933DEA61AD5C01D30256C42D6843BED8",
+        "lines": [
+          1142
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_explicit_provider_failure_without_observed_effect_is_failure_but_budget_remains_held (test_custody_reconcile.CustodyReconciliationTests.test_explicit_provider_failure_without_observed_effect_is_failure_but_budget_remains_held)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3'",
+        "signature_sha256": "C1E568F01039734F6A2B3E9BA5D097961F4ABB16913AF14921F98DEC6C43FFD5",
+        "lines": [
+          1153
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_exported_file_remains_frozen_after_canonical_mutation (test_mcp_boundary.MCPBoundaryTests.test_exported_file_remains_frozen_after_canonical_mutation)",
+        "signature": "PermissionError: [Errno 13] Permission denied: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>' | pulpo.mcp_boundary.MCPBoundaryError: mcp_snapshot_parent_invalid",
+        "signature_sha256": "6472BF2AC76FFE6EBC1D5CAF1295D41DC8A0E68DCCB8ED84B87548D81524606B",
+        "lines": [
+          1675
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_failed_registration_order_with_no_domain_readback_is_known_failure (test_namecom_observer.NameComObserverTests.test_failed_registration_order_with_no_domain_readback_is_known_failure)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3-shm'",
+        "signature_sha256": "365F2A15C0D892BD2C14B30975B4A4DEBEF6EF596BEC08FE751A330C896D1A2C",
+        "lines": [
+          1849
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_failed_registration_order_with_no_domain_readback_is_known_failure (test_namecom_observer.NameComObserverTests.test_failed_registration_order_with_no_domain_readback_is_known_failure)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3-wal'",
+        "signature_sha256": "60C8D2BD314289AEFD0CF48759C94EBD933DEA61AD5C01D30256C42D6843BED8",
+        "lines": [
+          1860
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_failed_registration_order_with_no_domain_readback_is_known_failure (test_namecom_observer.NameComObserverTests.test_failed_registration_order_with_no_domain_readback_is_known_failure)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3'",
+        "signature_sha256": "C1E568F01039734F6A2B3E9BA5D097961F4ABB16913AF14921F98DEC6C43FFD5",
+        "lines": [
+          1871
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_loads_exact_private_frozen_snapshot (test_mcp_plugin.MCPPluginTests.test_loads_exact_private_frozen_snapshot)",
+        "signature": "PermissionError: [Errno 13] Permission denied: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>' | pulpo.mcp_boundary.MCPBoundaryError: mcp_plugin_snapshot_parent_invalid",
+        "signature_sha256": "6E90E93DC885A7C9867D4D2AA7D0CAF92A44E0E3C5E92624B20121CD44314F11",
+        "lines": [
+          1712
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_lost_provider_response_is_unknown_and_cannot_retry_or_release_budget (test_custody_executor.CustodyExecutorTests.test_lost_provider_response_is_unknown_and_cannot_retry_or_release_budget)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3-shm'",
+        "signature_sha256": "365F2A15C0D892BD2C14B30975B4A4DEBEF6EF596BEC08FE751A330C896D1A2C",
+        "lines": [
+          966
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_lost_provider_response_is_unknown_and_cannot_retry_or_release_budget (test_custody_executor.CustodyExecutorTests.test_lost_provider_response_is_unknown_and_cannot_retry_or_release_budget)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3-wal'",
+        "signature_sha256": "60C8D2BD314289AEFD0CF48759C94EBD933DEA61AD5C01D30256C42D6843BED8",
+        "lines": [
+          977
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_lost_provider_response_is_unknown_and_cannot_retry_or_release_budget (test_custody_executor.CustodyExecutorTests.test_lost_provider_response_is_unknown_and_cannot_retry_or_release_budget)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3'",
+        "signature_sha256": "C1E568F01039734F6A2B3E9BA5D097961F4ABB16913AF14921F98DEC6C43FFD5",
+        "lines": [
+          988
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_non_registration_order_for_same_domain_is_ignored (test_namecom_observer.NameComObserverTests.test_non_registration_order_for_same_domain_is_ignored)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3-shm'",
+        "signature_sha256": "365F2A15C0D892BD2C14B30975B4A4DEBEF6EF596BEC08FE751A330C896D1A2C",
+        "lines": [
+          1882
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_non_registration_order_for_same_domain_is_ignored (test_namecom_observer.NameComObserverTests.test_non_registration_order_for_same_domain_is_ignored)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3-wal'",
+        "signature_sha256": "60C8D2BD314289AEFD0CF48759C94EBD933DEA61AD5C01D30256C42D6843BED8",
+        "lines": [
+          1893
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_non_registration_order_for_same_domain_is_ignored (test_namecom_observer.NameComObserverTests.test_non_registration_order_for_same_domain_is_ignored)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3'",
+        "signature_sha256": "C1E568F01039734F6A2B3E9BA5D097961F4ABB16913AF14921F98DEC6C43FFD5",
+        "lines": [
+          1904
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_nonempty_artifact_records_exact_completion_without_authority_effect (test_target_reconcile.TargetReconciliationTests.test_nonempty_artifact_records_exact_completion_without_authority_effect)",
+        "signature": "PermissionError: [Errno 13] Permission denied: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.pptx' | ValueError: artifact_unreadable",
+        "signature_sha256": "1ECADD6D3DE20F462A1F0935AE672285E66C9D305D6F48A9500CF8ED95FF36A8",
+        "lines": [
+          1979
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_not_found_lookup_cannot_be_inferred_as_known_failure (test_custody_reconcile.CustodyReconciliationTests.test_not_found_lookup_cannot_be_inferred_as_known_failure)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3-shm'",
+        "signature_sha256": "365F2A15C0D892BD2C14B30975B4A4DEBEF6EF596BEC08FE751A330C896D1A2C",
+        "lines": [
+          1164
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_not_found_lookup_cannot_be_inferred_as_known_failure (test_custody_reconcile.CustodyReconciliationTests.test_not_found_lookup_cannot_be_inferred_as_known_failure)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3-wal'",
+        "signature_sha256": "60C8D2BD314289AEFD0CF48759C94EBD933DEA61AD5C01D30256C42D6843BED8",
+        "lines": [
+          1175
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_not_found_lookup_cannot_be_inferred_as_known_failure (test_custody_reconcile.CustodyReconciliationTests.test_not_found_lookup_cannot_be_inferred_as_known_failure)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3'",
+        "signature_sha256": "C1E568F01039734F6A2B3E9BA5D097961F4ABB16913AF14921F98DEC6C43FFD5",
+        "lines": [
+          1186
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_observed_substitution_is_failure_and_does_not_reopen_budget (test_custody_reconcile.CustodyReconciliationTests.test_observed_substitution_is_failure_and_does_not_reopen_budget)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3-shm'",
+        "signature_sha256": "365F2A15C0D892BD2C14B30975B4A4DEBEF6EF596BEC08FE751A330C896D1A2C",
+        "lines": [
+          1197
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_observed_substitution_is_failure_and_does_not_reopen_budget (test_custody_reconcile.CustodyReconciliationTests.test_observed_substitution_is_failure_and_does_not_reopen_budget)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3-wal'",
+        "signature_sha256": "60C8D2BD314289AEFD0CF48759C94EBD933DEA61AD5C01D30256C42D6843BED8",
+        "lines": [
+          1208
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_observed_substitution_is_failure_and_does_not_reopen_budget (test_custody_reconcile.CustodyReconciliationTests.test_observed_substitution_is_failure_and_does_not_reopen_budget)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3'",
+        "signature_sha256": "C1E568F01039734F6A2B3E9BA5D097961F4ABB16913AF14921F98DEC6C43FFD5",
+        "lines": [
+          1219
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_parent_revocation_keeps_child_permit_invalid_after_restart (test_directives.DirectiveProofTests.test_parent_revocation_keeps_child_permit_invalid_after_restart)",
+        "signature": "sqlite3.OperationalError: unable to open database file",
+        "signature_sha256": "5AE5F6B88C926DDDD9E939A593346947E555C7E9EEA2139939BBA1E2FD0A41DD",
+        "lines": [
+          1296
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_preflight_failure_releases_no_network_transmission_right (test_custody_executor.CustodyExecutorTests.test_preflight_failure_releases_no_network_transmission_right)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3-shm'",
+        "signature_sha256": "365F2A15C0D892BD2C14B30975B4A4DEBEF6EF596BEC08FE751A330C896D1A2C",
+        "lines": [
+          999
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_preflight_failure_releases_no_network_transmission_right (test_custody_executor.CustodyExecutorTests.test_preflight_failure_releases_no_network_transmission_right)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3-wal'",
+        "signature_sha256": "60C8D2BD314289AEFD0CF48759C94EBD933DEA61AD5C01D30256C42D6843BED8",
+        "lines": [
+          1010
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_preflight_failure_releases_no_network_transmission_right (test_custody_executor.CustodyExecutorTests.test_preflight_failure_releases_no_network_transmission_right)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3'",
+        "signature_sha256": "C1E568F01039734F6A2B3E9BA5D097961F4ABB16913AF14921F98DEC6C43FFD5",
+        "lines": [
+          1021
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_preissued_permit_stays_invalid_after_revocation_and_restart (test_directives.DirectiveProofTests.test_preissued_permit_stays_invalid_after_revocation_and_restart)",
+        "signature": "sqlite3.OperationalError: unable to open database file",
+        "signature_sha256": "5AE5F6B88C926DDDD9E939A593346947E555C7E9EEA2139939BBA1E2FD0A41DD",
+        "lines": [
+          1306
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_provider_success_is_only_a_claim_and_still_requires_reconciliation (test_custody_executor.CustodyExecutorTests.test_provider_success_is_only_a_claim_and_still_requires_reconciliation)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3-shm'",
+        "signature_sha256": "365F2A15C0D892BD2C14B30975B4A4DEBEF6EF596BEC08FE751A330C896D1A2C",
+        "lines": [
+          1032
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_provider_success_is_only_a_claim_and_still_requires_reconciliation (test_custody_executor.CustodyExecutorTests.test_provider_success_is_only_a_claim_and_still_requires_reconciliation)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3-wal'",
+        "signature_sha256": "60C8D2BD314289AEFD0CF48759C94EBD933DEA61AD5C01D30256C42D6843BED8",
+        "lines": [
+          1043
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_provider_success_is_only_a_claim_and_still_requires_reconciliation (test_custody_executor.CustodyExecutorTests.test_provider_success_is_only_a_claim_and_still_requires_reconciliation)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3'",
+        "signature_sha256": "C1E568F01039734F6A2B3E9BA5D097961F4ABB16913AF14921F98DEC6C43FFD5",
+        "lines": [
+          1054
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_provider_success_without_complete_external_observation_stays_unresolved_and_holds_budget (test_custody_reconcile.CustodyReconciliationTests.test_provider_success_without_complete_external_observation_stays_unresolved_and_holds_budget)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3-shm'",
+        "signature_sha256": "365F2A15C0D892BD2C14B30975B4A4DEBEF6EF596BEC08FE751A330C896D1A2C",
+        "lines": [
+          1230
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_provider_success_without_complete_external_observation_stays_unresolved_and_holds_budget (test_custody_reconcile.CustodyReconciliationTests.test_provider_success_without_complete_external_observation_stays_unresolved_and_holds_budget)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3-wal'",
+        "signature_sha256": "60C8D2BD314289AEFD0CF48759C94EBD933DEA61AD5C01D30256C42D6843BED8",
+        "lines": [
+          1241
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_provider_success_without_complete_external_observation_stays_unresolved_and_holds_budget (test_custody_reconcile.CustodyReconciliationTests.test_provider_success_without_complete_external_observation_stays_unresolved_and_holds_budget)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3'",
+        "signature_sha256": "C1E568F01039734F6A2B3E9BA5D097961F4ABB16913AF14921F98DEC6C43FFD5",
+        "lines": [
+          1252
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_revocation_after_issue_prevents_effect_and_survives_restart (test_expense_workflow.FieldExpenseGovernedEffectProofTests.test_revocation_after_issue_prevents_effect_and_survives_restart)",
+        "signature": "sqlite3.OperationalError: unable to open database file",
+        "signature_sha256": "5AE5F6B88C926DDDD9E939A593346947E555C7E9EEA2139939BBA1E2FD0A41DD",
+        "lines": [
+          1335
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_revocation_requires_new_authority_and_survives_restart (test_directives.DirectiveProofTests.test_revocation_requires_new_authority_and_survives_restart)",
+        "signature": "sqlite3.OperationalError: unable to open database file",
+        "signature_sha256": "5AE5F6B88C926DDDD9E939A593346947E555C7E9EEA2139939BBA1E2FD0A41DD",
+        "lines": [
+          1316
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_revoked_directive_is_revalidated_before_budget_attempt_and_custody_attempt (test_custody_domain.CustodyDomainIntegrationTests.test_revoked_directive_is_revalidated_before_budget_attempt_and_custody_attempt)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3-shm'",
+        "signature_sha256": "365F2A15C0D892BD2C14B30975B4A4DEBEF6EF596BEC08FE751A330C896D1A2C",
+        "lines": [
+          680
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_revoked_directive_is_revalidated_before_budget_attempt_and_custody_attempt (test_custody_domain.CustodyDomainIntegrationTests.test_revoked_directive_is_revalidated_before_budget_attempt_and_custody_attempt)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3-wal'",
+        "signature_sha256": "60C8D2BD314289AEFD0CF48759C94EBD933DEA61AD5C01D30256C42D6843BED8",
+        "lines": [
+          691
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_revoked_directive_is_revalidated_before_budget_attempt_and_custody_attempt (test_custody_domain.CustodyDomainIntegrationTests.test_revoked_directive_is_revalidated_before_budget_attempt_and_custody_attempt)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3'",
+        "signature_sha256": "C1E568F01039734F6A2B3E9BA5D097961F4ABB16913AF14921F98DEC6C43FFD5",
+        "lines": [
+          702
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_sqlite_existing_permit_directive_table_migrates_parent_hash_column (test_directives.DirectiveProofTests.test_sqlite_existing_permit_directive_table_migrates_parent_hash_column)",
+        "signature": "sqlite3.OperationalError: unable to open database file",
+        "signature_sha256": "5AE5F6B88C926DDDD9E939A593346947E555C7E9EEA2139939BBA1E2FD0A41DD",
+        "lines": [
+          1326
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_stale_pre_revocation_projection_cannot_restore_authority_after_restart (test_projection_non_elevation.ProjectionNonElevationTests.test_stale_pre_revocation_projection_cannot_restore_authority_after_restart)",
+        "signature": "sqlite3.OperationalError: unable to open database file",
+        "signature_sha256": "5AE5F6B88C926DDDD9E939A593346947E555C7E9EEA2139939BBA1E2FD0A41DD",
+        "lines": [
+          1948
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_stdio_command_targets_only_existing_projection (test_mcp_tunnel.MCPTunnelBindingTests.test_stdio_command_targets_only_existing_projection)",
+        "signature": "pulpo.mcp_tunnel.MCPTunnelBindingError: pulpo_tunnel_snapshot_path_invalid",
+        "signature_sha256": "D143F03184A58F70F2601D893346B9E731FD2A6F8938510FE9E504D2DFE1BBBF",
+        "lines": [
+          1772
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_substituted_domain_order_fails_before_budget_or_permit_consumption (test_custody_domain.CustodyDomainIntegrationTests.test_substituted_domain_order_fails_before_budget_or_permit_consumption)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3-shm'",
+        "signature_sha256": "365F2A15C0D892BD2C14B30975B4A4DEBEF6EF596BEC08FE751A330C896D1A2C",
+        "lines": [
+          713
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_substituted_domain_order_fails_before_budget_or_permit_consumption (test_custody_domain.CustodyDomainIntegrationTests.test_substituted_domain_order_fails_before_budget_or_permit_consumption)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3-wal'",
+        "signature_sha256": "60C8D2BD314289AEFD0CF48759C94EBD933DEA61AD5C01D30256C42D6843BED8",
+        "lines": [
+          724
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_substituted_domain_order_fails_before_budget_or_permit_consumption (test_custody_domain.CustodyDomainIntegrationTests.test_substituted_domain_order_fails_before_budget_or_permit_consumption)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3'",
+        "signature_sha256": "C1E568F01039734F6A2B3E9BA5D097961F4ABB16913AF14921F98DEC6C43FFD5",
+        "lines": [
+          735
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_substituted_order_never_reaches_credential_adapter (test_custody_executor.CustodyExecutorTests.test_substituted_order_never_reaches_credential_adapter)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3-shm'",
+        "signature_sha256": "365F2A15C0D892BD2C14B30975B4A4DEBEF6EF596BEC08FE751A330C896D1A2C",
+        "lines": [
+          1065
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_substituted_order_never_reaches_credential_adapter (test_custody_executor.CustodyExecutorTests.test_substituted_order_never_reaches_credential_adapter)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3-wal'",
+        "signature_sha256": "60C8D2BD314289AEFD0CF48759C94EBD933DEA61AD5C01D30256C42D6843BED8",
+        "lines": [
+          1076
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_substituted_order_never_reaches_credential_adapter (test_custody_executor.CustodyExecutorTests.test_substituted_order_never_reaches_credential_adapter)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3'",
+        "signature_sha256": "C1E568F01039734F6A2B3E9BA5D097961F4ABB16913AF14921F98DEC6C43FFD5",
+        "lines": [
+          1087
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_success_order_without_domain_readback_stays_unknown (test_namecom_observer.NameComObserverTests.test_success_order_without_domain_readback_stays_unknown)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3-shm'",
+        "signature_sha256": "365F2A15C0D892BD2C14B30975B4A4DEBEF6EF596BEC08FE751A330C896D1A2C",
+        "lines": [
+          1915
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_success_order_without_domain_readback_stays_unknown (test_namecom_observer.NameComObserverTests.test_success_order_without_domain_readback_stays_unknown)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3-wal'",
+        "signature_sha256": "60C8D2BD314289AEFD0CF48759C94EBD933DEA61AD5C01D30256C42D6843BED8",
+        "lines": [
+          1926
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_success_order_without_domain_readback_stays_unknown (test_namecom_observer.NameComObserverTests.test_success_order_without_domain_readback_stays_unknown)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3'",
+        "signature_sha256": "C1E568F01039734F6A2B3E9BA5D097961F4ABB16913AF14921F98DEC6C43FFD5",
+        "lines": [
+          1937
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_tampered_obligation_is_denied_and_blocks_custody (test_custody_evidence.CustodyEvidenceConvergenceTests.test_tampered_obligation_is_denied_and_blocks_custody)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3-shm'",
+        "signature_sha256": "365F2A15C0D892BD2C14B30975B4A4DEBEF6EF596BEC08FE751A330C896D1A2C",
+        "lines": [
+          900
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_tampered_obligation_is_denied_and_blocks_custody (test_custody_evidence.CustodyEvidenceConvergenceTests.test_tampered_obligation_is_denied_and_blocks_custody)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3-wal'",
+        "signature_sha256": "60C8D2BD314289AEFD0CF48759C94EBD933DEA61AD5C01D30256C42D6843BED8",
+        "lines": [
+          911
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_tampered_obligation_is_denied_and_blocks_custody (test_custody_evidence.CustodyEvidenceConvergenceTests.test_tampered_obligation_is_denied_and_blocks_custody)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3'",
+        "signature_sha256": "C1E568F01039734F6A2B3E9BA5D097961F4ABB16913AF14921F98DEC6C43FFD5",
+        "lines": [
+          922
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_trusted_export_is_exact_private_and_non_mutating (test_mcp_boundary.MCPBoundaryTests.test_trusted_export_is_exact_private_and_non_mutating)",
+        "signature": "PermissionError: [Errno 13] Permission denied: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>' | pulpo.mcp_boundary.MCPBoundaryError: mcp_snapshot_parent_invalid",
+        "signature_sha256": "6472BF2AC76FFE6EBC1D5CAF1295D41DC8A0E68DCCB8ED84B87548D81524606B",
+        "lines": [
+          1693
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_uncertain_external_result_cannot_be_blindly_retried_after_restart (test_commerce.CommerceProofTests.test_uncertain_external_result_cannot_be_blindly_retried_after_restart)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>\\\\commerce.sqlite3' | PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>\\\\commerce.sqlite3'",
+        "signature_sha256": "99FF5663BC7D13F29028E678ACB47EE0792AEF7CBA93A97DE680749685131CC2",
+        "lines": [
+          585
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_unresolved_consequence_can_later_resolve_without_reopening_execution (test_custody_reconcile_later.LaterEvidenceReconciliationTests.test_unresolved_consequence_can_later_resolve_without_reopening_execution)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3-shm'",
+        "signature_sha256": "365F2A15C0D892BD2C14B30975B4A4DEBEF6EF596BEC08FE751A330C896D1A2C",
+        "lines": [
+          1263
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_unresolved_consequence_can_later_resolve_without_reopening_execution (test_custody_reconcile_later.LaterEvidenceReconciliationTests.test_unresolved_consequence_can_later_resolve_without_reopening_execution)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3-wal'",
+        "signature_sha256": "60C8D2BD314289AEFD0CF48759C94EBD933DEA61AD5C01D30256C42D6843BED8",
+        "lines": [
+          1274
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_unresolved_consequence_can_later_resolve_without_reopening_execution (test_custody_reconcile_later.LaterEvidenceReconciliationTests.test_unresolved_consequence_can_later_resolve_without_reopening_execution)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3'",
+        "signature_sha256": "C1E568F01039734F6A2B3E9BA5D097961F4ABB16913AF14921F98DEC6C43FFD5",
+        "lines": [
+          1285
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_worker_rollback_after_restart_cannot_restore_budget_or_domain_permit (test_custody_domain.CustodyDomainIntegrationTests.test_worker_rollback_after_restart_cannot_restore_budget_or_domain_permit)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3-shm'",
+        "signature_sha256": "365F2A15C0D892BD2C14B30975B4A4DEBEF6EF596BEC08FE751A330C896D1A2C",
+        "lines": [
+          746
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_worker_rollback_after_restart_cannot_restore_budget_or_domain_permit (test_custody_domain.CustodyDomainIntegrationTests.test_worker_rollback_after_restart_cannot_restore_budget_or_domain_permit)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3-wal'",
+        "signature_sha256": "60C8D2BD314289AEFD0CF48759C94EBD933DEA61AD5C01D30256C42D6843BED8",
+        "lines": [
+          757
+        ],
+        "count": 1
+      },
+      {
+        "kind": "ERROR",
+        "id": "test_worker_rollback_after_restart_cannot_restore_budget_or_domain_permit (test_custody_domain.CustodyDomainIntegrationTests.test_worker_rollback_after_restart_cannot_restore_budget_or_domain_permit)",
+        "signature": "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>.sqlite3'",
+        "signature_sha256": "C1E568F01039734F6A2B3E9BA5D097961F4ABB16913AF14921F98DEC6C43FFD5",
+        "lines": [
+          768
+        ],
+        "count": 1
+      },
+      {
+        "kind": "FAIL",
+        "id": "test_clean_canonical_report_is_deterministic_and_self_verifying (test_git_clarity.GitClarityTests.test_clean_canonical_report_is_deterministic_and_self_verifying)",
+        "signature": "AssertionError: 'canonical_commit_clean' != 'canonical_commit_dirty'",
+        "signature_sha256": "38A4D21CBB97B5B6854A7FF39776526D0839BEA45DABF220FC534912C5307839",
+        "lines": [
+          2001
+        ],
+        "count": 1
+      },
+      {
+        "kind": "FAIL",
+        "id": "test_clean_proposal_reports_ahead_commit_and_paths (test_git_clarity.GitClarityTests.test_clean_proposal_reports_ahead_commit_and_paths)",
+        "signature": "AssertionError: 'proposal_clean' != 'proposal_dirty'",
+        "signature_sha256": "6649E26327E4011192661891EDD650FFBC04F0AF0C1FF9E503DA8F5C4E49A006",
+        "lines": [
+          2014
+        ],
+        "count": 1
+      },
+      {
+        "kind": "FAIL",
+        "id": "test_detached_head_is_explicit (test_git_clarity.GitClarityTests.test_detached_head_is_explicit)",
+        "signature": "AssertionError: 'detached_canonical_commit_clean' != 'detached_canonical_commit_dirty'",
+        "signature_sha256": "1D7B157AEC7A4F271F7281BFC3A46A1D24DC67928BC2073BC8FB226950CB098A",
+        "lines": [
+          2025
+        ],
+        "count": 1
+      },
+      {
+        "kind": "FAIL",
+        "id": "test_divergence_is_not_mislabeled_as_a_proposal (test_git_clarity.GitClarityTests.test_divergence_is_not_mislabeled_as_a_proposal)",
+        "signature": "AssertionError: 'diverged_clean' != 'diverged_dirty'",
+        "signature_sha256": "0A4E7D31A97AB08B262313CD4D4BDB2B4F5A3A785F8ABEBD1CF9820E3AC5E834",
+        "lines": [
+          2038
+        ],
+        "count": 1
+      },
+      {
+        "kind": "FAIL",
+        "id": "test_environment_drops_secret_like_variables_and_pins_codex_home (test_local_intelligence_effect_proof.LocalIntelligenceEffectProofScriptTests.test_environment_drops_secret_like_variables_and_pins_codex_home)",
+        "signature": "AssertionError: '\\\\tmp\\\\runtime' != '/tmp/runtime'",
+        "signature_sha256": "76ED222D67F2BCB416000E295FD2C0FE86FCF15A776F4104DAC1DE0199EE381E",
+        "lines": [
+          2049
+        ],
+        "count": 1
+      },
+      {
+        "kind": "FAIL",
+        "id": "test_export_rejects_relative_or_linked_destination (test_mcp_boundary.MCPBoundaryTests.test_export_rejects_relative_or_linked_destination)",
+        "signature": "pulpo.mcp_boundary.MCPBoundaryError: mcp_snapshot_destination_not_absolute | AssertionError: \"mcp_snapshot_destination_invalid\" does not match \"mcp_snapshot_destination_not_absolute\"",
+        "signature_sha256": "932A71E8E7B6C1A9239AE6D397D48FD94019D8AFD9EE6FB2D7D9E690DD99B708",
+        "lines": [
+          2078
+        ],
+        "count": 1
+      },
+      {
+        "kind": "FAIL",
+        "id": "test_export_reports_clean_failure_before_atomic_replace (test_mcp_boundary.MCPBoundaryTests.test_export_reports_clean_failure_before_atomic_replace)",
+        "signature": "PermissionError: [Errno 13] Permission denied: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>' | pulpo.mcp_boundary.MCPBoundaryError: mcp_snapshot_parent_invalid | AssertionError: \"mcp_snapshot_export_failed\" does not match \"mcp_snapshot_parent_invalid\"",
+        "signature_sha256": "B49D6D44D4EA2910F2182E7F8146BAAF7A85C8ED6FFECF8E56ACB081773D873D",
+        "lines": [
+          2091
+        ],
+        "count": 1
+      },
+      {
+        "kind": "FAIL",
+        "id": "test_export_reports_commit_unknown_if_directory_sync_fails (test_mcp_boundary.MCPBoundaryTests.test_export_reports_commit_unknown_if_directory_sync_fails)",
+        "signature": "PermissionError: [Errno 13] Permission denied: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>' | pulpo.mcp_boundary.MCPBoundaryError: mcp_snapshot_parent_invalid | AssertionError: \"mcp_snapshot_export_commit_unknown\" does not match \"mcp_snapshot_parent_invalid\"",
+        "signature_sha256": "4830E1E4DA4C29F3E864963314196EEC4ED3CC6468FE009335DBD5D9F34EA6D4",
+        "lines": [
+          2112
+        ],
+        "count": 1
+      },
+      {
+        "kind": "FAIL",
+        "id": "test_export_reports_commit_unknown_if_parent_swapped_after_open (test_mcp_boundary.MCPBoundaryTests.test_export_reports_commit_unknown_if_parent_swapped_after_open)",
+        "signature": "PermissionError: [Errno 13] Permission denied: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>\\\\trusted' | pulpo.mcp_boundary.MCPBoundaryError: mcp_snapshot_parent_invalid | AssertionError: \"mcp_snapshot_export_commit_unknown\" does not match \"mcp_snapshot_parent_invalid\"",
+        "signature_sha256": "AD39FB57E256C826E67920D75725DA220923F9E482E5B95E4695C3697916A6B0",
+        "lines": [
+          2133
+        ],
+        "count": 1
+      },
+      {
+        "kind": "FAIL",
+        "id": "test_fire_stages_private_auth_copy_inside_runtime (test_local_intelligence_effect_proof_v2.LocalIntelligenceEffectProofV2Tests.test_fire_stages_private_auth_copy_inside_runtime)",
+        "signature": "AssertionError: 438 != 384",
+        "signature_sha256": "9D2F62AC1EE5E0C886C82B7A9F6D4CDD2512ACEB8E125A5A9A2480650D7247A8",
+        "lines": [
+          2070
+        ],
+        "count": 1
+      },
+      {
+        "kind": "FAIL",
+        "id": "test_rejects_extra_missing_invalid_or_duplicate_snapshot_fields (test_mcp_plugin.MCPPluginTests.test_rejects_extra_missing_invalid_or_duplicate_snapshot_fields)",
+        "signature": "PermissionError: [Errno 13] Permission denied: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>' | pulpo.mcp_boundary.MCPBoundaryError: mcp_plugin_snapshot_parent_invalid | AssertionError: \"mcp_plugin_snapshot_invalid\" does not match \"mcp_plugin_snapshot_parent_invalid\"",
+        "signature_sha256": "9A09CDDDE09EB913F938F37D64AA0F5D71D64DAA5932C801F72855FAFDAB4D99",
+        "lines": [
+          2154
+        ],
+        "count": 1
+      },
+      {
+        "kind": "FAIL",
+        "id": "test_rejects_relative_path_and_symlinked_parent_or_file (test_mcp_plugin.MCPPluginTests.test_rejects_relative_path_and_symlinked_parent_or_file)",
+        "signature": "PermissionError: [Errno 13] Permission denied: 'C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>\\\\real' | pulpo.mcp_boundary.MCPBoundaryError: mcp_plugin_snapshot_parent_invalid | AssertionError: \"mcp_plugin_snapshot_open_failed\" does not match \"mcp_plugin_snapshot_parent_invalid\"",
+        "signature_sha256": "EB597117378721558BC8911B3565B3AEEA2B28A4F438ECC6C093D819402780C4",
+        "lines": [
+          2175
+        ],
+        "count": 1
+      },
+      {
+        "kind": "FAIL",
+        "id": "test_seatbelt_denies_global_writes_and_allows_only_runtime (test_local_intelligence_effect_proof.LocalIntelligenceEffectProofScriptTests.test_seatbelt_denies_global_writes_and_allows_only_runtime)",
+        "signature": "AssertionError: '(allow file-write* (subpath \"C:\\\\Users\\\\spike\\\\Pulpo1.0\\\\work\\\\<TEMP>\\\\runtime\"))' not found in '(version 1)\\n(allow default)\\n(allow network*)\\n(deny file-write*)\\n(allow file-write* (subpath \"C:\\\\\\\\Users\\\\\\\\spike\\\\\\\\Pulpo1.0\\\\\\\\work\\\\\\\\<TEMP>\\\\\\\\runtime\"))\\n(deny file-read* (subpath \"C:\\\\\\\\Users\\\\\\\\spike\\\\\\\\Pulpo1.0\\\\\\\\work\\\\\\\\<TEMP>\\\\\\\\protected\"))\\n'",
+        "signature_sha256": "1D0646B27F46B0E85A89DA0B7A45B60A790922F8BB7F857C38EA02EE95EBF83E",
+        "lines": [
+          2062
+        ],
+        "count": 1
+      }
+    ],
+    "blocks": 139,
+    "summary": [
+      "Ran 389 tests in 49.950s",
+      "FAILED (failures=13, errors=126, skipped=1)"
+    ]
+  },
+  "differences": []
+}
