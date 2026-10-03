@@ -1,6 +1,6 @@
 # Pulpo Preview — unofficial testing snapshot
 
-This branch in **spikediegel-prog/Pulpo1.0** is an unofficial preview for testers. It contains unreleased upstream PRs awaiting review. It is not an official Pulpo release or a production-readiness claim. Source PRs remain open upstream, and their review/admission status is unchanged.
+This branch in **spikediegel-prog/Pulpo-Preview** is an unofficial preview for testers. It contains unreleased upstream PRs awaiting review. It is not an official Pulpo release or a production-readiness claim. Source PRs remain open upstream, and their review/admission status is unchanged.
 
 ## Snapshot: 2026-10-03
 
@@ -27,7 +27,7 @@ The [Unofficial Preview Validation workflow](.github/workflows/preview-validatio
 ## Test this preview
 
 ```powershell
-git clone --branch preview https://github.com/spikediegel-prog/Pulpo1.0.git Pulpo-preview
+git clone --branch preview https://github.com/spikediegel-prog/Pulpo-Preview.git Pulpo-preview
 cd Pulpo-preview
 python -W error -m unittest discover -s tests -v
 python -m pulpo.cli setup --json-report perf-results/pulpo-preview-setup.json
@@ -36,7 +36,7 @@ python -m pulpo.cli setup --json-report perf-results/pulpo-preview-setup.json
 For an isolated PR, choose its snapshot at clone time, for example:
 
 ```powershell
-git clone --branch preview-pr-295 https://github.com/spikediegel-prog/Pulpo1.0.git Pulpo-pr-295
+git clone --branch preview-pr-295 https://github.com/spikediegel-prog/Pulpo-Preview.git Pulpo-pr-295
 ```
 
 Record the checked-out commit, platform/Python/SQLite versions, full test log, reproduction steps, and expected/actual result when reporting a failure. Keep preview-specific failures separate from upstream recorded pre-existing failures. Windows filesystem/resource differences can matter; do not hide errors merely because a Linux run passed.

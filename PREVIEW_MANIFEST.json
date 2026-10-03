@@ -3,7 +3,7 @@
   "classification": "unofficial testing snapshot",
   "official_release": false,
   "upstream": "Ironnember/Pulpo1.0",
-  "fork": "spikediegel-prog/Pulpo1.0",
+  "fork": "spikediegel-prog/Pulpo-Preview",
   "date": "2026-10-03",
   "selection_rule": "Open, ready-for-review PR; no explicit hold; current head matches retrieved check revision; every reported check/status is completed/success; no incomplete pagination. Historical individual-head checks do not prove combined or production safety.",
   "upstream_main_sha": "d674dbb7a00b471d69bcca84d2f034cf74705e1a",
