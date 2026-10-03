@@ -1,0 +1,457 @@
+{
+  "channel": "preview",
+  "classification": "unofficial testing snapshot",
+  "official_release": false,
+  "upstream": "Ironnember/Pulpo1.0",
+  "fork": "spikediegel-prog/Pulpo1.0",
+  "date": "2026-10-03",
+  "selection_rule": "Open, ready-for-review PR; no explicit hold; current head matches retrieved check revision; every reported check/status is completed/success; no incomplete pagination. Historical individual-head checks do not prove combined or production safety.",
+  "upstream_main_sha": "d674dbb7a00b471d69bcca84d2f034cf74705e1a",
+  "combined_code_sha": "60f73fb0fa04703e711a94d89662237cf93b403e",
+  "combined_validation": {
+    "claim": "Verified local execution",
+    "command": "python3 -W error -m unittest discover -s tests -v",
+    "tests": 445,
+    "result": "OK",
+    "elapsed_seconds": 20.146,
+    "python": "3.14.4",
+    "environment": "Ubuntu under WSL; separate full-history Linux clone on this workstation",
+    "boundary": "Does not verify all Docker/authority-service/provider containment workflows on this combined head; hosted preview validation pending."
+  },
+  "prs": [
+    {
+      "number": 219,
+      "title": "Review patch for local proof and snapshot portability",
+      "url": "https://github.com/Ironnember/Pulpo1.0/pull/219",
+      "head_sha": "eb4e3c7b4136827d5616b5e2aaa199565f4c39e9",
+      "source_branch": "austin-review-portability",
+      "base": "main",
+      "reported_checks": 8,
+      "reported_result": "success",
+      "combined_preview": false,
+      "individual_testing_branch": "preview-pr-219",
+      "conflicts": [
+        "pulpo/mcp_boundary.py"
+      ]
+    },
+    {
+      "number": 230,
+      "title": "Proof: add Dark Mirror software ceremony v0",
+      "url": "https://github.com/Ironnember/Pulpo1.0/pull/230",
+      "head_sha": "cd5392c070848988e1c29365eecd704b5a8d27f5",
+      "source_branch": "proof/dark-mirror-v0",
+      "base": "main",
+      "reported_checks": 9,
+      "reported_result": "success",
+      "combined_preview": true,
+      "individual_testing_branch": "preview-pr-230",
+      "conflicts": []
+    },
+    {
+      "number": 235,
+      "title": "Proof: govern Redsys sandbox payment with exact Pulpo authority",
+      "url": "https://github.com/Ironnember/Pulpo1.0/pull/235",
+      "head_sha": "4c5305de5bc7e6fdbe20ee39dc2c3a10345eb528",
+      "source_branch": "proof/redsys-sandbox-governance-v0",
+      "base": "main",
+      "reported_checks": 13,
+      "reported_result": "success",
+      "combined_preview": true,
+      "individual_testing_branch": "preview-pr-235",
+      "conflicts": []
+    },
+    {
+      "number": 236,
+      "title": "Harden dependency auditing for Pulpo AI governance",
+      "url": "https://github.com/Ironnember/Pulpo1.0/pull/236",
+      "head_sha": "24a1d16a925b86376ff03f0dcf75b3b9b46a1ac6",
+      "source_branch": "spikediegel-prog-port-governance-security",
+      "base": "main",
+      "reported_checks": 12,
+      "reported_result": "success",
+      "combined_preview": false,
+      "individual_testing_branch": "preview-pr-236",
+      "conflicts": [
+        "README.md"
+      ]
+    },
+    {
+      "number": 237,
+      "title": "Security: harden AI/governance outbound transport trust",
+      "url": "https://github.com/Ironnember/Pulpo1.0/pull/237",
+      "head_sha": "0edb88cf6eb8368462d5cbfa5c96da31a7c1b60e",
+      "source_branch": "security/ai-transport-hardening",
+      "base": "main",
+      "reported_checks": 8,
+      "reported_result": "success",
+      "combined_preview": true,
+      "individual_testing_branch": "preview-pr-237",
+      "conflicts": []
+    },
+    {
+      "number": 238,
+      "title": "Security: enforce zero unnecessary inbound listeners",
+      "url": "https://github.com/Ironnember/Pulpo1.0/pull/238",
+      "head_sha": "b7b3eac5447b46b9614b799d4cb76d8c6e2415eb",
+      "source_branch": "security/zero-inbound-listeners",
+      "base": "main",
+      "reported_checks": 9,
+      "reported_result": "success",
+      "combined_preview": true,
+      "individual_testing_branch": "preview-pr-238",
+      "conflicts": []
+    },
+    {
+      "number": 239,
+      "title": "Proof: bind semantic provenance to exact intent authority",
+      "url": "https://github.com/Ironnember/Pulpo1.0/pull/239",
+      "head_sha": "cd79f4b1370d87d678bdc9eccb834d69f4755978",
+      "source_branch": "proof/semantic-provenance-binding-v0",
+      "base": "main",
+      "reported_checks": 9,
+      "reported_result": "success",
+      "combined_preview": false,
+      "individual_testing_branch": "preview-pr-239",
+      "conflicts": [
+        "pulpo/__init__.py"
+      ]
+    },
+    {
+      "number": 249,
+      "title": "Governance: enter Phase II operational hardening and external reproduction",
+      "url": "https://github.com/Ironnember/Pulpo1.0/pull/249",
+      "head_sha": "74dc36d0076591c66a4913b339927e71461b94e3",
+      "source_branch": "governance/phase-ii-external-reproduction-2026-09-20",
+      "base": "main",
+      "reported_checks": 8,
+      "reported_result": "success",
+      "combined_preview": true,
+      "individual_testing_branch": "preview-pr-249",
+      "conflicts": []
+    },
+    {
+      "number": 250,
+      "title": "Consolidate recent governance, security, portability, and performance hardening",
+      "url": "https://github.com/Ironnember/Pulpo1.0/pull/250",
+      "head_sha": "962033d51c7d2756471aa004bfc0554021d74fa5",
+      "source_branch": "integration/recent-prs-20260920",
+      "base": "main",
+      "reported_checks": 10,
+      "reported_result": "success",
+      "combined_preview": false,
+      "individual_testing_branch": "preview-pr-250",
+      "conflicts": [
+        "README.md",
+        "authority-service/tests/test_api.py",
+        "pulpo/kernel.py",
+        "pulpo/mcp_boundary.py",
+        "pulpo/state.py",
+        "tests/test_mcp_boundary.py",
+        "tests/test_persistence.py"
+      ]
+    },
+    {
+      "number": 258,
+      "title": "Feature/gpu governance audit",
+      "url": "https://github.com/Ironnember/Pulpo1.0/pull/258",
+      "head_sha": "5c258b332c414cfa22af10cf6f959e57aabaaf17",
+      "source_branch": "feature/gpu-governance-audit",
+      "base": "main",
+      "reported_checks": 13,
+      "reported_result": "success",
+      "combined_preview": false,
+      "individual_testing_branch": "preview-pr-258",
+      "conflicts": [
+        "README.md",
+        "pulpo/kernel.py",
+        "pulpo/state.py",
+        "tests/test_persistence.py"
+      ]
+    },
+    {
+      "number": 267,
+      "title": "feat: add portable GPU audit integrity acceleration",
+      "url": "https://github.com/Ironnember/Pulpo1.0/pull/267",
+      "head_sha": "ebc72e02d35b97428754e61edf4cc534b6cf9e89",
+      "source_branch": "feature/gpu-audit-implementation",
+      "base": "feature/gpu-governance-audit",
+      "reported_checks": 12,
+      "reported_result": "success",
+      "combined_preview": false,
+      "individual_testing_branch": "preview-pr-267",
+      "conflicts": [
+        "README.md",
+        "pulpo/kernel.py",
+        "pulpo/state.py",
+        "tests/test_persistence.py"
+      ]
+    },
+    {
+      "number": 275,
+      "title": "Split #258: bound authority HTTP request admission",
+      "url": "https://github.com/Ironnember/Pulpo1.0/pull/275",
+      "head_sha": "9902d17c7c39b9a30b20b1fc6fb73e96eefe73d5",
+      "source_branch": "split/258-authority-request-limits",
+      "base": "main",
+      "reported_checks": 11,
+      "reported_result": "success",
+      "combined_preview": true,
+      "individual_testing_branch": "preview-pr-275",
+      "conflicts": []
+    },
+    {
+      "number": 276,
+      "title": "Split #258: harden MCP snapshot publication",
+      "url": "https://github.com/Ironnember/Pulpo1.0/pull/276",
+      "head_sha": "298e9b24d885a442dc4e0b95336b38bda74a0ea2",
+      "source_branch": "split/258-mcp-snapshot-publication",
+      "base": "main",
+      "reported_checks": 11,
+      "reported_result": "success",
+      "combined_preview": true,
+      "individual_testing_branch": "preview-pr-276",
+      "conflicts": []
+    },
+    {
+      "number": 277,
+      "title": "Split #258: add network exposure proof",
+      "url": "https://github.com/Ironnember/Pulpo1.0/pull/277",
+      "head_sha": "21742d3d2f9340074533b36d97844b17effa1830",
+      "source_branch": "split/258-network-exposure-proof",
+      "base": "main",
+      "reported_checks": 12,
+      "reported_result": "success",
+      "combined_preview": true,
+      "individual_testing_branch": "preview-pr-277",
+      "conflicts": []
+    },
+    {
+      "number": 289,
+      "title": "docs: clarify current Pulpo state and PR direction",
+      "url": "https://github.com/Ironnember/Pulpo1.0/pull/289",
+      "head_sha": "312e73c0515f45ee070bf13046270d60bfffe5b6",
+      "source_branch": "docs/current-state-readme",
+      "base": "main",
+      "reported_checks": 11,
+      "reported_result": "success",
+      "combined_preview": true,
+      "individual_testing_branch": "preview-pr-289",
+      "conflicts": []
+    },
+    {
+      "number": 293,
+      "title": "perf: add multi-core audit verification and parallel evidence collection",
+      "url": "https://github.com/Ironnember/Pulpo1.0/pull/293",
+      "head_sha": "73ec97b68a3228c52ecba717d867a1d99340ab15",
+      "source_branch": "perf/audit-cpu-workers-cache",
+      "base": "main",
+      "reported_checks": 12,
+      "reported_result": "success",
+      "combined_preview": true,
+      "individual_testing_branch": "preview-pr-293",
+      "conflicts": []
+    },
+    {
+      "number": 294,
+      "title": "docs: state host bound vs Pulpo bound",
+      "url": "https://github.com/Ironnember/Pulpo1.0/pull/294",
+      "head_sha": "ea73035f44ac07c313a2330b74d653efb3aef02d",
+      "source_branch": "docs/host-bound-vs-pulpo-bound",
+      "base": "main",
+      "reported_checks": 11,
+      "reported_result": "success",
+      "combined_preview": true,
+      "individual_testing_branch": "preview-pr-294",
+      "conflicts": []
+    },
+    {
+      "number": 295,
+      "title": "perf: reduce SQLite audit overhead with an opt-in event index",
+      "url": "https://github.com/Ironnember/Pulpo1.0/pull/295",
+      "head_sha": "d95a2ef3180a2d5186ddeebce108ae6b49ea7274",
+      "source_branch": "perf/sqlite-transaction-local-index",
+      "base": "perf/audit-cpu-workers-cache",
+      "reported_checks": 10,
+      "reported_result": "success",
+      "combined_preview": true,
+      "individual_testing_branch": "preview-pr-295",
+      "conflicts": []
+    }
+  ],
+  "excluded": [
+    {
+      "number": 292,
+      "title": "docs: add Pulpo user guide PDF",
+      "draft": false,
+      "reason": "not all current reported checks pass"
+    },
+    {
+      "number": 278,
+      "title": "Split #258: enforce temporal validity of permits",
+      "draft": false,
+      "reason": "not all current reported checks pass"
+    },
+    {
+      "number": 253,
+      "title": "Proof: bind registrar auto-renew to exact commerce object v2",
+      "draft": false,
+      "reason": "not all current reported checks pass"
+    },
+    {
+      "number": 280,
+      "title": "Proof: expose ceremony provenance gap",
+      "draft": false,
+      "reason": "not all current reported checks pass"
+    },
+    {
+      "number": 281,
+      "title": "Split #258: establish explicit outbound transport trust",
+      "draft": false,
+      "reason": "not all current reported checks pass"
+    },
+    {
+      "number": 282,
+      "title": "Split #258: add bounded JSON resource limits",
+      "draft": false,
+      "reason": "not all current reported checks pass"
+    },
+    {
+      "number": 284,
+      "title": "Split #258: harden custody evidence SQLite durability",
+      "draft": false,
+      "reason": "not all current reported checks pass"
+    },
+    {
+      "number": 285,
+      "title": "Split #258: bound effect-reconciliation snapshots",
+      "draft": false,
+      "reason": "not all current reported checks pass"
+    },
+    {
+      "number": 286,
+      "title": "Split #258: make proposal commitment durability explicit",
+      "draft": false,
+      "reason": "not all current reported checks pass"
+    },
+    {
+      "number": 287,
+      "title": "Split #258: harden local intelligence containment",
+      "draft": false,
+      "reason": "not all current reported checks pass"
+    },
+    {
+      "number": 291,
+      "title": "Experiment: HELM v0.8.4 G5 alternate-route custody",
+      "draft": true,
+      "reason": "draft excluded"
+    },
+    {
+      "number": 288,
+      "title": "Repair: require independent ceremony proof for opted-in approvals",
+      "draft": true,
+      "reason": "draft excluded"
+    },
+    {
+      "number": 279,
+      "title": "Split #258: bound custody HTTP request admission",
+      "draft": true,
+      "reason": "draft excluded"
+    },
+    {
+      "number": 270,
+      "title": "Experiment: Pulpo x Amazon Bedrock AgentCore custody proof v0",
+      "draft": true,
+      "reason": "draft excluded"
+    },
+    {
+      "number": 271,
+      "title": "Adversarial proof: forked-state one-use permit replay",
+      "draft": true,
+      "reason": "draft excluded"
+    },
+    {
+      "number": 266,
+      "title": "Proof: bind registrar auto-renew as governed effect on current main",
+      "draft": true,
+      "reason": "draft excluded"
+    },
+    {
+      "number": 251,
+      "title": "Perf: synthesize delta audit and integrity fast path",
+      "draft": false,
+      "reason": "not all current reported checks pass"
+    },
+    {
+      "number": 241,
+      "title": "Security: contain prompt injection in local intelligence execution",
+      "draft": true,
+      "reason": "draft excluded"
+    },
+    {
+      "number": 242,
+      "title": "Security: bound untrusted input and memory growth",
+      "draft": true,
+      "reason": "draft excluded"
+    },
+    {
+      "number": 243,
+      "title": "Harden stale session permits with bounded expiry",
+      "draft": true,
+      "reason": "draft excluded"
+    },
+    {
+      "number": 244,
+      "title": "Narrow custody container package surface",
+      "draft": true,
+      "reason": "draft excluded"
+    },
+    {
+      "number": 245,
+      "title": "Security: harden HTTP probing admission",
+      "draft": true,
+      "reason": "draft excluded"
+    },
+    {
+      "number": 247,
+      "title": "Fix Windows MCP snapshot loading",
+      "draft": true,
+      "reason": "draft excluded"
+    },
+    {
+      "number": 232,
+      "title": "Proof: conversation-derived directives cannot create or broaden authority",
+      "draft": true,
+      "reason": "draft excluded"
+    },
+    {
+      "number": 221,
+      "title": "Proof: live Telegram external consequence ceremony v0",
+      "draft": true,
+      "reason": "draft excluded"
+    },
+    {
+      "number": 225,
+      "title": "Draft proof: package read-only Cloud SQL connectivity probe",
+      "draft": true,
+      "reason": "draft excluded"
+    },
+    {
+      "number": 228,
+      "title": "Proof: bind remote effect authority and rolling consequence custody v0",
+      "draft": true,
+      "reason": "draft excluded"
+    },
+    {
+      "number": 212,
+      "title": "Proof: reconcile Name.com completion controls onto current main v0",
+      "draft": true,
+      "reason": "draft excluded"
+    },
+    {
+      "number": 165,
+      "title": "Experiment: Supabase consequence-custody Stage C v1",
+      "draft": true,
+      "reason": "draft excluded"
+    }
+  ]
+}

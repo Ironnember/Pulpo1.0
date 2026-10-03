@@ -1,3 +1,8 @@
+> **Unofficial Pulpo Preview — testing snapshot, 2026-10-03.**
+> This is spikediegel-prog's preview of unreleased PRs awaiting upstream review.
+> Read [preview contents, test evidence, and limitations](PREVIEW.md) before testing.
+> Official Pulpo development/releases: https://github.com/Ironnember/Pulpo1.0.
+
 # PULPO
 
 ### Give AI intelligence. Never give it authority.
