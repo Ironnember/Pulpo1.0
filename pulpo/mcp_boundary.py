@@ -87,6 +87,19 @@ def freeze_mcp_snapshot(orchestrator: PulpoOrchestrator) -> MCPReadSnapshot:
     )
 
 
+def _path_is_junction(path: Path) -> bool:
+    """Return whether *path* is a Windows junction when the runtime can tell."""
+
+    detector = getattr(path, "is_junction", None)
+    return bool(detector and detector())
+
+
+def _same_file_identity(left: os.stat_result, right: os.stat_result) -> bool:
+    """Compare stable file identity fields exposed by the current platform."""
+
+    return left.st_dev == right.st_dev and left.st_ino == right.st_ino
+
+
 def export_mcp_snapshot(
     orchestrator: PulpoOrchestrator,
     destination: str | os.PathLike[str],
@@ -94,8 +107,10 @@ def export_mcp_snapshot(
     """Atomically export one capability-free snapshot from trusted Pulpo.
 
     The destination parent must already exist as an absolute, non-symlinked
-    directory. The final file is replaced atomically with owner-only
-    permissions. This function is intentionally absent from the MCP server.
+    directory. POSIX uses descriptor-relative operations and owner-only mode
+    bits. Windows uses canonical absolute paths, rejects symlink/junction
+    traversal, verifies parent/file identity around publication, and preserves
+    the same fail-closed boundary without relying on unsupported directory FDs.
     """
 
     if not isinstance(destination, (str, os.PathLike)) or isinstance(destination, bytes):
@@ -107,23 +122,147 @@ def export_mcp_snapshot(
         raise MCPBoundaryError("mcp_snapshot_destination_invalid")
 
     parent = target.parent
-    directory_descriptor = -1
     try:
         parent_metadata = parent.lstat()
     except OSError as exc:
         raise MCPBoundaryError("mcp_snapshot_parent_invalid") from exc
-    if stat.S_ISLNK(parent_metadata.st_mode) or not stat.S_ISDIR(parent_metadata.st_mode):
+    if (
+        stat.S_ISLNK(parent_metadata.st_mode)
+        or _path_is_junction(parent)
+        or not stat.S_ISDIR(parent_metadata.st_mode)
+    ):
         raise MCPBoundaryError("mcp_snapshot_parent_invalid")
 
     snapshot = freeze_mcp_snapshot(orchestrator)
     payload = json.dumps(asdict(snapshot), sort_keys=True, separators=(",", ":")) + "\n"
 
+    if os.name == "nt":
+        try:
+            resolved_parent = parent.resolve(strict=True)
+        except OSError as exc:
+            raise MCPBoundaryError("mcp_snapshot_parent_invalid") from exc
+
+        lexical_parent = os.path.normcase(os.path.abspath(os.fspath(parent)))
+        canonical_parent = os.path.normcase(os.fspath(resolved_parent))
+        if lexical_parent != canonical_parent:
+            raise MCPBoundaryError("mcp_snapshot_parent_invalid")
+
+        try:
+            existing = target.lstat()
+        except FileNotFoundError:
+            existing = None
+        except OSError as exc:
+            raise MCPBoundaryError("mcp_snapshot_destination_invalid") from exc
+        if existing is not None and (
+            stat.S_ISLNK(existing.st_mode)
+            or _path_is_junction(target)
+            or not stat.S_ISREG(existing.st_mode)
+        ):
+            raise MCPBoundaryError("mcp_snapshot_destination_invalid")
+
+        descriptor = -1
+        temporary: Path | None = None
+        published = False
+        try:
+            open_flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+            open_flags |= getattr(os, "O_CLOEXEC", 0)
+            open_flags |= getattr(os, "O_BINARY", 0)
+            for _ in range(100):
+                candidate = parent / f".{target.name}.{secrets.token_hex(8)}.tmp"
+                try:
+                    descriptor = os.open(candidate, open_flags, 0o600)
+                except FileExistsError:
+                    continue
+                temporary = candidate
+                break
+            if descriptor < 0 or temporary is None:
+                raise MCPBoundaryError("mcp_snapshot_export_failed")
+
+            with os.fdopen(descriptor, "w", encoding="utf-8", newline="") as handle:
+                descriptor = -1
+                handle.write(payload)
+                handle.flush()
+                os.fsync(handle.fileno())
+
+            try:
+                current_parent = parent.lstat()
+                current_resolved = parent.resolve(strict=True)
+            except OSError as exc:
+                raise MCPBoundaryError("mcp_snapshot_export_failed") from exc
+            if (
+                stat.S_ISLNK(current_parent.st_mode)
+                or _path_is_junction(parent)
+                or not stat.S_ISDIR(current_parent.st_mode)
+                or not _same_file_identity(current_parent, parent_metadata)
+                or os.path.normcase(os.fspath(current_resolved)) != canonical_parent
+            ):
+                raise MCPBoundaryError("mcp_snapshot_export_failed")
+
+            try:
+                current_target = target.lstat()
+            except FileNotFoundError:
+                current_target = None
+            except OSError as exc:
+                raise MCPBoundaryError("mcp_snapshot_destination_invalid") from exc
+            if current_target is not None and (
+                stat.S_ISLNK(current_target.st_mode)
+                or _path_is_junction(target)
+                or not stat.S_ISREG(current_target.st_mode)
+            ):
+                raise MCPBoundaryError("mcp_snapshot_destination_invalid")
+
+            try:
+                os.replace(temporary, target)
+            except OSError as exc:
+                raise MCPBoundaryError("mcp_snapshot_export_failed") from exc
+            temporary = None
+            published = True
+
+            try:
+                final_parent = parent.lstat()
+                final_resolved = parent.resolve(strict=True)
+                requested_target = target.lstat()
+            except OSError as exc:
+                raise MCPBoundaryError("mcp_snapshot_export_commit_unknown") from exc
+            if (
+                stat.S_ISLNK(final_parent.st_mode)
+                or _path_is_junction(parent)
+                or not stat.S_ISDIR(final_parent.st_mode)
+                or not _same_file_identity(final_parent, parent_metadata)
+                or os.path.normcase(os.fspath(final_resolved)) != canonical_parent
+                or stat.S_ISLNK(requested_target.st_mode)
+                or _path_is_junction(target)
+                or not stat.S_ISREG(requested_target.st_mode)
+            ):
+                raise MCPBoundaryError("mcp_snapshot_export_commit_unknown")
+        except MCPBoundaryError:
+            raise
+        except OSError as exc:
+            reason = (
+                "mcp_snapshot_export_commit_unknown"
+                if published
+                else "mcp_snapshot_export_failed"
+            )
+            raise MCPBoundaryError(reason) from exc
+        finally:
+            if descriptor >= 0:
+                os.close(descriptor)
+            if temporary is not None:
+                try:
+                    temporary.unlink()
+                except OSError:
+                    pass
+        return snapshot
+
+    directory_descriptor = -1
     directory_flags = os.O_RDONLY
     directory_flags |= getattr(os, "O_CLOEXEC", 0)
-    directory_flags |= getattr(os, "O_DIRECTORY", 0)
-    directory_flags |= getattr(os, "O_NOFOLLOW", 0)
+    if hasattr(os, "O_DIRECTORY"):
+        directory_flags |= os.O_DIRECTORY
+    if hasattr(os, "O_NOFOLLOW"):
+        directory_flags |= os.O_NOFOLLOW
     try:
-        directory_descriptor = os.open(parent, directory_flags)
+        directory_descriptor = os.open(os.fspath(parent), directory_flags)
     except OSError as exc:
         raise MCPBoundaryError("mcp_snapshot_parent_invalid") from exc
     try:
@@ -133,8 +272,7 @@ def export_mcp_snapshot(
         raise MCPBoundaryError("mcp_snapshot_parent_invalid") from exc
     if (
         not stat.S_ISDIR(opened_parent.st_mode)
-        or opened_parent.st_dev != parent_metadata.st_dev
-        or opened_parent.st_ino != parent_metadata.st_ino
+        or not _same_file_identity(opened_parent, parent_metadata)
     ):
         os.close(directory_descriptor)
         raise MCPBoundaryError("mcp_snapshot_parent_invalid")
@@ -160,7 +298,8 @@ def export_mcp_snapshot(
     try:
         open_flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
         open_flags |= getattr(os, "O_CLOEXEC", 0)
-        open_flags |= getattr(os, "O_NOFOLLOW", 0)
+        if hasattr(os, "O_NOFOLLOW"):
+            open_flags |= os.O_NOFOLLOW
         for _ in range(100):
             candidate = f".{target.name}.{secrets.token_hex(8)}.tmp"
             try:
@@ -176,18 +315,24 @@ def export_mcp_snapshot(
             break
         if descriptor < 0:
             raise MCPBoundaryError("mcp_snapshot_export_failed")
-        os.fchmod(descriptor, 0o600)
+        if hasattr(os, "fchmod"):
+            os.fchmod(descriptor, 0o600)
         with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
             descriptor = -1
             handle.write(payload)
             handle.flush()
             os.fsync(handle.fileno())
-        os.replace(
-            temporary,
-            target.name,
-            src_dir_fd=directory_descriptor,
-            dst_dir_fd=directory_descriptor,
-        )
+        try:
+            os.replace(
+                temporary,
+                target.name,
+                src_dir_fd=directory_descriptor,
+                dst_dir_fd=directory_descriptor,
+            )
+        except OSError as exc:
+            raise MCPBoundaryError(
+                "mcp_snapshot_export_commit_unknown"
+            ) from exc
         temporary = None
         published = True
         os.fsync(directory_descriptor)
@@ -205,12 +350,10 @@ def export_mcp_snapshot(
         if (
             stat.S_ISLNK(current_parent.st_mode)
             or not stat.S_ISDIR(current_parent.st_mode)
-            or current_parent.st_dev != opened_parent.st_dev
-            or current_parent.st_ino != opened_parent.st_ino
+            or not _same_file_identity(current_parent, opened_parent)
             or not stat.S_ISREG(published_target.st_mode)
             or not stat.S_ISREG(requested_target.st_mode)
-            or published_target.st_dev != requested_target.st_dev
-            or published_target.st_ino != requested_target.st_ino
+            or not _same_file_identity(published_target, requested_target)
         ):
             raise MCPBoundaryError("mcp_snapshot_export_commit_unknown")
     except MCPBoundaryError:
@@ -228,7 +371,10 @@ def export_mcp_snapshot(
                 os.close(descriptor)
             if temporary is not None:
                 try:
-                    os.unlink(temporary, dir_fd=directory_descriptor)
+                    os.unlink(
+                        temporary,
+                        dir_fd=directory_descriptor,
+                    )
                 except OSError:
                     pass
         finally:
