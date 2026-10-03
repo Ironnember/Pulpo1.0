@@ -180,7 +180,7 @@ class InMemoryKernelState:
 
 
 class SQLiteKernelState:
-    def __init__(self, path: str | PathLike[str]) -> None:
+    def __init__(self, path: str | PathLike[str], *, index_audit_events: bool = False) -> None:
         self._connection = sqlite3.connect(path)
         self._connection.execute("PRAGMA foreign_keys = ON")
         self._connection.execute("PRAGMA synchronous = FULL")
@@ -191,6 +191,10 @@ class SQLiteKernelState:
             CREATE TABLE IF NOT EXISTS permit_directives (permit TEXT PRIMARY KEY REFERENCES permits(permit) ON DELETE CASCADE, directive_id TEXT NOT NULL, directive_version INTEGER NOT NULL, directive_hash TEXT NOT NULL, directive_issued_at_ns INTEGER NOT NULL, directive_expires_at_ns INTEGER NOT NULL, parent_directive_hash TEXT);
             CREATE TABLE IF NOT EXISTS audit (sequence INTEGER PRIMARY KEY, event TEXT NOT NULL, payload_json TEXT NOT NULL, previous_hash TEXT NOT NULL, timestamp_ns INTEGER NOT NULL, hash TEXT NOT NULL);
         """)
+        # Opt in for event-heavy histories: the index speeds filtered reads but
+        # adds maintenance to every durable audit insert. Existing indexes stay.
+        if index_audit_events:
+            self._connection.execute("CREATE INDEX IF NOT EXISTS audit_event_sequence ON audit(event, sequence)")
         columns = {row[1] for row in self._connection.execute("PRAGMA table_info(permit_directives)").fetchall()}
         if "parent_directive_hash" not in columns:
             self._connection.execute("ALTER TABLE permit_directives ADD COLUMN parent_directive_hash TEXT")
@@ -232,8 +236,11 @@ class SQLiteKernelState:
                 if replay: return replay
                 self._connection.execute("INSERT INTO approvals (approval_id, nonce) VALUES (?, ?)", (approval.approval_id, approval.nonce))
             self._connection.execute("INSERT INTO permits (permit, intent_hash) VALUES (?, ?)", (permit, intent_hash))
-            if approval is not None: self._append("approval_verified", approval.audit_payload, timestamp_ns)
-            self._append("decision", {"outcome": "allow", "reason": decision_reason, "intent_hash": intent_hash}, timestamp_ns)
+            events = []
+            if approval is not None:
+                events.append(("approval_verified", approval.audit_payload))
+            events.append(("decision", {"outcome": "allow", "reason": decision_reason, "intent_hash": intent_hash}))
+            self._append_many(events, timestamp_ns)
         return None
 
     def bind_permit_to_directive(self, permit: str, intent_hash: str, binding: DirectivePermitBinding, timestamp_ns: int) -> None:
@@ -336,8 +343,21 @@ class SQLiteKernelState:
             return None
 
     def _append(self, event: str, payload: dict[str, Any], timestamp_ns: int) -> None:
-        row = self._connection.execute("SELECT hash FROM audit ORDER BY sequence DESC LIMIT 1").fetchone(); previous = row[0] if row else "0" * 64
-        record = _audit_record(previous, event, payload, timestamp_ns)
-        self._connection.execute("INSERT INTO audit (event, payload_json, previous_hash, timestamp_ns, hash) VALUES (?, ?, ?, ?, ?)", (record["event"], _canonical(record["payload"]).decode(), record["previous_hash"], record["timestamp_ns"], record["hash"]))
+        self._append_many([(event, payload)], timestamp_ns)
+
+    def _append_many(self, events: list[tuple[str, dict[str, Any]]], timestamp_ns: int) -> None:
+        # Callers hold BEGIN IMMEDIATE. Keep the tip local to this transaction:
+        # another connection may advance it immediately after we commit.
+        row = self._connection.execute("SELECT hash FROM audit ORDER BY sequence DESC LIMIT 1").fetchone()
+        previous = row[0] if row else "0" * 64
+        rows = []
+        for event, payload in events:
+            record = _audit_record(previous, event, payload, timestamp_ns)
+            rows.append((event, _canonical(payload).decode(), previous, timestamp_ns, record["hash"]))
+            previous = record["hash"]
+        self._connection.executemany(
+            "INSERT INTO audit (event, payload_json, previous_hash, timestamp_ns, hash) VALUES (?, ?, ?, ?, ?)",
+            rows,
+        )
 
     def close(self) -> None: self._connection.close()

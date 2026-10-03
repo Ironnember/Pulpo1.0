@@ -1,0 +1,53 @@
+{
+  "label": "baseline",
+  "python": "3.12.10",
+  "sqlite": "3.49.1",
+  "platform": "Windows-11-10.0.26200-SP0",
+  "iterations": 200,
+  "history": 10000,
+  "repeats": 5,
+  "results": [
+    {
+      "case": "append",
+      "median_seconds": 0.7670631000073627,
+      "operations_per_second": 260.7347426803353,
+      "samples_seconds": [
+        0.7670631000073627,
+        0.6784537999774329,
+        0.9306901000090875,
+        0.6716332000214607,
+        0.9358670000219718
+      ],
+      "journal_mode": "delete",
+      "synchronous": 2
+    },
+    {
+      "case": "issue_and_consume",
+      "median_seconds": 1.7554018000373617,
+      "operations_per_second": 113.93402923236334,
+      "samples_seconds": [
+        1.8631461000186391,
+        1.608728799968958,
+        1.7554018000373617,
+        1.805377500015311,
+        1.5146557999541983
+      ],
+      "journal_mode": "delete",
+      "synchronous": 2
+    },
+    {
+      "case": "unique_new",
+      "median_seconds": 0.8777633000281639,
+      "operations_per_second": 227.8518593720913,
+      "samples_seconds": [
+        0.8777633000281639,
+        0.7605073000304401,
+        1.1495572999701835,
+        0.9051269000046887,
+        0.7269382000085898
+      ],
+      "journal_mode": "delete",
+      "synchronous": 2
+    }
+  ]
+}

@@ -1,0 +1,469 @@
+# PR draft: conservative SQLite efficiency mitigation
+
+Prepared 2026-10-03. Draft only; no PR submitted. Scope of this reconciliation: C:\Users\spike\Pulpo1.0. Existing code, tests, documentation, and evidence were read without modification.
+
+Claim labels: Verified = directly checked artifact content, source, or arithmetic in this reconciliation; Recorded = an existing run or user-supplied measurement, not independently rerun here; Inferred = explanation consistent with the evidence; Unknown = not established. Verified log equivalence does not make recorded executions independently reproduced.
+
+## Change scope
+
+Verified — HEAD and the stored baseline revision are 73ec97b68a3228c52ecba717d867a1d99340ab15. Current production diff is confined to pulpo/state.py: optional audit(event, sequence) index, default false; issuance creates approval_verified and decision audit records in order using _append_many; one transaction-local audit-tip selection followed by executemany. _append also delegates to _append_many. An existing index persists when the option is subsequently false.
+
+Verified — No new approval, permit, or audit mutation API is exposed in this diff. The existing issuance transaction still writes approval use, permit, and audit; the existing kernel/state methods control those mutations. Index creation is an opt-in schema mutation/derived access structure. BEGIN IMMEDIATE, foreign keys, FULL synchronous durability setting, hashes, identity checks, and transition commit boundaries remain in the source. The mitigation introduces neither WAL selection nor cross-transition batching. Authority is left unchanged by the inspected diff; whole-system authority assurance remains bounded by tests and environment.
+
+Verified — tests/test_persistence.py has cleanup repairs, a state factory, five new default checks, and the inherited indexed class: nine original tests become 14 default + 14 indexed = 28 checks, net +19. README.md and docs/PERSISTENCE.md already contain performance documentation. scripts/benchmark_sqlite_state.py is an existing untracked benchmark. custody-service/tests/conftest.py.bak is an unrelated existing untracked file and is outside the proposed SQLite evidence scope.
+
+Verified — The single-snapshot approval replay query already exists in the baseline; do not credit it as a new mitigation.
+
+Current state.py SHA256: 9e0f8b10f57ccd3d7e861adc50181db79932f9d55c1c4417847121d09e112e56.
+Baseline backend SHA256 recorded in final benchmark: dab57d3ff8640e40b5171462068a66aba483d985048c1570cceae29ecc393cad.
+Verified — The current backend hash matches sqlite-final-comparison.json, sqlite-cpu-current.json, and sqlite-cpu-profile.json. Stored full-suite logs have no comparable backend/test hash manifest, so their exact execution-tree identity is Recorded/Unknown beyond their headings and content.
+
+## Sustained performance evidence
+
+Recorded — User-supplied sustained isolated CPU run: iterations=2000, history=10000, repeats=7. Raw repeat samples, harness, CPU timer, aggregation method, environment manifest, and backend hash for that run were not located among the SQLite artifacts. These are not independently Verified CPU measurements.
+
+Verified arithmetic from Recorded inputs — CPU and elapsed seconds:
+
+| Case | Baseline CPU | Default CPU | Indexed CPU | Default CPU delta | Indexed CPU delta | Baseline wall | Default wall | Indexed wall | Default wall delta | Indexed wall delta |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| append | 2.703125 | 2.953125 | 2.968750 | 9.25% | 9.83% | 7.877847 | 8.190935 | 8.329598 | 3.97% | 5.73% |
+| issue_and_consume | 6.234375 | 5.765625 | 6.156250 | -7.52% | -1.25% | 18.224814 | 18.273392 | 20.429738 | 0.27% | 12.10% |
+| unique_new | 7.171875 | 7.125000 | 5.687500 | -0.65% | -20.70% | 13.386956 | 13.103467 | 11.618143 | -2.12% | -13.21% |
+| unique_replay | 1.140625 | 1.156250 | 0.437500 | 1.37% | -61.64% | 2.383814 | 2.401735 | 0.494616 | 0.75% | -79.25% |
+
+Indexed CPU/op: append 1.4844 ms; issue_and_consume 3.0781 ms; unique_new 2.8438 ms; unique_replay 0.2188 ms. Baseline CPU/op: 1.3516, 3.1172, 3.5859, and 0.5703 ms respectively. An issue_and_consume iteration includes issuance and consumption, two transitions; it is not one append.
+
+Verified arithmetic — Sum of the four reported baseline CPU totals is 17.25 s; indexed is 15.25 s, a reduction of 11.5942%. This is an equal-operation-count synthetic mix, with CPU weighting implicit in each case's cost; it is not an equal-weight average of four percentage changes, a measured combined run, or a production-wide efficiency claim. Replay elapsed-time ratio is 4.8195x at the same iteration count. Indexed unique-new elapsed time improves 13.21%; append worsens 5.73%; issue_and_consume worsens 12.10%.
+
+Verified artifact reconciliation — sqlite-final-comparison.json is a different experiment: 200 operations, history=10000, repeats=5; Python 3.12.10, SQLite 3.49.1, Windows-11-10.0.26200-SP0; delete journal and synchronous=2 in recorded results. The script uses perf_counter and outputs elapsed samples, not process CPU. The files sqlite-cpu-current.json and sqlite-cpu-profile.json also contain this elapsed-only schema and 200/5 settings despite their names. They cannot verify the sustained 2000/7 CPU claims.
+
+Recorded — Final short-run elapsed medians (seconds; baseline/default/indexed):
+append 0.6398/0.6652/0.6690;
+issue_and_consume 1.8117/1.5481/1.8009;
+unique_new 0.8547/0.9103/0.7229;
+unique_replay 0.0873/0.0887/0.0183.
+Earlier baseline/mitigated/comparison and CPU-named JSON are exploratory runs, not replacements for the final or sustained experiment. The differing issue/consume wall results demonstrate a workload/run boundary, not a reason to suppress the sustained indexed regression.
+
+## Correctness/invariant evidence
+
+Verified — Independently parsed stored baseline and final logs, not just sqlite-suite-comparison.json. Baseline: Ran 389 tests in 49.950s, failures=13, errors=126, skipped=1. Final: Ran 408 tests in 51.764s, failures=13, errors=126, skipped=1. All 139 FAIL/ERROR diagnostic blocks were compared by full test identity, kind, complete normalized exception-chain signature, and multiplicity. Only generated temporary basenames were normalized; exception classes, messages, meaningful suffixes (.sqlite3, -wal, -shm), and path roles remain distinguished. Normalized signatures were compared in full with SHA256, without truncating the comparison.
+
+Verified — No added or removed identity/kind/signature/multiplicity occurs. The same 13 failing tests and 54 erroring test identities account for 13 failures and 126 error events. Repeated cleanup errors are separate events, not 126 distinct erroring tests. No new failure/error class is observed in these stored runs. Unknown — whether the change introduces untested, masked, timing-dependent, or environment-specific regressions. The suite remains non-green.
+
+Recorded provenance — Baseline log header: "Baseline state and persistence tests (+ cleanup only): 73ec97b68a3228c52ecba717d867a1d99340ab15". This compares the original backend and nine original persistence checks with cleanup repair in the surrounding current checkout; it is not a clean historical-tree replay. Its timestamp is later than the final run: "baseline" describes the backend fixture, not chronological execution order. Original runner/cleanup transformation details are not saved as an executable baseline harness in the inspected artifacts.
+
+Verified log content / Recorded executions — sqlite-full-tests-final.log lists all 28 persistence checks as ok. sqlite-persistence-final.log independently records 28 passing checks in 1.508s. Each of these 14 names runs in RestartSafeStateTests and IndexedRestartSafeStateTests:
+- test_approval_and_permit_replay_remain_denied_after_restart
+- test_concurrent_consumption_succeeds_once
+- test_concurrent_identical_approval_allows_exactly_once
+- test_existing_database_gets_index_without_changing_audit
+- test_failed_audit_write_rolls_back_approval_and_permit
+- test_failed_commit_rolls_back_approval_permit_and_audit
+- test_failed_consumption_audit_rolls_back_spent_permit
+- test_failed_second_audit_insert_rolls_back_entire_issuance
+- test_issuance_reads_tip_once_and_preserves_event_order
+- test_malformed_persisted_audit_raises_integrity_error_at_restart
+- test_overlapping_connections_serialize_audit_tip_selection
+- test_replay_reason_uses_one_snapshot_with_id_precedence
+- test_tampered_persisted_audit_fails_closed_at_restart
+- test_verified_approval_and_permit_are_committed_with_one_transaction
+
+Verified source-to-test mapping — These checks exercise restart replay denial and permit intent matching; exactly-once approval/consumption; first and second audit-insert rollback; commit-contention rollback; consumption rollback; transaction-local tip ordering under overlapping connections; tamper/malformed-chain rejection; and index creation without audit rewriting. The migration test explicitly opens indexed in both classes, so its duplicate run is not evidence of separate migration behavior under a false option. Forced commit contention is not a power-loss test.
+
+Verified — sqlite-full-tests.log is an incomplete earlier stream with no diagnostic summary or terminal Ran/FAILED result; it ends at Git-clarity tests. It cannot establish full-suite counts/signatures. sqlite-preexisting-failures.log records a baseline-only targeted commerce WinError 32 error and canonical-clean/dirty assertion failure: useful corroboration, not a substitute for the complete baseline.
+
+Analytical adversarial review (Inferred bounded conclusions, grounded by the source/test mapping): Flip — hostile replay must still pass locked guards; Reverse — stale-tip forks are addressed by selecting the tip under BEGIN IMMEDIATE; Invert — partial issuance must roll back; Inside-Out — index stays derived and introduces no authority plane; Darken — fault and concurrent paths can corrupt semantics unless rollback/once-only behavior holds; Lighten — cleanup errors alone do not show an authority breach; Amplify — retries and overlapping writers require once-only behavior, while matching-event scans and single-writer constraints remain; Negate — retain full sync and existing commit boundaries, using the optional index only when measured gains justify cost. Continue with evidence review; no production execution or authority expansion authorized by this assessment. Smallest next proof: independent tests and sustained CPU measurement tied to these exact source hashes.
+
+## Exact known pre-existing failures/errors
+
+Verified — Every entry below appears both before and after with identical normalized signatures and event counts. B/F are diagnostic-header line numbers in sqlite-full-tests-baseline.log/sqlite-full-tests-final.log. Raw logs preserve exact temporary filenames and complete assertion strings; sqlite-evidence-reconciliation.json preserves complete normalized signatures and hashes.
+
+Class inventory, before = after:
+- 112 ERROR events: PermissionError [WinError 32], "The process cannot access the file because it is being used by another process", on commerce.sqlite3 or temporary SQLite main/WAL/SHM files.
+- 6 ERROR events: sqlite3.OperationalError: unable to open database file.
+- 5 ERROR events: PermissionError [Errno 13] on a parent directory -> MCPBoundaryError (2 mcp_snapshot_parent_invalid; 3 mcp_plugin_snapshot_parent_invalid).
+- 2 ERROR events: PermissionError [Errno 13] on .pptx artifact -> ValueError: artifact_unreadable.
+- 1 ERROR event: MCPTunnelBindingError: pulpo_tunnel_snapshot_path_invalid.
+- 13 FAIL events: exact assertions below.
+Inferred — Windows handle lifetime, directory-open/permissions semantics, slash/escaping assumptions, and file-mode assumptions explain much of this pattern; source attribution to SQLite mitigation is not supported. Dirty Git fixture root cause remains Unknown. Pre-existing does not mean harmless or resolved.
+
+### ERROR: test_commerce.CommerceProofTests.test_durable_budget_requires_stable_path_and_ceiling
+
+- Before 1; after 1. B:469 / F:487. Signature: PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\Users\\spike\\Pulpo1.0\\work\\<TEMP>\\commerce.sqlite3' | PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\Users\\spike\\Pulpo1.0\\work\\<TEMP>\\commerce.sqlite3'
+
+### ERROR: test_commerce.CommerceProofTests.test_durable_budget_reservation_is_atomic_between_workers
+
+- Before 1; after 1. B:498 / F:516. Signature: PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\Users\\spike\\Pulpo1.0\\work\\<TEMP>\\commerce.sqlite3' | PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\Users\\spike\\Pulpo1.0\\work\\<TEMP>\\commerce.sqlite3'
+
+### ERROR: test_commerce.CommerceProofTests.test_durable_budget_survives_restart_and_blocks_attempt_replay
+
+- Before 1; after 1. B:527 / F:545. Signature: PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\Users\\spike\\Pulpo1.0\\work\\<TEMP>\\commerce.sqlite3' | PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\Users\\spike\\Pulpo1.0\\work\\<TEMP>\\commerce.sqlite3'
+
+### ERROR: test_commerce.CommerceProofTests.test_durable_reconciliation_survives_restart
+
+- Before 1; after 1. B:556 / F:574. Signature: PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\Users\\spike\\Pulpo1.0\\work\\<TEMP>\\commerce.sqlite3' | PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\Users\\spike\\Pulpo1.0\\work\\<TEMP>\\commerce.sqlite3'
+
+### ERROR: test_commerce.CommerceProofTests.test_uncertain_external_result_cannot_be_blindly_retried_after_restart
+
+- Before 1; after 1. B:585 / F:603. Signature: PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\Users\\spike\\Pulpo1.0\\work\\<TEMP>\\commerce.sqlite3' | PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\Users\\spike\\Pulpo1.0\\work\\<TEMP>\\commerce.sqlite3'
+
+### ERROR: test_custody_domain.CustodyDomainIntegrationTests.test_concurrent_reservations_cannot_oversubscribe_protected_budget
+
+- Before 1; after 1. B:614 / F:632. Signature: PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\Users\\spike\\Pulpo1.0\\work\\<TEMP>.sqlite3-shm'
+- Before 1; after 1. B:625 / F:643. Signature: PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\Users\\spike\\Pulpo1.0\\work\\<TEMP>.sqlite3-wal'
+- Before 1; after 1. B:636 / F:654. Signature: PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\Users\\spike\\Pulpo1.0\\work\\<TEMP>.sqlite3'
+
+### ERROR: test_custody_domain.CustodyDomainIntegrationTests.test_exact_locked_domain_permit_and_budget_are_consumed_before_custody_attempt
+
+- Before 1; after 1. B:647 / F:665. Signature: PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\Users\\spike\\Pulpo1.0\\work\\<TEMP>.sqlite3-shm'
+- Before 1; after 1. B:658 / F:676. Signature: PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\Users\\spike\\Pulpo1.0\\work\\<TEMP>.sqlite3-wal'
+- Before 1; after 1. B:669 / F:687. Signature: PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\Users\\spike\\Pulpo1.0\\work\\<TEMP>.sqlite3'
+
+### ERROR: test_custody_domain.CustodyDomainIntegrationTests.test_revoked_directive_is_revalidated_before_budget_attempt_and_custody_attempt
+
+- Before 1; after 1. B:680 / F:698. Signature: PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\Users\\spike\\Pulpo1.0\\work\\<TEMP>.sqlite3-shm'
+- Before 1; after 1. B:691 / F:709. Signature: PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\Users\\spike\\Pulpo1.0\\work\\<TEMP>.sqlite3-wal'
+- Before 1; after 1. B:702 / F:720. Signature: PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\Users\\spike\\Pulpo1.0\\work\\<TEMP>.sqlite3'
+
+### ERROR: test_custody_domain.CustodyDomainIntegrationTests.test_substituted_domain_order_fails_before_budget_or_permit_consumption
+
+- Before 1; after 1. B:713 / F:731. Signature: PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\Users\\spike\\Pulpo1.0\\work\\<TEMP>.sqlite3-shm'
+- Before 1; after 1. B:724 / F:742. Signature: PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\Users\\spike\\Pulpo1.0\\work\\<TEMP>.sqlite3-wal'
+- Before 1; after 1. B:735 / F:753. Signature: PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\Users\\spike\\Pulpo1.0\\work\\<TEMP>.sqlite3'
+
+### ERROR: test_custody_domain.CustodyDomainIntegrationTests.test_worker_rollback_after_restart_cannot_restore_budget_or_domain_permit
+
+- Before 1; after 1. B:746 / F:764. Signature: PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\Users\\spike\\Pulpo1.0\\work\\<TEMP>.sqlite3-shm'
+- Before 1; after 1. B:757 / F:775. Signature: PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\Users\\spike\\Pulpo1.0\\work\\<TEMP>.sqlite3-wal'
+- Before 1; after 1. B:768 / F:786. Signature: PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\Users\\spike\\Pulpo1.0\\work\\<TEMP>.sqlite3'
+
+### ERROR: test_custody_evidence.CustodyEvidenceConvergenceTests.test_abort_before_custody_commit_creates_neither_mutation_nor_obligation
+
+- Before 1; after 1. B:779 / F:797. Signature: PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\Users\\spike\\Pulpo1.0\\work\\<TEMP>.sqlite3-shm'
+- Before 1; after 1. B:790 / F:808. Signature: PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\Users\\spike\\Pulpo1.0\\work\\<TEMP>.sqlite3-wal'
+- Before 1; after 1. B:801 / F:819. Signature: PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\Users\\spike\\Pulpo1.0\\work\\<TEMP>.sqlite3'
+
+### ERROR: test_custody_evidence.CustodyEvidenceConvergenceTests.test_committed_obligation_blocks_next_transition_until_projection
+
+- Before 1; after 1. B:812 / F:830. Signature: PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\Users\\spike\\Pulpo1.0\\work\\<TEMP>.sqlite3-shm'
+- Before 1; after 1. B:823 / F:841. Signature: PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\Users\\spike\\Pulpo1.0\\work\\<TEMP>.sqlite3-wal'
+
+### ERROR: test_custody_evidence.CustodyEvidenceConvergenceTests.test_crash_during_projection_restarts_without_duplicate_canonical_event
+
+- Before 1; after 1. B:834 / F:852. Signature: PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\Users\\spike\\Pulpo1.0\\work\\<TEMP>.sqlite3-shm'
+- Before 1; after 1. B:845 / F:863. Signature: PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\Users\\spike\\Pulpo1.0\\work\\<TEMP>.sqlite3-wal'
+- Before 1; after 1. B:856 / F:874. Signature: PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\Users\\spike\\Pulpo1.0\\work\\<TEMP>.sqlite3'
+
+### ERROR: test_custody_evidence.CustodyEvidenceConvergenceTests.test_duplicate_projection_is_idempotent_by_transition_hash
+
+- Before 1; after 1. B:867 / F:885. Signature: PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\Users\\spike\\Pulpo1.0\\work\\<TEMP>.sqlite3-shm'
+- Before 1; after 1. B:878 / F:896. Signature: PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\Users\\spike\\Pulpo1.0\\work\\<TEMP>.sqlite3-wal'
+- Before 1; after 1. B:889 / F:907. Signature: PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\Users\\spike\\Pulpo1.0\\work\\<TEMP>.sqlite3'
+
+### ERROR: test_custody_evidence.CustodyEvidenceConvergenceTests.test_tampered_obligation_is_denied_and_blocks_custody
+
+- Before 1; after 1. B:900 / F:918. Signature: PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\Users\\spike\\Pulpo1.0\\work\\<TEMP>.sqlite3-shm'
+- Before 1; after 1. B:911 / F:929. Signature: PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\Users\\spike\\Pulpo1.0\\work\\<TEMP>.sqlite3-wal'
+- Before 1; after 1. B:922 / F:940. Signature: PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\Users\\spike\\Pulpo1.0\\work\\<TEMP>.sqlite3'
+
+### ERROR: test_custody_executor.CustodyExecutorTests.test_crash_after_transmission_release_never_releases_second_network_right
+
+- Before 1; after 1. B:933 / F:951. Signature: PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\Users\\spike\\Pulpo1.0\\work\\<TEMP>.sqlite3-shm'
+- Before 1; after 1. B:944 / F:962. Signature: PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\Users\\spike\\Pulpo1.0\\work\\<TEMP>.sqlite3-wal'
+- Before 1; after 1. B:955 / F:973. Signature: PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\Users\\spike\\Pulpo1.0\\work\\<TEMP>.sqlite3'
+
+### ERROR: test_custody_executor.CustodyExecutorTests.test_lost_provider_response_is_unknown_and_cannot_retry_or_release_budget
+
+- Before 1; after 1. B:966 / F:984. Signature: PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\Users\\spike\\Pulpo1.0\\work\\<TEMP>.sqlite3-shm'
+- Before 1; after 1. B:977 / F:995. Signature: PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\Users\\spike\\Pulpo1.0\\work\\<TEMP>.sqlite3-wal'
+- Before 1; after 1. B:988 / F:1006. Signature: PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\Users\\spike\\Pulpo1.0\\work\\<TEMP>.sqlite3'
+
+### ERROR: test_custody_executor.CustodyExecutorTests.test_preflight_failure_releases_no_network_transmission_right
+
+- Before 1; after 1. B:999 / F:1017. Signature: PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\Users\\spike\\Pulpo1.0\\work\\<TEMP>.sqlite3-shm'
+- Before 1; after 1. B:1010 / F:1028. Signature: PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\Users\\spike\\Pulpo1.0\\work\\<TEMP>.sqlite3-wal'
+- Before 1; after 1. B:1021 / F:1039. Signature: PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\Users\\spike\\Pulpo1.0\\work\\<TEMP>.sqlite3'
+
+### ERROR: test_custody_executor.CustodyExecutorTests.test_provider_success_is_only_a_claim_and_still_requires_reconciliation
+
+- Before 1; after 1. B:1032 / F:1050. Signature: PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\Users\\spike\\Pulpo1.0\\work\\<TEMP>.sqlite3-shm'
+- Before 1; after 1. B:1043 / F:1061. Signature: PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\Users\\spike\\Pulpo1.0\\work\\<TEMP>.sqlite3-wal'
+- Before 1; after 1. B:1054 / F:1072. Signature: PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\Users\\spike\\Pulpo1.0\\work\\<TEMP>.sqlite3'
+
+### ERROR: test_custody_executor.CustodyExecutorTests.test_substituted_order_never_reaches_credential_adapter
+
+- Before 1; after 1. B:1065 / F:1083. Signature: PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\Users\\spike\\Pulpo1.0\\work\\<TEMP>.sqlite3-shm'
+- Before 1; after 1. B:1076 / F:1094. Signature: PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\Users\\spike\\Pulpo1.0\\work\\<TEMP>.sqlite3-wal'
+- Before 1; after 1. B:1087 / F:1105. Signature: PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\Users\\spike\\Pulpo1.0\\work\\<TEMP>.sqlite3'
+
+### ERROR: test_custody_reconcile_later.LaterEvidenceReconciliationTests.test_unresolved_consequence_can_later_resolve_without_reopening_execution
+
+- Before 1; after 1. B:1263 / F:1281. Signature: PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\Users\\spike\\Pulpo1.0\\work\\<TEMP>.sqlite3-shm'
+- Before 1; after 1. B:1274 / F:1292. Signature: PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\Users\\spike\\Pulpo1.0\\work\\<TEMP>.sqlite3-wal'
+- Before 1; after 1. B:1285 / F:1303. Signature: PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\Users\\spike\\Pulpo1.0\\work\\<TEMP>.sqlite3'
+
+### ERROR: test_custody_reconcile.CustodyReconciliationTests.test_exact_independent_observation_reconciles_success_and_settles_budget
+
+- Before 1; after 1. B:1098 / F:1116. Signature: PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\Users\\spike\\Pulpo1.0\\work\\<TEMP>.sqlite3-shm'
+- Before 1; after 1. B:1109 / F:1127. Signature: PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\Users\\spike\\Pulpo1.0\\work\\<TEMP>.sqlite3-wal'
+- Before 1; after 1. B:1120 / F:1138. Signature: PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\Users\\spike\\Pulpo1.0\\work\\<TEMP>.sqlite3'
+
+### ERROR: test_custody_reconcile.CustodyReconciliationTests.test_explicit_provider_failure_without_observed_effect_is_failure_but_budget_remains_held
+
+- Before 1; after 1. B:1131 / F:1149. Signature: PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\Users\\spike\\Pulpo1.0\\work\\<TEMP>.sqlite3-shm'
+- Before 1; after 1. B:1142 / F:1160. Signature: PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\Users\\spike\\Pulpo1.0\\work\\<TEMP>.sqlite3-wal'
+- Before 1; after 1. B:1153 / F:1171. Signature: PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\Users\\spike\\Pulpo1.0\\work\\<TEMP>.sqlite3'
+
+### ERROR: test_custody_reconcile.CustodyReconciliationTests.test_not_found_lookup_cannot_be_inferred_as_known_failure
+
+- Before 1; after 1. B:1164 / F:1182. Signature: PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\Users\\spike\\Pulpo1.0\\work\\<TEMP>.sqlite3-shm'
+- Before 1; after 1. B:1175 / F:1193. Signature: PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\Users\\spike\\Pulpo1.0\\work\\<TEMP>.sqlite3-wal'
+- Before 1; after 1. B:1186 / F:1204. Signature: PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\Users\\spike\\Pulpo1.0\\work\\<TEMP>.sqlite3'
+
+### ERROR: test_custody_reconcile.CustodyReconciliationTests.test_observed_substitution_is_failure_and_does_not_reopen_budget
+
+- Before 1; after 1. B:1197 / F:1215. Signature: PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\Users\\spike\\Pulpo1.0\\work\\<TEMP>.sqlite3-shm'
+- Before 1; after 1. B:1208 / F:1226. Signature: PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\Users\\spike\\Pulpo1.0\\work\\<TEMP>.sqlite3-wal'
+- Before 1; after 1. B:1219 / F:1237. Signature: PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\Users\\spike\\Pulpo1.0\\work\\<TEMP>.sqlite3'
+
+### ERROR: test_custody_reconcile.CustodyReconciliationTests.test_provider_success_without_complete_external_observation_stays_unresolved_and_holds_budget
+
+- Before 1; after 1. B:1230 / F:1248. Signature: PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\Users\\spike\\Pulpo1.0\\work\\<TEMP>.sqlite3-shm'
+- Before 1; after 1. B:1241 / F:1259. Signature: PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\Users\\spike\\Pulpo1.0\\work\\<TEMP>.sqlite3-wal'
+- Before 1; after 1. B:1252 / F:1270. Signature: PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\Users\\spike\\Pulpo1.0\\work\\<TEMP>.sqlite3'
+
+### ERROR: test_directives.DirectiveProofTests.test_parent_revocation_keeps_child_permit_invalid_after_restart
+
+- Before 1; after 1. B:1296 / F:1314. Signature: sqlite3.OperationalError: unable to open database file
+
+### ERROR: test_directives.DirectiveProofTests.test_preissued_permit_stays_invalid_after_revocation_and_restart
+
+- Before 1; after 1. B:1306 / F:1326. Signature: sqlite3.OperationalError: unable to open database file
+
+### ERROR: test_directives.DirectiveProofTests.test_revocation_requires_new_authority_and_survives_restart
+
+- Before 1; after 1. B:1316 / F:1338. Signature: sqlite3.OperationalError: unable to open database file
+
+### ERROR: test_directives.DirectiveProofTests.test_sqlite_existing_permit_directive_table_migrates_parent_hash_column
+
+- Before 1; after 1. B:1326 / F:1350. Signature: sqlite3.OperationalError: unable to open database file
+
+### ERROR: test_expense_workflow.FieldExpenseGovernedEffectProofTests.test_revocation_after_issue_prevents_effect_and_survives_restart
+
+- Before 1; after 1. B:1335 / F:1359. Signature: sqlite3.OperationalError: unable to open database file
+
+### FAIL: test_git_clarity.GitClarityTests.test_clean_canonical_report_is_deterministic_and_self_verifying
+
+- Before 1; after 1. B:2001 / F:2029. Signature: AssertionError: 'canonical_commit_clean' != 'canonical_commit_dirty'
+
+### FAIL: test_git_clarity.GitClarityTests.test_clean_proposal_reports_ahead_commit_and_paths
+
+- Before 1; after 1. B:2014 / F:2042. Signature: AssertionError: 'proposal_clean' != 'proposal_dirty'
+
+### FAIL: test_git_clarity.GitClarityTests.test_detached_head_is_explicit
+
+- Before 1; after 1. B:2025 / F:2053. Signature: AssertionError: 'detached_canonical_commit_clean' != 'detached_canonical_commit_dirty'
+
+### FAIL: test_git_clarity.GitClarityTests.test_divergence_is_not_mislabeled_as_a_proposal
+
+- Before 1; after 1. B:2038 / F:2066. Signature: AssertionError: 'diverged_clean' != 'diverged_dirty'
+
+### ERROR: test_issue_153_consequence_reconciliation_v0.Issue153ConsequenceReconciliationV0.test_01_valid_directive_exact_permit_and_observation_reconcile_verified_success
+
+- Before 1; after 1. B:1345 / F:1371. Signature: PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\Users\\spike\\Pulpo1.0\\work\\<TEMP>.sqlite3-shm'
+- Before 1; after 1. B:1356 / F:1382. Signature: PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\Users\\spike\\Pulpo1.0\\work\\<TEMP>.sqlite3-wal'
+- Before 1; after 1. B:1367 / F:1393. Signature: PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\Users\\spike\\Pulpo1.0\\work\\<TEMP>.sqlite3'
+
+### ERROR: test_issue_153_consequence_reconciliation_v0.Issue153ConsequenceReconciliationV0.test_02_executor_success_plus_substituted_observation_is_mismatch_and_nonreusable_memory
+
+- Before 1; after 1. B:1378 / F:1404. Signature: PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\Users\\spike\\Pulpo1.0\\work\\<TEMP>.sqlite3-shm'
+- Before 1; after 1. B:1389 / F:1415. Signature: PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\Users\\spike\\Pulpo1.0\\work\\<TEMP>.sqlite3-wal'
+- Before 1; after 1. B:1400 / F:1426. Signature: PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\Users\\spike\\Pulpo1.0\\work\\<TEMP>.sqlite3'
+
+### ERROR: test_issue_153_consequence_reconciliation_v0.Issue153ConsequenceReconciliationV0.test_03_executor_success_plus_incomplete_evidence_is_unknown_and_nonreusable_memory
+
+- Before 1; after 1. B:1411 / F:1437. Signature: PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\Users\\spike\\Pulpo1.0\\work\\<TEMP>.sqlite3-shm'
+- Before 1; after 1. B:1422 / F:1448. Signature: PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\Users\\spike\\Pulpo1.0\\work\\<TEMP>.sqlite3-wal'
+- Before 1; after 1. B:1433 / F:1459. Signature: PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\Users\\spike\\Pulpo1.0\\work\\<TEMP>.sqlite3'
+
+### ERROR: test_issue_153_consequence_reconciliation_v0.Issue153ConsequenceReconciliationV0.test_04_mismatch_and_unknown_state_and_memory_survive_restart_without_retry_authority
+
+- Before 2; after 2. B:1444,1477 / F:1470,1503. Signature: PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\Users\\spike\\Pulpo1.0\\work\\<TEMP>.sqlite3-shm'
+- Before 2; after 2. B:1455,1488 / F:1481,1514. Signature: PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\Users\\spike\\Pulpo1.0\\work\\<TEMP>.sqlite3-wal'
+- Before 2; after 2. B:1466,1499 / F:1492,1525. Signature: PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\Users\\spike\\Pulpo1.0\\work\\<TEMP>.sqlite3'
+
+### ERROR: test_issue_153_consequence_reconciliation_v0.Issue153ConsequenceReconciliationV0.test_07_outcome_memory_rejects_result_substitution_and_conflicting_replacement
+
+- Before 1; after 1. B:1510 / F:1536. Signature: PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\Users\\spike\\Pulpo1.0\\work\\<TEMP>.sqlite3-shm'
+- Before 1; after 1. B:1521 / F:1547. Signature: PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\Users\\spike\\Pulpo1.0\\work\\<TEMP>.sqlite3-wal'
+- Before 1; after 1. B:1532 / F:1558. Signature: PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\Users\\spike\\Pulpo1.0\\work\\<TEMP>.sqlite3'
+
+### ERROR: test_issue_153_consequence_reconciliation_v0.Issue153ConsequenceReconciliationV0.test_08_independently_observed_provider_failure_is_failure_class_memory_not_success
+
+- Before 1; after 1. B:1543 / F:1569. Signature: PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\Users\\spike\\Pulpo1.0\\work\\<TEMP>.sqlite3-shm'
+- Before 1; after 1. B:1554 / F:1580. Signature: PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\Users\\spike\\Pulpo1.0\\work\\<TEMP>.sqlite3-wal'
+- Before 1; after 1. B:1565 / F:1591. Signature: PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\Users\\spike\\Pulpo1.0\\work\\<TEMP>.sqlite3'
+
+### ERROR: test_issue_153_consequence_reconciliation_v0.Issue153ConsequenceReconciliationV0.test_09_successful_outcome_memory_cannot_authorize_an_otherwise_denied_intent
+
+- Before 1; after 1. B:1576 / F:1602. Signature: PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\Users\\spike\\Pulpo1.0\\work\\<TEMP>.sqlite3-shm'
+- Before 1; after 1. B:1587 / F:1613. Signature: PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\Users\\spike\\Pulpo1.0\\work\\<TEMP>.sqlite3-wal'
+- Before 1; after 1. B:1598 / F:1624. Signature: PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\Users\\spike\\Pulpo1.0\\work\\<TEMP>.sqlite3'
+
+### ERROR: test_issue_153_outcome_memory_hostile_v0.Issue153OutcomeMemoryHostileV0.test_10_outcome_memory_denied_until_exact_reconciliation_evidence_is_canonical
+
+- Before 1; after 1. B:1609 / F:1635. Signature: PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\Users\\spike\\Pulpo1.0\\work\\<TEMP>.sqlite3-shm'
+- Before 1; after 1. B:1620 / F:1646. Signature: PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\Users\\spike\\Pulpo1.0\\work\\<TEMP>.sqlite3-wal'
+- Before 1; after 1. B:1631 / F:1657. Signature: PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\Users\\spike\\Pulpo1.0\\work\\<TEMP>.sqlite3'
+
+### ERROR: test_issue_153_outcome_memory_hostile_v0.Issue153OutcomeMemoryHostileV0.test_11_concurrent_identical_recording_creates_exactly_one_canonical_memory_event
+
+- Before 1; after 1. B:1642 / F:1668. Signature: PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\Users\\spike\\Pulpo1.0\\work\\<TEMP>.sqlite3-shm'
+- Before 1; after 1. B:1653 / F:1679. Signature: PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\Users\\spike\\Pulpo1.0\\work\\<TEMP>.sqlite3-wal'
+- Before 1; after 1. B:1664 / F:1690. Signature: PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\Users\\spike\\Pulpo1.0\\work\\<TEMP>.sqlite3'
+
+### FAIL: test_local_intelligence_effect_proof_v2.LocalIntelligenceEffectProofV2Tests.test_fire_stages_private_auth_copy_inside_runtime
+
+- Before 1; after 1. B:2070 / F:2098. Signature: AssertionError: 438 != 384
+
+### FAIL: test_local_intelligence_effect_proof.LocalIntelligenceEffectProofScriptTests.test_environment_drops_secret_like_variables_and_pins_codex_home
+
+- Before 1; after 1. B:2049 / F:2077. Signature: AssertionError: '\\tmp\\runtime' != '/tmp/runtime'
+
+### FAIL: test_local_intelligence_effect_proof.LocalIntelligenceEffectProofScriptTests.test_seatbelt_denies_global_writes_and_allows_only_runtime
+
+- Before 1; after 1. B:2062 / F:2090. Signature: AssertionError: expected '(allow file-write* (subpath "<Windows runtime path>"))' not found in generated Seatbelt profile containing escaped Windows backslashes. Complete exact normalized assertion is retained in the JSON and B/F logs.
+
+### FAIL: test_mcp_boundary.MCPBoundaryTests.test_export_rejects_relative_or_linked_destination
+
+- Before 1; after 1. B:2078 / F:2106. Signature: pulpo.mcp_boundary.MCPBoundaryError: mcp_snapshot_destination_not_absolute | AssertionError: "mcp_snapshot_destination_invalid" does not match "mcp_snapshot_destination_not_absolute"
+
+### FAIL: test_mcp_boundary.MCPBoundaryTests.test_export_reports_clean_failure_before_atomic_replace
+
+- Before 1; after 1. B:2091 / F:2119. Signature: PermissionError: [Errno 13] Permission denied: 'C:\\Users\\spike\\Pulpo1.0\\work\\<TEMP>' | pulpo.mcp_boundary.MCPBoundaryError: mcp_snapshot_parent_invalid | AssertionError: "mcp_snapshot_export_failed" does not match "mcp_snapshot_parent_invalid"
+
+### FAIL: test_mcp_boundary.MCPBoundaryTests.test_export_reports_commit_unknown_if_directory_sync_fails
+
+- Before 1; after 1. B:2112 / F:2140. Signature: PermissionError: [Errno 13] Permission denied: 'C:\\Users\\spike\\Pulpo1.0\\work\\<TEMP>' | pulpo.mcp_boundary.MCPBoundaryError: mcp_snapshot_parent_invalid | AssertionError: "mcp_snapshot_export_commit_unknown" does not match "mcp_snapshot_parent_invalid"
+
+### FAIL: test_mcp_boundary.MCPBoundaryTests.test_export_reports_commit_unknown_if_parent_swapped_after_open
+
+- Before 1; after 1. B:2133 / F:2161. Signature: PermissionError: [Errno 13] Permission denied: 'C:\\Users\\spike\\Pulpo1.0\\work\\<TEMP>\\trusted' | pulpo.mcp_boundary.MCPBoundaryError: mcp_snapshot_parent_invalid | AssertionError: "mcp_snapshot_export_commit_unknown" does not match "mcp_snapshot_parent_invalid"
+
+### ERROR: test_mcp_boundary.MCPBoundaryTests.test_exported_file_remains_frozen_after_canonical_mutation
+
+- Before 1; after 1. B:1675 / F:1701. Signature: PermissionError: [Errno 13] Permission denied: 'C:\\Users\\spike\\Pulpo1.0\\work\\<TEMP>' | pulpo.mcp_boundary.MCPBoundaryError: mcp_snapshot_parent_invalid
+
+### ERROR: test_mcp_boundary.MCPBoundaryTests.test_trusted_export_is_exact_private_and_non_mutating
+
+- Before 1; after 1. B:1693 / F:1719. Signature: PermissionError: [Errno 13] Permission denied: 'C:\\Users\\spike\\Pulpo1.0\\work\\<TEMP>' | pulpo.mcp_boundary.MCPBoundaryError: mcp_snapshot_parent_invalid
+
+### ERROR: test_mcp_plugin.MCPPluginTests.test_loads_exact_private_frozen_snapshot
+
+- Before 1; after 1. B:1712 / F:1738. Signature: PermissionError: [Errno 13] Permission denied: 'C:\\Users\\spike\\Pulpo1.0\\work\\<TEMP>' | pulpo.mcp_boundary.MCPBoundaryError: mcp_plugin_snapshot_parent_invalid
+
+### FAIL: test_mcp_plugin.MCPPluginTests.test_rejects_extra_missing_invalid_or_duplicate_snapshot_fields
+
+- Before 1; after 1. B:2154 / F:2182. Signature: PermissionError: [Errno 13] Permission denied: 'C:\\Users\\spike\\Pulpo1.0\\work\\<TEMP>' | pulpo.mcp_boundary.MCPBoundaryError: mcp_plugin_snapshot_parent_invalid | AssertionError: "mcp_plugin_snapshot_invalid" does not match "mcp_plugin_snapshot_parent_invalid"
+
+### FAIL: test_mcp_plugin.MCPPluginTests.test_rejects_relative_path_and_symlinked_parent_or_file
+
+- Before 1; after 1. B:2175 / F:2203. Signature: PermissionError: [Errno 13] Permission denied: 'C:\\Users\\spike\\Pulpo1.0\\work\\<TEMP>\\real' | pulpo.mcp_boundary.MCPBoundaryError: mcp_plugin_snapshot_parent_invalid | AssertionError: "mcp_plugin_snapshot_open_failed" does not match "mcp_plugin_snapshot_parent_invalid"
+
+### ERROR: test_mcp_tunnel.MCPTunnelBindingTests.test_binding_fails_closed_without_runtime_key
+
+- Before 1; after 1. B:1731 / F:1757. Signature: PermissionError: [Errno 13] Permission denied: 'C:\\Users\\spike\\Pulpo1.0\\work\\<TEMP>' | pulpo.mcp_boundary.MCPBoundaryError: mcp_plugin_snapshot_parent_invalid
+
+### ERROR: test_mcp_tunnel.MCPTunnelBindingTests.test_binding_uses_exact_tunnel_and_sanitized_environment
+
+- Before 1; after 1. B:1751 / F:1777. Signature: PermissionError: [Errno 13] Permission denied: 'C:\\Users\\spike\\Pulpo1.0\\work\\<TEMP>' | pulpo.mcp_boundary.MCPBoundaryError: mcp_plugin_snapshot_parent_invalid
+
+### ERROR: test_mcp_tunnel.MCPTunnelBindingTests.test_stdio_command_targets_only_existing_projection
+
+- Before 1; after 1. B:1772 / F:1798. Signature: pulpo.mcp_tunnel.MCPTunnelBindingError: pulpo_tunnel_snapshot_path_invalid
+
+### ERROR: test_namecom_observer.NameComObserverTests.test_ambiguous_multiple_registration_orders_never_guess_attribution
+
+- Before 1; after 1. B:1783 / F:1809. Signature: PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\Users\\spike\\Pulpo1.0\\work\\<TEMP>.sqlite3-shm'
+- Before 1; after 1. B:1794 / F:1820. Signature: PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\Users\\spike\\Pulpo1.0\\work\\<TEMP>.sqlite3-wal'
+- Before 1; after 1. B:1805 / F:1831. Signature: PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\Users\\spike\\Pulpo1.0\\work\\<TEMP>.sqlite3'
+
+### ERROR: test_namecom_observer.NameComObserverTests.test_exact_order_and_get_domain_readback_can_drive_verified_reconciliation
+
+- Before 1; after 1. B:1816 / F:1842. Signature: PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\Users\\spike\\Pulpo1.0\\work\\<TEMP>.sqlite3-shm'
+- Before 1; after 1. B:1827 / F:1853. Signature: PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\Users\\spike\\Pulpo1.0\\work\\<TEMP>.sqlite3-wal'
+- Before 1; after 1. B:1838 / F:1864. Signature: PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\Users\\spike\\Pulpo1.0\\work\\<TEMP>.sqlite3'
+
+### ERROR: test_namecom_observer.NameComObserverTests.test_failed_registration_order_with_no_domain_readback_is_known_failure
+
+- Before 1; after 1. B:1849 / F:1875. Signature: PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\Users\\spike\\Pulpo1.0\\work\\<TEMP>.sqlite3-shm'
+- Before 1; after 1. B:1860 / F:1886. Signature: PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\Users\\spike\\Pulpo1.0\\work\\<TEMP>.sqlite3-wal'
+- Before 1; after 1. B:1871 / F:1897. Signature: PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\Users\\spike\\Pulpo1.0\\work\\<TEMP>.sqlite3'
+
+### ERROR: test_namecom_observer.NameComObserverTests.test_non_registration_order_for_same_domain_is_ignored
+
+- Before 1; after 1. B:1882 / F:1908. Signature: PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\Users\\spike\\Pulpo1.0\\work\\<TEMP>.sqlite3-shm'
+- Before 1; after 1. B:1893 / F:1919. Signature: PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\Users\\spike\\Pulpo1.0\\work\\<TEMP>.sqlite3-wal'
+- Before 1; after 1. B:1904 / F:1930. Signature: PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\Users\\spike\\Pulpo1.0\\work\\<TEMP>.sqlite3'
+
+### ERROR: test_namecom_observer.NameComObserverTests.test_success_order_without_domain_readback_stays_unknown
+
+- Before 1; after 1. B:1915 / F:1941. Signature: PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\Users\\spike\\Pulpo1.0\\work\\<TEMP>.sqlite3-shm'
+- Before 1; after 1. B:1926 / F:1952. Signature: PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\Users\\spike\\Pulpo1.0\\work\\<TEMP>.sqlite3-wal'
+- Before 1; after 1. B:1937 / F:1963. Signature: PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\Users\\spike\\Pulpo1.0\\work\\<TEMP>.sqlite3'
+
+### ERROR: test_projection_non_elevation.ProjectionNonElevationTests.test_stale_pre_revocation_projection_cannot_restore_authority_after_restart
+
+- Before 1; after 1. B:1948 / F:1974. Signature: sqlite3.OperationalError: unable to open database file
+
+### ERROR: test_target_reconcile.TargetReconciliationTests.test_completion_of_one_version_does_not_complete_another
+
+- Before 1; after 1. B:1958 / F:1986. Signature: PermissionError: [Errno 13] Permission denied: 'C:\\Users\\spike\\Pulpo1.0\\work\\<TEMP>.pptx' | ValueError: artifact_unreadable
+
+### ERROR: test_target_reconcile.TargetReconciliationTests.test_nonempty_artifact_records_exact_completion_without_authority_effect
+
+- Before 1; after 1. B:1979 / F:2007. Signature: PermissionError: [Errno 13] Permission denied: 'C:\\Users\\spike\\Pulpo1.0\\work\\<TEMP>.pptx' | ValueError: artifact_unreadable
+
+## External reproduction instructions
+
+1. Use an isolated tester checkout or supplied reviewed patch representing this exact candidate. Do not stack another optimization. Do not change the original checkout, commit, push, or submit a PR as part of reproduction.
+2. Record Git revision, exact diff/untracked benchmark, SHA256 of state.py, tests/test_persistence.py, and the benchmark; Python and SQLite versions, OS, filesystem/storage, CPU, power settings, journal/synchronous modes, and whether an index already exists. Use fresh databases per variant; false does not drop an existing index.
+3. Run with an available Python >=3.11 interpreter, without -O. Existing artifacts used Python 3.12.10 and SQLite 3.49.1. Capture current commands to fresh filenames rather than overwriting original evidence:
+
+```powershell
+python -W error -m unittest tests.test_persistence -v *> perf-results/sqlite-persistence-external.log
+python -m unittest discover -s tests -v *> perf-results/sqlite-full-tests-external-current.log
+python scripts/benchmark_sqlite_state.py --iterations 2000 --history 10000 --repeats 7 --label external-current --compare-ref 73ec97b68a3228c52ecba717d867a1d99340ab15 --json perf-results/sqlite-external-wall-2000-7.json
+```
+
+The benchmark command reproduces elapsed-time workloads only. It alternates variant order, loads the exact baseline backend in memory, uses fresh files, excludes fixture construction and final chain verification from timing, and checks results and chains with assertions. No package or runtime installation is implied.
+
+4. For full-suite baseline parity, reproduce the original backend and nine original persistence checks from the exact baseline SHA inside an isolated tester setup while holding the surrounding checkout, environment, and cleanup-only connection repairs constant. Record the precise cleanup transformation and runner, then run the same unittest discovery command to a separate baseline log. A clean historical checkout tests a different question; do not compare it to the stored hybrid baseline without labeling that boundary. Compare all FAIL/ERROR blocks by kind, full identity, complete exception chain, and multiplicity, normalizing only generated temp names. Preserve the 13/126 known inventory above and flag every delta, including classes hidden by setup/cleanup errors.
+5. For exact sustained CPU reproduction, obtain the original isolated CPU harness or separately document a timer-instrumented reproduction on the same four operations, 2000 iterations, 10000 unrelated seed records, seven repeats. Record process CPU and wall samples separately for baseline/default/indexed, the aggregation rule and CPU timer resolution; exclude seeding and chain verification consistently; alternate/randomize execution order and identify whether variants have isolated processes. The checked-in benchmark has no CPU timer, so its JSON cannot satisfy this step. Preserve raw samples and hashes before classifying CPU improvements Verified.
+6. Have testers reproduce the same invariant checks and inspect any platform-specific differences. External reproduction is Unknown until their artifacts exist. Send no results/messages externally from this draft.
+
+## Tradeoffs
+
+Recorded / Verified arithmetic — Indexed append pays +9.83% CPU and +5.73% wall time; indexed issue_and_consume has only -1.25% CPU but +12.10% wall time (about 10.79% lower fixed-workload elapsed throughput). Neither is a blanket improvement. Index choice depends on event-filtered uniqueness/replay frequency versus writes. Default issuance shows -7.52% CPU but +0.27% wall in the supplied sustained run; wall and CPU measure different costs.
+
+Inferred — Index maintenance adds writes/storage and can reduce unrelated event scans; matching-event JSON/identity scanning and SQLite single-writer constraints remain. Storage, memory, and physical I/O deltas were not measured. The 11.59% synthetic CPU sum depends on case mix and does not justify a production-wide claim.
+
+Engineering strategy — Incrementally improve SQL and other component efficiency with small reviewable changes. Benchmark each change against a fixed baseline; reproduce it externally with testers; verify introduced-issue and invariant evidence before stacking the next change. Measure governed record-processing efficiency per unit of CPU, memory, storage, and I/O, alongside latency/throughput. No governance invariant is weakened to obtain performance.
+
+## Remaining unknowns
+
+- Original sustained CPU harness, raw seven-repeat samples, statistic/variance, timer resolution, environment and exact code identity; CPU significance and production representativeness.
+- Independent external reproduction, a green full suite, and regressions obscured by pre-existing fixture/setup/cleanup failures.
+- Exact full-suite execution-tree hashes and complete original baseline reconstruction script. Logs are historical artifacts, not independently authenticated test attestations.
+- Power-loss/disk failure recovery, hostile rollback to an internally valid older database, network filesystems, replication/multi-host behavior, long-duration contention, p95/p99 latency, memory/index size and I/O cost.
+- General temporal transfer: exact baseline backend comparison is available; historical whole-system invariant/lesson replay has not been demonstrated. Do not claim organizational transfer from this component experiment.
+- Fresh execution in this reconciliation: none. The default python command was unavailable and py resolved to a Windows Store interpreter denied in this tool environment. No runtime was installed and stored evidence was not overwritten.
+- Root causes/remedies of known pre-existing failures remain open; they are preserved exactly, not dismissed.
+
+Evidence anchor hashes (Verified SHA256 during reconciliation):
+sqlite-full-tests-baseline.log: 4456b86ad6482d4dbc303fca6c0560f73c0d90a50f9ad586d9292552cd5f8709
+sqlite-full-tests-final.log: 14db2a7102e782e958e0377dd233dc02322cbe8888ec6794c43730bafe2b2384
+tests/test_persistence.py: 93b6524133ab91074dcc6480e5bcaebd111d87ba67f6370a02643fd424ad0975
+scripts/benchmark_sqlite_state.py: a4a0b580d1e6b69e01e00b868ed40127431a64729892313057aab8c3897bc631
+
+No commit, push, PR creation, code modification, or external communication accompanies this draft.
