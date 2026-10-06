@@ -122,4 +122,3 @@ class UniqueAuditScanTests(unittest.TestCase):
         self.assertEqual(1, results.count({"id": 0}))
         self.assertEqual(1, len(self.state.audit))
         self.proof()
-
