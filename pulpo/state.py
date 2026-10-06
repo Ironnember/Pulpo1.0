@@ -312,7 +312,9 @@ class SQLiteKernelState:
             rows = self._connection.execute(
                 "SELECT payload_json FROM audit WHERE event = ? ORDER BY sequence",
                 (event,),
-            ).fetchall()
+            )
+            # Scan every row within the same transaction: later duplicates or
+            # malformed JSON must not be hidden by an earlier identity match.
             matches: list[dict[str, Any]] = []
             for (encoded,) in rows:
                 candidate = json.loads(str(encoded))
