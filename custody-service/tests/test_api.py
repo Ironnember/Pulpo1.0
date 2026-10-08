@@ -1,3 +1,4 @@
+import gc
 import tempfile
 import unittest
 from dataclasses import asdict, replace
@@ -113,7 +114,7 @@ class CustodyServiceApiTests(unittest.TestCase):
         self.assertIsNotNone(result.order)
         return result.order
 
-    def build(self, *, require_approval=False):
+    def build(self, *, require_approval=False, reuse_evidence_connection=False, sql_qos_settings=None):
         custody = SQLiteGovernanceCustody(
             self.path,
             signing_secret=b"service-custody-secret",
@@ -154,6 +155,8 @@ class CustodyServiceApiTests(unittest.TestCase):
             budget=budget,
             registrar=registrar,
             observer=observer,
+            reuse_evidence_connection=reuse_evidence_connection,
+            sql_qos_settings=sql_qos_settings,
             observer_id="observer:service-v0",
             executor_id="executor:service-v0",
         )
@@ -163,7 +166,10 @@ class CustodyServiceApiTests(unittest.TestCase):
             approval_verifier=verifier,
             clock=lambda: NOW,
         )
-        return TestClient(create_app(service)), service, registrar, observer, signing_kernel, verifier
+        client = TestClient(create_app(service))
+        self.addCleanup(gc.collect)
+        self.addCleanup(client.close)
+        return client, service, registrar, observer, signing_kernel, verifier
 
     def commit(self, service, order):
         return service.proposals.create(
