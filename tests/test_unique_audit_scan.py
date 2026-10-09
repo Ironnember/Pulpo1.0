@@ -60,6 +60,46 @@ class UniqueAuditScanTests(unittest.TestCase):
         self.assertEqual(changes, self.state._connection.total_changes)
         self.assertFalse(self.state._connection.in_transaction)
 
+    def test_malformed_nonfinal_row_releases_cursor_with_retained_traceback(self):
+        for i in range(3):
+            self.state.append("reconciled", {"id": i}, i)
+        with self.state._connection:
+            self.state._connection.execute("UPDATE audit SET payload_json = '{bad' WHERE sequence = 2")
+        before = self.state._connection.execute("SELECT * FROM audit ORDER BY sequence").fetchall()
+        changes = self.state._connection.total_changes
+        statements = []
+        self.state._connection.set_trace_callback(statements.append)
+        self.addCleanup(self.state._connection.set_trace_callback, None)
+
+        # assertRaises clears the traceback; retain the actual exception so the
+        # failed append_unique frame and its nonexhausted cursor stay alive.
+        retained = None
+        try:
+            self.state.append_unique("reconciled", "id", 0, {"id": 0}, 30)
+        except json.JSONDecodeError as exc:
+            retained = exc
+        else:
+            self.fail("malformed nonfinal JSON must reject an earlier match")
+        self.addCleanup(retained.with_traceback, None)
+        self.assertIsNotNone(retained.__traceback__)
+        self.assertFalse(self.state._connection.in_transaction)
+        self.assertIn("ROLLBACK", statements)
+        self.assertEqual(changes, self.state._connection.total_changes)
+        self.assertEqual(before, self.state._connection.execute(
+            "SELECT * FROM audit ORDER BY sequence").fetchall())
+
+        with closing(sqlite3.connect(self.path, timeout=0.1)) as writer:
+            with writer:
+                writer.execute("BEGIN IMMEDIATE")
+                writer.execute("INSERT INTO permits (permit, intent_hash) VALUES (?, ?)",
+                               ("cursor-release-probe", "test-only"))
+                writer.commit()
+            self.assertFalse(writer.in_transaction)
+        self.assertEqual(("test-only",), self.state._connection.execute(
+            "SELECT intent_hash FROM permits WHERE permit = ?",
+            ("cursor-release-probe",)).fetchone())
+        self.assertIsNotNone(retained.__traceback__)
+
     def test_new_identity_is_durable_and_other_events_do_not_conflict(self):
         self.state.append("other", {"id": 0}, 0)
         self.assertIsNone(self.state.append_unique("reconciled", "id", 0, {"id": 0}, 1))

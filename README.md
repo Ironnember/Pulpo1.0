@@ -37,6 +37,29 @@ checkouts without inferring tests or authority. See the
 python -m unittest discover -s tests -v
 ```
 
+## SQLite reconciliation scans
+
+**Verified:** `SQLiteKernelState.append_unique()` streams the complete ordered
+audit scan and deterministically closes its SELECT cursor, including when
+malformed JSON raises and the caller retains the exception traceback. It keeps
+`BEGIN IMMEDIATE`, original replay payloads without writes, ambiguity rejection,
+and the existing canonical append and commit/rollback path.
+
+**Verified in local tests:** The malformed-nonfinal-row regression checks
+rollback and a successful second-connection COMMIT while the traceback remains
+retained. WSL2 Linux with Python 3.12.14 / SQLite 3.53.1 passes 34 focused and
+381 core tests with warnings treated as errors. Native Windows with Python
+3.12.10 / SQLite 3.49.1 passes all eight unique-scan tests; its broader suite
+has the same failing tests on the original and revised PR head.
+
+**Verified in the local allocation benchmark:** At 10,000 same-event rows,
+Python allocation peak is 7,640 bytes with cursor cleanup, compared with
+7,504 bytes for the original streaming scan and 11,354,317 bytes for `fetchall()`.
+This measures Python allocations; general throughput and physical power-loss
+durability remain **Unknown**. See the [unique-scan tests](tests/test_unique_audit_scan.py),
+[benchmark](scripts/benchmark_unique_audit_scan.py), and
+[original streaming change record](docs/UNIQUE_AUDIT_SCAN_STREAMING.md).
+
 ## Minimal example
 
 ```python
