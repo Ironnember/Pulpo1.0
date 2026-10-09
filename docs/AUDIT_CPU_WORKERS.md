@@ -23,6 +23,46 @@ The acceleration layer is subordinate to the existing Pulpo kernel.
 
 ## Audit worker configuration
 
+### PR #293 integrity and custody repair
+
+Stored audit rows are type-checked without coercion. Malformed SQLite values
+cannot be normalized into an earlier valid hashed body; invalid timestamps and
+BLOB/text substitutions fail closed. The engine rejects malformed row types
+before looking in its cache, including bool/float substitutions for integer
+timestamps.
+
+Worker calculation uses fresh `python -I -S` interpreters running only the
+standard-library audit calculation helper. It does not fork the governor or
+import caller main modules/site hooks. Application environment variables are
+not forwarded, inherited descriptors are closed, and a temporary empty working
+directory is used. The wire operation is JSON audit-body hashing only; arbitrary
+task submission is absent. Warm calculation processes are reused and terminated
+on engine shutdown. A dead/unavailable worker cannot yield an accepted verdict.
+
+This is **not an OS sandbox**: these trusted calculation processes retain the
+OS user's ambient filesystem/network permissions. Production isolation remains
+deployment-specific and unproven here. Windows/macOS bootstrap behavior and
+performance must be verified on their exact runtime topologies.
+
+Profiles cannot widen the eight-worker ceiling or the supported batch-size
+allowlist. Setup smoke-tests every selected worker/batch configuration with
+bounded synthetic data and reports failure when process startup/verification
+fails. These smoke tests establish computation readiness, not crossover timing
+or production readiness. Snapshot cache keys are distributed using the complete
+canonical payload hash rather than its first byte.
+
+Authority changes: **none**. Canonical state mutations introduced: **none**.
+The existing kernel still alone controls policy, permits, replay state,
+reconciliation, and canonical append. Audit evidence acceptance is narrowed to
+reject malformed storage. This repair adds no signing capability or new ledger.
+
+The Gladiator regression suite exercises the recorded failures at parent
+`73ec97b68a3228c52ecba717d867a1d99340ab15`. The constitutional mutation harness
+now includes bypass of the kernel's accelerated verification integration.
+Claims are limited to the tested parent/candidate; this is not a general
+cross-version lesson or a production custody proof. No legacy control path is
+imported. Exact local test/mutation results accompany the repair PR.
+
 `AuditVerificationEngine(workers=0)` preserves local hashing while allowing the
 same bounded cache path. Set `workers > 1` to make multi-process hashing
 available.

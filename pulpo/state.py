@@ -205,10 +205,10 @@ class SQLiteKernelState:
         rows = self._connection.execute(
             "SELECT event, payload_json, previous_hash, timestamp_ns, hash FROM audit ORDER BY sequence"
         ).fetchall()
-        return [
-            (str(event), str(payload_json), str(previous_hash), int(timestamp_ns), str(digest))
-            for event, payload_json, previous_hash, timestamp_ns, digest in rows
-        ]
+        for event, payload_json, previous_hash, timestamp_ns, digest in rows:
+            if any(type(value) is not str for value in (event, payload_json, previous_hash, digest)) or type(timestamp_ns) is not int:
+                raise ValueError("invalid stored audit row types")
+        return rows
 
     def approval_replay_reason(self, approval_id: str, nonce: str) -> str | None: return self._approval_replay_reason(approval_id, nonce)
     def _approval_replay_reason(self, approval_id: str, nonce: str) -> str | None:
