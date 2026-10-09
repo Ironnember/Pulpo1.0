@@ -16,8 +16,12 @@ from threading import RLock
 from typing import Any, Protocol
 
 
+# Reuse the unchanged encoder configuration; per-call state stays in encode().
+_CANONICAL_ENCODER = json.JSONEncoder(sort_keys=True, separators=(",", ":"))
+
+
 def _canonical(value: Any) -> bytes:
-    return json.dumps(value, sort_keys=True, separators=(",", ":")).encode()
+    return _CANONICAL_ENCODER.encode(value).encode()
 
 
 def _audit_record(previous_hash: str, event: str, payload: dict[str, Any], timestamp_ns: int) -> dict[str, Any]:
