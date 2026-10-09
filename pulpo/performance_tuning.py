@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass
 import json
+import math
 import os
 import platform
 from pathlib import Path
@@ -50,6 +51,8 @@ class PerformanceProfile:
     source: str = "calibrated"
 
     def __post_init__(self) -> None:
+        if any(type(value) is not int for value in (self.max_records, self.workers, self.batch_size, self.parallel_threshold)):
+            raise ValueError("performance profile counts must be integers")
         if self.max_records <= 0:
             raise ValueError("max_records must be positive")
         if self.workers <= 0:
@@ -80,10 +83,13 @@ class AuditPerformanceTuner:
         self.max_workers = min(
             max_workers or self.DEFAULT_MAX_WORKERS,
             self.fingerprint.cpu_count,
+            self.DEFAULT_MAX_WORKERS,
         )
         self.allowed_batch_sizes = tuple(sorted(set(allowed_batch_sizes)))
         if not self.allowed_batch_sizes or any(value <= 0 for value in self.allowed_batch_sizes):
             raise ValueError("allowed_batch_sizes must contain positive integers")
+        if any(type(value) is not int or value not in self.DEFAULT_BATCHES for value in self.allowed_batch_sizes):
+            raise ValueError("batch sizes exceed supported computation bounds")
 
         normalized = []
         for profile in profiles:
@@ -147,6 +153,8 @@ class AuditPerformanceTuner:
     @classmethod
     def load(cls, path: str | Path, *, require_machine_match: bool = True) -> "AuditPerformanceTuner":
         document = json.loads(Path(path).read_text(encoding="utf-8"))
+        if not isinstance(document, dict):
+            raise ValueError("performance profile document must be an object")
         if document.get("schema") != "pulpo.audit-performance-profile.v1":
             raise ValueError("unsupported performance profile schema")
         if document.get("authority_effect") != "none":
@@ -165,13 +173,21 @@ class AuditPerformanceTuner:
         profiles_raw = document.get("profiles")
         if not isinstance(profiles_raw, list) or not profiles_raw:
             raise ValueError("performance profile list missing")
-        profiles = tuple(PerformanceProfile(**item) for item in profiles_raw)
+        try:
+            profiles = tuple(PerformanceProfile(**item) for item in profiles_raw)
+        except TypeError as exc:
+            raise ValueError("invalid performance profile entry") from exc
         batches = document.get("allowed_batch_sizes", cls.DEFAULT_BATCHES)
+        if not isinstance(batches, (list, tuple)) or any(type(value) is not int for value in batches):
+            raise ValueError("profile batch sizes must be integers")
+        worker_limit = document.get("max_workers", cls.DEFAULT_MAX_WORKERS)
+        if type(worker_limit) is not int or worker_limit <= 0:
+            raise ValueError("profile worker limit must be a positive integer")
         return cls(
             profiles,
             fingerprint=current if require_machine_match else recorded,
-            max_workers=int(document.get("max_workers", cls.DEFAULT_MAX_WORKERS)),
-            allowed_batch_sizes=tuple(int(value) for value in batches),
+            max_workers=worker_limit,
+            allowed_batch_sizes=tuple(batches),
         )
 
     @classmethod
@@ -182,6 +198,8 @@ class AuditPerformanceTuner:
         min_improvement: float = 0.05,
         require_machine_match: bool = True,
     ) -> "AuditPerformanceTuner":
+        if not isinstance(document, dict):
+            raise ValueError("benchmark document must be an object")
         if document.get("schema") != "pulpo.memory-scaling-benchmark.v2":
             raise ValueError("unsupported benchmark schema")
         if not 0 <= min_improvement < 1:
@@ -211,6 +229,10 @@ class AuditPerformanceTuner:
             workers = int(raw["workers"])
             batch_size = int(raw["batch_size"])
             throughput = float(raw["records_per_second"])
+            if not math.isfinite(throughput):
+                raise ValueError("benchmark throughput must be finite")
+            if batch_size not in cls.DEFAULT_BATCHES:
+                raise ValueError("benchmark batch size exceeds computation bounds")
             if records <= 0 or workers <= 0 or batch_size <= 0 or throughput <= 0:
                 continue
             by_size.setdefault(records, []).append(raw)
