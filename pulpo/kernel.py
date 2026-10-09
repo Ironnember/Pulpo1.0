@@ -14,8 +14,12 @@ from .authority import ApprovalEnvelope, ApprovalVerifier, AuthorityTrust
 from .state import ApprovalUse, InMemoryKernelState, KernelState
 
 
+# Reuse the unchanged encoder configuration; per-call state stays in encode().
+_CANONICAL_ENCODER = json.JSONEncoder(sort_keys=True, separators=(",", ":"))
+
+
 def _canonical(value: Any) -> bytes:
-    return json.dumps(value, sort_keys=True, separators=(",", ":")).encode()
+    return _CANONICAL_ENCODER.encode(value).encode()
 
 
 @dataclass(frozen=True)
