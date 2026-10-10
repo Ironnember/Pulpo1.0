@@ -1,6 +1,6 @@
 # Standard Operating Procedure: Adversarial Transformation Review
 
-Status: PROPOSED until admitted to canonical `main`.
+Repository status: Present on canonical `main` through PR #260 (commit `27c46ab39a3291b08fe347e7e343b5eadc19578c`). This Intelligence Plane analysis procedure grants no authority.
 
 ## Purpose
 
