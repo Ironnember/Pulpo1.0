@@ -1,0 +1,920 @@
+{
+  "schema": "pulpo.guardian-local-security-capture.v1",
+  "date": "2026-10-12",
+  "timezone": "America/Phoenix",
+  "classification": "Recorded",
+  "tested_head": "49edc55500466ed5920e19fa930b762a4627f46a",
+  "tested_working_tree_dirty": true,
+  "status_entries": 320,
+  "status_before_sha256": "85ba7415f59f26b676c6f609de6916059c95994023e871fc415a47d9676c34ec",
+  "status_after_sha256": "85ba7415f59f26b676c6f609de6916059c95994023e871fc415a47d9676c34ec",
+  "source_hash_timing": "after tests only; no claim of before/after byte identity",
+  "upstream_base_at_preparation": "d674dbb7a00b471d69bcca84d2f034cf74705e1a",
+  "distinct_tests": 121,
+  "no_upstream_head_test_claim": true,
+  "publication_normalization": "Machine paths replaced by role placeholders; raw local originals retained in user evidence folder. No private runtime state or existing working-tree source is published.",
+  "suites": {
+    "core": {
+      "summary": {
+        "mode": "core",
+        "initial_memory": {
+          "working_set_bytes": 26308608,
+          "peak_working_set_bytes": 26308608,
+          "private_bytes": 17928192
+        },
+        "blocked_operations": [],
+        "loopback_operations": [],
+        "tests": 101,
+        "failures": 0,
+        "errors": 0,
+        "skips": [],
+        "wall_seconds": 3.7627071000006254,
+        "cpu_seconds": 1.421875,
+        "final_memory": {
+          "working_set_bytes": 39219200,
+          "peak_working_set_bytes": 41406464,
+          "private_bytes": 28291072
+        }
+      },
+      "stdout": "METRICS {\"mode\": \"core\", \"initial_memory\": {\"working_set_bytes\": 26308608, \"peak_working_set_bytes\": 26308608, \"private_bytes\": 17928192}, \"blocked_operations\": [], \"loopback_operations\": [], \"tests\": 101, \"failures\": 0, \"errors\": 0, \"skips\": [], \"wall_seconds\": 3.7627071000006254, \"cpu_seconds\": 1.421875, \"final_memory\": {\"working_set_bytes\": 39219200, \"peak_working_set_bytes\": 41406464, \"private_bytes\": 28291072}}\n",
+      "stderr": "test_agent_budget_is_stricter_than_global_budget (tests.test_kernel.GovernanceKernelTests.test_agent_budget_is_stricter_than_global_budget) ... ok\ntest_agent_grants_fail_closed_for_unknown_principal (tests.test_kernel.GovernanceKernelTests.test_agent_grants_fail_closed_for_unknown_principal) ... ok\ntest_agent_role_cannot_expand_its_action_or_resource (tests.test_kernel.GovernanceKernelTests.test_agent_role_cannot_expand_its_action_or_resource) ... ok\ntest_allowed_intent_gets_bound_one_use_permit (tests.test_kernel.GovernanceKernelTests.test_allowed_intent_gets_bound_one_use_permit) ... ok\ntest_approval_is_explicit (tests.test_kernel.GovernanceKernelTests.test_approval_is_explicit) ... ok\ntest_audit_chain_detects_tampering (tests.test_kernel.GovernanceKernelTests.test_audit_chain_detects_tampering) ... ok\ntest_default_profiles_do_not_create_an_approver_agent (tests.test_kernel.GovernanceKernelTests.test_default_profiles_do_not_create_an_approver_agent) ... ok\ntest_fail_closed_policy_boundaries (tests.test_kernel.GovernanceKernelTests.test_fail_closed_policy_boundaries) ... ok\ntest_github_access_is_read_only_and_role_scoped (tests.test_kernel.GovernanceKernelTests.test_github_access_is_read_only_and_role_scoped) ... ok\ntest_malformed_or_duplicate_agent_grants_are_rejected (tests.test_kernel.GovernanceKernelTests.test_malformed_or_duplicate_agent_grants_are_rejected) ... ok\ntest_permit_cannot_be_used_for_different_intent (tests.test_kernel.GovernanceKernelTests.test_permit_cannot_be_used_for_different_intent) ... ok\ntest_plugin_profiles_are_declarations_not_connection_claims (tests.test_kernel.GovernanceKernelTests.test_plugin_profiles_are_declarations_not_connection_claims) ... ok\ntest_approval_id_and_nonce_are_each_single_use (tests.test_authority.VerifiedApprovalTests.test_approval_id_and_nonce_are_each_single_use) ... ok\ntest_approval_path_rejects_actions_that_do_not_need_approval (tests.test_authority.VerifiedApprovalTests.test_approval_path_rejects_actions_that_do_not_need_approval) ... ok\ntest_caller_boolean_bypass_is_removed_for_every_kernel (tests.test_authority.VerifiedApprovalTests.test_caller_boolean_bypass_is_removed_for_every_kernel) ... ok\ntest_clock_failure_and_rollback_fail_closed_with_evidence (tests.test_authority.VerifiedApprovalTests.test_clock_failure_and_rollback_fail_closed_with_evidence) ... ok\ntest_envelope_bindings_fail_closed_even_with_valid_authority_signature (tests.test_authority.VerifiedApprovalTests.test_envelope_bindings_fail_closed_even_with_valid_authority_signature) ... ok\ntest_every_intent_field_is_bound_by_the_signed_envelope (tests.test_authority.VerifiedApprovalTests.test_every_intent_field_is_bound_by_the_signed_envelope) ... ok\ntest_invalid_or_missing_signature_fails_closed (tests.test_authority.VerifiedApprovalTests.test_invalid_or_missing_signature_fails_closed) ... ok\ntest_issued_at_ttl_and_verification_time_fail_closed (tests.test_authority.VerifiedApprovalTests.test_issued_at_ttl_and_verification_time_fail_closed) ... ok\ntest_malformed_envelope_is_rejected_before_verification (tests.test_authority.VerifiedApprovalTests.test_malformed_envelope_is_rejected_before_verification) ... ok\ntest_malformed_envelope_object_fails_closed (tests.test_authority.VerifiedApprovalTests.test_malformed_envelope_object_fails_closed) ... ok\ntest_old_envelope_is_invalid_after_separately_configured_key_rotation (tests.test_authority.VerifiedApprovalTests.test_old_envelope_is_invalid_after_separately_configured_key_rotation) ... ok\ntest_policy_hash_is_canonical (tests.test_authority.VerifiedApprovalTests.test_policy_hash_is_canonical) ... ok\ntest_policy_requires_and_hashes_pinned_authority_trust (tests.test_authority.VerifiedApprovalTests.test_policy_requires_and_hashes_pinned_authority_trust) ... ok\ntest_session_and_time_are_not_caller_controlled (tests.test_authority.VerifiedApprovalTests.test_session_and_time_are_not_caller_controlled) ... ok\ntest_substituted_verifier_fails_at_bootstrap (tests.test_authority.VerifiedApprovalTests.test_substituted_verifier_fails_at_bootstrap) ... ok\ntest_truthy_non_boolean_verifier_result_is_rejected (tests.test_authority.VerifiedApprovalTests.test_truthy_non_boolean_verifier_result_is_rejected) ... ok\ntest_valid_external_envelope_issues_one_bound_permit (tests.test_authority.VerifiedApprovalTests.test_valid_external_envelope_issues_one_bound_permit) ... ok\ntest_verified_evidence_records_pinned_public_trust (tests.test_authority.VerifiedApprovalTests.test_verified_evidence_records_pinned_public_trust) ... ok\ntest_verifier_exception_fails_closed (tests.test_authority.VerifiedApprovalTests.test_verifier_exception_fails_closed) ... ok\ntest_verifier_is_configured_at_kernel_boundary (tests.test_authority.VerifiedApprovalTests.test_verifier_is_configured_at_kernel_boundary) ... ok\ntest_verifier_replacement_after_bootstrap_fails_closed (tests.test_authority.VerifiedApprovalTests.test_verifier_replacement_after_bootstrap_fails_closed) ... ok\ntest_approval_and_permit_replay_remain_denied_after_restart (tests.test_persistence.IndexedRestartSafeStateTests.test_approval_and_permit_replay_remain_denied_after_restart) ... ok\ntest_concurrent_consumption_succeeds_once (tests.test_persistence.IndexedRestartSafeStateTests.test_concurrent_consumption_succeeds_once) ... ok\ntest_concurrent_identical_approval_allows_exactly_once (tests.test_persistence.IndexedRestartSafeStateTests.test_concurrent_identical_approval_allows_exactly_once) ... ok\ntest_existing_database_gets_index_without_changing_audit (tests.test_persistence.IndexedRestartSafeStateTests.test_existing_database_gets_index_without_changing_audit) ... ok\ntest_failed_audit_write_rolls_back_approval_and_permit (tests.test_persistence.IndexedRestartSafeStateTests.test_failed_audit_write_rolls_back_approval_and_permit) ... ok\ntest_failed_commit_rolls_back_approval_permit_and_audit (tests.test_persistence.IndexedRestartSafeStateTests.test_failed_commit_rolls_back_approval_permit_and_audit) ... ok\ntest_failed_consumption_audit_rolls_back_spent_permit (tests.test_persistence.IndexedRestartSafeStateTests.test_failed_consumption_audit_rolls_back_spent_permit) ... ok\ntest_failed_second_audit_insert_rolls_back_entire_issuance (tests.test_persistence.IndexedRestartSafeStateTests.test_failed_second_audit_insert_rolls_back_entire_issuance) ... ok\ntest_issuance_reads_tip_once_and_preserves_event_order (tests.test_persistence.IndexedRestartSafeStateTests.test_issuance_reads_tip_once_and_preserves_event_order) ... ok\ntest_malformed_persisted_audit_raises_integrity_error_at_restart (tests.test_persistence.IndexedRestartSafeStateTests.test_malformed_persisted_audit_raises_integrity_error_at_restart) ... ok\ntest_overlapping_connections_serialize_audit_tip_selection (tests.test_persistence.IndexedRestartSafeStateTests.test_overlapping_connections_serialize_audit_tip_selection) ... ok\ntest_replay_reason_uses_one_snapshot_with_id_precedence (tests.test_persistence.IndexedRestartSafeStateTests.test_replay_reason_uses_one_snapshot_with_id_precedence) ... ok\ntest_tampered_persisted_audit_fails_closed_at_restart (tests.test_persistence.IndexedRestartSafeStateTests.test_tampered_persisted_audit_fails_closed_at_restart) ... ok\ntest_verified_approval_and_permit_are_committed_with_one_transaction (tests.test_persistence.IndexedRestartSafeStateTests.test_verified_approval_and_permit_are_committed_with_one_transaction) ... ok\ntest_approval_and_permit_replay_remain_denied_after_restart (tests.test_persistence.RestartSafeStateTests.test_approval_and_permit_replay_remain_denied_after_restart) ... ok\ntest_concurrent_consumption_succeeds_once (tests.test_persistence.RestartSafeStateTests.test_concurrent_consumption_succeeds_once) ... ok\ntest_concurrent_identical_approval_allows_exactly_once (tests.test_persistence.RestartSafeStateTests.test_concurrent_identical_approval_allows_exactly_once) ... ok\ntest_existing_database_gets_index_without_changing_audit (tests.test_persistence.RestartSafeStateTests.test_existing_database_gets_index_without_changing_audit) ... ok\ntest_failed_audit_write_rolls_back_approval_and_permit (tests.test_persistence.RestartSafeStateTests.test_failed_audit_write_rolls_back_approval_and_permit) ... ok\ntest_failed_commit_rolls_back_approval_permit_and_audit (tests.test_persistence.RestartSafeStateTests.test_failed_commit_rolls_back_approval_permit_and_audit) ... ok\ntest_failed_consumption_audit_rolls_back_spent_permit (tests.test_persistence.RestartSafeStateTests.test_failed_consumption_audit_rolls_back_spent_permit) ... ok\ntest_failed_second_audit_insert_rolls_back_entire_issuance (tests.test_persistence.RestartSafeStateTests.test_failed_second_audit_insert_rolls_back_entire_issuance) ... ok\ntest_issuance_reads_tip_once_and_preserves_event_order (tests.test_persistence.RestartSafeStateTests.test_issuance_reads_tip_once_and_preserves_event_order) ... ok\ntest_malformed_persisted_audit_raises_integrity_error_at_restart (tests.test_persistence.RestartSafeStateTests.test_malformed_persisted_audit_raises_integrity_error_at_restart) ... ok\ntest_overlapping_connections_serialize_audit_tip_selection (tests.test_persistence.RestartSafeStateTests.test_overlapping_connections_serialize_audit_tip_selection) ... ok\ntest_replay_reason_uses_one_snapshot_with_id_precedence (tests.test_persistence.RestartSafeStateTests.test_replay_reason_uses_one_snapshot_with_id_precedence) ... ok\ntest_tampered_persisted_audit_fails_closed_at_restart (tests.test_persistence.RestartSafeStateTests.test_tampered_persisted_audit_fails_closed_at_restart) ... ok\ntest_verified_approval_and_permit_are_committed_with_one_transaction (tests.test_persistence.RestartSafeStateTests.test_verified_approval_and_permit_are_committed_with_one_transaction) ... ok\ntest_bound_resource_carries_exact_context_hash (tests.test_execution_context_binding.ExecutionContextBindingTests.test_bound_resource_carries_exact_context_hash) ... ok\ntest_context_retargeting_changes_intent_and_invalidates_existing_permit (tests.test_execution_context_binding.ExecutionContextBindingTests.test_context_retargeting_changes_intent_and_invalidates_existing_permit) ... ok\ntest_exact_observed_context_consumes_one_use_permit (tests.test_execution_context_binding.ExecutionContextBindingTests.test_exact_observed_context_consumes_one_use_permit) ... ok\ntest_missing_observation_fails_closed_without_spending_permit (tests.test_execution_context_binding.ExecutionContextBindingTests.test_missing_observation_fails_closed_without_spending_permit) ... ok\ntest_same_owner_and_connection_do_not_expand_workspace_authority (tests.test_execution_context_binding.ExecutionContextBindingTests.test_same_owner_and_connection_do_not_expand_workspace_authority) ... ok\ntest_surface_substitution_fails_closed (tests.test_execution_context_binding.ExecutionContextBindingTests.test_surface_substitution_fails_closed) ... ok\ntest_unbound_resource_is_not_accepted_by_context_gate (tests.test_execution_context_binding.ExecutionContextBindingTests.test_unbound_resource_is_not_accepted_by_context_gate) ... ok\ntest_wrong_authority_scope_denies_before_permit_consumption (tests.test_execution_context_binding.ExecutionContextBindingTests.test_wrong_authority_scope_denies_before_permit_consumption) ... ok\ntest_exact_provider_metadata_builds_stable_repository_context (tests.test_github_execution_context.GitHubExecutionContextTests.test_exact_provider_metadata_builds_stable_repository_context) ... ok\ntest_missing_authenticated_identity_fails_closed (tests.test_github_execution_context.GitHubExecutionContextTests.test_missing_authenticated_identity_fails_closed) ... ok\ntest_observed_github_context_gates_existing_one_use_permit (tests.test_github_execution_context.GitHubExecutionContextTests.test_observed_github_context_gates_existing_one_use_permit) ... ok\ntest_provider_failure_yields_no_context (tests.test_github_execution_context.GitHubExecutionContextTests.test_provider_failure_yields_no_context) ... ok\ntest_provider_returned_owner_substitution_fails_closed (tests.test_github_execution_context.GitHubExecutionContextTests.test_provider_returned_owner_substitution_fails_closed) ... ok\ntest_provider_returned_repository_substitution_fails_closed (tests.test_github_execution_context.GitHubExecutionContextTests.test_provider_returned_repository_substitution_fails_closed) ... ok\ntest_reader_exposes_only_get_metadata_requests_for_exact_bound_repo (tests.test_github_execution_context.GitHubExecutionContextTests.test_reader_exposes_only_get_metadata_requests_for_exact_bound_repo) ... ok\ntest_repository_numeric_identity_changes_context_even_when_name_matches (tests.test_github_execution_context.GitHubExecutionContextTests.test_repository_numeric_identity_changes_context_even_when_name_matches) ... ok\ntest_crash_after_transmission_release_never_releases_second_network_right (tests.test_custody_executor.CustodyExecutorTests.test_crash_after_transmission_release_never_releases_second_network_right) ... ok\ntest_crash_before_transmission_can_resume_same_executor_identity_only (tests.test_custody_executor.CustodyExecutorTests.test_crash_before_transmission_can_resume_same_executor_identity_only) ... ok\ntest_lost_provider_response_is_unknown_and_cannot_retry_or_release_budget (tests.test_custody_executor.CustodyExecutorTests.test_lost_provider_response_is_unknown_and_cannot_retry_or_release_budget) ... ok\ntest_preflight_failure_releases_no_network_transmission_right (tests.test_custody_executor.CustodyExecutorTests.test_preflight_failure_releases_no_network_transmission_right) ... ok\ntest_provider_success_is_only_a_claim_and_still_requires_reconciliation (tests.test_custody_executor.CustodyExecutorTests.test_provider_success_is_only_a_claim_and_still_requires_reconciliation) ... ok\ntest_substituted_order_never_reaches_credential_adapter (tests.test_custody_executor.CustodyExecutorTests.test_substituted_order_never_reaches_credential_adapter) ... ok\ntest_concurrent_reservations_cannot_oversubscribe_protected_budget (tests.test_custody_domain.CustodyDomainIntegrationTests.test_concurrent_reservations_cannot_oversubscribe_protected_budget) ... ok\ntest_exact_locked_domain_permit_and_budget_are_consumed_before_custody_attempt (tests.test_custody_domain.CustodyDomainIntegrationTests.test_exact_locked_domain_permit_and_budget_are_consumed_before_custody_attempt) ... ok\ntest_revoked_directive_is_revalidated_before_budget_attempt_and_custody_attempt (tests.test_custody_domain.CustodyDomainIntegrationTests.test_revoked_directive_is_revalidated_before_budget_attempt_and_custody_attempt) ... ok\ntest_substituted_domain_order_fails_before_budget_or_permit_consumption (tests.test_custody_domain.CustodyDomainIntegrationTests.test_substituted_domain_order_fails_before_budget_or_permit_consumption) ... ok\ntest_worker_rollback_after_restart_cannot_restore_budget_or_domain_permit (tests.test_custody_domain.CustodyDomainIntegrationTests.test_worker_rollback_after_restart_cannot_restore_budget_or_domain_permit) ... ok\ntest_ambient_ca_configuration_is_rejected_without_explicit_policy (tests.test_transport_security.TransportSecurityTests.test_ambient_ca_configuration_is_rejected_without_explicit_policy) ... ok\ntest_ca_bundle_requires_an_absolute_existing_file (tests.test_transport_security.TransportSecurityTests.test_ca_bundle_requires_an_absolute_existing_file) ... ok\ntest_sanitized_environment_removes_ambient_proxy_and_ca_controls (tests.test_transport_security.TransportSecurityTests.test_sanitized_environment_removes_ambient_proxy_and_ca_controls) ... ok\ntest_tunnel_environment_cannot_reintroduce_proxy_or_ca_overrides (tests.test_transport_security.TransportSecurityTests.test_tunnel_environment_cannot_reintroduce_proxy_or_ca_overrides) ... ok\ntest_empty_allowlist_rejects_every_listener (tests.test_network_exposure.NetworkExposureTests.test_empty_allowlist_rejects_every_listener) ... ok\ntest_evidence_is_machine_readable_and_classifies_exposure (tests.test_network_exposure.NetworkExposureTests.test_evidence_is_machine_readable_and_classifies_exposure) ... ok\ntest_exact_loopback_allowlist_allows_only_exact_listener (tests.test_network_exposure.NetworkExposureTests.test_exact_loopback_allowlist_allows_only_exact_listener) ... ok\ntest_invalid_allowlist_fails_closed (tests.test_network_exposure.NetworkExposureTests.test_invalid_allowlist_fails_closed) ... ok\ntest_parse_allowlist_supports_ipv4_and_ipv6 (tests.test_network_exposure.NetworkExposureTests.test_parse_allowlist_supports_ipv4_and_ipv6) ... ok\ntest_parse_linux_ss (tests.test_network_exposure.NetworkExposureTests.test_parse_linux_ss) ... ok\ntest_parse_windows_json (tests.test_network_exposure.NetworkExposureTests.test_parse_windows_json) ... ok\ntest_wildcard_binding_is_external (tests.test_network_exposure.NetworkExposureTests.test_wildcard_binding_is_external) ... ok\ntest_05_replay_substitution_expiry_revocation_and_widening_do_not_create_fresh_authority (tests.test_issue_153_consequence_reconciliation_v0.Issue153ConsequenceReconciliationV0.test_05_replay_substitution_expiry_revocation_and_widening_do_not_create_fresh_authority) ... ok\n\n----------------------------------------------------------------------\nRan 101 tests in 3.530s\n\nOK\n"
+    },
+    "routes": {
+      "summary": {
+        "mode": "routes",
+        "initial_memory": {
+          "working_set_bytes": 26304512,
+          "peak_working_set_bytes": 26304512,
+          "private_bytes": 17928192
+        },
+        "blocked_operations": [],
+        "loopback_operations": [
+          {
+            "operation": "socket.bind",
+            "address": [
+              "127.0.0.1",
+              0
+            ]
+          },
+          {
+            "operation": "socket.connect",
+            "address": [
+              "127.0.0.1",
+              18043
+            ]
+          },
+          {
+            "operation": "socket.bind",
+            "address": [
+              "127.0.0.1",
+              0
+            ]
+          },
+          {
+            "operation": "socket.connect",
+            "address": [
+              "127.0.0.1",
+              18045
+            ]
+          }
+        ],
+        "tests": 7,
+        "failures": 0,
+        "errors": 0,
+        "skips": [],
+        "wall_seconds": 0.2414439999993192,
+        "cpu_seconds": 0.21875,
+        "final_memory": {
+          "working_set_bytes": 37236736,
+          "peak_working_set_bytes": 37675008,
+          "private_bytes": 27287552
+        }
+      },
+      "stdout": "METRICS {\"mode\": \"routes\", \"initial_memory\": {\"working_set_bytes\": 26304512, \"peak_working_set_bytes\": 26304512, \"private_bytes\": 17928192}, \"blocked_operations\": [], \"loopback_operations\": [{\"operation\": \"socket.bind\", \"address\": [\"127.0.0.1\", 0]}, {\"operation\": \"socket.connect\", \"address\": [\"127.0.0.1\", 18043]}, {\"operation\": \"socket.bind\", \"address\": [\"127.0.0.1\", 0]}, {\"operation\": \"socket.connect\", \"address\": [\"127.0.0.1\", 18045]}], \"tests\": 7, \"failures\": 0, \"errors\": 0, \"skips\": [], \"wall_seconds\": 0.2414439999993192, \"cpu_seconds\": 0.21875, \"final_memory\": {\"working_set_bytes\": 37236736, \"peak_working_set_bytes\": 37675008, \"private_bytes\": 27287552}}\n",
+      "stderr": "test_frozen_evidence_cannot_follow_later_canonical_mutation (tests.test_mcp_boundary.MCPBoundaryTests.test_frozen_evidence_cannot_follow_later_canonical_mutation) ... ok\ntest_invalid_payload_fails_closed_without_state_change (tests.test_mcp_boundary.MCPBoundaryTests.test_invalid_payload_fails_closed_without_state_change) ... ok\ntest_mcp_proposal_is_ephemeral_and_cannot_mutate_canonical_state (tests.test_mcp_boundary.MCPBoundaryTests.test_mcp_proposal_is_ephemeral_and_cannot_mutate_canonical_state) ... ok\ntest_projection_rejects_write_capable_dependency_or_authority_injection (tests.test_mcp_boundary.MCPBoundaryTests.test_projection_rejects_write_capable_dependency_or_authority_injection) ... ok\ntest_repeated_or_changed_mcp_proposals_remain_non_mutating (tests.test_mcp_boundary.MCPBoundaryTests.test_repeated_or_changed_mcp_proposals_remain_non_mutating) ... ok\ntest_sdk_factory_registers_only_capability_stripped_frozen_tools (tests.test_mcp_boundary.MCPBoundaryTests.test_sdk_factory_registers_only_capability_stripped_frozen_tools) ... ok\ntest_snapshot_contains_only_frozen_primitive_read_metadata (tests.test_mcp_boundary.MCPBoundaryTests.test_snapshot_contains_only_frozen_primitive_read_metadata) ... ok\n\n----------------------------------------------------------------------\nRan 7 tests in 0.019s\n\nOK\n"
+    },
+    "p3": {
+      "summary": {
+        "mode": "p3",
+        "initial_memory": {
+          "working_set_bytes": 26116096,
+          "peak_working_set_bytes": 26116096,
+          "private_bytes": 17743872
+        },
+        "blocked_operations": [],
+        "loopback_operations": [
+          {
+            "operation": "socket.bind",
+            "address": [
+              "127.0.0.1",
+              0
+            ]
+          },
+          {
+            "operation": "socket.connect",
+            "address": [
+              "127.0.0.1",
+              18047
+            ]
+          },
+          {
+            "operation": "socket.bind",
+            "address": [
+              "127.0.0.1",
+              0
+            ]
+          },
+          {
+            "operation": "socket.bind",
+            "address": [
+              "127.0.0.1",
+              0
+            ]
+          },
+          {
+            "operation": "socket.connect",
+            "address": [
+              "127.0.0.1",
+              18051
+            ]
+          },
+          {
+            "operation": "socket.bind",
+            "address": [
+              "127.0.0.1",
+              0
+            ]
+          },
+          {
+            "operation": "socket.bind",
+            "address": [
+              "127.0.0.1",
+              0
+            ]
+          },
+          {
+            "operation": "socket.connect",
+            "address": [
+              "127.0.0.1",
+              18055
+            ]
+          },
+          {
+            "operation": "socket.bind",
+            "address": [
+              "127.0.0.1",
+              0
+            ]
+          }
+        ],
+        "tests": 8,
+        "failures": 0,
+        "errors": 0,
+        "skips": [],
+        "wall_seconds": 0.6987772000002224,
+        "cpu_seconds": 0.34375,
+        "final_memory": {
+          "working_set_bytes": 33153024,
+          "peak_working_set_bytes": 38457344,
+          "private_bytes": 22536192
+        }
+      },
+      "stdout": "P3_FLOOD {\"received\": 4, \"invalid\": 0, \"truncated\": 0, \"timed_out\": 0, \"capacity_rejected\": 1, \"connections_rejected\": 0, \"io_errors\": 0, \"internal_faults\": 0, \"discarded_on_close\": 0, \"pending_frames\": 4, \"retained_payload_bytes\": 1024, \"active_connections\": 0, \"closed\": false}\nP3_CLEANUP {\"received\": 4, \"invalid\": 0, \"truncated\": 0, \"timed_out\": 0, \"capacity_rejected\": 1, \"connections_rejected\": 0, \"io_errors\": 0, \"internal_faults\": 0, \"discarded_on_close\": 4, \"pending_frames\": 0, \"retained_payload_bytes\": 0, \"active_connections\": 0, \"closed\": true}\nP3_CLEANUP {\"received\": 0, \"invalid\": 1, \"truncated\": 0, \"timed_out\": 0, \"capacity_rejected\": 0, \"connections_rejected\": 0, \"io_errors\": 0, \"internal_faults\": 0, \"discarded_on_close\": 0, \"pending_frames\": 0, \"retained_payload_bytes\": 0, \"active_connections\": 0, \"closed\": true}\nP3_SLOW {\"received\": 0, \"invalid\": 0, \"truncated\": 0, \"timed_out\": 2, \"capacity_rejected\": 0, \"connections_rejected\": 1, \"io_errors\": 0, \"internal_faults\": 0, \"discarded_on_close\": 0, \"pending_frames\": 0, \"retained_payload_bytes\": 0, \"active_connections\": 0, \"closed\": false}\nP3_CLEANUP {\"received\": 0, \"invalid\": 0, \"truncated\": 0, \"timed_out\": 2, \"capacity_rejected\": 0, \"connections_rejected\": 1, \"io_errors\": 0, \"internal_faults\": 0, \"discarded_on_close\": 0, \"pending_frames\": 0, \"retained_payload_bytes\": 0, \"active_connections\": 0, \"closed\": true}\nP3_COALESCED {\"input_bytes\": 580000, \"output_frames\": 10000, \"traced_peak_bytes\": 645915, \"wall_seconds\": 0.1474644999998418}\nMETRICS {\"mode\": \"p3\", \"initial_memory\": {\"working_set_bytes\": 26116096, \"peak_working_set_bytes\": 26116096, \"private_bytes\": 17743872}, \"blocked_operations\": [], \"loopback_operations\": [{\"operation\": \"socket.bind\", \"address\": [\"127.0.0.1\", 0]}, {\"operation\": \"socket.connect\", \"address\": [\"127.0.0.1\", 18047]}, {\"operation\": \"socket.bind\", \"address\": [\"127.0.0.1\", 0]}, {\"operation\": \"socket.bind\", \"address\": [\"127.0.0.1\", 0]}, {\"operation\": \"socket.connect\", \"address\": [\"127.0.0.1\", 18051]}, {\"operation\": \"socket.bind\", \"address\": [\"127.0.0.1\", 0]}, {\"operation\": \"socket.bind\", \"address\": [\"127.0.0.1\", 0]}, {\"operation\": \"socket.connect\", \"address\": [\"127.0.0.1\", 18055]}, {\"operation\": \"socket.bind\", \"address\": [\"127.0.0.1\", 0]}], \"tests\": 8, \"failures\": 0, \"errors\": 0, \"skips\": [], \"wall_seconds\": 0.6987772000002224, \"cpu_seconds\": 0.34375, \"final_memory\": {\"working_set_bytes\": 33153024, \"peak_working_set_bytes\": 38457344, \"private_bytes\": 22536192}}\n",
+      "stderr": "test_flood_queue_exhaustion_closes_and_preserves_bounds (p3_security_tests.LiveLoopbackSecurityTests.test_flood_queue_exhaustion_closes_and_preserves_bounds) ... ok\ntest_oversized_tcp_header_closes_before_body (p3_security_tests.LiveLoopbackSecurityTests.test_oversized_tcp_header_closes_before_body) ... ok\ntest_slow_partial_header_and_connection_limit (p3_security_tests.LiveLoopbackSecurityTests.test_slow_partial_header_and_connection_limit) ... ok\ntest_amplified_small_frames_bounded_input_records_output_cost (p3_security_tests.ParserSecurityTests.test_amplified_small_frames_bounded_input_records_output_cost) ... ok\ntest_bad_digest_releases_buffer (p3_security_tests.ParserSecurityTests.test_bad_digest_releases_buffer) ... ok\ntest_fragmented_maximum_frame_and_truncated_eof (p3_security_tests.ParserSecurityTests.test_fragmented_maximum_frame_and_truncated_eof) ... ok\ntest_handoff_rejects_frame_count_and_byte_exhaustion (p3_security_tests.ParserSecurityTests.test_handoff_rejects_frame_count_and_byte_exhaustion) ... ok\ntest_oversized_header_rejected_without_payload_allocation (p3_security_tests.ParserSecurityTests.test_oversized_header_rejected_without_payload_allocation) ... ok\n\n----------------------------------------------------------------------\nRan 8 tests in 0.585s\n\nOK\n"
+    },
+    "asgi": {
+      "summary": {
+        "mode": "asgi",
+        "initial_memory": {
+          "working_set_bytes": 26308608,
+          "peak_working_set_bytes": 26308608,
+          "private_bytes": 17924096
+        },
+        "blocked_operations": [],
+        "loopback_operations": [
+          {
+            "operation": "socket.bind",
+            "address": [
+              "127.0.0.1",
+              0
+            ]
+          },
+          {
+            "operation": "socket.connect",
+            "address": [
+              "127.0.0.1",
+              18062
+            ]
+          },
+          {
+            "operation": "socket.bind",
+            "address": [
+              "127.0.0.1",
+              0
+            ]
+          },
+          {
+            "operation": "socket.connect",
+            "address": [
+              "127.0.0.1",
+              18064
+            ]
+          },
+          {
+            "operation": "socket.bind",
+            "address": [
+              "127.0.0.1",
+              0
+            ]
+          },
+          {
+            "operation": "socket.connect",
+            "address": [
+              "127.0.0.1",
+              18066
+            ]
+          },
+          {
+            "operation": "socket.bind",
+            "address": [
+              "127.0.0.1",
+              0
+            ]
+          },
+          {
+            "operation": "socket.connect",
+            "address": [
+              "127.0.0.1",
+              18068
+            ]
+          },
+          {
+            "operation": "socket.bind",
+            "address": [
+              "127.0.0.1",
+              0
+            ]
+          },
+          {
+            "operation": "socket.connect",
+            "address": [
+              "127.0.0.1",
+              18070
+            ]
+          },
+          {
+            "operation": "socket.bind",
+            "address": [
+              "127.0.0.1",
+              0
+            ]
+          },
+          {
+            "operation": "socket.connect",
+            "address": [
+              "127.0.0.1",
+              18072
+            ]
+          },
+          {
+            "operation": "socket.bind",
+            "address": [
+              "127.0.0.1",
+              0
+            ]
+          },
+          {
+            "operation": "socket.connect",
+            "address": [
+              "127.0.0.1",
+              18074
+            ]
+          },
+          {
+            "operation": "socket.bind",
+            "address": [
+              "127.0.0.1",
+              0
+            ]
+          },
+          {
+            "operation": "socket.connect",
+            "address": [
+              "127.0.0.1",
+              18076
+            ]
+          },
+          {
+            "operation": "socket.bind",
+            "address": [
+              "127.0.0.1",
+              0
+            ]
+          },
+          {
+            "operation": "socket.connect",
+            "address": [
+              "127.0.0.1",
+              18078
+            ]
+          },
+          {
+            "operation": "socket.bind",
+            "address": [
+              "127.0.0.1",
+              0
+            ]
+          },
+          {
+            "operation": "socket.connect",
+            "address": [
+              "127.0.0.1",
+              18080
+            ]
+          },
+          {
+            "operation": "socket.bind",
+            "address": [
+              "127.0.0.1",
+              0
+            ]
+          },
+          {
+            "operation": "socket.connect",
+            "address": [
+              "127.0.0.1",
+              18082
+            ]
+          },
+          {
+            "operation": "socket.bind",
+            "address": [
+              "127.0.0.1",
+              0
+            ]
+          },
+          {
+            "operation": "socket.connect",
+            "address": [
+              "127.0.0.1",
+              18084
+            ]
+          },
+          {
+            "operation": "socket.bind",
+            "address": [
+              "127.0.0.1",
+              0
+            ]
+          },
+          {
+            "operation": "socket.connect",
+            "address": [
+              "127.0.0.1",
+              18086
+            ]
+          },
+          {
+            "operation": "socket.bind",
+            "address": [
+              "127.0.0.1",
+              0
+            ]
+          },
+          {
+            "operation": "socket.connect",
+            "address": [
+              "127.0.0.1",
+              18088
+            ]
+          },
+          {
+            "operation": "socket.bind",
+            "address": [
+              "127.0.0.1",
+              0
+            ]
+          },
+          {
+            "operation": "socket.connect",
+            "address": [
+              "127.0.0.1",
+              18090
+            ]
+          },
+          {
+            "operation": "socket.bind",
+            "address": [
+              "127.0.0.1",
+              0
+            ]
+          },
+          {
+            "operation": "socket.connect",
+            "address": [
+              "127.0.0.1",
+              18092
+            ]
+          },
+          {
+            "operation": "socket.bind",
+            "address": [
+              "127.0.0.1",
+              0
+            ]
+          },
+          {
+            "operation": "socket.connect",
+            "address": [
+              "127.0.0.1",
+              18094
+            ]
+          },
+          {
+            "operation": "socket.bind",
+            "address": [
+              "127.0.0.1",
+              0
+            ]
+          },
+          {
+            "operation": "socket.connect",
+            "address": [
+              "127.0.0.1",
+              18096
+            ]
+          },
+          {
+            "operation": "socket.bind",
+            "address": [
+              "127.0.0.1",
+              0
+            ]
+          },
+          {
+            "operation": "socket.connect",
+            "address": [
+              "127.0.0.1",
+              18098
+            ]
+          }
+        ],
+        "adaptation": "Original API tests loaded in memory; TestClient import replaced by direct real-app ASGI invocation. No httpx2, server, or lifespan exercised.",
+        "tests": 5,
+        "failures": 0,
+        "errors": 0,
+        "skips": [],
+        "wall_seconds": 2.0666258000001108,
+        "cpu_seconds": 1.40625,
+        "final_memory": {
+          "working_set_bytes": 58032128,
+          "peak_working_set_bytes": 61820928,
+          "private_bytes": 45895680
+        }
+      },
+      "stdout": "ASGI_RESPONSE {\"path\": \"/v1/domain-attempts\", \"status\": 403}\nASGI_RESPONSE {\"path\": \"/v1/domain-attempts\", \"status\": 200}\nASGI_RESPONSE {\"path\": \"/v1/domain-attempts\", \"status\": 403}\nASGI_RESPONSE {\"path\": \"/v1/domain-attempts\", \"status\": 422}\nASGI_RESPONSE {\"path\": \"/v1/domain-approval-challenges\", \"status\": 404}\nASGI_RESPONSE {\"path\": \"/v1/domain-attempts\", \"status\": 200}\nASGI_RESPONSE {\"path\": \"/v1/domain-attempts/089c51804f5e16f5053e690ace34b928df2dd181d3b8795d1dd4198161288fd4/execute\", \"status\": 200}\nASGI_RESPONSE {\"path\": \"/v1/domain-attempts/089c51804f5e16f5053e690ace34b928df2dd181d3b8795d1dd4198161288fd4/execute\", \"status\": 409}\nASGI_RESPONSE {\"path\": \"/v1/domain-attempts/089c51804f5e16f5053e690ace34b928df2dd181d3b8795d1dd4198161288fd4/execute\", \"status\": 422}\nASGI_RESPONSE {\"path\": \"/v1/domain-attempts\", \"status\": 422}\nASGI_RESPONSE {\"path\": \"/v1/domain-attempts\", \"status\": 422}\nASGI_RESPONSE {\"path\": \"/v1/domain-attempts\", \"status\": 422}\nASGI_RESPONSE {\"path\": \"/v1/domain-attempts\", \"status\": 422}\nASGI_RESPONSE {\"path\": \"/v1/domain-attempts\", \"status\": 422}\nASGI_RESPONSE {\"path\": \"/v1/domain-attempts\", \"status\": 422}\nASGI_RESPONSE {\"path\": \"/v1/domain-attempts\", \"status\": 200}\nASGI_RESPONSE {\"path\": \"/v1/domain-attempts/de55ca85931d1dd2ab7e2cb693f8831d3e36594b9032eb931d44cc2d141034b7/execute\", \"status\": 200}\nASGI_RESPONSE {\"path\": \"/v1/domain-attempts/de55ca85931d1dd2ab7e2cb693f8831d3e36594b9032eb931d44cc2d141034b7/execute\", \"status\": 409}\nASGI_RESPONSE {\"path\": \"/v1/domain-attempts/de55ca85931d1dd2ab7e2cb693f8831d3e36594b9032eb931d44cc2d141034b7/reconcile\", \"status\": 200}\nMETRICS {\"mode\": \"asgi\", \"initial_memory\": {\"working_set_bytes\": 26308608, \"peak_working_set_bytes\": 26308608, \"private_bytes\": 17924096}, \"blocked_operations\": [], \"loopback_operations\": [{\"operation\": \"socket.bind\", \"address\": [\"127.0.0.1\", 0]}, {\"operation\": \"socket.connect\", \"address\": [\"127.0.0.1\", 18062]}, {\"operation\": \"socket.bind\", \"address\": [\"127.0.0.1\", 0]}, {\"operation\": \"socket.connect\", \"address\": [\"127.0.0.1\", 18064]}, {\"operation\": \"socket.bind\", \"address\": [\"127.0.0.1\", 0]}, {\"operation\": \"socket.connect\", \"address\": [\"127.0.0.1\", 18066]}, {\"operation\": \"socket.bind\", \"address\": [\"127.0.0.1\", 0]}, {\"operation\": \"socket.connect\", \"address\": [\"127.0.0.1\", 18068]}, {\"operation\": \"socket.bind\", \"address\": [\"127.0.0.1\", 0]}, {\"operation\": \"socket.connect\", \"address\": [\"127.0.0.1\", 18070]}, {\"operation\": \"socket.bind\", \"address\": [\"127.0.0.1\", 0]}, {\"operation\": \"socket.connect\", \"address\": [\"127.0.0.1\", 18072]}, {\"operation\": \"socket.bind\", \"address\": [\"127.0.0.1\", 0]}, {\"operation\": \"socket.connect\", \"address\": [\"127.0.0.1\", 18074]}, {\"operation\": \"socket.bind\", \"address\": [\"127.0.0.1\", 0]}, {\"operation\": \"socket.connect\", \"address\": [\"127.0.0.1\", 18076]}, {\"operation\": \"socket.bind\", \"address\": [\"127.0.0.1\", 0]}, {\"operation\": \"socket.connect\", \"address\": [\"127.0.0.1\", 18078]}, {\"operation\": \"socket.bind\", \"address\": [\"127.0.0.1\", 0]}, {\"operation\": \"socket.connect\", \"address\": [\"127.0.0.1\", 18080]}, {\"operation\": \"socket.bind\", \"address\": [\"127.0.0.1\", 0]}, {\"operation\": \"socket.connect\", \"address\": [\"127.0.0.1\", 18082]}, {\"operation\": \"socket.bind\", \"address\": [\"127.0.0.1\", 0]}, {\"operation\": \"socket.connect\", \"address\": [\"127.0.0.1\", 18084]}, {\"operation\": \"socket.bind\", \"address\": [\"127.0.0.1\", 0]}, {\"operation\": \"socket.connect\", \"address\": [\"127.0.0.1\", 18086]}, {\"operation\": \"socket.bind\", \"address\": [\"127.0.0.1\", 0]}, {\"operation\": \"socket.connect\", \"address\": [\"127.0.0.1\", 18088]}, {\"operation\": \"socket.bind\", \"address\": [\"127.0.0.1\", 0]}, {\"operation\": \"socket.connect\", \"address\": [\"127.0.0.1\", 18090]}, {\"operation\": \"socket.bind\", \"address\": [\"127.0.0.1\", 0]}, {\"operation\": \"socket.connect\", \"address\": [\"127.0.0.1\", 18092]}, {\"operation\": \"socket.bind\", \"address\": [\"127.0.0.1\", 0]}, {\"operation\": \"socket.connect\", \"address\": [\"127.0.0.1\", 18094]}, {\"operation\": \"socket.bind\", \"address\": [\"127.0.0.1\", 0]}, {\"operation\": \"socket.connect\", \"address\": [\"127.0.0.1\", 18096]}, {\"operation\": \"socket.bind\", \"address\": [\"127.0.0.1\", 0]}, {\"operation\": \"socket.connect\", \"address\": [\"127.0.0.1\", 18098]}], \"adaptation\": \"Original API tests loaded in memory; TestClient import replaced by direct real-app ASGI invocation. No httpx2, server, or lifespan exercised.\", \"tests\": 5, \"failures\": 0, \"errors\": 0, \"skips\": [], \"wall_seconds\": 2.0666258000001108, \"cpu_seconds\": 1.40625, \"final_memory\": {\"working_set_bytes\": 58032128, \"peak_working_set_bytes\": 61820928, \"private_bytes\": 45895680}}\n",
+      "stderr": "test_approval_required_policy_binds_signature_to_committed_order (isolated_api_tests.CustodyServiceApiTests.test_approval_required_policy_binds_signature_to_committed_order) ... ok\ntest_byte_identical_external_order_has_no_authority_without_commitment (isolated_api_tests.CustodyServiceApiTests.test_byte_identical_external_order_has_no_authority_without_commitment) ... ok\ntest_copied_handle_cannot_execute_twice_or_substitute_order_hash (isolated_api_tests.CustodyServiceApiTests.test_copied_handle_cannot_execute_twice_or_substitute_order_hash) ... ok\ntest_worker_cannot_inject_order_time_budget_or_provider_fields (isolated_api_tests.CustodyServiceApiTests.test_worker_cannot_inject_order_time_budget_or_provider_fields) ... ok\ntest_worker_uses_proposal_reference_then_handle_only (isolated_api_tests.CustodyServiceApiTests.test_worker_uses_proposal_reference_then_handle_only) ... ok\n\n----------------------------------------------------------------------\nRan 5 tests in 1.387s\n\nOK\n"
+    }
+  },
+  "dependency_inventory": {
+    "mode": "inventory",
+    "initial_memory": {
+      "working_set_bytes": 26234880,
+      "peak_working_set_bytes": 26234880,
+      "private_bytes": 18309120
+    },
+    "blocked_operations": [
+      {
+        "operation": "write",
+        "path": "\\\\.\\NUL"
+      },
+      {
+        "operation": "write",
+        "path": "\\\\.\\NUL"
+      },
+      {
+        "operation": "write",
+        "path": "\\\\.\\NUL"
+      }
+    ],
+    "loopback_operations": [],
+    "packages": [
+      {
+        "name": "annotated-doc",
+        "version": "0.0.5",
+        "requires": []
+      },
+      {
+        "name": "annotated-types",
+        "version": "0.8.0",
+        "requires": []
+      },
+      {
+        "name": "anyio",
+        "version": "4.15.1",
+        "requires": [
+          "exceptiongroup>=1.0.2; python_version < \"3.11\"",
+          "idna>=2.8",
+          "typing_extensions>=4.16.0; python_version < \"3.15\"",
+          "trio>=0.32.0; extra == \"trio\""
+        ]
+      },
+      {
+        "name": "certifi",
+        "version": "2026.7.22",
+        "requires": []
+      },
+      {
+        "name": "cffi",
+        "version": "2.1.1",
+        "requires": [
+          "pycparser; implementation_name != \"PyPy\""
+        ]
+      },
+      {
+        "name": "charset-normalizer",
+        "version": "3.5.1",
+        "requires": []
+      },
+      {
+        "name": "click",
+        "version": "8.5.0",
+        "requires": []
+      },
+      {
+        "name": "colorama",
+        "version": "0.4.6",
+        "requires": []
+      },
+      {
+        "name": "fastapi",
+        "version": "0.141.1",
+        "requires": [
+          "starlette>=0.46.0",
+          "pydantic>=2.9.0",
+          "typing-extensions>=4.8.0",
+          "typing-inspection>=0.4.2",
+          "annotated-doc>=0.0.2",
+          "fastapi-cli[standard]>=0.0.32; extra == \"standard\"",
+          "fastar>=0.9.0; extra == \"standard\"",
+          "httpx<1.0.0,>=0.23.0; extra == \"standard\"",
+          "jinja2>=3.1.5; extra == \"standard\"",
+          "python-multipart>=0.0.18; extra == \"standard\"",
+          "email-validator>=2.0.0; extra == \"standard\"",
+          "uvicorn[standard]>=0.12.0; extra == \"standard\"",
+          "pydantic-settings>=2.0.0; extra == \"standard\"",
+          "pydantic-extra-types>=2.0.0; extra == \"standard\"",
+          "fastapi-cli[standard-no-fastapi-cloud-cli]>=0.0.32; extra == \"standard-no-fastapi-cloud-cli\"",
+          "httpx<1.0.0,>=0.23.0; extra == \"standard-no-fastapi-cloud-cli\"",
+          "jinja2>=3.1.5; extra == \"standard-no-fastapi-cloud-cli\"",
+          "python-multipart>=0.0.18; extra == \"standard-no-fastapi-cloud-cli\"",
+          "email-validator>=2.0.0; extra == \"standard-no-fastapi-cloud-cli\"",
+          "uvicorn[standard]>=0.12.0; extra == \"standard-no-fastapi-cloud-cli\"",
+          "pydantic-settings>=2.0.0; extra == \"standard-no-fastapi-cloud-cli\"",
+          "pydantic-extra-types>=2.0.0; extra == \"standard-no-fastapi-cloud-cli\"",
+          "fastapi-cli[standard]>=0.0.32; extra == \"all\"",
+          "httpx<1.0.0,>=0.23.0; extra == \"all\"",
+          "jinja2>=3.1.5; extra == \"all\"",
+          "python-multipart>=0.0.18; extra == \"all\"",
+          "itsdangerous>=1.1.0; extra == \"all\"",
+          "pyyaml>=5.3.1; extra == \"all\"",
+          "email-validator>=2.0.0; extra == \"all\"",
+          "uvicorn[standard]>=0.12.0; extra == \"all\"",
+          "pydantic-settings>=2.0.0; extra == \"all\"",
+          "pydantic-extra-types>=2.0.0; extra == \"all\""
+        ]
+      },
+      {
+        "name": "h11",
+        "version": "0.16.0",
+        "requires": []
+      },
+      {
+        "name": "idna",
+        "version": "3.20",
+        "requires": [
+          "ruff >= 0.16.0 ; extra == \"all\"",
+          "mypy >= 1.11.2 ; extra == \"all\"",
+          "ty >= 0.0.37 ; extra == \"all\"",
+          "pytest >= 8.3.2 ; extra == \"all\"",
+          "hypothesis >= 6.141.1 ; extra == \"all\"",
+          "coverage >= 7.10.0 ; extra == \"all\""
+        ]
+      },
+      {
+        "name": "iniconfig",
+        "version": "2.3.0",
+        "requires": []
+      },
+      {
+        "name": "packaging",
+        "version": "26.3",
+        "requires": []
+      },
+      {
+        "name": "pip",
+        "version": "26.2.1",
+        "requires": []
+      },
+      {
+        "name": "pluggy",
+        "version": "1.6.0",
+        "requires": [
+          "pre-commit; extra == \"dev\"",
+          "tox; extra == \"dev\"",
+          "pytest; extra == \"testing\"",
+          "pytest-benchmark; extra == \"testing\"",
+          "coverage; extra == \"testing\""
+        ]
+      },
+      {
+        "name": "pulpo",
+        "version": "0.1.0",
+        "requires": [
+          "cryptography==50.0.1; extra == \"authority\"",
+          "mcp[cli]<3,>=2; extra == \"mcp\""
+        ]
+      },
+      {
+        "name": "pulpo-p3-reconstruction",
+        "version": "0.1.0",
+        "requires": []
+      },
+      {
+        "name": "pycparser",
+        "version": "3.0",
+        "requires": []
+      },
+      {
+        "name": "pydantic",
+        "version": "2.13.5",
+        "requires": [
+          "annotated-types>=0.6.0",
+          "pydantic-core==2.46.5",
+          "typing-extensions>=4.14.1",
+          "typing-inspection>=0.4.2",
+          "email-validator>=2.0.0; extra == 'email'",
+          "tzdata; (python_version >= '3.9' and platform_system == 'Windows') and extra == 'timezone'"
+        ]
+      },
+      {
+        "name": "pydantic_core",
+        "version": "2.46.5",
+        "requires": [
+          "typing-extensions>=4.14.1"
+        ]
+      },
+      {
+        "name": "Pygments",
+        "version": "2.21.0",
+        "requires": [
+          "colorama>=0.4.6; extra == 'windows-terminal'"
+        ]
+      },
+      {
+        "name": "PyNaCl",
+        "version": "1.6.2",
+        "requires": [
+          "cffi>=1.4.1; platform_python_implementation != \"PyPy\" and python_version < \"3.9\"",
+          "cffi>=2.0.0; platform_python_implementation != \"PyPy\" and python_version >= \"3.9\"",
+          "pytest>=7.4.0; extra == \"tests\"",
+          "pytest-cov>=2.10.1; extra == \"tests\"",
+          "pytest-xdist>=3.5.0; extra == \"tests\"",
+          "hypothesis>=3.27.0; extra == \"tests\"",
+          "sphinx<7; extra == \"docs\"",
+          "sphinx_rtd_theme; extra == \"docs\""
+        ]
+      },
+      {
+        "name": "pytest",
+        "version": "9.1.1",
+        "requires": [
+          "colorama>=0.4; sys_platform == \"win32\"",
+          "exceptiongroup>=1; python_version < \"3.11\"",
+          "iniconfig>=1.0.1",
+          "packaging>=22",
+          "pluggy<2,>=1.5",
+          "pygments>=2.7.2",
+          "tomli>=1; python_version < \"3.11\"",
+          "argcomplete; extra == \"dev\"",
+          "attrs>=19.2; extra == \"dev\"",
+          "hypothesis>=3.56; extra == \"dev\"",
+          "mock; extra == \"dev\"",
+          "requests; extra == \"dev\"",
+          "setuptools; extra == \"dev\"",
+          "xmlschema; extra == \"dev\""
+        ]
+      },
+      {
+        "name": "requests",
+        "version": "2.34.2",
+        "requires": [
+          "charset_normalizer<4,>=2",
+          "idna<4,>=2.5",
+          "urllib3<3,>=1.26",
+          "certifi>=2023.5.7",
+          "PySocks!=1.5.7,>=1.5.6; extra == \"socks\"",
+          "chardet<8,>=3.0.2; extra == \"use-chardet-on-py3\""
+        ]
+      },
+      {
+        "name": "starlette",
+        "version": "1.6.0",
+        "requires": [
+          "anyio<5,>=3.6.2",
+          "typing-extensions>=4.10.0; python_version < '3.13'",
+          "httpx2>=2.0.0; extra == 'full'",
+          "httpx<0.29.0,>=0.27.0; extra == 'full'",
+          "itsdangerous; extra == 'full'",
+          "jinja2; extra == 'full'",
+          "python-multipart>=0.0.18; extra == 'full'",
+          "pyyaml; extra == 'full'"
+        ]
+      },
+      {
+        "name": "typing_extensions",
+        "version": "4.16.0",
+        "requires": []
+      },
+      {
+        "name": "typing-inspection",
+        "version": "0.4.4",
+        "requires": [
+          "typing-extensions>=4.15.0"
+        ]
+      },
+      {
+        "name": "urllib3",
+        "version": "2.8.0",
+        "requires": [
+          "brotli>=1.2.0; (platform_python_implementation == 'CPython') and extra == 'brotli'",
+          "brotlicffi>=1.2.0.0; (platform_python_implementation != 'CPython') and extra == 'brotli'",
+          "h2<5,>=4; extra == 'h2'",
+          "pysocks!=1.5.7,<2.0,>=1.5.6; extra == 'socks'",
+          "backports-zstd>=1.0.0; (python_version < '3.14') and extra == 'zstd'"
+        ]
+      },
+      {
+        "name": "uvicorn",
+        "version": "0.53.0",
+        "requires": [
+          "click>=7.0",
+          "h11>=0.8",
+          "typing-extensions>=4.0; python_version < '3.11'",
+          "httptools>=0.8.0; extra == 'standard'",
+          "python-dotenv>=0.13; extra == 'standard'",
+          "pyyaml>=5.1; extra == 'standard'",
+          "uvloop>=0.15.1; (sys_platform != 'win32' and (sys_platform != 'cygwin' and platform_python_implementation != 'PyPy')) and extra == 'standard'",
+          "watchfiles>=0.20; extra == 'standard'",
+          "websockets>=13.0; extra == 'standard'"
+        ]
+      }
+    ],
+    "dependency_conflicts": [],
+    "manifest_drift": {
+      "uvicorn": {
+        "declared": "0.52.4",
+        "installed": "0.53.0"
+      },
+      "anyio": {
+        "declared_test": "4.14.2",
+        "installed": "4.15.1"
+      },
+      "httpx2": {
+        "declared_test": "2.12.0",
+        "installed": null
+      },
+      "sentry-traffic": {
+        "declared": "0.1.0",
+        "installed": null
+      },
+      "cryptography": {
+        "declared_optional": "50.0.1",
+        "installed": null
+      },
+      "mcp": {
+        "declared_optional": ">=2,<3",
+        "installed": null
+      }
+    },
+    "wall_seconds": 0.19106720000036148,
+    "cpu_seconds": 0.203125,
+    "final_memory": {
+      "working_set_bytes": 36642816,
+      "peak_working_set_bytes": 37154816,
+      "private_bytes": 23916544
+    }
+  },
+  "blocked_harness_log": "Traceback (most recent call last):\n  File \"<EVIDENCE_WORKSPACE>\\work\\security_runner.py\", line 64, in <module>\n    result=unittest.TextTestRunner(verbosity=2).run(unittest.defaultTestLoader.loadTestsFromNames(names))\n                                                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"<BUNDLED_RUNTIME>\\python\\Lib\\unittest\\loader.py\", line 207, in loadTestsFromNames\n    suites = [self.loadTestsFromName(name, module) for name in names]\n              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"<BUNDLED_RUNTIME>\\python\\Lib\\unittest\\loader.py\", line 137, in loadTestsFromName\n    module = __import__(module_name)\n             ^^^^^^^^^^^^^^^^^^^^^^^\n  File \"<TESTED_CHECKOUT>\\custody-service\\tests\\test_api.py\", line 6, in <module>\n    from fastapi.testclient import TestClient\n  File \"<TESTED_CHECKOUT>\\.venv\\Lib\\site-packages\\fastapi\\testclient.py\", line 1, in <module>\n    from starlette.testclient import TestClient as TestClient  # noqa\n    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"<TESTED_CHECKOUT>\\.venv\\Lib\\site-packages\\starlette\\testclient.py\", line 41, in <module>\n    raise RuntimeError(\nRuntimeError: The starlette.testclient module requires the httpx2 package to be installed.\nYou can install this with:\n    $ pip install httpx2\n\n",
+  "osv_query_error": "A socket operation was attempted to an unreachable network. (api.osv.dev:443)\n",
+  "command_record": "COMMAND: bundled-python -B work/security_runner.py inventory\nCOMMAND: bundled-python -B work/security_runner.py core\nCOMMAND: bundled-python -B work/security_runner.py routes\nCOMMAND: bundled-python -B work/security_runner.py p3\nCOMMAND: bundled-python -B work/security_runner.py routes (independent MCP tests; custody API import failure retained separately)\nCOMMAND: bundled-python -B work/security_runner.py core (memory counter corrected)\nCOMMAND: public OSV querybatch for recorded public package names and versions; no repository content sent\nCOMMAND: bundled-python -B work/security_runner.py asgi (original API test assertions, direct ASGI adapter)\n",
+  "replay_driver": "$ErrorActionPreference = 'Stop'\n$testRoot = Split-Path -Parent $PSScriptRoot\n$testPython = '<BUNDLED_RUNTIME>\\python\\python.exe'\n$repo = '<TESTED_CHECKOUT>'\nPush-Location $testRoot\ntry {\n    & git --no-optional-locks -c safe.directory=<TESTED_CHECKOUT> -C $repo status --porcelain=v1 > \"$PSScriptRoot\\rerun-git-before.txt\"\n    & git -c safe.directory=<TESTED_CHECKOUT> -C $repo rev-parse HEAD > \"$PSScriptRoot\\rerun-head.txt\"\n    foreach ($testMode in @('inventory','core','routes','p3','asgi')) {\n        $logOut = \"$PSScriptRoot\\rerun-$testMode-stdout.log\"\n        $logErr = \"$PSScriptRoot\\rerun-$testMode-stderr.log\"\n        $testProc = Start-Process -FilePath $testPython -ArgumentList @('-B',\"$PSScriptRoot\\security_runner.py\",$testMode) -WorkingDirectory $testRoot -WindowStyle Hidden -RedirectStandardOutput $logOut -RedirectStandardError $logErr -PassThru\n        $testWatch = [Diagnostics.Stopwatch]::StartNew()\n        while (-not $testProc.WaitForExit(100)) {\n            $testProc.Refresh()\n            if ($testWatch.Elapsed.TotalSeconds -gt 60 -or $testProc.WorkingSet64 -gt 268435456) {\n                Stop-Process -Id $testProc.Id\n                throw \"$testMode exceeded 60 seconds or 256 MiB working set. Only this test process was stopped.\"\n            }\n        }\n        Write-Output \"$testMode exit=$($testProc.ExitCode); logs: $logOut $logErr\"\n        if ($testProc.ExitCode -ne 0) { throw \"$testMode failed; inspect its logs.\" }\n    }\n    & git --no-optional-locks -c safe.directory=<TESTED_CHECKOUT> -C $repo status --porcelain=v1 > \"$PSScriptRoot\\rerun-git-after.txt\"\n    Compare-Object (Get-Content \"$PSScriptRoot\\rerun-git-before.txt\") (Get-Content \"$PSScriptRoot\\rerun-git-after.txt\")\n} finally { Pop-Location }\n",
+  "test_runner_source": "import sys, os, pathlib, json, time, unittest, importlib, ctypes, hashlib, tempfile\nROOT = pathlib.Path(r'<TESTED_CHECKOUT>')\nBASE = pathlib.Path(__file__).resolve().parent.parent\nTEMP = BASE / 'work' / 'test-temp'\nTEMP.mkdir(exist_ok=True)\nos.environ['TMP'] = os.environ['TEMP'] = str(TEMP)\ntempfile.tempdir = str(TEMP)\nsys.dont_write_bytecode = True\nsys.path[:0] = [str(ROOT), str(ROOT/'custody-service/src'), str(ROOT/'custody-service/tests'), str(ROOT/'.venv/Lib/site-packages')]\nblocked = []\nloopback_operations = []\ndef writable(p):\n    if isinstance(p, int): return\n    p = pathlib.Path(os.fsdecode(p)).resolve()\n    if not p.is_relative_to(BASE):\n        blocked.append({'operation':'write', 'path':str(p)})\n        raise PermissionError('Test write outside evidence workspace blocked')\ndef audit(event, args):\n    if event == 'open':\n        p, mode, flags = args\n        if (mode and any(x in mode for x in 'wax+')) or (flags and flags & (os.O_WRONLY|os.O_RDWR|os.O_CREAT|os.O_TRUNC|os.O_APPEND)): writable(p)\n    elif event == 'sqlite3.connect' and args[0] != ':memory:': writable(args[0])\n    elif event in ('os.remove','os.rmdir','os.mkdir','os.chmod','os.utime','os.symlink'): writable(args[0])\n    elif event in ('os.rename','os.replace'): writable(args[0]); writable(args[1])\n    elif event in ('subprocess.Popen','os.system'):\n        blocked.append({'operation':event}); raise PermissionError('Child execution blocked')\n    elif event in ('socket.connect','socket.bind'):\n        addr=args[1]\n        if isinstance(addr,tuple) and addr[0] not in ('127.0.0.1','::1'):\n            blocked.append({'operation':event,'address':str(addr)}); raise PermissionError('Non-loopback network blocked')\n        elif isinstance(addr,tuple): loopback_operations.append({'operation':event,'address':addr})\nsys.addaudithook(audit)\nclass PMC(ctypes.Structure):\n    _fields_=[('cb',ctypes.c_ulong),('faults',ctypes.c_ulong)]+[(n,ctypes.c_size_t) for n in ['peak_ws','ws','peak_paged','paged','peak_nonpaged','nonpaged','pagefile','peak_pagefile']]\ndef memory():\n    p=PMC(); p.cb=ctypes.sizeof(p)\n    if not ctypes.windll.psapi.GetProcessMemoryInfo(ctypes.c_void_p(-1),ctypes.byref(p),p.cb):\n        raise ctypes.WinError()\n    return {'working_set_bytes':p.ws,'peak_working_set_bytes':p.peak_ws,'private_bytes':p.pagefile}\nstart=time.perf_counter(); cpu=time.process_time(); initial=memory()\nmode=sys.argv[1]\nsummary={'mode':mode,'initial_memory':initial,'blocked_operations':blocked,'loopback_operations':loopback_operations}\nif mode == 'inventory':\n    from importlib.metadata import distributions\n    from packaging.requirements import Requirement\n    ds=list(distributions(path=[str(ROOT/'.venv/Lib/site-packages')]))\n    installed={d.metadata['Name'].lower().replace('_','-'):d.version for d in ds}\n    rows=[]; mismatches=[]\n    for d in ds:\n        reqs=d.requires or []; rows.append({'name':d.metadata['Name'],'version':d.version,'requires':reqs})\n        for s in reqs:\n            r=Requirement(s)\n            if r.marker and not r.marker.evaluate({'extra':''}): continue\n            v=installed.get(r.name.lower().replace('_','-'))\n            if v is None or (r.specifier and not r.specifier.contains(v)): mismatches.append({'package':d.metadata['Name'],'requirement':s,'installed':v})\n    summary.update(packages=rows,dependency_conflicts=mismatches,manifest_drift={'uvicorn':{'declared':'0.52.4','installed':installed.get('uvicorn')},'anyio':{'declared_test':'4.14.2','installed':installed.get('anyio')},'httpx2':{'declared_test':'2.12.0','installed':installed.get('httpx2')},'sentry-traffic':{'declared':'0.1.0','installed':installed.get('sentry-traffic')},'cryptography':{'declared_optional':'50.0.1','installed':installed.get('cryptography')},'mcp':{'declared_optional':'>=2,<3','installed':installed.get('mcp')}})\n    print(json.dumps(summary,indent=2))\nelif mode == 'core':\n    names=['tests.test_kernel','tests.test_authority','tests.test_persistence','tests.test_execution_context_binding','tests.test_github_execution_context','tests.test_custody_executor','tests.test_custody_domain','tests.test_transport_security','tests.test_network_exposure','tests.test_issue_153_consequence_reconciliation_v0.Issue153ConsequenceReconciliationV0.test_05_replay_substitution_expiry_revocation_and_widening_do_not_create_fresh_authority']\n    result=unittest.TextTestRunner(verbosity=2).run(unittest.defaultTestLoader.loadTestsFromNames(names))\n    summary.update(tests=result.testsRun,failures=len(result.failures),errors=len(result.errors),skips=result.skipped)\nelif mode == 'routes':\n    mod=importlib.import_module('tests.test_mcp_boundary')\n    names=[f'tests.test_mcp_boundary.MCPBoundaryTests.{n}' for n in dir(mod.MCPBoundaryTests) if n.startswith('test_') and 'export' not in n]\n    result=unittest.TextTestRunner(verbosity=2).run(unittest.defaultTestLoader.loadTestsFromNames(names))\n    summary.update(tests=result.testsRun,failures=len(result.failures),errors=len(result.errors),skips=result.skipped)\nelif mode == 'p3':\n    sys.path.insert(0,str(pathlib.Path(__file__).resolve().parent))\n    result=unittest.TextTestRunner(verbosity=2).run(unittest.defaultTestLoader.loadTestsFromName('p3_security_tests'))\n    summary.update(tests=result.testsRun,failures=len(result.failures),errors=len(result.errors),skips=result.skipped)\nelif mode == 'asgi':\n    import ast, types, asyncio\n    class Response:\n        def __init__(self,status,body): self.status_code=status; self.text=body.decode()\n        def json(self): return json.loads(self.text)\n    class DirectClient:\n        def __init__(self,app): self.app=app\n        def post(self,path,**kwargs):\n            payload=json.dumps(kwargs.get('json',{})).encode()\n            async def request():\n                sent=[]; supplied=False\n                async def receive():\n                    nonlocal supplied\n                    if not supplied: supplied=True; return {'type':'http.request','body':payload,'more_body':False}\n                    await asyncio.sleep(10)\n                    return {'type':'http.disconnect'}\n                async def send(event): sent.append(event)\n                scope={'type':'http','asgi':{'version':'3.0'},'http_version':'1.1','method':'POST','scheme':'http','path':path,'raw_path':path.encode(),'query_string':b'','root_path':'','headers':[(b'content-type',b'application/json')],'client':('127.0.0.1',12345),'server':('127.0.0.1',80)}\n                await asyncio.wait_for(self.app(scope,receive,send),3)\n                status=next(e['status'] for e in sent if e['type']=='http.response.start')\n                body=b''.join(e.get('body',b'') for e in sent if e['type']=='http.response.body')\n                print('ASGI_RESPONSE '+json.dumps({'path':path,'status':status}))\n                return Response(status,body)\n            return asyncio.run(request())\n    source=ROOT/'custody-service/tests/test_api.py'\n    tree=ast.parse(source.read_text(encoding='utf-8'))\n    tree.body=[n for n in tree.body if not (isinstance(n,ast.ImportFrom) and n.module=='fastapi.testclient')]\n    module=types.ModuleType('isolated_api_tests'); module.__dict__['TestClient']=DirectClient\n    sys.modules[module.__name__]=module\n    exec(compile(tree,str(source),'exec'),module.__dict__)\n    summary['adaptation']='Original API tests loaded in memory; TestClient import replaced by direct real-app ASGI invocation. No httpx2, server, or lifespan exercised.'\n    result=unittest.TextTestRunner(verbosity=2).run(unittest.defaultTestLoader.loadTestsFromModule(module))\n    summary.update(tests=result.testsRun,failures=len(result.failures),errors=len(result.errors),skips=result.skipped)\nsummary.update(wall_seconds=time.perf_counter()-start,cpu_seconds=time.process_time()-cpu,final_memory=memory())\n(BASE/'outputs'/f'{mode}-summary.json').write_text(json.dumps(summary,indent=2),encoding='utf-8')\nprint('METRICS '+json.dumps(summary if mode != 'inventory' else {k:v for k,v in summary.items() if k!='packages'}))\nsys.exit(0 if mode=='inventory' or (not summary['failures'] and not summary['errors']) else 1)\n",
+  "p3_probe_sha256": "82a95b1a3158758069b70097de0c893bb83ca3e5587c3407d70896082d8572b7",
+  "source_identities": [
+    {
+      "path": "<TESTED_CHECKOUT>\\pyproject.toml",
+      "sha256": "c01122144de6388af38b0be145737513d0abdb923b4ecde69ce11450a7801714"
+    },
+    {
+      "path": "<TESTED_CHECKOUT>\\custody-service\\pyproject.toml",
+      "sha256": "2865d3d06e4f337b3cbeca075319d5290d229f04450d56b5524a8b9febecbd9b"
+    },
+    {
+      "path": "<TESTED_CHECKOUT>\\pulpo\\custody_domain.py",
+      "sha256": "2dbc735acc7486538ceffb52f7f49e797af4f217b4226c947598490d4b24df86"
+    },
+    {
+      "path": "<TESTED_CHECKOUT>\\pulpo\\custody_executor.py",
+      "sha256": "42b2d4e1999b6c283ba29828f1457b888b774e63c562305bc919dcdadd1828b6"
+    },
+    {
+      "path": "<TESTED_CHECKOUT>\\pulpo\\execution_context.py",
+      "sha256": "064acc96187c5c67cef847ab606e018b237a987f70848ad85f5d7a4f8ff7a772"
+    },
+    {
+      "path": "<TESTED_CHECKOUT>\\pulpo\\kernel.py",
+      "sha256": "f660349186f1dac637d264513150fd0a6b1ce125577df0120baba656ddd4e15a"
+    },
+    {
+      "path": "<TESTED_CHECKOUT>\\pulpo\\mcp_boundary.py",
+      "sha256": "7de2ba3ab32a2110eac0dffcb28570c472aa0e8a5387e6c93bb4c5b8bdb5d0d8"
+    },
+    {
+      "path": "<TESTED_CHECKOUT>\\pulpo\\state.py",
+      "sha256": "6e9697f45f5274056517b5f6b3c4fbe3b3ccec93ef6e3f73dd97a6d1469ba06a"
+    },
+    {
+      "path": "<TESTED_CHECKOUT>\\tests\\authority_support.py",
+      "sha256": "e98882e9f88996e69e604e9d53d29065db39fb47463430e020d8caf215580b54"
+    },
+    {
+      "path": "<TESTED_CHECKOUT>\\tests\\test_authority.py",
+      "sha256": "ac76189a4de5999d80893e8423d9cafa9fe0125d234f497645ded4a58889729f"
+    },
+    {
+      "path": "<TESTED_CHECKOUT>\\tests\\test_custody_domain.py",
+      "sha256": "98c39f7a0963d6ae61eba73bdc92db966cfd9d832b02cb168b28d5be454c909c"
+    },
+    {
+      "path": "<TESTED_CHECKOUT>\\tests\\test_custody_executor.py",
+      "sha256": "4587eab0da643224c13e1b7c06828d19bdbc396d9e5a6124e247c24b678827c3"
+    },
+    {
+      "path": "<TESTED_CHECKOUT>\\tests\\test_execution_context_binding.py",
+      "sha256": "e9155b2735f4fca4ea697689698a4b9b1841c224f26b62875eb32409725f56b4"
+    },
+    {
+      "path": "<TESTED_CHECKOUT>\\tests\\test_github_execution_context.py",
+      "sha256": "83cef11b1b1c9fb186fcb08d44050c9d1e0256be3cdba136fd1da61b86a6275c"
+    },
+    {
+      "path": "<TESTED_CHECKOUT>\\tests\\test_issue_153_consequence_reconciliation_v0.py",
+      "sha256": "dc8f7c89d36e9a6f0c5927b2d81f788c6ef048d092ac000b587a2d2867a3ee5b"
+    },
+    {
+      "path": "<TESTED_CHECKOUT>\\tests\\test_kernel.py",
+      "sha256": "e09e37c7bce0ac58468c5de0284f6337e076aee3eda9a6197db5d77da8e01bf3"
+    },
+    {
+      "path": "<TESTED_CHECKOUT>\\tests\\test_mcp_boundary.py",
+      "sha256": "18f77faa44f85827ab74ac487bd902a38878f928c6847cad10b09809fd0b60ec"
+    },
+    {
+      "path": "<TESTED_CHECKOUT>\\tests\\test_network_exposure.py",
+      "sha256": "f1e24902caf27aff6c7128b61788f3db48d13c621a2360095b4287bc7929d181"
+    },
+    {
+      "path": "<TESTED_CHECKOUT>\\tests\\test_persistence.py",
+      "sha256": "93b6524133ab91074dcc6480e5bcaebd111d87ba67f6370a02643fd424ad0975"
+    },
+    {
+      "path": "<TESTED_CHECKOUT>\\tests\\test_transport_security.py",
+      "sha256": "b00e05d7157dd9a6dfc48103ae52ffa43d18f3cc21f406550e5e1be6aad7da9c"
+    },
+    {
+      "path": "<TESTED_CHECKOUT>\\custody-service\\src\\pulpo_custody_service\\api.py",
+      "sha256": "4bcbe4a6b3fcaad30a6f7492a13a4b95f16f592140b7bd3555e632843b954d99"
+    },
+    {
+      "path": "<TESTED_CHECKOUT>\\custody-service\\tests\\test_api.py",
+      "sha256": "46e3f42bbf336fae9d5d6d13f35011d59c68f778dcc67cb49cfdfd563fd3f68a"
+    },
+    {
+      "path": "<TESTED_CHECKOUT>\\.venv\\Lib\\site-packages\\pulpo_p3\\__init__.py",
+      "sha256": "366f9abde820c4c40125ceb97fb9029d9df61a3fcb19d0484df35041c0877cd7"
+    },
+    {
+      "path": "<TESTED_CHECKOUT>\\.venv\\Lib\\site-packages\\pulpo_p3\\flow.py",
+      "sha256": "dcf804d1ef7e243edc2ea7b7405f4c677031c98ca84fbcbe6acd9cb076b83884"
+    },
+    {
+      "path": "<TESTED_CHECKOUT>\\.venv\\Lib\\site-packages\\pulpo_p3\\framing.py",
+      "sha256": "6aa9ffa4bbe16692cbf57df515fb7045301ecc999a2d1882f84640581bca620c"
+    },
+    {
+      "path": "<TESTED_CHECKOUT>\\.venv\\Lib\\site-packages\\pulpo_p3\\tcp.py",
+      "sha256": "abcc0c8998cf8e64043ab7f8a59487478511ecf66714eec7133bb15cef659e43"
+    }
+  ]
+}
