@@ -12,7 +12,7 @@
   "upstream_base_at_preparation": "d674dbb7a00b471d69bcca84d2f034cf74705e1a",
   "distinct_tests": 121,
   "no_upstream_head_test_claim": true,
-  "publication_normalization": "Machine paths replaced by role placeholders; raw local originals retained in user evidence folder. No private runtime state or existing working-tree source is published.",
+  "publication_normalization": "Machine paths replaced by role placeholders; raw local originals retained in user evidence folder. No private runtime state or existing working-tree source is published. Published artifact line endings normalized to LF; original capture/source hashes still refer to recorded local bytes.",
   "suites": {
     "core": {
       "summary": {
