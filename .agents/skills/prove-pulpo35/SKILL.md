@@ -18,4 +18,3 @@ Treat this skill as Intelligence Plane guidance. It grants no authority, permit,
 9. When GitHub work is authorized, prepare an exact-head draft PR under existing admission controls. CI is evidence, not merge authority. Do not contact reviewers unless separately instructed; do not merge or change protection settings to complete a proof.
 
 Initial package version: 3.5-proof-v1. Reconcile versions against the source actually read. Loading this skill cannot turn ordinary chat into an authoritative directive.
-

@@ -58,4 +58,3 @@ The full proposed 24-condition Ultimate Gladiator tournament remains incomplete.
 - Independent review: a model/subagent review is an intelligence check, not a distinct authenticated authority decision.
 
 Intelligence proposes. Governance disposes. Execution obeys. Evidence reports.
-
