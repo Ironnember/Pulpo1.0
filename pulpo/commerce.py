@@ -8,6 +8,7 @@ keeps payment, delivery, acceptance, and value evidence distinct.
 
 from __future__ import annotations
 
+from contextlib import closing
 from dataclasses import asdict, dataclass
 from hashlib import sha256
 import json
@@ -554,6 +555,30 @@ class SQLiteBudgetAccount:
         except (OSError, sqlite3.Error, TypeError) as error:
             raise CommerceViolation("durable budget store unavailable") from error
         return BudgetReservation(reservation_id, order.order_hash, order.purchase_price_cents)
+
+    def reservation_for_order(self, order: DomainPurchaseOrder) -> BudgetReservation:
+        """Read the original durable reservation, including after settlement.
+
+        Execution handles retain their issuance values across attempt and
+        reconciliation state changes. This lookup grants no execution right
+        and does not reopen a consumed reservation.
+        """
+        try:
+            with closing(self._connect()) as connection:
+                row = connection.execute(
+                    """
+                    SELECT reservation_id, reserved_cents
+                    FROM commerce_reservations WHERE order_hash = ?
+                    """,
+                    (order.order_hash,),
+                ).fetchone()
+        except (OSError, sqlite3.Error, TypeError) as error:
+            raise CommerceViolation("durable budget store unavailable") from error
+        if row is None:
+            raise CommerceViolation("reservation_unknown")
+        if type(row[1]) is not int or row[1] != order.purchase_price_cents:
+            raise CommerceViolation("reservation_amount_mismatch")
+        return BudgetReservation(row[0], order.order_hash, row[1])
 
     def require_active(
         self,
