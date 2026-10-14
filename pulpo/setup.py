@@ -14,10 +14,10 @@ from pathlib import Path
 from typing import Sequence
 
 from .performance_tuning import (
-    AdaptiveAuditVerificationEngine,
     AuditPerformanceTuner,
     SystemFingerprint,
 )
+from .audit_parallel import AuditVerificationEngine
 
 
 def _canonical(value: object) -> bytes:
@@ -46,16 +46,21 @@ def synthetic_audit_rows(count: int):
 
 def _verify_profile(tuner: AuditPerformanceTuner) -> bool:
     rows = synthetic_audit_rows(64)
-    engine = AdaptiveAuditVerificationEngine(tuner, cache_size=0)
-    try:
-        if not engine.verify_rows(rows):
-            return False
-        broken = list(rows)
-        row = broken[-1]
-        broken[-1] = (row[0], row[1], row[2], row[3], "f" * 64)
-        return engine.verify_rows(broken) is False
-    finally:
-        engine.close()
+    for profile in tuner.profiles:
+        # Force the computation path with a bounded smoke sample. This checks
+        # every chosen worker/batch configuration, not performance or crossover.
+        engine = AuditVerificationEngine(workers=profile.workers, batch_size=profile.batch_size, parallel_threshold=1, cache_size=0)
+        try:
+            if not engine.verify_rows(rows) or not engine.verify_rows(rows):
+                return False
+            broken = list(rows)
+            row = broken[-1]
+            broken[-1] = (row[0], row[1], row[2], row[3], "f" * 64)
+            if engine.verify_rows(broken) is not False:
+                return False
+        finally:
+            engine.close()
+    return True
 
 
 def run_setup(
@@ -123,7 +128,10 @@ def run_setup(
         profile_status = "CONSERVATIVE_FALLBACK"
         profile_detail = "no valid local profile was available; conservative settings selected"
 
-    verified = _verify_profile(tuner)
+    try:
+        verified = _verify_profile(tuner)
+    except (OSError, RuntimeError, ValueError):
+        verified = False
     report["profile"] = {
         "status": profile_status,
         "detail": profile_detail,

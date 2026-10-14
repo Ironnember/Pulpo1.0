@@ -50,18 +50,21 @@ class ShardedEvidenceDigestCache:
             raise ValueError("max_entries must be a non-negative integer")
         self.shards = shards
         self.max_entries = max_entries
-        self._capacity = (max_entries + shards - 1) // shards if max_entries else 0
+        self._capacities = [max_entries // shards + (index < max_entries % shards) for index in range(shards)]
         self._values = [OrderedDict() for _ in range(shards)]
         self._locks = [RLock() for _ in range(shards)]
 
     def _slot(self, canonical: bytes) -> int:
-        return canonical[0] % self.shards if canonical else 0
+        return int.from_bytes(sha256(canonical).digest()[:8], "big") % self.shards
 
     def digest(self, value: object) -> str:
         canonical = _canonical_json(value)
-        if self._capacity == 0:
+        if self.max_entries == 0:
             return sha256(canonical).hexdigest()
         slot = self._slot(canonical)
+        capacity = self._capacities[slot]
+        if capacity == 0:
+            return sha256(canonical).hexdigest()
         values = self._values[slot]
         lock = self._locks[slot]
         with lock:
@@ -73,7 +76,7 @@ class ShardedEvidenceDigestCache:
         with lock:
             values[canonical] = digest
             values.move_to_end(canonical)
-            while len(values) > self._capacity:
+            while len(values) > capacity:
                 values.popitem(last=False)
         return digest
 
