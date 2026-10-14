@@ -230,6 +230,7 @@ class Issue153ConsequenceReconciliationV0(unittest.TestCase):
             "receipt_hash": "a" * 64,
             "privacy_enabled": True,
             "dns_state": "registered",
+            "auto_renew_enabled": False,
         }
         values.update(changes)
         return IndependentDomainObservation(**values)
