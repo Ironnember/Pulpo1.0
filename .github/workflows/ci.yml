@@ -39,6 +39,27 @@ jobs:
       - name: Compile listener proof sources
         run: python -m compileall -q pulpo/network_exposure.py scripts/check_network_exposure.py tests/test_network_exposure.py
 
+  gladiator-proof:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Run exact-source bounded Gladiator proof
+        run: >-
+          python -W error scripts/run_gladiator_tournament.py
+          --repo . --expected-revision "${{ github.sha }}"
+          --output "${{ runner.temp }}/pulpo35-proof"
+      - name: Preserve bounded proof evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pulpo35-proof-${{ github.sha }}
+          path: ${{ runner.temp }}/pulpo35-proof
+          if-no-files-found: error
+
   authority:
     runs-on: ubuntu-latest
     timeout-minutes: 5

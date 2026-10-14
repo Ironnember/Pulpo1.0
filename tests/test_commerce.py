@@ -52,6 +52,84 @@ class UncertainRegistrar:
 
 
 class CommerceProofTests(unittest.TestCase):
+    def capture_budget_connections(self):
+        connections = []
+        connect = sqlite3.connect
+
+        def observed_connect(*args, **kwargs):
+            connection = connect(*args, **kwargs)
+            connections.append(connection)
+            return connection
+
+        self.addCleanup(lambda: [connection.close() for connection in connections])
+        return connections, observed_connect
+
+    def assert_connections_closed(self, connections):
+        self.assertTrue(connections)
+        for connection in connections:
+            with self.assertRaises(sqlite3.ProgrammingError):
+                connection.execute("SELECT 1")
+
+    def test_budget_closes_connections_after_success_and_denials(self):
+        order = self.assessment().order
+        connections, observed_connect = self.capture_budget_connections()
+        with TemporaryDirectory() as directory:
+            path = Path(directory) / "budget.sqlite3"
+            with patch("pulpo.commerce.sqlite3.connect", side_effect=observed_connect):
+                budget = SQLiteBudgetAccount(path)
+                self.assert_connections_closed(connections)
+                reservation = budget.reserve(order, now_ns=NOW)
+                self.assertEqual(1_000, budget.available_cents)
+                self.assert_connections_closed(connections)
+                with self.assertRaisesRegex(CommerceViolation, "already_reserved"):
+                    budget.reserve(order, now_ns=NOW)
+                self.assert_connections_closed(connections)
+                budget.require_active(reservation.reservation_id, order, now_ns=NOW)
+                self.assert_connections_closed(connections)
+                budget.mark_attempted(reservation.reservation_id)
+                with self.assertRaisesRegex(CommerceViolation, "not_active"):
+                    budget.mark_attempted(reservation.reservation_id)
+                with self.assertRaisesRegex(CommerceViolation, "charge_exceeded"):
+                    budget.reconcile(reservation.reservation_id, PaymentEvidence("p", 2_001, "a" * 64))
+                self.assert_connections_closed(connections)
+                budget.reconcile(reservation.reservation_id, PaymentEvidence("p", 2_000, "a" * 64))
+                restarted = SQLiteBudgetAccount(path)
+                self.assertEqual((2_000, 0, 1_000), (restarted.spent_cents, restarted.reserved_cents, restarted.available_cents))
+                self.assert_connections_closed(connections)
+
+    def test_budget_closes_connection_on_configuration_failure(self):
+        connections, observed_connect = self.capture_budget_connections()
+        with TemporaryDirectory() as directory:
+            path = Path(directory) / "budget.sqlite3"
+            SQLiteBudgetAccount(path, 2_000)
+            with patch("pulpo.commerce.sqlite3.connect", side_effect=observed_connect):
+                with self.assertRaisesRegex(CommerceViolation, "does not match"):
+                    SQLiteBudgetAccount(path, 3_000)
+            self.assert_connections_closed(connections)
+
+    def test_budget_closes_connection_when_synchronous_setup_fails(self):
+        connections = []
+
+        class FailingPragmaConnection(sqlite3.Connection):
+            def execute(self, sql, *args, **kwargs):
+                if sql == "PRAGMA synchronous=FULL":
+                    raise sqlite3.OperationalError("synthetic pragma failure")
+                return super().execute(sql, *args, **kwargs)
+
+        connect = sqlite3.connect
+
+        def failing_connect(*args, **kwargs):
+            connection = connect(*args, factory=FailingPragmaConnection, **kwargs)
+            connections.append(connection)
+            return connection
+
+        self.addCleanup(lambda: [connection.close() for connection in connections])
+        with TemporaryDirectory() as directory:
+            with patch("pulpo.commerce.sqlite3.connect", side_effect=failing_connect):
+                with self.assertRaisesRegex(CommerceViolation, "unavailable"):
+                    SQLiteBudgetAccount(Path(directory) / "budget.sqlite3")
+            self.assert_connections_closed(connections)
+
     def setUp(self):
         self.request = DomainPurchaseRequest(
             request_id="request-1",
