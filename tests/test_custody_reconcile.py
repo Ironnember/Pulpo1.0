@@ -122,6 +122,7 @@ class CustodyReconciliationTests(unittest.TestCase):
             "receipt_hash": "a" * 64,
             "privacy_enabled": True,
             "dns_state": "registered",
+            "auto_renew_enabled": False,
         }
         values.update(changes)
         return IndependentDomainObservation(**values)
@@ -158,6 +159,31 @@ class CustodyReconciliationTests(unittest.TestCase):
         self.assertEqual(2_000, budget.reserved_cents)
         self.assertEqual(1_000, budget.available_cents)
 
+    def test_provider_success_without_auto_renew_observation_stays_unresolved(self):
+        custody, budget, governed, order, provider_request_id = self.stack()
+        observation = self.observation(provider_request_id, auto_renew_enabled=None)
+        result = self.reconciler(custody, budget).reconcile(governed, order, observation)
+
+        self.assertEqual(("unresolved", "success_observation_incomplete"), (result.outcome, result.reason))
+        self.assertEqual(SQLiteGovernanceCustody.UNRESOLVED, custody.attempt(governed.attempt_id).state)
+        self.assertIsNone(result.budget_reconciliation)
+        self.assertEqual(0, budget.spent_cents)
+        self.assertEqual(2_000, budget.reserved_cents)
+
+    def test_observed_auto_renew_substitution_is_failure_and_holds_budget(self):
+        custody, budget, governed, order, provider_request_id = self.stack()
+        observation = self.observation(provider_request_id, auto_renew_enabled=True)
+        result = self.reconciler(custody, budget).reconcile(governed, order, observation)
+
+        self.assertEqual(("failure", "observed_auto_renew_mismatch"), (result.outcome, result.reason))
+        self.assertEqual(
+            SQLiteGovernanceCustody.RECONCILED_FAILURE,
+            custody.attempt(governed.attempt_id).state,
+        )
+        self.assertIsNone(result.budget_reconciliation)
+        self.assertEqual(0, budget.spent_cents)
+        self.assertEqual(2_000, budget.reserved_cents)
+
     def test_observed_substitution_is_failure_and_does_not_reopen_budget(self):
         custody, budget, governed, order, provider_request_id = self.stack()
         observation = self.observation(provider_request_id, domain="wrong.example")
@@ -185,6 +211,7 @@ class CustodyReconciliationTests(unittest.TestCase):
             receipt_hash=None,
             privacy_enabled=None,
             dns_state=None,
+            auto_renew_enabled=None,
         )
         result = self.reconciler(custody, budget, "observer:registrar-query").reconcile(
             governed, order, observation
@@ -208,6 +235,7 @@ class CustodyReconciliationTests(unittest.TestCase):
             receipt_hash=None,
             privacy_enabled=None,
             dns_state=None,
+            auto_renew_enabled=None,
         )
         result = self.reconciler(custody, budget, "observer:registrar-query").reconcile(
             governed, order, observation
