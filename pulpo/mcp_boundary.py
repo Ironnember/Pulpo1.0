@@ -253,18 +253,27 @@ class PulpoMCPProjection:
         resource: str,
         cost: int,
         session_id: str,
+        provenance_hash: str | None = None,
     ) -> Intent:
         values = (principal, action, resource, session_id)
         if any(not isinstance(value, str) or not value or value != value.strip() for value in values):
             raise MCPBoundaryError("mcp_intent_invalid")
         if isinstance(cost, bool) or not isinstance(cost, int) or cost < 0:
             raise MCPBoundaryError("mcp_intent_invalid")
+        if provenance_hash is not None and (
+            not isinstance(provenance_hash, str)
+            or len(provenance_hash) != 64
+            or provenance_hash != provenance_hash.lower()
+            or any(character not in "0123456789abcdef" for character in provenance_hash)
+        ):
+            raise MCPBoundaryError("mcp_provenance_invalid")
         return Intent(
             principal=principal,
             action=action,
             resource=resource,
             cost=cost,
             session_id=session_id,
+            provenance_hash=provenance_hash,
         )
 
     def propose_intent(
@@ -276,6 +285,7 @@ class PulpoMCPProjection:
         cost: int = 0,
         session_id: str = "default",
         version: int = 1,
+        provenance_hash: str | None = None,
     ) -> dict[str, Any]:
         """Return one exact candidate proposal without mutating canonical state.
 
@@ -289,12 +299,15 @@ class PulpoMCPProjection:
             raise MCPBoundaryError("mcp_target_invalid")
         if isinstance(version, bool) or not isinstance(version, int) or version <= 0:
             raise MCPBoundaryError("mcp_target_invalid")
-        intent = self._intent(principal, action, resource, cost, session_id)
+        intent = self._intent(principal, action, resource, cost, session_id, provenance_hash)
+        intent_payload = asdict(intent)
+        if intent_payload["provenance_hash"] is None:
+            intent_payload.pop("provenance_hash")
         return {
             "schema": "pulpo.mcp-proposal.v2",
             "target_id": target_id,
             "target_version": version,
-            "intent": asdict(intent),
+            "intent": intent_payload,
             "intent_hash": GovernanceKernel.intent_hash(intent),
             "policy_hash": self._snapshot.policy_hash,
             "freshness": "frozen",
@@ -343,6 +356,7 @@ def create_mcp_server(snapshot: MCPReadSnapshot):
         cost: int = 0,
         session_id: str = "default",
         version: int = 1,
+        provenance_hash: str | None = None,
     ) -> dict[str, Any]:
         """Project one exact proposal without committing canonical state."""
 
@@ -354,6 +368,7 @@ def create_mcp_server(snapshot: MCPReadSnapshot):
             cost,
             session_id,
             version,
+            provenance_hash,
         )
 
     @server.tool()

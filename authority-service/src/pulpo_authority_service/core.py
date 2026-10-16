@@ -66,6 +66,7 @@ class ApprovalRequest:
     deployment_id: str
     requested_ttl_ns: int
     schema: str = "pulpo.authority-request.v1"
+    provenance_hash: str | None = None
 
     def __post_init__(self) -> None:
         for value, field in (
@@ -80,6 +81,8 @@ class ApprovalRequest:
                 raise ValueError(f"{field} exceeds the authority request limit")
         _require_digest(self.intent_hash, "intent_hash")
         _require_digest(self.policy_hash, "policy_hash")
+        if self.provenance_hash is not None:
+            _require_digest(self.provenance_hash, "provenance_hash")
         if isinstance(self.cost, bool) or not isinstance(self.cost, int) or self.cost < 0:
             raise ValueError("cost must be a non-negative integer")
         if (
@@ -100,6 +103,8 @@ class ApprovalRequest:
             "cost": self.cost,
             "session_id": self.session_id,
         }
+        if self.provenance_hash is not None:
+            intent["provenance_hash"] = self.provenance_hash
         return sha256(_canonical(intent)).hexdigest()
 
 
@@ -299,6 +304,7 @@ class AuthorityService:
                 "session_id": request.session_id,
                 "intent_hash": request.intent_hash,
                 "policy_hash": request.policy_hash,
+                "provenance_hash": request.provenance_hash,
                 "deployment_id": request.deployment_id,
                 "expires_at_ns": record.unsigned_envelope.expires_at_ns,
             }
