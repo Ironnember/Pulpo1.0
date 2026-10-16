@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+from collections import OrderedDict
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict, dataclass
 from hashlib import sha256
 import json
 import os
 from pathlib import Path
 import stat
+from threading import RLock
 from typing import Iterable, Literal, Sequence
 
 
@@ -29,6 +32,56 @@ def _canonical_json(value: object) -> bytes:
 
 def _hash_json(value: object) -> str:
     return sha256(_canonical_json(value)).hexdigest()
+
+
+class ShardedEvidenceDigestCache:
+    """Bounded sharded cache for hashes of exact canonical evidence bytes.
+
+    The cache never skips filesystem observation or file-content hashing. It only
+    reuses SHA-256 results when the complete canonical snapshot payload bytes are
+    byte-for-byte identical, so a cache hit cannot create authority or substitute
+    stale evidence for current observation.
+    """
+
+    def __init__(self, *, shards: int = 8, max_entries: int = 1024) -> None:
+        if not isinstance(shards, int) or isinstance(shards, bool) or shards <= 0:
+            raise ValueError("shards must be a positive integer")
+        if not isinstance(max_entries, int) or isinstance(max_entries, bool) or max_entries < 0:
+            raise ValueError("max_entries must be a non-negative integer")
+        self.shards = shards
+        self.max_entries = max_entries
+        self._capacity = (max_entries + shards - 1) // shards if max_entries else 0
+        self._values = [OrderedDict() for _ in range(shards)]
+        self._locks = [RLock() for _ in range(shards)]
+
+    def _slot(self, canonical: bytes) -> int:
+        return canonical[0] % self.shards if canonical else 0
+
+    def digest(self, value: object) -> str:
+        canonical = _canonical_json(value)
+        if self._capacity == 0:
+            return sha256(canonical).hexdigest()
+        slot = self._slot(canonical)
+        values = self._values[slot]
+        lock = self._locks[slot]
+        with lock:
+            cached = values.get(canonical)
+            if cached is not None:
+                values.move_to_end(canonical)
+                return cached
+        digest = sha256(canonical).hexdigest()
+        with lock:
+            values[canonical] = digest
+            values.move_to_end(canonical)
+            while len(values) > self._capacity:
+                values.popitem(last=False)
+        return digest
+
+    def clear(self) -> None:
+        for values, lock in zip(self._values, self._locks):
+            with lock:
+                values.clear()
+
 
 
 def _normalize_absolute(path: str) -> str:
@@ -283,7 +336,11 @@ def _entry_from_lstat(path: Path, relative_path: str) -> SnapshotEntry:
     return SnapshotEntry(kind="other", **common)
 
 
-def capture_surface(surface: SurfaceSpec) -> TreeSnapshot:
+def capture_surface(
+    surface: SurfaceSpec,
+    *,
+    digest_cache: ShardedEvidenceDigestCache | None = None,
+) -> TreeSnapshot:
     root = Path(surface.root)
     if not root.exists() and not root.is_symlink():
         payload = {
@@ -299,7 +356,7 @@ def capture_surface(surface: SurfaceSpec) -> TreeSnapshot:
             exclude=surface.exclude,
             exists=False,
             entries=(),
-            digest=_hash_json(payload),
+            digest=digest_cache.digest(payload) if digest_cache is not None else _hash_json(payload),
         )
 
     entries: list[SnapshotEntry] = []
@@ -335,11 +392,66 @@ def capture_surface(surface: SurfaceSpec) -> TreeSnapshot:
         exclude=surface.exclude,
         exists=True,
         entries=frozen_entries,
-        digest=_hash_json(payload),
+        digest=digest_cache.digest(payload) if digest_cache is not None else _hash_json(payload),
     )
 
 
-def capture_envelope_surfaces(envelope: EffectEnvelope) -> tuple[TreeSnapshot, ...]:
+class ParallelEvidenceCollector:
+    """Collect independent read-only surfaces concurrently.
+
+    Collection may run in parallel, but reconciliation and canonical evidence
+    append remain outside this helper and therefore serialized by their existing
+    governance/state paths.
+    """
+
+    def __init__(
+        self,
+        *,
+        workers: int = 0,
+        cache_shards: int = 8,
+        cache_entries: int = 1024,
+    ) -> None:
+        if not isinstance(workers, int) or isinstance(workers, bool) or workers < 0:
+            raise ValueError("workers must be a non-negative integer")
+        self.workers = workers
+        self.cache = ShardedEvidenceDigestCache(
+            shards=cache_shards,
+            max_entries=cache_entries,
+        )
+
+    def capture(self, envelope: EffectEnvelope) -> tuple[TreeSnapshot, ...]:
+        surfaces = tuple(envelope.surfaces)
+        if self.workers <= 1 or len(surfaces) <= 1:
+            return tuple(
+                capture_surface(surface, digest_cache=self.cache)
+                for surface in surfaces
+            )
+        with ThreadPoolExecutor(max_workers=self.workers) as executor:
+            snapshots = tuple(
+                executor.map(
+                    lambda surface: capture_surface(surface, digest_cache=self.cache),
+                    surfaces,
+                )
+            )
+        return snapshots
+
+    def close(self) -> None:
+        self.cache.clear()
+
+    def __enter__(self) -> "ParallelEvidenceCollector":
+        return self
+
+    def __exit__(self, exc_type, exc, tb) -> None:
+        self.close()
+
+
+def capture_envelope_surfaces(
+    envelope: EffectEnvelope,
+    *,
+    collector: ParallelEvidenceCollector | None = None,
+) -> tuple[TreeSnapshot, ...]:
+    if collector is not None:
+        return collector.capture(envelope)
     return tuple(capture_surface(surface) for surface in envelope.surfaces)
 
 
