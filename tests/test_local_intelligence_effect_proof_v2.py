@@ -5,7 +5,9 @@ import unittest
 from scripts.run_local_intelligence_effect_proof import sanitize_environment
 from scripts.run_local_intelligence_effect_proof_v2 import (
     AUTH_PROJECTION_MODE,
+    build_injection_hardened_profile,
     prepare_runtime_codex_home,
+    require_auth_projection_opt_in,
     stage_runtime_auth_copy,
     v2_profile_binding,
 )
@@ -40,6 +42,26 @@ class LocalIntelligenceEffectProofV2Tests(unittest.TestCase):
             self.assertIsNotNone(auth_sha)
             self.assertEqual(mode, AUTH_PROJECTION_MODE)
             self.assertFalse((disposable / "auth.json").exists())
+
+    def test_file_auth_projection_requires_explicit_opt_in(self):
+        with tempfile.TemporaryDirectory() as temp:
+            auth = Path(temp) / "auth.json"
+            auth.write_text('{"token":"secret"}', encoding="utf-8")
+            with self.assertRaisesRegex(RuntimeError, "file_auth_projection_requires_explicit_opt_in"):
+                require_auth_projection_opt_in(auth, allowed=False)
+            require_auth_projection_opt_in(auth, allowed=True)
+
+    def test_injection_hardened_profile_denies_operator_home_and_network_by_default(self):
+        with tempfile.TemporaryDirectory() as temp:
+            runtime = Path(temp) / "runtime"
+            runtime.mkdir()
+            profile = build_injection_hardened_profile(
+                runtime,
+                Path.home() / ".codex",
+                allow_network=False,
+            )
+            self.assertIn("(deny network*)", profile)
+            self.assertIn(f'(deny file-read* (subpath "{Path.home().resolve()}"))', profile)
 
     def test_fire_stages_private_auth_copy_inside_runtime(self):
         with tempfile.TemporaryDirectory() as temp:
