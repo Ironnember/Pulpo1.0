@@ -84,3 +84,14 @@ The restart-safe state proof and its storage boundary are in
 The governed success-and-failure learning rules are in the
 [outcome learning protocol](docs/OUTCOME_LEARNING_PROTOCOL.md), including the
 [legacy migration regression case](docs/OUTCOME_CASE_LEGACY_MIGRATION_REGRESSION.md).
+
+
+## Current development status
+
+The capabilities above describe the current `main` branch. Recent pull requests show the next development direction, but the following work is still proposed and is not part of `main` while its PR remains open:
+
+- [#250 — Consolidate recent governance, security, portability, and performance hardening](https://github.com/Ironnember/Pulpo1.0/pull/250) proposes a reviewed integration of bounded permit expiry, constrained local intelligence execution, bounded untrusted inputs, narrower custody packaging, HTTP admission controls, MCP portability, canonical delta logging, and faster audit verification. Its linked implementation PRs are not independently treated here as landed changes.
+- [#258 — Feature/gpu governance audit](https://github.com/Ironnember/Pulpo1.0/pull/258) proposes custody approval-envelope compatibility, descriptor-relative MCP snapshot publication, repaired constitutional mutation checks, and isolated KMS and Cloud SQL probe-container proofs. These probes are verification artifacts; they do not establish production service deployment.
+- [#267 — Portable GPU audit integrity acceleration](https://github.com/Ironnember/Pulpo1.0/pull/267) proposes PyTorch eager and Triton implementations for recomputing audit-record SHA-256 hashes on ROCm/HIP and CUDA. CPU remains authoritative for chain linkage, final verification, governance, permits, and durable state. The PR reports correctness-checked RX 7900 XT measurements near CPU parity, not a speedup; canonicalization and host-side work remain performance bottlenecks.
+
+These PRs make the current direction explicit: strengthen governance and custody boundaries, make audit and benchmark evidence more reproducible, and evaluate optional acceleration without moving authorization or canonical evidence authority off the CPU. Recheck PR status before treating any proposed item as part of the released/current branch.
