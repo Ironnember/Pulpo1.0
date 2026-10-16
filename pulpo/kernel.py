@@ -104,6 +104,7 @@ class Policy:
     approval_actions: frozenset[str] = frozenset()
     agent_grants: tuple[AgentGrant, ...] = ()
     authority_trust: AuthorityTrust | None = None
+    permit_ttl_ns: int = 300_000_000_000
 
     def __post_init__(self) -> None:
         principals = [grant.principal for grant in self.agent_grants]
@@ -115,6 +116,8 @@ class Policy:
             raise ValueError("approval actions require a pinned authority trust")
         if self.authority_trust is not None and not self.approval_actions:
             raise ValueError("authority trust requires at least one approval action")
+        if isinstance(self.permit_ttl_ns, bool) or not isinstance(self.permit_ttl_ns, int) or self.permit_ttl_ns <= 0:
+            raise ValueError("permit_ttl_ns must be a positive integer")
 
 
 @dataclass(frozen=True)
@@ -184,6 +187,7 @@ class GovernanceKernel:
             "approval_actions": sorted(self.policy.approval_actions),
             "agent_grants": grants,
             "authority_trust": asdict(self.policy.authority_trust) if self.policy.authority_trust else None,
+            "permit_ttl_ns": self.policy.permit_ttl_ns,
         }
         return sha256(_canonical(payload)).hexdigest()
 
@@ -482,7 +486,17 @@ class GovernanceKernel:
         signature = hmac.new(self._secret, payload.encode(), sha256).hexdigest()
         permit = f"{payload}:{signature}"
         issued_at_ns = self._clock() if timestamp_ns is None else timestamp_ns
-        replay = self._state.issue_permit(permit, digest, reason, issued_at_ns, approval)
+        expires_at_ns = issued_at_ns + self.policy.permit_ttl_ns
+        if envelope is not None:
+            expires_at_ns = min(expires_at_ns, envelope.expires_at_ns)
+        replay = self._state.issue_permit(
+            permit,
+            digest,
+            reason,
+            issued_at_ns,
+            expires_at_ns,
+            approval,
+        )
         if replay:
             if envelope is None:
                 raise RuntimeError("state rejected an approval-free permit")
