@@ -2,17 +2,17 @@ FROM python:3.11-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    PIP_DISABLE_PIP_VERSION_CHECK=1
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    PYTHONPATH=/opt/pulpo
 
 RUN groupadd --system pulpo && useradd --system --gid pulpo --home-dir /nonexistent --shell /usr/sbin/nologin pulpo
 
 WORKDIR /opt/pulpo
 
-COPY pyproject.toml ./pyproject.toml
 COPY pulpo ./pulpo
 COPY custody-service ./custody-service
 
-RUN python -m pip install --no-cache-dir '.[authority]' './custody-service' \
+RUN python -m pip install --no-cache-dir 'cryptography==50.0.1' './custody-service' \
     && mkdir -p /var/lib/pulpo \
     && chown -R pulpo:pulpo /var/lib/pulpo /opt/pulpo
 
