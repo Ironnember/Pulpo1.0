@@ -9,6 +9,10 @@ import stat
 from typing import Iterable, Literal, Sequence
 
 
+MAX_SNAPSHOT_ENTRIES = 100_000
+MAX_SNAPSHOT_DEPTH = 64
+MAX_SNAPSHOT_FILE_BYTES = 64 * 1024 * 1024
+
 SurfaceRole = Literal["protected", "writable", "evidence"]
 ReconciliationStatus = Literal["verified", "mismatch", "uncertain"]
 DeltaClassification = Literal[
@@ -260,6 +264,8 @@ def _is_excluded(relative_path: str, exclude: Sequence[str]) -> bool:
 
 def _entry_from_lstat(path: Path, relative_path: str) -> SnapshotEntry:
     info = path.lstat()
+    if stat.S_ISREG(info.st_mode) and info.st_size > MAX_SNAPSHOT_FILE_BYTES:
+        raise EffectReconciliationError("snapshot_file_size_limit_exceeded")
     mode = stat.S_IMODE(info.st_mode)
     common = dict(
         relative_path=relative_path,
@@ -304,17 +310,21 @@ def capture_surface(surface: SurfaceSpec) -> TreeSnapshot:
 
     entries: list[SnapshotEntry] = []
 
-    def walk(path: Path, relative_path: str) -> None:
+    def walk(path: Path, relative_path: str, depth: int = 0) -> None:
+        if depth > MAX_SNAPSHOT_DEPTH:
+            raise EffectReconciliationError("snapshot_depth_limit_exceeded")
         if _is_excluded(relative_path, surface.exclude):
             return
         entry = _entry_from_lstat(path, relative_path)
         entries.append(entry)
+        if len(entries) > MAX_SNAPSHOT_ENTRIES:
+            raise EffectReconciliationError("snapshot_entry_limit_exceeded")
         if entry.kind != "directory":
             return
         children = sorted(path.iterdir(), key=lambda child: child.name)
         for child in children:
             child_relative = child.name if relative_path == "." else f"{relative_path}/{child.name}"
-            walk(child, child_relative)
+            walk(child, child_relative, depth + 1)
 
     try:
         walk(root, ".")
