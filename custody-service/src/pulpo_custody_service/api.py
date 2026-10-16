@@ -10,6 +10,9 @@ from __future__ import annotations
 from dataclasses import asdict
 
 from fastapi import FastAPI, HTTPException
+from starlette.responses import JSONResponse
+
+from .sql_qos import SQLAdmissionRejected
 from pydantic import BaseModel, ConfigDict, Field, StrictInt
 
 from pulpo.authority import ApprovalEnvelope
@@ -121,6 +124,10 @@ def create_app(service: DomainCustodyService) -> FastAPI:
         redoc_url=None,
         openapi_url=None,
     )
+
+    @app.exception_handler(SQLAdmissionRejected)
+    async def sql_admission_rejected(request, exc):
+        return JSONResponse({"detail": "SQL admission capacity exhausted"}, status_code=429)
 
     @app.get("/health")
     def health() -> dict[str, str]:
