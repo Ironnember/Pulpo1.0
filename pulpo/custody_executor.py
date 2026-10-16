@@ -1,9 +1,14 @@
-"""Bounded credential-side executor for Hostile Worker Consequence Proof V0.
+"""Canonical credential-side consequence transmission boundary.
 
-This module is domain-specific and intentionally not a general execution
-gateway. It releases at most one provider transmission right for the exact
-custody-bound order. Provider results remain claims until independent
-reconciliation.
+This module owns the one durable network-transmission primitive used by bounded
+provider adapters. Provider-specific executors may perform read-only preflight
+or shape provider claims, but they must delegate the consequential transmission
+through `TrustedConsequenceExecutor`.
+
+The durable custody state is conservative: once `REQUEST_TRANSMITTED` commits,
+the request may have changed external reality. Restart, timeout, process crash,
+or a lost provider response therefore cannot create another transmission right.
+Independent reconciliation is required before the consequence can be settled.
 """
 
 from __future__ import annotations
@@ -44,6 +49,155 @@ class ExternalConsequenceUnknown(RuntimeError):
         self.attempt_id = attempt_id
 
 
+@dataclass(frozen=True)
+class GovernedConsequenceRef:
+    """Minimal exact-object reference accepted by the shared transmission primitive."""
+
+    attempt_id: str
+    object_hash: str
+
+    def __post_init__(self) -> None:
+        if not self.attempt_id:
+            raise CustodyViolation("attempt_id_required")
+        _require_hash(self.object_hash, "object_hash")
+
+
+@dataclass(frozen=True)
+class ConsequenceTransmissionResult:
+    attempt_id: str
+    provider_request_id: str
+    idempotency_key: str
+    result: Any
+
+
+class TrustedConsequenceExecutor:
+    """Release at most one network-transmission right for one custody attempt.
+
+    This class does not decide policy, verify an approval, mint a permit, or
+    interpret provider success. It only enforces the durable execution sequence:
+
+    `ATTEMPT_AUTHORIZED -> ATTEMPT_CLAIMED -> REQUEST_TRANSMITTED
+       -> RECONCILIATION_REQUIRED`
+
+    The `REQUEST_TRANSMITTED` transition and canonical evidence projection occur
+    before the external callable is invoked. A process crash after the provider
+    receives bytes therefore leaves durable state that cannot be re-executed.
+    """
+
+    def __init__(
+        self,
+        custody: SQLiteGovernanceCustody,
+        *,
+        executor_id: str,
+        evidence_projector: Callable[[], None] | None = None,
+    ) -> None:
+        if not executor_id:
+            raise CustodyViolation("executor_id_required")
+        self.custody = custody
+        self.executor_id = executor_id
+        self._evidence_projector = evidence_projector
+
+    def _project_evidence(self) -> None:
+        if self._evidence_projector is not None:
+            self._evidence_projector()
+
+    def claim_or_resume(self, attempt_id: str) -> None:
+        snapshot = self.custody.attempt(attempt_id)
+        if snapshot is None:
+            raise CustodyViolation("attempt_unknown")
+        if snapshot.state == self.custody.ATTEMPT_AUTHORIZED:
+            head = self.custody.snapshot()
+            self.custody.claim_attempt(
+                expected_epoch=head.epoch,
+                expected_state_root=head.state_root,
+                attempt_id=attempt_id,
+                executor_id=self.executor_id,
+            )
+            # The claim and its evidence obligation committed together. Do not
+            # permit provider preparation/transmission until evidence converges.
+            self._project_evidence()
+            return
+        if (
+            snapshot.state == self.custody.ATTEMPT_CLAIMED
+            and snapshot.executor_id == self.executor_id
+        ):
+            # Crash-before-transmission recovery may resume this same attempt.
+            self._project_evidence()
+            return
+        raise CustodyViolation("attempt_not_executable")
+
+    def execute(
+        self,
+        governed: GovernedConsequenceRef,
+        *,
+        provider_request_id: str,
+        transmit: Callable[[str], Any],
+    ) -> ConsequenceTransmissionResult:
+        if not provider_request_id:
+            raise CustodyViolation("provider_request_id_invalid")
+        if not callable(transmit):
+            raise CustodyViolation("provider_transmit_callable_required")
+
+        snapshot = self.custody.attempt(governed.attempt_id)
+        if snapshot is None or snapshot.object_hash != governed.object_hash:
+            raise CustodyViolation("executor_attempt_mismatch")
+
+        self.claim_or_resume(governed.attempt_id)
+
+        # Release the transmission right before the network call, then require
+        # its canonical evidence projection before any external write occurs.
+        head = self.custody.snapshot()
+        transmission = self.custody.authorize_transmission(
+            expected_epoch=head.epoch,
+            expected_state_root=head.state_root,
+            attempt_id=governed.attempt_id,
+            provider_request_id=provider_request_id,
+        )
+        try:
+            self._project_evidence()
+        except Exception as exc:
+            # No provider call has occurred. The conservative transmitted state
+            # cannot advance again until the evidence obligation converges.
+            raise CustodyViolation("transmission_evidence_not_canonical") from exc
+
+        try:
+            result = transmit(transmission.idempotency_key)
+        except Exception as exc:
+            current = self.custody.snapshot()
+            try:
+                self.custody.require_reconciliation(
+                    expected_epoch=current.epoch,
+                    expected_state_root=current.state_root,
+                    attempt_id=governed.attempt_id,
+                )
+                self._project_evidence()
+            except Exception:
+                # The already-projected transmission receipt remains the safety
+                # boundary. No retry right is recreated by an evidence failure.
+                pass
+            raise ExternalConsequenceUnknown(governed.attempt_id) from exc
+
+        current = self.custody.snapshot()
+        self.custody.require_reconciliation(
+            expected_epoch=current.epoch,
+            expected_state_root=current.state_root,
+            attempt_id=governed.attempt_id,
+        )
+        try:
+            self._project_evidence()
+        except Exception as exc:
+            # Reality may already have changed; do not surface provider success
+            # when canonical accountability has not converged.
+            raise ExternalConsequenceUnknown(governed.attempt_id) from exc
+
+        return ConsequenceTransmissionResult(
+            attempt_id=governed.attempt_id,
+            provider_request_id=provider_request_id,
+            idempotency_key=transmission.idempotency_key,
+            result=result,
+        )
+
+
 class CustodyRegistrarAdapter(Protocol):
     def preflight(self, order: DomainPurchaseOrder) -> str: ...
 
@@ -70,7 +224,7 @@ class ProviderAttemptClaim:
 
 
 class TrustedDomainExecutor:
-    """Release at most one network-transmission right for one custody attempt."""
+    """Domain adapter over the single canonical transmission primitive."""
 
     def __init__(
         self,
@@ -79,40 +233,20 @@ class TrustedDomainExecutor:
         executor_id: str,
         evidence_projector: Callable[[], None] | None = None,
     ) -> None:
-        if not executor_id:
-            raise CustodyViolation("executor_id_required")
         self.custody = custody
         self.executor_id = executor_id
         self._evidence_projector = evidence_projector
+        self._consequence = TrustedConsequenceExecutor(
+            custody,
+            executor_id=executor_id,
+            evidence_projector=evidence_projector,
+        )
 
     def _project_evidence(self) -> None:
-        if self._evidence_projector is not None:
-            self._evidence_projector()
+        self._consequence._project_evidence()
 
     def _claim_or_resume(self, attempt_id: str) -> None:
-        snapshot = self.custody.attempt(attempt_id)
-        if snapshot is None:
-            raise CustodyViolation("attempt_unknown")
-        if snapshot.state == self.custody.ATTEMPT_AUTHORIZED:
-            head = self.custody.snapshot()
-            self.custody.claim_attempt(
-                expected_epoch=head.epoch,
-                expected_state_root=head.state_root,
-                attempt_id=attempt_id,
-                executor_id=self.executor_id,
-            )
-            # The claim and its evidence obligation committed together. Do not
-            # permit preflight/transmission until canonical evidence catches up.
-            self._project_evidence()
-            return
-        if (
-            snapshot.state == self.custody.ATTEMPT_CLAIMED
-            and snapshot.executor_id == self.executor_id
-        ):
-            # Crash-before-transmission recovery resumes the same attempt only.
-            self._project_evidence()
-            return
-        raise CustodyViolation("attempt_not_executable")
+        self._consequence.claim_or_resume(attempt_id)
 
     def execute(
         self,
@@ -126,61 +260,25 @@ class TrustedDomainExecutor:
         if snapshot is None or snapshot.object_hash != order.order_hash:
             raise CustodyViolation("executor_attempt_mismatch")
 
+        # Domain preflight is read-only and intentionally occurs after claiming
+        # the attempt but before a provider-transmission right is released.
         self._claim_or_resume(governed.attempt_id)
-
         preflight_hash = adapter.preflight(order)
         _require_hash(preflight_hash, "provider_preflight_hash")
         provider_request_id = f"domain:{governed.attempt_id}:preflight:{preflight_hash}"
 
-        # Release the transmission right before the network call, then require
-        # its canonical evidence projection before any external write occurs.
-        head = self.custody.snapshot()
-        transmission = self.custody.authorize_transmission(
-            expected_epoch=head.epoch,
-            expected_state_root=head.state_root,
-            attempt_id=governed.attempt_id,
+        transmitted = self._consequence.execute(
+            GovernedConsequenceRef(governed.attempt_id, order.order_hash),
             provider_request_id=provider_request_id,
-        )
-        try:
-            self._project_evidence()
-        except Exception as exc:
-            # No provider call has occurred. The custody state is conservative
-            # and cannot advance again until the obligation is projected.
-            raise CustodyViolation("transmission_evidence_not_canonical") from exc
-
-        try:
-            result = adapter.purchase(
+            transmit=lambda idempotency_key: adapter.purchase(
                 order,
                 max_charge_cents=order.purchase_price_cents,
-                idempotency_key=transmission.idempotency_key,
-            )
-        except Exception as exc:
-            current = self.custody.snapshot()
-            try:
-                self.custody.require_reconciliation(
-                    expected_epoch=current.epoch,
-                    expected_state_root=current.state_root,
-                    attempt_id=governed.attempt_id,
-                )
-                self._project_evidence()
-            except Exception:
-                # The already-projected transmission right remains the safety
-                # boundary. Pending evidence blocks any further authority.
-                pass
-            raise ExternalConsequenceUnknown(governed.attempt_id) from exc
-
-        current = self.custody.snapshot()
-        self.custody.require_reconciliation(
-            expected_epoch=current.epoch,
-            expected_state_root=current.state_root,
-            attempt_id=governed.attempt_id,
+                idempotency_key=idempotency_key,
+            ),
         )
-        try:
-            self._project_evidence()
-        except Exception as exc:
-            # Reality may already have changed; do not surface provider success
-            # when canonical accountability has not converged.
-            raise ExternalConsequenceUnknown(governed.attempt_id) from exc
+        result = transmitted.result
+        if not isinstance(result, RegistrarResult):
+            raise CustodyViolation("provider_result_invalid")
 
         claim_material = {
             "schema": "pulpo.provider-attempt-claim.v0",
@@ -188,7 +286,7 @@ class TrustedDomainExecutor:
             "order_hash": order.order_hash,
             "provider_request_id": provider_request_id,
             "preflight_hash": preflight_hash,
-            "idempotency_key": transmission.idempotency_key,
+            "idempotency_key": transmitted.idempotency_key,
             "result": asdict(result),
         }
         return ProviderAttemptClaim(
@@ -196,7 +294,7 @@ class TrustedDomainExecutor:
             order_hash=order.order_hash,
             provider_request_id=provider_request_id,
             preflight_hash=preflight_hash,
-            idempotency_key=transmission.idempotency_key,
+            idempotency_key=transmitted.idempotency_key,
             result=result,
             claim_hash=_hash(claim_material),
         )
