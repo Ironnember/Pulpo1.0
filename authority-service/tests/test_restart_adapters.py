@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+from contextlib import closing
 from dataclasses import asdict, replace
 from pathlib import Path
 import sqlite3
 import tempfile
 import unittest
+from unittest.mock import patch
 
 import test_service
 from pulpo_authority_service import AuthorityConfig, AuthorityService
@@ -55,6 +57,61 @@ class AuthorityRestartAdapterTests(unittest.TestCase):
 
     def _credentials(self):
         return (self.fixture.primary, self.fixture.recovery)
+
+    def _capture_connections(self):
+        connections = []
+        connect = sqlite3.connect
+
+        def tracked(*args, **kwargs):
+            connection = connect(*args, **kwargs)
+            connections.append(connection)
+            return connection
+
+        self.addCleanup(lambda: [connection.close() for connection in connections])
+        return connections, tracked
+
+    def _assert_closed(self, connections):
+        self.assertTrue(connections)
+        for connection in connections:
+            with self.assertRaises(sqlite3.ProgrammingError):
+                connection.execute('SELECT 1')
+
+    def test_constructor_closes_operation_connections(self):
+        connections, tracked = self._capture_connections()
+        with tempfile.TemporaryDirectory() as directory:
+            with patch('pulpo_authority_service.restart_adapters.sqlite3.connect', side_effect=tracked):
+                SQLiteRestartState(Path(directory) / 'authority.sqlite3', self._credentials())
+                self._assert_closed(connections)
+
+    def test_standalone_snapshot_operations_close_connections(self):
+        connections, tracked = self._capture_connections()
+        with tempfile.TemporaryDirectory() as directory:
+            state = SQLiteRestartState(Path(directory) / 'authority.sqlite3', self._credentials())
+            with patch('pulpo_authority_service.restart_adapters.sqlite3.connect', side_effect=tracked):
+                self.assertTrue(state._has_snapshot_locked())
+                state._persist_locked()
+                state._reload_locked()
+                self._assert_closed(connections)
+
+    def test_standalone_write_failure_rolls_back_and_closes(self):
+        connections, tracked = self._capture_connections()
+        with tempfile.TemporaryDirectory() as directory:
+            database = Path(directory) / 'authority.sqlite3'
+            state = SQLiteRestartState(database, self._credentials())
+            with closing(sqlite3.connect(database)) as connection:
+                before = connection.execute('SELECT payload, state_hash FROM authority_state').fetchall()
+
+            def fail_after_write(connection):
+                connection.execute("UPDATE authority_state SET payload='must roll back'")
+                raise sqlite3.OperationalError('forced standalone failure')
+
+            with patch('pulpo_authority_service.restart_adapters.sqlite3.connect', side_effect=tracked):
+                with patch.object(state, '_write_snapshot', side_effect=fail_after_write):
+                    with self.assertRaisesRegex(sqlite3.OperationalError, 'forced standalone failure'):
+                        state._persist_locked()
+                self._assert_closed(connections)
+            with closing(sqlite3.connect(database)) as connection:
+                self.assertEqual(before, connection.execute('SELECT payload, state_hash FROM authority_state').fetchall())
 
     def test_pending_request_and_challenge_survive_restart(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -215,7 +272,7 @@ class AuthorityRestartAdapterTests(unittest.TestCase):
             root = Path(directory)
             database = root / "authority.sqlite3"
             SQLiteRestartState(database, self._credentials())
-            with sqlite3.connect(database) as connection:
+            with closing(sqlite3.connect(database)) as connection, connection:
                 payload = connection.execute(
                     "SELECT payload FROM authority_state WHERE singleton = 1"
                 ).fetchone()[0]

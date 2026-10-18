@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from contextlib import closing
 from dataclasses import asdict
 from hashlib import sha256
 import json
@@ -89,7 +90,7 @@ class ProposalCommitmentAutoRenewUpgradeTests(unittest.TestCase):
         with TemporaryDirectory() as directory:
             path = Path(directory) / "proposal.sqlite3"
             SQLiteProposalCommitments(path)  # create the current durable schema
-            with sqlite3.connect(path) as connection:
+            with closing(sqlite3.connect(path)) as connection, connection:
                 connection.execute(
                     """
                     INSERT INTO proposal_commitments
@@ -121,7 +122,7 @@ class ProposalCommitmentAutoRenewUpgradeTests(unittest.TestCase):
 
             # Failed upgrade validation must not consume or rewrite the legacy
             # commitment; it remains inert and requires a fresh trusted proposal.
-            with sqlite3.connect(path) as connection:
+            with closing(sqlite3.connect(path)) as connection, connection:
                 state = connection.execute(
                     "SELECT state FROM proposal_commitments WHERE commitment_id = ?",
                     (commitment_id,),
