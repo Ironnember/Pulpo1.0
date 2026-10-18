@@ -10,6 +10,7 @@ mcp = ["mcp[cli]>=2,<3"]
 
 [project.scripts]
 pulpo-git-clarity = "pulpo.git_clarity:main"
+pulpo-mcp-tunnel = "pulpo.mcp_tunnel:main"
 
 [tool.setuptools]
 packages = ["pulpo"]
