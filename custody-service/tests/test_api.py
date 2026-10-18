@@ -1,5 +1,7 @@
 import tempfile
 import unittest
+import sqlite3
+from contextlib import closing
 from dataclasses import asdict, replace
 from pathlib import Path
 
@@ -342,6 +344,69 @@ class CustodyServiceApiTests(unittest.TestCase):
             },
         )
         self.assertEqual(403, rejected.status_code)
+
+
+    def canonical_rows(self):
+        with closing(sqlite3.connect(self.path)) as connection:
+            names = [row[0] for row in connection.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' "
+                "AND name NOT LIKE 'sqlite_%' ORDER BY name"
+            )]
+            return {name: sorted(connection.execute(
+                'SELECT * FROM "' + name + '"'
+            ).fetchall(), key=repr) for name in names}
+
+    def exercise_invalid_fields(self, *, pending_evidence):
+        client, service, registrar, observer, _, _ = self.build()
+        self.addCleanup(client.close)
+        commitment = self.commit(service, self.order())
+        authorized = client.post('/v1/domain-attempts', json={
+            'proposal_commitment_id': commitment.commitment_id,
+        })
+        self.assertEqual(200, authorized.status_code, authorized.text)
+        handle = authorized.json()
+        if pending_evidence:
+            head = service.custody.snapshot()
+            service.custody.claim_attempt(
+                expected_epoch=head.epoch, expected_state_root=head.state_root,
+                attempt_id=handle['attempt_id'], executor_id='executor:service-v0',
+            )
+            self.assertGreater(service.evidence.pending_count(), 0)
+        before = self.canonical_rows()
+        for field, value in (
+            ('target_hash', '0' * 64), ('order_hash', '0' * 64),
+            ('reservation_id', 'wrong-reservation'), ('reserved_cents', 0),
+            ('schema', 'unknown-handle-schema'), ('state', 'provider_claim_recorded'),
+        ):
+            for operation in ('execute', 'reconcile'):
+                with self.subTest(field=field, operation=operation,
+                                  pending_evidence=pending_evidence):
+                    response = client.post(
+                        f"/v1/domain-attempts/{handle['attempt_id']}/{operation}",
+                        json={'handle': dict(handle, **{field: value})},
+                    )
+                    self.assertEqual(409, response.status_code, response.text)
+                    self.assertEqual(before, self.canonical_rows())
+                    self.assertEqual((0, 0, 0), (
+                        registrar.preflight_calls, registrar.purchase_calls, observer.calls,
+                    ))
+        # The original issuance handle remains valid after canonical transitions.
+        base = f"/v1/domain-attempts/{handle['attempt_id']}"
+        executed = client.post(base + '/execute', json={'handle': handle})
+        self.assertEqual(200, executed.status_code, executed.text)
+        reconciled = client.post(base + '/reconcile', json={'handle': handle})
+        self.assertEqual(200, reconciled.status_code, reconciled.text)
+        self.assertEqual('success', reconciled.json()['outcome'])
+        self.assertEqual((1, 1, 1), (
+            registrar.preflight_calls, registrar.purchase_calls, observer.calls,
+        ))
+        self.assertEqual(0, service.evidence.pending_count())
+
+    def test_altered_handle_fields_reject_before_adapter_and_observer_entry(self):
+        self.exercise_invalid_fields(pending_evidence=False)
+
+    def test_invalid_handle_does_not_project_pending_canonical_evidence(self):
+        self.exercise_invalid_fields(pending_evidence=True)
 
 
 if __name__ == "__main__":
