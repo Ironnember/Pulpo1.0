@@ -29,12 +29,18 @@ from .orchestrator import (
     PulpoOrchestrator,
 )
 from .state import InMemoryKernelState, KernelState, SQLiteKernelState
+from .target_reconcile import (
+    ArtifactCompletionEvidence,
+    GovernedTargetReconciliation,
+    TargetObligationStatus,
+)
 from .targets import evaluate_locked_target_with_approval
 
 __all__ = [
     "AgentGrant",
     "ApprovalEnvelope",
     "ApprovalHandle",
+    "ArtifactCompletionEvidence",
     "AuthorityApprovalRequest",
     "AuthorityClient",
     "AuthorityPoll",
@@ -46,6 +52,7 @@ __all__ = [
     "Ed25519ApprovalVerifier",
     "EvidenceSnapshot",
     "GovernanceKernel",
+    "GovernedTargetReconciliation",
     "InMemoryKernelState",
     "Intent",
     "KernelState",
@@ -58,6 +65,7 @@ __all__ = [
     "SQLiteBudgetAccount",
     "SQLiteKernelState",
     "StateIntegrityError",
+    "TargetObligationStatus",
     "TargetResolution",
     "evaluate_locked_target_with_approval",
 ]

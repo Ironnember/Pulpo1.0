@@ -155,6 +155,8 @@ class NameComCoreAdapter:
             raise CommerceViolation("namecom_credential_reference_mismatch")
         if max_charge_cents != order.purchase_price_cents:
             raise CommerceViolation("namecom_charge_cap_mismatch")
+        if order.auto_renew_enabled is not False:
+            raise CommerceViolation("namecom_autorenew_not_supported")
         if not self.sandbox:
             raise CommerceViolation("namecom_production_hard_charge_cap_unavailable")
 
@@ -167,6 +169,7 @@ class NameComCoreAdapter:
             {
                 "domain": {
                     "domainName": order.domain,
+                    "autorenewEnabled": order.auto_renew_enabled,
                     "privacyEnabled": order.privacy_required,
                 },
                 "purchaseType": "registration",
