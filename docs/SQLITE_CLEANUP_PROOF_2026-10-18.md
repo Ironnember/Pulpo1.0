@@ -100,3 +100,34 @@ transmission count, permit and receipt hashes, independent observation,
 reconciliation classification, and unresolved limits.
 
 This handoff is a bounded plan and review package, not a deployment permit.
+
+## Authority-adapter follow-up
+
+Follow-up base: `bb6aa7818d39dfd5e75d72d62d853f048b27b3a8` (draft PR #314).
+The Mac dependency blocker was resolved by checksum-verifying the official
+rustup installer and installing Rust 1.93.0 under the isolated proof directory,
+then building the unchanged declared cbor2 6.1.5 dependency. Earlier records
+that the authority suite could not run remain historical, not current status.
+
+The exact-base authority suite ran 63 cases: 59 passed and four PostgreSQL
+cases skipped without a configured disposable PostgreSQL DSN. Its logs exposed
+58 SQLite finalizer warnings. Four standalone SQLiteRestartState connection
+contexts and one tampering-test fixture now close after their transaction
+contexts exit. The active transaction connection remains owned by the existing
+lock implementation; no transaction, signature, policy, schema, enrollment,
+canonical writer or authority route is added or replaced.
+
+Three new regression methods fail with three assertion failures and zero setup
+errors against the baseline and pass on the candidate. The updated authority
+suite runs 66 cases: 62 pass, four PostgreSQL cases skip, zero failures/errors
+and zero logged ResourceWarnings. A tracker over 12 affected restart and
+multi-instance methods finds zero unclosed connections. The new forced-write
+failure test verifies persisted snapshot bytes roll back before close.
+
+The original eight analytical passes and authority boundaries apply: repeated
+or failing operations must release their owned resources without weakening
+denial or snapshot integrity. This is an acceptance SQLite adapter, not
+protected production authority. Exact-baseline counterexamples establish the
+bounded repair delta; no general temporal learning or future authority import
+is claimed. Preserve independent review and the skipped PostgreSQL boundary.
+Final exact-commit reports and source hashes are retained outside source.
