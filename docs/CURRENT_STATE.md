@@ -1,6 +1,6 @@
 # Pulpo Current State
 
-Status date: 2026-09-04
+Status date: 2026-09-15
 
 ## Canonical source
 
@@ -8,9 +8,9 @@ Status date: 2026-09-04
 
 At this reconciliation, protected `main` is:
 
-`1ee8485c4599ad3266c8e90c5baad29309bc700c`
+`b44dcd40a1ad2bd5413756bd413807f54f9283da`
 
-This commit canonically admits PR #161, `Feature: governed outcome-memory gate v0`.
+This head canonically includes PR #161, `Feature: governed outcome-memory gate v0`, the subsequent state reconciliation, and PR #200, `Feature: trusted frozen MCP snapshot export v0`.
 
 The SHA is an inspection point, not a permanently pinned source-of-truth designation.
 
@@ -71,124 +71,67 @@ Each approval envelope binds approval identity, authority, verifier, key, deploy
 
 This is verified canonical software behavior for the approval contract. It does not prove that the complete independent `authority.pulpo.ai` service is deployed or acceptance-proven.
 
-### Capability-stripped MCP boundary
+### Capability-stripped MCP boundary and trusted frozen export
 
-PR #134 is canonical.
+PR #134 established the capability-stripped MCP projection. PR #200 is now canonical and adds the trusted-side `export_mcp_snapshot()` bridge.
 
-The MCP-side projection no longer retains the kernel, orchestrator, canonical state backend, authority client, executor, live policy object, trusted clock, or ledger reference.
+The MCP-side projection retains no kernel, orchestrator, canonical state backend, authority client, executor, live policy object, trusted clock, or ledger reference. Proposal construction remains ephemeral and non-mutating.
 
-Proposal construction is ephemeral and non-mutating. Frozen primitive snapshots do not become canonical writers merely because no write route is exposed.
+The trusted exporter writes only the primitive frozen `pulpo.mcp-read-snapshot.v0` projection. It is intentionally absent from the MCP server, does not mutate canonical Pulpo state, and does not append a second audit event.
 
-This establishes the tested software/object-capability boundary. It does not establish hostile same-process memory isolation, production remote-MCP authentication, or live-current evidence freshness.
+Export uses an existing absolute non-symlinked parent directory, same-directory temporary file, synchronization, atomic replacement, owner-only permissions, and pathname-binding rechecks. A failure after replacement is classified as `mcp_snapshot_export_commit_unknown`; the destination must be reconciled before retry because a frozen file may already exist.
+
+The resulting file remains a frozen derivative. Its presence is not permission, verified delivery, proof that a reader observed it, live-current freshness, production authentication, independent deployment, or external consequence containment.
+
+This establishes the tested software/object-capability and trusted frozen-export boundary. It does not establish hostile same-process memory isolation, production remote-MCP authentication, or a live read-only IPC transport.
 
 ### Consequence reconciliation and governed outcome memory
 
 Issue #153 is completed and its implementation is canonical through PR #161.
 
-Canonical Pulpo now explicitly proves the local software/custody/observer invariant:
+Canonical Pulpo explicitly proves the local software/custody/observer invariant:
 
 `VALID_AUTHORITY + VALID_PERMIT + EXECUTION_SUCCESS != VERIFIED_CONSEQUENCE`
 
-The canonical path distinguishes:
+The canonical path distinguishes independently verified success, observed mismatch despite executor/provider success, independently observed provider failure, and unresolved or insufficient evidence.
 
-- independently verified success;
-- observed mismatch despite executor/provider success;
-- independently observed provider failure;
-- unresolved or insufficient evidence.
+Mismatch and unknown state survive restart without becoming success or retry authority. Replay, substitution, expiry, revocation, and authority-widening paths remain fail-closed under the tested boundary.
 
-Mismatch and unknown state survive restart without becoming success or retry authority.
-
-Replay, substitution, expiry, revocation, and authority-widening paths remain fail-closed under the tested boundary.
-
-Governed outcome memory is admitted only after exact reconciliation evidence has converged into canonical custody evidence.
-
-The same exact reconciliation transition cannot create multiple canonical outcome-memory records under simultaneous identical callers.
-
-Successful outcome memory remains non-authoritative and cannot mint a permit, alter policy, or authorize an otherwise denied intent.
+Governed outcome memory is admitted only after exact reconciliation evidence has converged into canonical custody evidence. Successful outcome memory remains non-authoritative and cannot mint a permit, alter policy, or authorize an otherwise denied intent.
 
 This is a software/custody/observer proof. It is not a claim of real external-provider containment.
 
 ## Governance and repository admission
 
-Protected `main` visibly requires:
+Pulpo retains protected repository admission as a separate governance boundary. Passing code, CI, or review does not independently create admission authority.
 
-- `test`
-- `authority`
-- `authority-service`
-- `admission-hold`
-
-Active ruleset `22241311` separately requires strict status checks for `test`, `authority`, and `authority-service`, one approving review, stale-review dismissal after push, last-push approval, review-thread resolution, and reports no bypass actors with `current_user_can_bypass="never"`.
-
-Issue #115 is completed.
-
-Repository admission has executable evidence demonstrating that passing code and an approval do not themselves create admission authority.
-
-A held candidate can be denied while the same code object can later become eligible only after the separately authorized admission-state transition.
-
-During PR #161 admission, previously configured classic branch-protection requirements for successful Preview and Production deployments and a locked read-only `main` were verified as independent blockers. Those requirements were removed through an explicitly authorized settings transition before the protected merge succeeded.
-
-The full classic branch-protection metadata is not completely readable through the connected integration, so unobserved administration metadata should not be overclaimed.
+The exact live GitHub protection metadata was not fully re-reconciled in this documentation-only update; prior protection claims should therefore be treated according to their recorded evidence date rather than silently promoted to current verification.
 
 ## Bounded commerce
 
 Canonical Pulpo proves the bounded digital-commerce foundation: exact purchase-object binding, budget ceilings, reservation/reconciliation semantics, one-use authority, and separation of provider execution claims from independent consequence evidence.
 
-A material canonical defect remains:
-
-provider-side auto-renew enablement is not represented in the exact canonical domain request/order identity.
-
-Current canonical objects constrain renewal price, but provider defaults could still create future renewal capability or charges not explicitly represented by the authorized object.
+The previously identified provider-default/auto-renew concern remains a proof item unless current executable evidence demonstrates its correction. No real registrar purchase or independently observed registrar consequence is established by this reconciliation.
 
 Invariant:
 
 `CANONICAL_ACTION_OMISSION != AUTHORIZED_PROVIDER_DEFAULT`
 
-PR #143 contains useful historical corrective work for this defect, but it is based on older canonical state, spans twelve files, and must not be admitted as-is.
-
-The next commerce correction should port the smallest authority-correct auto-renew delta onto current `main`, then earn fresh exact-head proof, review, and repository admission.
-
-No real registrar purchase or independently observed registrar consequence is established.
-
 ## Independent authority
 
-Issue #90 remains open.
-
-### Recorded external signer evidence
-
-Issue #90 durably records acceptance evidence for the exact Google Cloud HSM key version:
-
-`projects/dulcet-opus-499511-a5/locations/us-west1/keyRings/pulpo-authority/cryptoKeys/approval-signer/cryptoKeyVersions/1`
-
-Recorded metadata includes:
-
-- state: `ENABLED`;
-- algorithm: `EC_SIGN_P256_SHA256`;
-- protection level: `HSM`;
-- curve: NIST P-256 / prime256v1;
-- Pulpo canonical trust fingerprint, SHA-256 over the exact 65-byte uncompressed SEC1 public point: `b59288317ee9735a3bfd24595fd6a5d5c97476c1461b945124aded9ffd0ab127`;
-- a live KMS signature over `pulpo-independent-authority-proof-v1` that verified locally against the fetched public key.
-
-These facts are classified **Recorded** in this reconciliation because the external Google Cloud operation was not independently re-executed here.
+The recorded Google Cloud HSM signer evidence remains evidence of an external signing primitive, not proof of a fully deployed independent `authority.pulpo.ai` human-authority system.
 
 `HSM_SIGNER != DEPLOYED_INDEPENDENT_AUTHORITY`
 
-The complete `authority.pulpo.ai` boundary has not yet been acceptance-proven as an independently deployed human-authority system.
+Production-facing authority claims remain bounded below a completed independent authority deployment and acceptance proof.
 
-Production-facing authority claims therefore remain bounded below a completed independent authority deployment.
+## Evidence Expansion Review
 
-## Noncanonical and historical proof objects
+`docs/EVIDENCE_EXPANSION_REVIEW.md` is proposed on the current documentation branch as a read-only Intelligence/Assurance review procedure. It is not canonical until admitted through the normal repository governance path.
 
-PR #159 is stale documentation reconciliation against pre-#161 canonical state and must not be admitted as-is.
+Its intended boundary is deliberately subordinate to the existing architecture: broader inspection and pattern analysis may recommend a proof, but may not mutate canonical state, change policy, create directives, issue permits, write governed outcome memory, expand connectors, or authorize execution.
 
-PR #160 remains a preserved Draft negative/composition proof showing the Issue #153 gap before the canonical #161 implementation. It is evidence history, not a production object to merge.
-
-PR #143 remains historical/current-reference evidence for the auto-renew correction, not a current-main admission candidate.
-
-PR #131 remains a Draft distribution candidate. Its capability-stripping concepts may inform future distribution work, but it is not canonical distribution or production deployment.
-
-PR #128 is closed unmerged structural Stage-C evidence. It does not establish an external unauthorized-effect rate or real external containment.
-
-`Ironnember/The-keel` remains an execution-plane experiment unless and until its exact execution contract is legitimately admitted without becoming a second authority or ledger.
+If admitted, the procedure must remain an analytical protocol rather than a second authority, policy engine, memory governor, evidence ledger, router, or executor.
 
 ## Proof boundary
 
@@ -197,40 +140,32 @@ PR #128 is closed unmerged structural Stage-C evidence. It does not establish an
 Canonical Pulpo currently has:
 
 - a governed kernel and one-use authority path;
+- exact intent/policy binding and fail-closed decision semantics;
 - an exact-object independent approval contract in canonical software;
 - replay/restart and directive freshness controls under the tested boundary;
-- hostile-worker software/container controls;
+- hostile-worker software/container controls under their stated test boundary;
 - capability-stripped MCP behavior;
+- a trusted frozen MCP snapshot exporter with explicit commit-unknown reconciliation;
 - independent evidence/reconciliation before verified consequence;
 - canonical evidence before governed outcome memory;
-- concurrent exactly-once outcome-memory admission;
 - memory non-authority;
-- protected repository admission controls with executable denial/allow evidence.
+- repository-admission governance evidence under its recorded boundary.
 
 ### Recorded
 
-Recorded evidence includes the exact Issue #90 HSM signer acceptance record, Keel experiments, historical Stage-C structural work, and held/stale corrective branches.
-
-These are not automatically canonical or production proof.
+Recorded evidence includes the external HSM signer acceptance record, Keel experiments, historical Stage-C structural work, and historical/held proof objects. These are not automatically canonical or production proof.
 
 ### Inferred
 
-Pulpo's strongest current differentiation is the continuity of independently governed authority and evidence from intent through consequence and memory, rather than generic agent orchestration.
-
-A compact framing remains:
+Pulpo's strongest current differentiation remains continuity of independently governed authority and evidence from intent through consequence and memory, rather than generic agent orchestration.
 
 **Models can change overnight. Authority should not.**
 
 ### Proposed
 
-The next technical sequence is:
+The highest-value forward sequence remains to close exact bounded-commerce semantics, complete independent authority/provider qualification, freeze an exact external execution/evidence object, execute one bounded safe external consequence through the canonical authority -> permit -> execution -> evidence -> reconciliation -> memory path, preserve the evidence bundle, and obtain cold reproduction outside the build loop.
 
-1. restage the smallest auto-renew governed-effect correction against current canonical `main`;
-2. establish fresh exact-head software proof and legitimate repository admission for that correction;
-3. complete independent authority/provider qualification necessary for a genuine external consequence ceremony;
-4. freeze the exact external execution/evidence object;
-5. execute one bounded, safe external consequence through the canonical authority -> permit -> execution -> evidence -> reconciliation -> memory path;
-6. preserve the evidence bundle and obtain cold reproduction outside the build loop.
+The Evidence Expansion Review may help identify blockers and choose the smallest falsifiable proof, but it does not alter that sequence or authorize any step.
 
 ### Unknown
 
@@ -246,20 +181,7 @@ Pulpo does not yet establish:
 
 ## Explicit nonclaims
 
-Do not convert passing CI, a cloud primitive, repository approval, executor success report, experimental distribution artifact, financing term, social post, or market interest into:
-
-- production readiness;
-- external containment;
-- independently deployed authority;
-- compliance or certification;
-- third-party reproducibility;
-- valuation proof.
-
-### Inferred positioning
-
-Pulpo currently has canonical software-boundary governance, exact-object approval binding, consequence reconciliation, governed outcome memory, and mechanically exercised repository-admission controls.
-
-External consequence verification and independent production authority remain the next major proof boundary.
+Do not convert passing CI, a cloud primitive, repository approval, executor success report, frozen snapshot, analytical pattern, experimental distribution artifact, financing term, social post, or market interest into production readiness, external containment, independently deployed authority, compliance/certification, third-party reproducibility, or valuation proof.
 
 ## Doctrine
 
