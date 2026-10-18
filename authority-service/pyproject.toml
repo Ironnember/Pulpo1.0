@@ -19,6 +19,7 @@ test = [
   # unchanged authority proof.
   "anyio==4.14.2",
 ]
+postgres-test = ["psycopg[binary]==3.3.6"]
 gcp-auth = ["google-auth==2.57.0"]
 gcp-kms = ["google-cloud-kms==3.16.0"]
 gcp-storage = ["google-cloud-storage==3.13.1"]
