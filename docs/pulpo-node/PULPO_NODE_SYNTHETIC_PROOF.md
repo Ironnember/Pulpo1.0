@@ -1,20 +1,29 @@
 # Pulpo Node synthetic virtual-lamp proof
 
-This proof makes the recorded Pulpo Node virtual-lamp result reproducible from source. It intentionally remains synthetic. The signer is a test fixture, the state store is SQLite, and the lamp is a temporary virtual effect.
+This proof makes the Pulpo Node virtual-lamp result reproducible from source while preserving the canonical Pulpo governance path.
+
+It intentionally remains synthetic: the lamp is a virtual audit event, not GPIO. The authority signer is the repository's existing test-only verifier from `tests/authority_support.py`, not production authority. The proof uses `GovernanceKernel` and `SQLiteKernelState` for authority verification, approval replay rejection, one-use permit issuance, permit consumption, restart replay denial, and audit/evidence integrity.
 
 ## Boundary
 
-This artifact does not authorize or exercise GPIO, Raspberry Pi credentials, network changes, relays, motors, cameras, microphones, persistent daemons, Pulpo production credentials, or physical device custody.
+This artifact does not authorize or exercise GPIO, Raspberry Pi credentials, network changes, relays, motors, cameras, microphones, persistent daemons, Pulpo production credentials, external provider writes, or physical device custody.
 
-It validates selected governance behavior only:
+It validates selected synthetic governance behavior through the canonical kernel/state path:
 
-- valid permit -> one virtual signal;
+- valid exact target + verified approval -> one virtual signal;
 - no permit -> no signal;
 - forged approval -> no signal;
-- target substitution -> no signal;
+- target substitution -> no authority evaluation and no signal;
+- approval replay -> no second permit;
 - permit replay -> no additional signal;
-- restart replay -> no additional signal;
-- independent observation -> reconciled to the exact virtual signal.
+- restart replay -> no additional signal after reopening canonical SQLite state;
+- independent observation -> exact virtual signal reconciled from audit;
+- tampered observation -> not reconciled;
+- expired approval -> no signal;
+- wrong actor -> no signal;
+- permit object mismatch -> no signal;
+- canonical approval/permit/audit evidence recorded;
+- machine-readable summary available.
 
 ## Run
 
@@ -26,4 +35,4 @@ python3 scripts/run_gladiator_ultra_tournament.py --repo . --expected-revision "
 
 ## Claim class
 
-A passing run is `Verified` for the synthetic virtual-lamp fixture only. Physical GPIO custody, Raspberry Pi hardware behavior, deployed runtime containment, and no-alternate-route enforcement remain `Unknown` until separately proven.
+A passing run is `Verified` only for the synthetic virtual-lamp fixture routed through Pulpo's canonical kernel/state path. Physical GPIO custody, Raspberry Pi hardware behavior, deployed runtime containment, production authority, external-provider containment, and no-alternate-route enforcement remain `Unknown` until separately proven.
