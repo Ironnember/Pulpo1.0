@@ -38,6 +38,28 @@ and evidence path.
 - Evidence and public language must classify material claims as **Verified**,
   **Recorded**, **Inferred**, **Proposed**, or **Unknown**.
 
+## Adversarial transformation review
+
+For every material authority, capability, execution, evidence, or reconciliation
+decision, and for every consequential incident or near-miss, run the procedure in
+`docs/ADVERSARIAL_TRANSFORMATION_SOP.md` before treating the path as governed.
+
+The required passes are: Flip, Reverse, Invert, Inside-Out, Darken, Lighten,
+Amplify, and Negate.
+
+This review is analytical only. It grants no authority. If it discovers an
+alternate route, capability duplication/derivation, credential-state export,
+execution-mechanism substitution, or unverified cleanup of a privileged temporary
+surface, stop execution and reconcile before continuing.
+
+In particular:
+
+- `AUTHORIZED_OUTCOME != AUTHORIZATION_FOR_ARBITRARY_MEANS`
+- `AUTHORIZATION_TO_USE_CAPABILITY != AUTHORIZATION_TO_DUPLICATE_CAPABILITY`
+- capability creation, duplication, derivation, delegation, serialization,
+  export, or exposure requires separately legitimate authority when it expands
+  the effective consequence surface.
+
 ## Governed learning and temporal replay
 
 A material verified lesson is not generally reusable merely because it worked
