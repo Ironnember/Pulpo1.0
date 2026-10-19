@@ -12,6 +12,7 @@ from hashlib import sha256
 import json
 from os import PathLike
 import sqlite3
+from threading import RLock
 from typing import Any, Protocol
 
 
@@ -62,6 +63,7 @@ class KernelState(Protocol):
     def consume_permit(self, permit: str, intent_hash: str, timestamp_ns: int) -> bool: ...
     def directive_hash_status(self, directive_hash: str) -> str: ...
     def append(self, event: str, payload: dict[str, Any], timestamp_ns: int) -> None: ...
+    def append_unique(self, event: str, identity_field: str, identity_value: Any, payload: dict[str, Any], timestamp_ns: int) -> dict[str, Any] | None: ...
 
 
 class InMemoryKernelState:
@@ -73,6 +75,7 @@ class InMemoryKernelState:
         self._directives: dict[tuple[str, int], tuple[str, bool]] = {}
         self._permit_directives: dict[str, DirectivePermitBinding] = {}
         self._audit: list[dict[str, Any]] = []
+        self._audit_lock = RLock()
 
     @property
     def audit(self) -> list[dict[str, Any]]:
@@ -145,8 +148,35 @@ class InMemoryKernelState:
         return "directive_parent_not_authorized"
 
     def append(self, event: str, payload: dict[str, Any], timestamp_ns: int) -> None:
-        previous = self._audit[-1]["hash"] if self._audit else "0" * 64
-        self._audit.append(_audit_record(previous, event, payload, timestamp_ns))
+        with self._audit_lock:
+            previous = self._audit[-1]["hash"] if self._audit else "0" * 64
+            self._audit.append(_audit_record(previous, event, payload, timestamp_ns))
+
+    def append_unique(
+        self,
+        event: str,
+        identity_field: str,
+        identity_value: Any,
+        payload: dict[str, Any],
+        timestamp_ns: int,
+    ) -> dict[str, Any] | None:
+        if not event or not identity_field or payload.get(identity_field) != identity_value:
+            raise ValueError("unique audit identity invalid")
+        with self._audit_lock:
+            matches = [
+                record["payload"]
+                for record in self._audit
+                if record.get("event") == event
+                and isinstance(record.get("payload"), dict)
+                and record["payload"].get(identity_field) == identity_value
+            ]
+            if len(matches) > 1:
+                raise ValueError("unique audit identity ambiguous")
+            if matches:
+                return matches[0]
+            previous = self._audit[-1]["hash"] if self._audit else "0" * 64
+            self._audit.append(_audit_record(previous, event, payload, timestamp_ns))
+            return None
 
 
 class SQLiteKernelState:
@@ -266,6 +296,34 @@ class SQLiteKernelState:
     def append(self, event: str, payload: dict[str, Any], timestamp_ns: int) -> None:
         with self._connection:
             self._connection.execute("BEGIN IMMEDIATE"); self._append(event, payload, timestamp_ns)
+
+    def append_unique(
+        self,
+        event: str,
+        identity_field: str,
+        identity_value: Any,
+        payload: dict[str, Any],
+        timestamp_ns: int,
+    ) -> dict[str, Any] | None:
+        if not event or not identity_field or payload.get(identity_field) != identity_value:
+            raise ValueError("unique audit identity invalid")
+        with self._connection:
+            self._connection.execute("BEGIN IMMEDIATE")
+            rows = self._connection.execute(
+                "SELECT payload_json FROM audit WHERE event = ? ORDER BY sequence",
+                (event,),
+            ).fetchall()
+            matches: list[dict[str, Any]] = []
+            for (encoded,) in rows:
+                candidate = json.loads(str(encoded))
+                if isinstance(candidate, dict) and candidate.get(identity_field) == identity_value:
+                    matches.append(candidate)
+            if len(matches) > 1:
+                raise ValueError("unique audit identity ambiguous")
+            if matches:
+                return matches[0]
+            self._append(event, payload, timestamp_ns)
+            return None
 
     def _append(self, event: str, payload: dict[str, Any], timestamp_ns: int) -> None:
         row = self._connection.execute("SELECT hash FROM audit ORDER BY sequence DESC LIMIT 1").fetchone(); previous = row[0] if row else "0" * 64

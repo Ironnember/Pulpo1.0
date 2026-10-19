@@ -11,6 +11,7 @@ web = ["Flask>=3.0,<4"]
 
 [project.scripts]
 pulpo-git-clarity = "pulpo.git_clarity:main"
+pulpo-mcp-tunnel = "pulpo.mcp_tunnel:main"
 
 [tool.setuptools.packages.find]
 include = ["pulpo*", "mobile_demo*"]
