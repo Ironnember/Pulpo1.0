@@ -1,0 +1,23 @@
+FROM python:3.11-slim@sha256:9534e5a8e315485d4061ed659af0fd78a284c015f9b73661b41d6bab25604534
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1
+
+RUN groupadd --system pulpo \
+    && useradd --system --gid pulpo --home-dir /nonexistent --shell /usr/sbin/nologin pulpo \
+    && mkdir -p /opt/pulpo/authority-service
+
+WORKDIR /opt/pulpo
+
+COPY authority-service ./authority-service
+
+RUN python -m pip install --no-cache-dir \
+      './authority-service[gcp-auth,gcp-kms,gcp-storage,gcp-cloud-sql]' \
+    && chown -R pulpo:pulpo /opt/pulpo
+
+USER pulpo
+
+EXPOSE 8080
+
+CMD ["python", "-m", "uvicorn", "pulpo_authority_service.production_runtime:create_production_app_from_env", "--factory", "--host", "0.0.0.0", "--port", "8080"]
