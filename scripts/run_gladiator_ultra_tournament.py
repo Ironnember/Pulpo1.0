@@ -44,7 +44,7 @@ def main() -> int:
     status = subprocess.check_output(["git", "status", "--short"], cwd=repo, text=True)
     result = {
         "runner": "gladiator-ultra-candidate",
-        "claim_boundary": "Candidate local runner only until admitted to canonical main. No GPIO, credentials, network changes, external provider writes, or physical authority.",
+        "claim_boundary": "Candidate runner only until admitted to canonical main. Virtual lamp consequence sink only. No GPIO, credentials, network changes, external provider writes, or physical authority.",
         "started_at": datetime.now(UTC).isoformat(),
         "repo": str(repo),
         "expected_revision": args.expected_revision,
@@ -81,7 +81,15 @@ def main() -> int:
     final_status = subprocess.check_output(["git", "status", "--short"], cwd=repo, text=True)
     result["final_status_short"] = final_status
     failures = []
-    if node_result.get("result") != "PASS" or node_result.get("checks_passed") != 13 or node_result.get("event_count") != 1:
+    checks_passed = node_result.get("checks_passed")
+    checks_total = node_result.get("checks_total")
+    if (
+        node_result.get("result") != "PASS"
+        or checks_passed != checks_total
+        or not isinstance(checks_total, int)
+        or checks_total < 14
+        or node_result.get("event_count") != 1
+    ):
         failures.append("direct node proof failed")
     if script_run["returncode"] != 0:
         failures.append("script proof failed")
