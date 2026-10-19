@@ -31,11 +31,24 @@ class ApprovalUse:
     audit_payload: dict[str, Any]
 
 
+@dataclass(frozen=True)
+class DirectivePermitBinding:
+    directive_id: str
+    version: int
+    directive_hash: str
+    issued_at_ns: int
+    expires_at_ns: int
+
+    def audit_payload(self) -> dict[str, Any]:
+        return {"directive_id": self.directive_id, "directive_version": self.version, "directive_hash": self.directive_hash, "directive_issued_at_ns": self.issued_at_ns, "directive_expires_at_ns": self.expires_at_ns}
+
+
 class KernelState(Protocol):
     @property
     def audit(self) -> list[dict[str, Any]]: ...
     def approval_replay_reason(self, approval_id: str, nonce: str) -> str | None: ...
     def issue_permit(self, permit: str, intent_hash: str, decision_reason: str, timestamp_ns: int, approval: ApprovalUse | None = None) -> str | None: ...
+    def bind_permit_to_directive(self, permit: str, intent_hash: str, binding: DirectivePermitBinding, timestamp_ns: int) -> None: ...
     def consume_permit(self, permit: str, intent_hash: str, timestamp_ns: int) -> bool: ...
     def append(self, event: str, payload: dict[str, Any], timestamp_ns: int) -> None: ...
 
@@ -47,6 +60,7 @@ class InMemoryKernelState:
         self._approval_ids: set[str] = set()
         self._approval_nonces: set[str] = set()
         self._directives: dict[tuple[str, int], tuple[str, bool]] = {}
+        self._permit_directives: dict[str, DirectivePermitBinding] = {}
         self._audit: list[dict[str, Any]] = []
 
     @property
@@ -68,10 +82,24 @@ class InMemoryKernelState:
         self.append("decision", {"outcome": "allow", "reason": decision_reason, "intent_hash": intent_hash}, timestamp_ns)
         return None
 
+    def bind_permit_to_directive(self, permit: str, intent_hash: str, binding: DirectivePermitBinding, timestamp_ns: int) -> None:
+        if self._issued.get(permit) != intent_hash or permit in self._spent: raise ValueError("permit unavailable for directive binding")
+        if permit in self._permit_directives: raise ValueError("permit directive binding is immutable")
+        if self.directive_status(binding.directive_id, binding.version, binding.directive_hash) != "active": raise ValueError("directive is not active for permit binding")
+        self._permit_directives[permit] = binding
+        self.append("permit_bound_to_directive", {"intent_hash": intent_hash, **binding.audit_payload()}, timestamp_ns)
+
     def consume_permit(self, permit: str, intent_hash: str, timestamp_ns: int) -> bool:
         valid = self._issued.get(permit) == intent_hash and permit not in self._spent
+        binding = self._permit_directives.get(permit)
+        payload: dict[str, Any] = {"intent_hash": intent_hash}
+        if binding is not None:
+            status = self.directive_status(binding.directive_id, binding.version, binding.directive_hash)
+            if status == "active" and not (binding.issued_at_ns <= timestamp_ns < binding.expires_at_ns): status = "directive_inactive"
+            valid = valid and status == "active"
+            payload.update(binding.audit_payload()); payload["directive_status"] = status
         if valid: self._spent.add(permit)
-        self.append("permit_consumed" if valid else "permit_rejected", {"intent_hash": intent_hash}, timestamp_ns)
+        self.append("permit_consumed" if valid else "permit_rejected", payload, timestamp_ns)
         return valid
 
     def activate_directive(self, directive, authority_evidence: dict[str, object], timestamp_ns: int) -> None:
@@ -107,6 +135,7 @@ class SQLiteKernelState:
             CREATE TABLE IF NOT EXISTS permits (permit TEXT PRIMARY KEY, intent_hash TEXT NOT NULL, spent INTEGER NOT NULL DEFAULT 0 CHECK (spent IN (0, 1)));
             CREATE TABLE IF NOT EXISTS approvals (approval_id TEXT PRIMARY KEY, nonce TEXT NOT NULL UNIQUE);
             CREATE TABLE IF NOT EXISTS directives (directive_id TEXT NOT NULL, version INTEGER NOT NULL, directive_hash TEXT NOT NULL, revoked INTEGER NOT NULL DEFAULT 0 CHECK (revoked IN (0, 1)), PRIMARY KEY (directive_id, version));
+            CREATE TABLE IF NOT EXISTS permit_directives (permit TEXT PRIMARY KEY REFERENCES permits(permit) ON DELETE CASCADE, directive_id TEXT NOT NULL, directive_version INTEGER NOT NULL, directive_hash TEXT NOT NULL, directive_issued_at_ns INTEGER NOT NULL, directive_expires_at_ns INTEGER NOT NULL);
             CREATE TABLE IF NOT EXISTS audit (sequence INTEGER PRIMARY KEY, event TEXT NOT NULL, payload_json TEXT NOT NULL, previous_hash TEXT NOT NULL, timestamp_ns INTEGER NOT NULL, hash TEXT NOT NULL);
         """)
 
@@ -144,12 +173,38 @@ class SQLiteKernelState:
             self._append("decision", {"outcome": "allow", "reason": decision_reason, "intent_hash": intent_hash}, timestamp_ns)
         return None
 
+    def bind_permit_to_directive(self, permit: str, intent_hash: str, binding: DirectivePermitBinding, timestamp_ns: int) -> None:
+        with self._connection:
+            self._connection.execute("BEGIN IMMEDIATE")
+            row = self._connection.execute("SELECT intent_hash, spent FROM permits WHERE permit = ?", (permit,)).fetchone()
+            if row is None or row[0] != intent_hash or row[1] != 0: raise ValueError("permit unavailable for directive binding")
+            if self._connection.execute("SELECT 1 FROM permit_directives WHERE permit = ?", (permit,)).fetchone(): raise ValueError("permit directive binding is immutable")
+            directive = self._connection.execute("SELECT directive_hash, revoked FROM directives WHERE directive_id = ? AND version = ?", (binding.directive_id, binding.version)).fetchone()
+            if directive is None or directive[0] != binding.directive_hash or directive[1] != 0: raise ValueError("directive is not active for permit binding")
+            self._connection.execute("INSERT INTO permit_directives (permit, directive_id, directive_version, directive_hash, directive_issued_at_ns, directive_expires_at_ns) VALUES (?, ?, ?, ?, ?, ?)", (permit, binding.directive_id, binding.version, binding.directive_hash, binding.issued_at_ns, binding.expires_at_ns))
+            self._append("permit_bound_to_directive", {"intent_hash": intent_hash, **binding.audit_payload()}, timestamp_ns)
+
     def consume_permit(self, permit: str, intent_hash: str, timestamp_ns: int) -> bool:
         with self._connection:
             self._connection.execute("BEGIN IMMEDIATE")
-            cursor = self._connection.execute("UPDATE permits SET spent = 1 WHERE permit = ? AND intent_hash = ? AND spent = 0", (permit, intent_hash))
-            valid = cursor.rowcount == 1
-            self._append("permit_consumed" if valid else "permit_rejected", {"intent_hash": intent_hash}, timestamp_ns)
+            permit_row = self._connection.execute("SELECT intent_hash, spent FROM permits WHERE permit = ?", (permit,)).fetchone()
+            valid = permit_row is not None and permit_row[0] == intent_hash and permit_row[1] == 0
+            payload: dict[str, Any] = {"intent_hash": intent_hash}
+            row = self._connection.execute("SELECT directive_id, directive_version, directive_hash, directive_issued_at_ns, directive_expires_at_ns FROM permit_directives WHERE permit = ?", (permit,)).fetchone()
+            if row is not None:
+                binding = DirectivePermitBinding(row[0], row[1], row[2], row[3], row[4])
+                directive = self._connection.execute("SELECT directive_hash, revoked FROM directives WHERE directive_id = ? AND version = ?", (binding.directive_id, binding.version)).fetchone()
+                if directive is None: status = "directive_not_authorized"
+                elif directive[0] != binding.directive_hash: status = "directive_version_mismatch"
+                elif directive[1] != 0: status = "directive_revoked"
+                elif not (binding.issued_at_ns <= timestamp_ns < binding.expires_at_ns): status = "directive_inactive"
+                else: status = "active"
+                valid = valid and status == "active"
+                payload.update(binding.audit_payload()); payload["directive_status"] = status
+            if valid:
+                cursor = self._connection.execute("UPDATE permits SET spent = 1 WHERE permit = ? AND intent_hash = ? AND spent = 0", (permit, intent_hash))
+                valid = cursor.rowcount == 1
+            self._append("permit_consumed" if valid else "permit_rejected", payload, timestamp_ns)
         return valid
 
     def activate_directive(self, directive, authority_evidence: dict[str, object], timestamp_ns: int) -> None:

@@ -172,6 +172,84 @@ class DirectiveProofTests(unittest.TestCase):
         decision = projection.evaluate(Intent("agent:builder", "write", "shell:root", 1), broadened)
         self.assertEqual("directive_version_mismatch", decision.reason)
 
+    def test_active_directive_bound_permit_consumes_once_with_identity_evidence(self):
+        state = InMemoryKernelState()
+        d = directive()
+        kernel, _, _ = self.activate(state, d)
+        projection = GovernedDirectiveProjection(kernel, state, lambda: NOW)
+        intent = Intent("agent:builder", "write", "repo:file", 1)
+        decision = projection.evaluate(intent, d)
+        self.assertEqual("allow", decision.outcome)
+        self.assertIsNotNone(decision.permit)
+
+        self.assertTrue(kernel.consume(decision.permit, intent))
+        self.assertFalse(kernel.consume(decision.permit, intent))
+        consumed = [record for record in state.audit if record["event"] == "permit_consumed"][-1]
+        self.assertEqual(d.directive_id, consumed["payload"]["directive_id"])
+        self.assertEqual(d.version, consumed["payload"]["directive_version"])
+        self.assertEqual(d.directive_hash, consumed["payload"]["directive_hash"])
+        self.assertEqual("active", consumed["payload"]["directive_status"])
+
+    def test_revoked_directive_invalidates_previously_issued_permit(self):
+        state = InMemoryKernelState()
+        d = directive()
+        kernel, verifier, controller = self.activate(state, d)
+        projection = GovernedDirectiveProjection(kernel, state, lambda: NOW)
+        intent = Intent("agent:builder", "write", "repo:file", 1)
+        decision = projection.evaluate(intent, d)
+        self.assertEqual("allow", decision.outcome)
+        self.assertIsNotNone(decision.permit)
+
+        revoke_envelope = self.approve(
+            kernel,
+            verifier,
+            controller.REVOKE,
+            d,
+            "revoke-1",
+            "revoke-nonce-1",
+        )
+        revoke = controller.revoke(d, revoke_envelope, operator_principal=OPERATOR)
+        self.assertEqual("allow", revoke.outcome)
+
+        self.assertFalse(kernel.consume(decision.permit, intent))
+        rejected = [record for record in state.audit if record["event"] == "permit_rejected"][-1]
+        self.assertEqual("directive_revoked", rejected["payload"]["directive_status"])
+        self.assertEqual(d.directive_hash, rejected["payload"]["directive_hash"])
+
+    def test_preissued_permit_stays_invalid_after_revocation_and_restart(self):
+        with tempfile.NamedTemporaryFile() as handle:
+            state = SQLiteKernelState(handle.name)
+            d = directive()
+            kernel, verifier, controller = self.activate(state, d)
+            projection = GovernedDirectiveProjection(kernel, state, lambda: NOW)
+            intent = Intent("agent:builder", "write", "repo:file", 1)
+            decision = projection.evaluate(intent, d)
+            self.assertEqual("allow", decision.outcome)
+            self.assertIsNotNone(decision.permit)
+
+            revoke_envelope = self.approve(
+                kernel,
+                verifier,
+                controller.REVOKE,
+                d,
+                "revoke-1",
+                "revoke-nonce-1",
+            )
+            revoke = controller.revoke(d, revoke_envelope, operator_principal=OPERATOR)
+            self.assertEqual("allow", revoke.outcome)
+            state.close()
+
+            restarted = SQLiteKernelState(handle.name)
+            restarted_kernel, _ = self.governed(restarted)
+            self.assertFalse(restarted_kernel.consume(decision.permit, intent))
+            rejected = [record for record in restarted.audit if record["event"] == "permit_rejected"][-1]
+            self.assertEqual("directive_revoked", rejected["payload"]["directive_status"])
+            self.assertEqual(d.directive_id, rejected["payload"]["directive_id"])
+            self.assertEqual(d.version, rejected["payload"]["directive_version"])
+            self.assertEqual(d.directive_hash, rejected["payload"]["directive_hash"])
+            self.assertTrue(restarted_kernel.verify_audit())
+            restarted.close()
+
 
 if __name__ == "__main__":
     unittest.main()

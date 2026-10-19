@@ -15,6 +15,7 @@ from typing import Callable, Protocol
 
 from .authority import ApprovalEnvelope
 from .kernel import Decision, GovernanceKernel, Intent
+from .state import DirectivePermitBinding
 
 
 def _canonical(value: object) -> bytes:
@@ -51,6 +52,16 @@ class Directive:
         payload["allowed_actions"] = sorted(self.allowed_actions)
         return sha256(_canonical(payload)).hexdigest()
 
+    @property
+    def permit_binding(self) -> DirectivePermitBinding:
+        return DirectivePermitBinding(
+            directive_id=self.directive_id,
+            version=self.version,
+            directive_hash=self.directive_hash,
+            issued_at_ns=self.issued_at_ns,
+            expires_at_ns=self.expires_at_ns,
+        )
+
     def permits(self, intent: Intent, now_ns: int) -> str | None:
         if now_ns < self.issued_at_ns or now_ns >= self.expires_at_ns:
             return "directive_inactive"
@@ -82,6 +93,14 @@ class DirectiveState(Protocol):
     ) -> None: ...
 
     def directive_status(self, directive_id: str, version: int, directive_hash: str) -> str: ...
+
+    def bind_permit_to_directive(
+        self,
+        permit: str,
+        intent_hash: str,
+        binding: DirectivePermitBinding,
+        timestamp_ns: int,
+    ) -> None: ...
 
 
 class DirectiveAuthorityController:
@@ -229,7 +248,7 @@ class DirectiveAuthorityController:
 
 
 class GovernedDirectiveProjection:
-    """Execution-time directive check that delegates permits to the one kernel."""
+    """Directive gate that binds the kernel's one-use permit to live authority state."""
 
     def __init__(self, kernel: GovernanceKernel, state: DirectiveState, clock: Callable[[], int]) -> None:
         self.kernel = kernel
@@ -248,4 +267,13 @@ class GovernedDirectiveProjection:
         failure = directive.permits(intent, self.clock())
         if failure:
             return Decision("deny", failure, digest)
-        return self.kernel.evaluate(intent)
+
+        decision = self.kernel.evaluate(intent)
+        if decision.outcome == "allow" and decision.permit is not None:
+            self.state.bind_permit_to_directive(
+                decision.permit,
+                digest,
+                directive.permit_binding,
+                self.clock(),
+            )
+        return decision
