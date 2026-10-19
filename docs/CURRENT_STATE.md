@@ -1,5 +1,31 @@
 # Pulpo Current State
 
+## Current inspection — 2026-10-10
+
+This is a **read-only source reconciliation**, not a repository-admission decision, policy authorization, new authority plane, or claim that the external runtime is deployed. The detailed September 4 snapshot below is retained as historical evidence; its dated commit and status statements must not be presented as the current head.
+
+### Source-backed current state
+
+- **Current canonical `main` (direct GitHub read):** `d674dbb7a00b471d69bcca84d2f034cf74705e1a`. The current `pulpo/commerce.py` request/order objects lack an explicit `auto_renew_enabled` field. Renewal price controls alone do not authorize provider-side renewal enablement.
+- **Commerce correction — PR #266:** Draft, explicit `PROCESS HOLD / DO NOT MERGE`, exact head `0fb52886a2a52ee99ea310111d99d58f8653d581`. Five pull-request-triggered GitHub workflows on that head completed successfully: CI, Constitutional Survival Proof, Production Authority Container Proof, KMS Probe Container Proof, and Cloud SQL Probe Container Proof. No submitted independent review was found in the connected review listing on October 10. `main` adds one unrelated semantic-authority test file after PR #266's recorded base; the candidate remains noncanonical. Code review, exact merge-state validation, and separately legitimate admission remain mandatory.
+- **Audit performance — PR #293 and repair PR #302:** The original performance candidate #293 is unmerged. PR #302 is a Draft repair on #293's branch at head `38a23ad7a8fa7af0173b2b89d14cef8c0a6acd94` and has five successful GitHub workflows on that exact head. The PR author records malformed-audit acceptance and inherited worker-capability defects on #293's original path and local repairs in #302. Treat these as unmerged candidate behavior, not code running on `main`. Distinct review and admission are required.
+- **Unique-audit streaming — PR #297:** Open, unmerged head `e2e06a45256a86d9986ee265a7ff472effebf3f6`; five successful exact-head GitHub workflows were inspected. Its local Linux/Windows test and benchmark statements remain author-recorded, not independent deployment acceptance.
+- **Independent authority — Issue #90:** Still open. The presence of HSM/KMS evidence and successful software CI does not independently establish `authority.pulpo.ai` as a deployed, independently acceptance-proven human authority system.
+- **External provider consequence:** No new independently observed real registrar purchase or production containment evidence was established by this inspection.
+
+### Immediate governed sequence
+
+1. Complete a substantive independent code and threat review of the exact PR #266 object, including restart migration, Name.com request and observer field semantics, renewal substitution, alternate access routes, and consequence-unknown handling.
+2. Revalidate required checks on the exact merge state, obtain the independently required review and a separate repository-admission decision. Do not use a green workflow, a model-generated comment, or mergeability as merge authority. Preserve the Draft hold until the legitimate transition.
+3. Keep PR #302 stacked behind #293 for independent repair review; do not admit the unsafe original candidate as-is.
+4. Only after an admitted change is reflected in `main`, reconcile this living document again from new code and evidence. Commercial pilots must not claim external containment from synthetic tests.
+
+**Claim classification:** Direct GitHub repository heads, PR states, review inventory, and exact-head workflow outcomes are Verified as observed repository metadata on October 10. Statements about local tests, benchmarks, or runtime effects solely from PR descriptions are Recorded. Production authority, arbitrary-provider containment, and external payment/registrar completion remain Unknown.
+
+---
+
+## Historical detailed snapshot — 2026-09-04
+
 Status date: 2026-09-04
 
 ## Canonical source
