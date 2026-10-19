@@ -1,0 +1,16 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "pulpo",
+  "version": "0.1.0",
+  "description": "Read-only Pulpo proposals and frozen governance evidence over a capability-stripped MCP boundary.",
+  "author": {
+    "name": "Iron & Ember"
+  },
+  "repository": "https://github.com/Ironnember/Pulpo1.0",
+  "keywords": [
+    "governance",
+    "mcp",
+    "evidence",
+    "agent"
+  ]
+}
