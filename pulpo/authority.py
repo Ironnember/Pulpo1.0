@@ -134,8 +134,9 @@ class ApprovalVerifier(Protocol):
 class Ed25519ApprovalVerifier:
     """Verification-only adapter for one pinned Ed25519 public key.
 
-    The optional ``authority`` package extra supplies the reviewed cryptographic
-    implementation. Pulpo deliberately exposes no private-key or signing API.
+    Kept for already-recorded trust anchors. New Google Cloud HSM authority
+    deployments use ``P256ApprovalVerifier`` because Cloud HSM does not support
+    EC_SIGN_ED25519.
     """
 
     algorithm = "ed25519"
@@ -179,6 +180,74 @@ class Ed25519ApprovalVerifier:
                 return False
             signature_bytes = bytes.fromhex(signature)
             self._public_key.verify(signature_bytes, payload)
+        except (InvalidSignature, ValueError):
+            return False
+        return True
+
+
+class P256ApprovalVerifier:
+    """Verification-only adapter for one pinned NIST P-256 public key.
+
+    Public keys are pinned as the 65-byte SEC1/X9.62 uncompressed point. Approval
+    signatures remain a fixed 64-byte ``r || s`` value encoded as lowercase hex,
+    preserving Pulpo's existing fixed-width envelope representation while the
+    Google KMS boundary converts to/from ASN.1 DER internally.
+    """
+
+    algorithm = "ecdsa-p256-sha256"
+
+    def __init__(
+        self,
+        *,
+        authority_id: str,
+        verifier_id: str,
+        key_id: str,
+        public_key: bytes,
+    ) -> None:
+        for value, field in (
+            (authority_id, "authority_id"),
+            (verifier_id, "verifier_id"),
+            (key_id, "key_id"),
+        ):
+            _require_text(value, field)
+        if len(public_key) != 65 or public_key[:1] != b"\x04":
+            raise ValueError("P-256 public_key must be a 65-byte uncompressed SEC1 point")
+        try:
+            from cryptography.hazmat.primitives.asymmetric import ec
+        except ImportError as exc:
+            raise RuntimeError("P-256 verification requires the pulpo[authority] extra") from exc
+
+        try:
+            parsed = ec.EllipticCurvePublicKey.from_encoded_point(ec.SECP256R1(), public_key)
+        except ValueError as exc:
+            raise ValueError("P-256 public_key is not a valid SEC1 point") from exc
+
+        self.authority_id = authority_id
+        self.verifier_id = verifier_id
+        self.key_id = key_id
+        self.key_fingerprint = sha256(public_key).hexdigest()
+        self._public_key = parsed
+
+    def verify(self, payload: bytes, signature: str) -> bool:
+        try:
+            from cryptography.exceptions import InvalidSignature
+            from cryptography.hazmat.primitives import hashes
+            from cryptography.hazmat.primitives.asymmetric import ec
+            from cryptography.hazmat.primitives.asymmetric.utils import encode_dss_signature
+
+            if (
+                len(signature) != 128
+                or signature != signature.lower()
+                or any(character not in "0123456789abcdef" for character in signature)
+            ):
+                return False
+            raw = bytes.fromhex(signature)
+            r = int.from_bytes(raw[:32], "big")
+            s = int.from_bytes(raw[32:], "big")
+            if r == 0 or s == 0:
+                return False
+            der = encode_dss_signature(r, s)
+            self._public_key.verify(der, payload, ec.ECDSA(hashes.SHA256()))
         except (InvalidSignature, ValueError):
             return False
         return True
