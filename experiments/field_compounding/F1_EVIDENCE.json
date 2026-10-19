@@ -1,0 +1,31 @@
+{
+  "schema": "pulpo.field-evidence.v1",
+  "phase": "F1",
+  "claim_class": "Verified",
+  "authority_effect": "none",
+  "freeze_commit": "be79bc1d44cbe9433614c6877e764a48df26088b",
+  "canonical_base": "81338eed28ec32fe214c7eee086a82840ca0923f",
+  "target_branch": "field/recursive-compounding-target-2026-08-27",
+  "target_path": "field_proofs/compounding_effect.json",
+  "command_ack_effect_commit": "0308fa82985194f085b32c18bcf37a0750915fb3",
+  "interleaving_commit": "3a80dc0bf61edfd40ba3e6dc401d04eef4233a6f",
+  "observed_branch_tip_after_interleaving": "3a80dc0bf61edfd40ba3e6dc401d04eef4233a6f",
+  "frozen_marker_blob_sha": "d73da8987fdbc15c8a8e5b79e9c8835fe0025854",
+  "effect_commit_marker_blob_sha": "d73da8987fdbc15c8a8e5b79e9c8835fe0025854",
+  "branch_tip_marker_blob_sha": "d73da8987fdbc15c8a8e5b79e9c8835fe0025854",
+  "canonical_main_target_path": "absent_404",
+  "transition_evidence": {
+    "canonical_base_to_effect": "exactly one commit; only field_proofs/compounding_effect.json added",
+    "effect_to_interleaving": "exactly one later commit; only field_proofs/interleaving_noise_f1.txt added"
+  },
+  "separate_read_surface": "GitHub contents read at exact effect commit and at current target branch both returned the frozen marker blob; public web read was attempted but unavailable due fetch/cache miss",
+  "frozen_rubric_score": 10,
+  "frozen_rubric_total": 10,
+  "observation": "The provider acknowledged the target write at one commit, then a separate later mutation moved the branch tip before verification while leaving the intended object present. Current branch state alone therefore did not identify the exact version that performed the intended effect.",
+  "remaining_boundary": [
+    "same GitHub provider supplies both write and repository read evidence",
+    "public raw/web verification surface was unavailable during this run",
+    "this is a reversible source-control field effect, not production commerce",
+    "no independent human authority deployment is proved"
+  ]
+}

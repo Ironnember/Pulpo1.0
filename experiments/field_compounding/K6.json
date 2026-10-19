@@ -1,0 +1,23 @@
+{
+  "schema": "pulpo.field-knowledge.v1",
+  "id": "K6",
+  "title": "Version-bound external effect verification",
+  "claim_class": "Recorded/Inferred",
+  "authority_effect": "none",
+  "provenance": "F1 verified field evidence",
+  "evidence_reference": "experiments/field_compounding/F1_EVIDENCE.json",
+  "scope": [
+    "versioned-external-state",
+    "source-control",
+    "external-effect-verification"
+  ],
+  "freshness": "current",
+  "invalidation_conditions": [
+    "destination is not mutable/versioned",
+    "provider receipt cannot identify an effect version",
+    "higher-ranked current canonical evidence contradicts the lesson"
+  ],
+  "content": "For mutable versioned external state, verification must bind the exact effect version or receipt identity as well as current destination state. A later legitimate mutation can move the destination tip while leaving the intended object present, so branch-tip existence alone cannot attribute the intended write to its command. Verify the exact effect version and its transition, then separately reconcile current state. This may improve competence but has authority_effect none.",
+  "root_cause": "F1 intentionally introduced a later unrelated mutation after the target write and before verification. The target object remained present, but the branch tip no longer identified the target-effect commit.",
+  "remaining_boundary": "Derived from one GitHub field run; generalization to other mutable providers is inferred, not production-proven."
+}

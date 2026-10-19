@@ -1,0 +1,89 @@
+name: Production Authority Container Proof
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  production-authority-container:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      SOURCE_SHA: ${{ github.event.pull_request.head.sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+
+      - name: Build exact production authority image
+        run: docker build -f authority-service/Dockerfile.service -t pulpo-authority-service:${SOURCE_SHA} .
+
+      - name: Verify frozen runtime shape without cloud authority
+        shell: bash
+        run: |
+          set -euo pipefail
+          image="pulpo-authority-service:${SOURCE_SHA}"
+
+          test -n "$SOURCE_SHA"
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          test "$(docker inspect -f '{{.Config.User}}' "$image")" = "pulpo"
+          test "$(docker inspect -f '{{json .Config.ExposedPorts}}' "$image")" = '{"8080/tcp":{}}'
+          test "$(docker inspect -f '{{json .Config.Cmd}}' "$image")" = '["python","-m","uvicorn","pulpo_authority_service.production_runtime:create_production_app_from_env","--factory","--host","0.0.0.0","--port","8080"]'
+
+          docker run --rm \
+            --network none \
+            --read-only \
+            --tmpfs /tmp:rw,noexec,nosuid,size=16m \
+            --cap-drop ALL \
+            --security-opt no-new-privileges:true \
+            --entrypoint python \
+            "$image" -c "
+          import os
+          from pulpo_authority_service.production_runtime import (
+              KMS_KEY_VERSION,
+              KMS_PUBLIC_FINGERPRINT,
+              ORIGIN,
+              RP_ID,
+              ProductionSettings,
+          )
+          forbidden = {
+              'GOOGLE_APPLICATION_CREDENTIALS',
+              'PULPO_KERNEL_SECRET_HEX',
+              'PULPO_CUSTODY_SECRET_HEX',
+              'NAMECOM_SANDBOX_EXECUTOR_TOKEN',
+              'NAMECOM_SANDBOX_OBSERVER_TOKEN',
+          }
+          assert forbidden.isdisjoint(os.environ), sorted(forbidden.intersection(os.environ))
+          assert RP_ID == 'authority.pulpo.ai'
+          assert ORIGIN == 'https://authority.pulpo.ai'
+          assert KMS_KEY_VERSION.endswith('/approval-signer/cryptoKeyVersions/1')
+          assert KMS_PUBLIC_FINGERPRINT == 'b59288317ee9735a3bfd24595fd6a5d5c97476c1461b945124aded9ffd0ab127'
+          try:
+              ProductionSettings.from_mapping({})
+          except RuntimeError:
+              pass
+          else:
+              raise AssertionError('missing production particulars did not fail closed')
+          "
+
+      - name: Preserve exact built image bytes and manifest
+        shell: bash
+        run: |
+          set -euo pipefail
+          image="pulpo-authority-service:${SOURCE_SHA}"
+          mkdir -p production-authority-artifact
+          docker image inspect "$image" > production-authority-artifact/docker-image-inspect.json
+          docker save "$image" | gzip -1 > production-authority-artifact/pulpo-authority-service.tar.gz
+          sha256sum production-authority-artifact/pulpo-authority-service.tar.gz | tee production-authority-artifact/pulpo-authority-service.tar.gz.sha256
+          printf '%s\n' "$SOURCE_SHA" > production-authority-artifact/source-head.txt
+
+      - name: Upload exact production authority artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: pulpo-authority-service-${{ github.event.pull_request.head.sha }}
+          path: production-authority-artifact/
+          if-no-files-found: error
+          retention-days: 7

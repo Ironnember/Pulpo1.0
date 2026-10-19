@@ -1,0 +1,12 @@
+{
+  "schema": "pulpo.field-effect.v1",
+  "experiment": "field-governed-compounding-2026-08-27",
+  "phase": "F2",
+  "selected_task": "F2_CREATE",
+  "selection_input_effect_commit": "0308fa82985194f085b32c18bcf37a0750915fb3",
+  "knowledge_used": ["K5", "K6"],
+  "k6_blob_sha": "62a59e3d848ef5a2727c90313dd3f27f5cc85397",
+  "intended_target_branch": "field/recursive-compounding-target-2026-08-27",
+  "authority_effect": "none",
+  "field_nonce": "0308fa82-f2-create"
+}

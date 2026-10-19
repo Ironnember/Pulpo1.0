@@ -1,0 +1,20 @@
+{
+  "schema": "pulpo.field-preexecution.v1",
+  "phase": "F2",
+  "selected_task": "F2_CREATE",
+  "selection_index": 1,
+  "selection_input_effect_commit": "0308fa82985194f085b32c18bcf37a0750915fb3",
+  "target_branch": "field/recursive-compounding-target-2026-08-27",
+  "target_parent_before_f2": "3a80dc0bf61edfd40ba3e6dc401d04eef4233a6f",
+  "target_path": "field_proofs/compounding_followup.json",
+  "marker_blob_sha": "ff9237344372dfce7bd7e6404d67b1d12321b3ba",
+  "interleaving_path": "field_proofs/interleaving_noise_f2_create.txt",
+  "interleaving_blob_sha": "8807348d0db6dc5c3f8ad77cb598e0f632052919",
+  "knowledge": {
+    "baseline": ["K5"],
+    "transfer": ["K5", "K6"],
+    "k6_blob_sha": "62a59e3d848ef5a2727c90313dd3f27f5cc85397"
+  },
+  "authority_effect": "none",
+  "external_execution_started": false
+}
