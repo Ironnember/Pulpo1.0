@@ -1,5 +1,6 @@
 import importlib.util
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -17,7 +18,8 @@ def load_proof():
 class PulpoNodeVirtualLampTests(unittest.TestCase):
     def test_pulpo_node_virtual_lamp_13_checks(self):
         proof = load_proof()
-        result = proof.run_checks(Path(self._testMethodName))
+        with tempfile.TemporaryDirectory(prefix="pulpo-node-virtual-lamp-test-") as workdir:
+            result = proof.run_checks(Path(workdir))
         self.assertEqual(result["result"], "PASS")
         self.assertEqual(result["checks_passed"], 13)
         self.assertEqual(result["checks_total"], 13)
