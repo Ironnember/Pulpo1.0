@@ -1,183 +1,309 @@
 #!/usr/bin/env python3
-"""Pulpo Node synthetic virtual-lamp proof.
+"""Pulpo Node synthetic virtual-lamp proof through the canonical kernel.
 
-Synthetic only: no GPIO, no credentials, no network changes, no physical device authority.
+Synthetic only: no GPIO, no credentials, no network changes, no physical device
+authority. The lamp is still virtual, but authority, approval replay, one-use
+permits, target matching, restart replay, and evidence all use Pulpo's canonical
+GovernanceKernel and KernelState path rather than a proof-specific ledger.
 """
 from __future__ import annotations
 
 import argparse
+from dataclasses import replace
 import hashlib
-import hmac
 import json
 import secrets
-import sqlite3
+import sys
 import tempfile
-from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
-KEY = b"pulpo-node-test-fixture-key-not-production"
+ROOT = Path(__file__).resolve().parents[2]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from pulpo import GovernanceKernel, Intent, Policy, SQLiteKernelState
+from pulpo.targets import evaluate_locked_target_with_approval
+from tests.authority_support import HmacTestVerifier, signed_envelope, trust_for
+
 ACTOR = "pulpo-node-test-operator"
 TARGET = "virtual-lamp:alpha"
 ACTION = "set_virtual_lamp"
+SESSION = "pulpo-node-virtual-lamp"
+START_NS = 2_000_000
+
 
 class ProofError(RuntimeError):
     pass
 
+
+class ManualClock:
+    def __init__(self, value: int = START_NS) -> None:
+        self.value = value
+
+    def __call__(self) -> int:
+        current = self.value
+        self.value += 1
+        return current
+
+
 def canonical(value: Any) -> str:
     return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+
 
 def digest(value: Any) -> str:
     return hashlib.sha256(canonical(value).encode()).hexdigest()
 
-def sign(value: Any) -> str:
-    return hmac.new(KEY, canonical(value).encode(), hashlib.sha256).hexdigest()
 
-def action(target: str = TARGET, state: str = "on") -> dict[str, str]:
+def action_object(target: str = TARGET, state: str = "on") -> dict[str, str]:
     return {"action": ACTION, "target": target, "state": state}
 
-def init_db(path: Path) -> None:
-    with sqlite3.connect(path) as db:
-        db.executescript("""
-        CREATE TABLE IF NOT EXISTS approvals(
-          approval_id TEXT PRIMARY KEY, actor TEXT NOT NULL,
-          object_hash TEXT NOT NULL, expires_at TEXT NOT NULL, signature TEXT NOT NULL
-        );
-        CREATE TABLE IF NOT EXISTS permits(
-          permit_id TEXT PRIMARY KEY, approval_id TEXT NOT NULL,
-          object_hash TEXT NOT NULL, consumed_at TEXT
-        );
-        CREATE TABLE IF NOT EXISTS lamp_events(
-          event_id INTEGER PRIMARY KEY AUTOINCREMENT, permit_id TEXT UNIQUE NOT NULL,
-          object_hash TEXT NOT NULL, target TEXT NOT NULL, state TEXT NOT NULL, observed_at TEXT NOT NULL
-        );
-        CREATE TABLE IF NOT EXISTS evidence(
-          evidence_id INTEGER PRIMARY KEY AUTOINCREMENT, kind TEXT NOT NULL,
-          object_hash TEXT NOT NULL, details_json TEXT NOT NULL, recorded_at TEXT NOT NULL
-        );
-        """)
 
-def create_approval(obj: dict[str, str], actor: str = ACTOR, minutes: int = 5) -> dict[str, str]:
-    material = {
-        "approval_id": "approval-" + secrets.token_hex(8),
-        "actor": actor,
+def intent_for(obj: dict[str, str]) -> Intent:
+    return Intent(
+        principal=ACTOR,
+        action=ACTION,
+        resource=f"{obj['target']}:{digest(obj)}",
+        cost=1,
+        session_id=SESSION,
+    )
+
+
+def make_kernel(db_path: Path, clock: ManualClock, verifier: HmacTestVerifier, secret: bytes) -> tuple[GovernanceKernel, SQLiteKernelState]:
+    state = SQLiteKernelState(db_path)
+    policy = Policy(
+        allowed_actions=frozenset({ACTION}),
+        max_cost=1,
+        approval_actions=frozenset({ACTION}),
+        authority_trust=trust_for(verifier),
+    )
+    return GovernanceKernel(policy, secret=secret, approval_verifier=verifier, clock=clock, state=state), state
+
+
+def approve(kernel: GovernanceKernel, verifier: HmacTestVerifier, intent: Intent, approval_id: str, nonce: str, **changes: Any):
+    return signed_envelope(
+        kernel,
+        intent,
+        verifier,
+        now_ns=START_NS - 10,
+        approval_id=approval_id,
+        nonce=nonce,
+        **changes,
+    )
+
+
+def count_events(kernel: GovernanceKernel, obj: dict[str, str] | None = None) -> int:
+    object_hash = digest(obj) if obj is not None else None
+    return sum(
+        1
+        for record in kernel.audit
+        if record.get("event") == "virtual_lamp_observed"
+        and (object_hash is None or record.get("payload", {}).get("object_hash") == object_hash)
+    )
+
+
+def observe_lamp(kernel: GovernanceKernel, obj: dict[str, str]) -> list[dict[str, Any]]:
+    object_hash = digest(obj)
+    return [
+        record["payload"]
+        for record in kernel.audit
+        if record.get("event") == "virtual_lamp_observed"
+        and isinstance(record.get("payload"), dict)
+        and record["payload"].get("object_hash") == object_hash
+    ]
+
+
+def execute_virtual_lamp(kernel: GovernanceKernel, permit: str, obj: dict[str, str]) -> None:
+    intent = intent_for(obj)
+    if not kernel.consume(permit, intent):
+        raise ProofError("canonical permit consumption rejected")
+    timestamp_ns = kernel._trusted_now()
+    if timestamp_ns is None:
+        raise ProofError("canonical clock rejected")
+    payload = {
+        "schema": "pulpo.virtual_lamp_observation.v1",
         "object_hash": digest(obj),
-        "expires_at": (datetime.now(UTC) + timedelta(minutes=minutes)).isoformat(),
+        "intent_hash": kernel.intent_hash(intent),
+        "target": obj["target"],
+        "state": obj["state"],
+        "effect_index": count_events(kernel) + 1,
+        "authority_effect": "attempted_and_observed",
     }
-    return {**material, "signature": sign(material)}
+    kernel._state.append("virtual_lamp_observed", payload, timestamp_ns)
 
-def store_approval(db_path: Path, approval: dict[str, str]) -> None:
-    with sqlite3.connect(db_path) as db:
-        db.execute("INSERT INTO approvals VALUES (?, ?, ?, ?, ?)", (
-            approval["approval_id"], approval["actor"], approval["object_hash"], approval["expires_at"], approval["signature"]
-        ))
 
-def issue_permit(db_path: Path, approval_id: str, obj: dict[str, str]) -> str:
-    obj_hash = digest(obj)
-    with sqlite3.connect(db_path) as db:
-        row = db.execute("SELECT actor, object_hash, expires_at, signature FROM approvals WHERE approval_id=?", (approval_id,)).fetchone()
-        if row is None:
-            raise ProofError("approval not found")
-        actor, approved_hash, expires_at, signature = row
-        material = {"approval_id": approval_id, "actor": actor, "object_hash": approved_hash, "expires_at": expires_at}
-        if not hmac.compare_digest(signature, sign(material)):
-            raise ProofError("forged approval rejected")
-        if actor != ACTOR:
-            raise ProofError("wrong actor rejected")
-        if approved_hash != obj_hash:
-            raise ProofError("target substitution rejected")
-        if datetime.fromisoformat(expires_at) <= datetime.now(UTC):
-            raise ProofError("expired approval rejected")
-        permit = "permit-" + secrets.token_hex(8)
-        db.execute("INSERT INTO permits VALUES (?, ?, ?, NULL)", (permit, approval_id, obj_hash))
-        return permit
+def check_equal(actual: Any, expected: Any, message: str) -> None:
+    if actual != expected:
+        raise AssertionError(f"{message}: expected {expected!r}, got {actual!r}")
 
-def execute_virtual_lamp(db_path: Path, permit_id: str, obj: dict[str, str]) -> int:
-    obj_hash = digest(obj)
-    with sqlite3.connect(db_path) as db:
-        db.isolation_level = None
-        db.execute("BEGIN IMMEDIATE")
-        try:
-            row = db.execute("SELECT object_hash, consumed_at FROM permits WHERE permit_id=?", (permit_id,)).fetchone()
-            if row is None:
-                raise ProofError("permit not found")
-            permitted_hash, consumed_at = row
-            if consumed_at is not None:
-                raise ProofError("permit replay rejected")
-            if permitted_hash != obj_hash:
-                raise ProofError("object mismatch rejected")
-            now = datetime.now(UTC).isoformat()
-            db.execute("UPDATE permits SET consumed_at=? WHERE permit_id=?", (now, permit_id))
-            db.execute("INSERT INTO lamp_events(permit_id, object_hash, target, state, observed_at) VALUES (?, ?, ?, ?, ?)", (permit_id, obj_hash, obj["target"], obj["state"], now))
-            db.execute("INSERT INTO evidence(kind, object_hash, details_json, recorded_at) VALUES (?, ?, ?, ?)", ("ATTEMPTED_AND_OBSERVED", obj_hash, canonical({"permit_id": permit_id}), now))
-            event_id = int(db.execute("SELECT last_insert_rowid()").fetchone()[0])
-            db.execute("COMMIT")
-            return event_id
-        except Exception:
-            db.execute("ROLLBACK")
-            raise
 
-def count_events(db_path: Path) -> int:
-    with sqlite3.connect(db_path) as db:
-        return int(db.execute("SELECT COUNT(*) FROM lamp_events").fetchone()[0])
-
-def observe_lamp(db_path: Path, obj: dict[str, str]) -> list[dict[str, Any]]:
-    obj_hash = digest(obj)
-    with sqlite3.connect(db_path) as db:
-        rows = db.execute("SELECT event_id, permit_id, target, state, observed_at FROM lamp_events WHERE object_hash=? ORDER BY event_id", (obj_hash,)).fetchall()
-    return [{"event_id": r[0], "permit_id": r[1], "target": r[2], "state": r[3], "observed_at": r[4]} for r in rows]
-
-def expect_denied(fn, db_path: Path, expected_events: int) -> None:
+def expect_denied(fn: Callable[[], Any], kernel: GovernanceKernel, expected_events: int) -> None:
     try:
-        fn()
+        result = fn()
     except ProofError:
-        pass
-    else:
-        raise AssertionError("expected denial")
-    assert count_events(db_path) == expected_events
+        result = None
+    if result is not None:
+        outcome = getattr(result, "outcome", None)
+        reason = getattr(result, "reason", None)
+        if outcome == "allow":
+            raise AssertionError(f"expected denial, got allow/{reason}")
+    check_equal(count_events(kernel), expected_events, "denial changed virtual signal count")
+
 
 def run_checks(workdir: Path) -> dict[str, Any]:
     workdir.mkdir(parents=True, exist_ok=True)
     db_path = workdir / "pulpo-node-virtual-lamp.sqlite3"
-    init_db(db_path)
-    obj = action()
+    clock = ManualClock()
+    verifier = HmacTestVerifier()
+    kernel_secret = secrets.token_bytes(32)
+    kernel, state = make_kernel(db_path, clock, verifier, kernel_secret)
+    obj = action_object()
+    intent = intent_for(obj)
+    target = kernel.lock_target(obj["target"], intent)
     checks: list[dict[str, Any]] = []
-    def record(name, fn):
-        before = count_events(db_path)
+
+    def record(name: str, fn: Callable[[], None]) -> None:
+        before = count_events(kernel)
         fn()
-        checks.append({"name": name, "status": "PASS", "before_events": before, "after_events": count_events(db_path)})
+        checks.append({"name": name, "status": "PASS", "before_events": before, "after_events": count_events(kernel)})
 
-    record("no_permit_denies_signal", lambda: expect_denied(lambda: execute_virtual_lamp(db_path, "missing", obj), db_path, 0))
-    approval = create_approval(obj)
-    store_approval(db_path, approval)
-    forged = {**create_approval(obj), "approval_id": "approval-forged", "signature": "bad"}
-    record("forged_approval_denies_signal", lambda: (store_approval(db_path, forged), expect_denied(lambda: issue_permit(db_path, forged["approval_id"], obj), db_path, 0)))
-    record("target_substitution_denies_signal", lambda: expect_denied(lambda: issue_permit(db_path, approval["approval_id"], action("virtual-lamp:beta")), db_path, 0))
-    permit = issue_permit(db_path, approval["approval_id"], obj)
-    record("valid_permit_allows_one_signal", lambda: (assert_equal(execute_virtual_lamp(db_path, permit, obj), 1), assert_equal(count_events(db_path), 1)))
-    record("permit_replay_denies_second_signal", lambda: expect_denied(lambda: execute_virtual_lamp(db_path, permit, obj), db_path, 1))
-    record("restart_replay_denies_second_signal", lambda: expect_denied(lambda: execute_virtual_lamp(db_path, permit, obj), db_path, 1))
-    record("independent_observer_reads_exact_signal", lambda: assert_equal(len(observe_lamp(db_path, obj)), 1))
-    record("tampered_observation_does_not_reconcile", lambda: assert_equal(observe_lamp(db_path, action("virtual-lamp:tampered")), []))
-    expired = create_approval(obj, minutes=-1)
-    record("expired_approval_denies_signal", lambda: (store_approval(db_path, expired), expect_denied(lambda: issue_permit(db_path, expired["approval_id"], obj), db_path, 1)))
-    wrong_actor = create_approval(obj, actor="not-authorized")
-    record("wrong_actor_denies_signal", lambda: (store_approval(db_path, wrong_actor), expect_denied(lambda: issue_permit(db_path, wrong_actor["approval_id"], obj), db_path, 1)))
-    approval2 = create_approval(obj)
-    store_approval(db_path, approval2)
-    permit2 = issue_permit(db_path, approval2["approval_id"], obj)
-    record("permit_object_mismatch_denies_signal", lambda: expect_denied(lambda: execute_virtual_lamp(db_path, permit2, action(state="off")), db_path, 1))
-    record("evidence_recorded_once", lambda: assert_equal(count_evidence(db_path), 1))
-    record("machine_readable_summary_available", lambda: assert_equal(count_events(db_path), 1))
-    return {"result": "PASS", "checks_passed": len(checks), "checks_total": 13, "event_count": count_events(db_path), "db_path": str(db_path), "boundary": "Synthetic virtual-lamp proof only. No GPIO, credentials, network changes, persistent daemon, or physical device authority.", "checks": checks}
+    def no_permit_denies_signal() -> None:
+        expect_denied(lambda: execute_virtual_lamp(kernel, "missing-permit", obj), kernel, 0)
 
-def count_evidence(db_path: Path) -> int:
-    with sqlite3.connect(db_path) as db:
-        return int(db.execute("SELECT COUNT(*) FROM evidence").fetchone()[0])
+    record("no_permit_denies_signal", no_permit_denies_signal)
 
-def assert_equal(actual, expected):
-    if actual != expected:
-        raise AssertionError(f"expected {expected!r}, got {actual!r}")
+    def forged_approval_denies_signal() -> None:
+        envelope = approve(kernel, verifier, intent, "approval-forged", "nonce-forged")
+        forged = replace(envelope, signature="00" * 32)
+        _, decision = evaluate_locked_target_with_approval(kernel, target.target_id, target.target_hash, forged)
+        if decision is None or decision.outcome != "deny" or decision.reason != "approval_signature_invalid":
+            raise AssertionError(f"expected forged approval denial, got {decision}")
+        check_equal(count_events(kernel), 0, "forged approval created event")
+
+    record("forged_approval_denies_signal", forged_approval_denies_signal)
+
+    def target_substitution_denies_signal() -> None:
+        envelope = approve(kernel, verifier, intent, "approval-substitution", "nonce-substitution")
+        resolution, decision = evaluate_locked_target_with_approval(kernel, target.target_id, "0" * 64, envelope)
+        if resolution.outcome != "deny" or resolution.reason != "target_hash_mismatch" or decision is not None:
+            raise AssertionError("target substitution reached authority evaluation")
+        check_equal(count_events(kernel), 0, "target substitution created event")
+
+    record("target_substitution_denies_signal", target_substitution_denies_signal)
+
+    valid_envelope = approve(kernel, verifier, intent, "approval-valid", "nonce-valid")
+    resolution, decision = evaluate_locked_target_with_approval(kernel, target.target_id, target.target_hash, valid_envelope)
+    if resolution.outcome != "match" or decision is None or decision.outcome != "allow" or decision.permit is None:
+        raise AssertionError(f"valid exact target did not produce a canonical permit: {resolution} {decision}")
+    valid_permit = decision.permit
+
+    def valid_permit_allows_one_signal() -> None:
+        execute_virtual_lamp(kernel, valid_permit, obj)
+        check_equal(count_events(kernel), 1, "valid permit did not create exactly one event")
+
+    record("valid_permit_allows_one_signal", valid_permit_allows_one_signal)
+
+    def approval_replay_denies_second_permit() -> None:
+        _, replay = evaluate_locked_target_with_approval(kernel, target.target_id, target.target_hash, valid_envelope)
+        if replay is None or replay.outcome != "deny" or replay.reason not in {"approval_id_replayed", "approval_nonce_replayed"}:
+            raise AssertionError(f"expected approval replay denial, got {replay}")
+        check_equal(count_events(kernel), 1, "approval replay created event")
+
+    record("approval_replay_denies_second_permit", approval_replay_denies_second_permit)
+
+    def permit_replay_denies_second_signal() -> None:
+        expect_denied(lambda: execute_virtual_lamp(kernel, valid_permit, obj), kernel, 1)
+
+    record("permit_replay_denies_second_signal", permit_replay_denies_second_signal)
+
+    # Reopen the same canonical SQLite state to prove replay remains denied after restart.
+    state.close()
+    kernel, state = make_kernel(db_path, clock, verifier, kernel_secret)
+
+    def restart_replay_denies_second_signal() -> None:
+        expect_denied(lambda: execute_virtual_lamp(kernel, valid_permit, obj), kernel, 1)
+
+    record("restart_replay_denies_second_signal", restart_replay_denies_second_signal)
+
+    def independent_observer_reads_exact_signal() -> None:
+        observed = observe_lamp(kernel, obj)
+        check_equal(len(observed), 1, "observer did not read exactly one event")
+        check_equal(observed[0]["target"], TARGET, "observer target mismatch")
+        check_equal(observed[0]["state"], "on", "observer state mismatch")
+
+    record("independent_observer_reads_exact_signal", independent_observer_reads_exact_signal)
+
+    def tampered_observation_does_not_reconcile() -> None:
+        check_equal(observe_lamp(kernel, action_object(target="virtual-lamp:tampered")), [], "tampered observation reconciled")
+        check_equal(count_events(kernel), 1, "tampered observation changed event count")
+
+    record("tampered_observation_does_not_reconcile", tampered_observation_does_not_reconcile)
+
+    def expired_approval_denies_signal() -> None:
+        expired = signed_envelope(
+            kernel,
+            intent,
+            verifier,
+            now_ns=START_NS - 100,
+            ttl_ns=1,
+            approval_id="approval-expired",
+            nonce="nonce-expired",
+        )
+        _, expired_decision = evaluate_locked_target_with_approval(kernel, target.target_id, target.target_hash, expired)
+        if expired_decision is None or expired_decision.outcome != "deny" or expired_decision.reason != "approval_expired":
+            raise AssertionError(f"expected expired approval denial, got {expired_decision}")
+        check_equal(count_events(kernel), 1, "expired approval changed event count")
+
+    record("expired_approval_denies_signal", expired_approval_denies_signal)
+
+    def wrong_actor_denies_signal() -> None:
+        wrong_actor = approve(kernel, verifier, intent, "approval-wrong-actor", "nonce-wrong-actor", principal="not-authorized")
+        _, wrong_actor_decision = evaluate_locked_target_with_approval(kernel, target.target_id, target.target_hash, wrong_actor)
+        if wrong_actor_decision is None or wrong_actor_decision.outcome != "deny" or wrong_actor_decision.reason != "approval_principal_mismatch":
+            raise AssertionError(f"expected wrong actor denial, got {wrong_actor_decision}")
+        check_equal(count_events(kernel), 1, "wrong actor changed event count")
+
+    record("wrong_actor_denies_signal", wrong_actor_denies_signal)
+
+    def permit_object_mismatch_denies_signal() -> None:
+        envelope = approve(kernel, verifier, intent, "approval-object-mismatch", "nonce-object-mismatch")
+        _, decision = evaluate_locked_target_with_approval(kernel, target.target_id, target.target_hash, envelope)
+        if decision is None or decision.outcome != "allow" or decision.permit is None:
+            raise AssertionError(f"expected permit for mismatch case, got {decision}")
+        expect_denied(lambda: execute_virtual_lamp(kernel, decision.permit, action_object(state="off")), kernel, 1)
+
+    record("permit_object_mismatch_denies_signal", permit_object_mismatch_denies_signal)
+
+    def evidence_recorded_once() -> None:
+        observed = observe_lamp(kernel, obj)
+        approvals = [record for record in kernel.audit if record.get("event") == "approval_verified"]
+        consumed = [record for record in kernel.audit if record.get("event") == "permit_consumed"]
+        check_equal(len(observed), 1, "expected one virtual observation")
+        if not approvals or not consumed or not kernel.verify_audit():
+            raise AssertionError("canonical evidence/audit path missing")
+
+    record("evidence_recorded_once", evidence_recorded_once)
+
+    def machine_readable_summary_available() -> None:
+        summary = {"event_count": count_events(kernel), "object_hash": digest(obj), "checks_so_far": len(checks)}
+        check_equal(summary["event_count"], 1, "summary event count mismatch")
+        if not summary["object_hash"]:
+            raise AssertionError("summary missing object hash")
+
+    record("machine_readable_summary_available", machine_readable_summary_available)
+
+    state.close()
+    passed = sum(1 for item in checks if item["status"] == "PASS")
+    return {
+        "result": "PASS" if passed == len(checks) else "FAIL",
+        "checks_passed": passed,
+        "checks_total": len(checks),
+        "event_count": 1,
+        "db_path": str(db_path),
+        "boundary": "Synthetic virtual-lamp proof through Pulpo canonical kernel/state only. No GPIO, credentials, network changes, persistent daemon, or physical device authority.",
+        "checks": checks,
+    }
+
 
 def main() -> int:
     parser = argparse.ArgumentParser()
@@ -190,7 +316,8 @@ def main() -> int:
         args.output.parent.mkdir(parents=True, exist_ok=True)
         args.output.write_text(text + "\n")
     print(text)
-    return 0
+    return 0 if result["result"] == "PASS" else 1
+
 
 if __name__ == "__main__":
     raise SystemExit(main())
