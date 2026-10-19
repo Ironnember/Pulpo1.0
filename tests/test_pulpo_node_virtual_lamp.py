@@ -16,14 +16,15 @@ def load_proof():
 
 
 class PulpoNodeVirtualLampTests(unittest.TestCase):
-    def test_pulpo_node_virtual_lamp_13_checks(self):
+    def test_pulpo_node_virtual_lamp_canonical_kernel_checks(self):
         proof = load_proof()
         with tempfile.TemporaryDirectory(prefix="pulpo-node-virtual-lamp-test-") as workdir:
             result = proof.run_checks(Path(workdir))
         self.assertEqual(result["result"], "PASS")
-        self.assertEqual(result["checks_passed"], 13)
-        self.assertEqual(result["checks_total"], 13)
+        self.assertEqual(result["checks_passed"], result["checks_total"])
+        self.assertGreaterEqual(result["checks_total"], 14)
         self.assertEqual(result["event_count"], 1)
+        self.assertIn("canonical kernel/state", result["boundary"])
         self.assertIn("No GPIO", result["boundary"])
 
 
