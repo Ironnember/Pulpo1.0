@@ -35,6 +35,13 @@ class Mutation:
 
 MUTATIONS: tuple[Mutation, ...] = (
     Mutation(
+        "accelerated_kernel_verification_bypassed",
+        "pulpo/kernel.py",
+        'return engine.verify_rows(raw_reader())',
+        'return True',
+        ("tests.test_audit_acceleration_boundary.AccelerationBoundaryTests.test_kernel_checks_accelerated_sqlite_hash_on_every_pass",),
+    ),
+    Mutation(
         "global_budget_upper_bound_removed",
         "pulpo/kernel.py",
         'if intent.cost < 0 or intent.cost > self.policy.max_cost:\n            return "budget_exceeded"',
