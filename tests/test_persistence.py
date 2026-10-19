@@ -124,6 +124,44 @@ class RestartSafeStateTests(unittest.TestCase):
             [result.reason for result in results if result.outcome == "deny"],
         )
 
+    def test_replay_reason_uses_one_snapshot_with_id_precedence(self):
+        state = SQLiteKernelState(self.path)
+        self.addCleanup(state.close)
+        state._connection.executemany(
+            "INSERT INTO approvals (approval_id, nonce) VALUES (?, ?)",
+            [
+                ("approval-id-match", "other-nonce"),
+                ("other-approval", "nonce-match"),
+            ],
+        )
+
+        statements = []
+        state._connection.set_trace_callback(statements.append)
+        self.assertEqual(
+            "approval_nonce_replayed",
+            state.approval_replay_reason("new-approval", "nonce-match"),
+        )
+        replay_reads = [
+            statement
+            for statement in statements
+            if statement.lstrip().upper().startswith("SELECT")
+            and "approvals" in statement
+        ]
+        self.assertEqual(1, len(replay_reads))
+
+        statements.clear()
+        self.assertEqual(
+            "approval_id_replayed",
+            state.approval_replay_reason("approval-id-match", "nonce-match"),
+        )
+        replay_reads = [
+            statement
+            for statement in statements
+            if statement.lstrip().upper().startswith("SELECT")
+            and "approvals" in statement
+        ]
+        self.assertEqual(1, len(replay_reads))
+
     def test_verified_approval_and_permit_are_committed_with_one_transaction(self):
         state = SQLiteKernelState(self.path)
         self.addCleanup(state.close)
