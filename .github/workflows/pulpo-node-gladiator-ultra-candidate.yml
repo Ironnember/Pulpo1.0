@@ -1,0 +1,60 @@
+name: Pulpo Node Gladiator Ultra Candidate
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/pulpo-node-gladiator-ultra-candidate.yml"
+      - "proofs/pulpo-node/**"
+      - "proofs/pulpo_node_virtual_lamp.py"
+      - "tests/test_pulpo_node_virtual_lamp.py"
+      - "scripts/run_gladiator_ultra_tournament.py"
+      - "docs/pulpo-node/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  synthetic-proof:
+    name: synthetic proof only
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Run Pulpo Node virtual-lamp proof
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/pulpo-node-gladiator-ultra-candidate"
+          mkdir -p "$evidence"
+          python3 proofs/pulpo-node/virtual_lamp_proof.py \
+            --output "$evidence/pulpo-node-virtual-lamp-result.json"
+
+      - name: Run Pulpo Node unittest
+        run: python3 -m unittest discover -s tests -p 'test_pulpo_node_virtual_lamp.py' -v
+
+      - name: Run Gladiator Ultra candidate runner
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/pulpo-node-gladiator-ultra-candidate"
+          mkdir -p "$evidence"
+          python3 scripts/run_gladiator_ultra_tournament.py \
+            --repo . \
+            --expected-revision "$(git rev-parse HEAD)" \
+            --output "$evidence/gladiator-ultra-candidate"
+
+      - name: Upload synthetic proof artifacts
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: pulpo-node-gladiator-ultra-candidate
+          path: ${{ runner.temp }}/pulpo-node-gladiator-ultra-candidate/**
+          if-no-files-found: error
+          retention-days: 14
