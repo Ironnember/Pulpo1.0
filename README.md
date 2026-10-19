@@ -1,6 +1,6 @@
 # Pulpo
 
-Pulpo is a small governance kernel for agentic execution. It turns explicit intent into a deterministic decision, binds allowed work to a one-use permit, and records the result in a tamper-evident audit chain.
+Pulpo is the governance and evidence plane between AI intelligence and consequential execution. It turns explicit intent into deterministic governance, binds allowed work to narrowly scoped one-use permits, and preserves durable evidence for verification and reconciliation.
 
 This repository is the clean canonical Pulpo project. The older `Iron-Ember/pulpo` repository remains historical reference material; its accumulated plans, generated evidence, machine-specific scripts, and CI workarounds are intentionally not imported here.
 
@@ -27,6 +27,11 @@ The base dependency-free suite and optional asymmetric-authority suite prove:
   using the kernel's trusted clock.
 - transactional SQLite commerce state preserves reservations, attempted orders,
   reconciliation, and spend across restart.
+
+PulpoGit provides a read-only clarity projection for local source state. It
+distinguishes canonical, proposal, stale, diverged, detached, and dirty
+checkouts without inferring tests or authority. See the
+[PulpoGit clarity proof](proofs/git_clarity/README.md).
 
 ```bash
 python -m unittest discover -s tests -v
