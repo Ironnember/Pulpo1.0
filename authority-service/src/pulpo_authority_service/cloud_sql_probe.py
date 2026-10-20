@@ -7,6 +7,12 @@ the already-frozen private Cloud SQL database through automatic IAM database
 authentication, and fail closed if the resulting PostgreSQL session does not
 match the least-privilege boundary.
 
+The Cloud SQL Python Connector establishes TLS between the connector and the
+Cloud SQL server-side proxy independently of the PostgreSQL protocol. Therefore
+``pg_stat_ssl`` is not a valid observation of that transport boundary and is not
+used as an acceptance check here. The exact connector/private-IP/IAM contract is
+reported separately from the PostgreSQL session observations.
+
 It performs only catalog/session reads. No Pulpo authority, database state, IAM,
 or cloud resource is created or changed.
 """
@@ -19,6 +25,8 @@ from typing import Any, Callable
 from .cloud_sql_state import (
     DATABASE_IAM_USER,
     DATABASE_NAME,
+    DRIVER,
+    INSTANCE_CONNECTION_NAME,
     PulpoAuthorityCloudSqlConnectionFactory,
 )
 
@@ -33,7 +41,6 @@ SELECT
     session_user,
     current_setting('search_path'),
     current_setting('server_version_num'),
-    COALESCE((SELECT ssl FROM pg_stat_ssl WHERE pid = pg_backend_pid()), FALSE),
     role.rolsuper,
     role.rolcreaterole,
     role.rolcreatedb,
@@ -66,7 +73,7 @@ def probe_authority_database(
     connection = factory()
     try:
         row = connection.execute(_PROBE_SQL, (EXPECTED_RUNTIME_ROLE,)).fetchone()
-        if row is None or len(row) != 13:
+        if row is None or len(row) != 12:
             raise RuntimeError("Cloud SQL probe returned an unexpected row shape")
 
         (
@@ -75,7 +82,6 @@ def probe_authority_database(
             session_user,
             search_path,
             server_version_num,
-            session_ssl,
             is_superuser,
             can_create_role,
             can_create_database,
@@ -97,7 +103,6 @@ def probe_authority_database(
             raise RuntimeError("Cloud SQL probe server version is invalid") from exc
         if server_version < 160000 or server_version >= 170000:
             raise RuntimeError("Cloud SQL probe is not connected to PostgreSQL 16")
-        _require_bool(session_ssl, True, "session TLS")
 
         for value, field in (
             (is_superuser, "superuser"),
@@ -111,13 +116,19 @@ def probe_authority_database(
         _require_bool(runtime_role_member, True, "runtime-role membership")
 
         return {
-            "schema": "pulpo.authority-cloudsql-connectivity.v0",
+            "schema": "pulpo.authority-cloudsql-connectivity.v1",
             "database": database_name,
             "database_user": current_user,
             "runtime_role": EXPECTED_RUNTIME_ROLE,
             "search_path": search_path,
             "postgres_version_num": server_version,
-            "session_tls": True,
+            "connection_contract": {
+                "instance_connection_name": INSTANCE_CONNECTION_NAME,
+                "driver": DRIVER,
+                "ip_type": "PRIVATE",
+                "automatic_iam_database_authentication": True,
+                "transport_encryption": "connector_managed_tls",
+            },
             "admin_flags": {
                 "superuser": False,
                 "createrole": False,
