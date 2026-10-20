@@ -1,6 +1,6 @@
 # Pulpo Current State
 
-Status date: 2026-09-04
+Status date: 2026-09-08
 
 ## Canonical source
 
@@ -8,9 +8,10 @@ Status date: 2026-09-04
 
 At this reconciliation, protected `main` is:
 
-`1ee8485c4599ad3266c8e90c5baad29309bc700c`
+`b44dcd40a1ad2bd5413756bd413807f54f9283da`
 
-This commit canonically admits PR #161, `Feature: governed outcome-memory gate v0`.
+This commit canonically admits PR #200, `Feature: trusted frozen MCP snapshot
+export v0`, on top of the previously admitted governed outcome-memory path.
 
 The SHA is an inspection point, not a permanently pinned source-of-truth designation.
 
@@ -80,6 +81,20 @@ The MCP-side projection no longer retains the kernel, orchestrator, canonical st
 Proposal construction is ephemeral and non-mutating. Frozen primitive snapshots do not become canonical writers merely because no write route is exposed.
 
 This establishes the tested software/object-capability boundary. It does not establish hostile same-process memory isolation, production remote-MCP authentication, or live-current evidence freshness.
+
+PR #200 canonically adds the trusted-side frozen-snapshot export primitive. It
+requires a canonical `PulpoOrchestrator`, copies only six primitive evidence
+fields, writes atomically with owner-only permissions, rejects path and symlink
+substitution, and remains absent from the MCP tool surface.
+
+An operator-host reconciliation at this exact main independently reproduced the
+configured 2,589-record frozen snapshot byte-for-byte from a disposable copy of
+the durable SQLite state. The database audit chain was valid and the resulting
+snapshot SHA-256 was
+`21b8a36425e63b921145dbbb15d07147fb6fbdc4fcb913cdf06045a54f26b397`.
+This verifies that exact frozen object's compatibility and provenance at the
+observation point. No Pulpo process was running, so current freshness and an
+admitted same-process runtime handoff remain **Unknown**.
 
 ### Consequence reconciliation and governed outcome memory
 
