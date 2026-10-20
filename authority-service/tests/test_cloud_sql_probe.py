@@ -56,7 +56,6 @@ def good_row():
         DATABASE_IAM_USER,
         EXPECTED_SEARCH_PATH,
         "160009",
-        True,
         False,
         False,
         False,
@@ -79,15 +78,25 @@ class CloudSqlAuthorityProbeTests(unittest.TestCase):
         self.assertEqual(EXPECTED_RUNTIME_ROLE, evidence["runtime_role"])
         self.assertEqual(EXPECTED_SEARCH_PATH, evidence["search_path"])
         self.assertEqual(160009, evidence["postgres_version_num"])
-        self.assertIs(True, evidence["session_tls"])
+        self.assertEqual(
+            {
+                "instance_connection_name": "dulcet-opus-499511-a5:us-west1:pulpo-authority-db",
+                "driver": "pg8000",
+                "ip_type": "PRIVATE",
+                "automatic_iam_database_authentication": True,
+                "transport_encryption": "connector_managed_tls",
+            },
+            evidence["connection_contract"],
+        )
+        self.assertNotIn("session_tls", evidence)
         self.assertFalse(evidence["admin_flags"]["cloudsqlsuperuser_member"])
         self.assertEqual("none", evidence["authority_effect"])
         self.assertEqual(1, factory.connection.rollbacks)
         self.assertEqual(1, factory.connection.closes)
         [(sql, params)] = factory.connection.cursor_obj.calls
         self.assertTrue(sql.lstrip().upper().startswith("SELECT\n"))
-        self.assertIn("pg_stat_ssl", sql)
-        self.assertIn("pg_backend_pid()", sql)
+        self.assertNotIn("pg_stat_ssl", sql)
+        self.assertNotIn("pg_backend_pid()", sql)
         self.assertIn("cloudsqlsuperuser", sql)
         self.assertIn("FROM pg_roles", sql)
         self.assertNotIn(";", sql)
@@ -108,18 +117,17 @@ class CloudSqlAuthorityProbeTests(unittest.TestCase):
                 self.assertEqual(1, factory.connection.rollbacks)
                 self.assertEqual(1, factory.connection.closes)
 
-    def test_role_search_path_tls_version_and_admin_drift_fail_closed(self):
+    def test_role_search_path_version_and_admin_drift_fail_closed(self):
         cases = (
             (3, "public", "search_path"),
             (4, "150014", "PostgreSQL 16"),
-            (5, False, "session TLS"),
-            (6, True, "superuser"),
-            (7, True, "createrole"),
-            (8, True, "createdb"),
-            (9, True, "replication"),
-            (10, True, "bypassrls"),
-            (11, False, "runtime-role membership"),
-            (12, True, "cloudsqlsuperuser membership"),
+            (5, True, "superuser"),
+            (6, True, "createrole"),
+            (7, True, "createdb"),
+            (8, True, "replication"),
+            (9, True, "bypassrls"),
+            (10, False, "runtime-role membership"),
+            (11, True, "cloudsqlsuperuser membership"),
         )
         for index, replacement, message in cases:
             with self.subTest(index=index):

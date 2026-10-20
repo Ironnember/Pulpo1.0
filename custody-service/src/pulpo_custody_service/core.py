@@ -15,7 +15,7 @@ from types import SimpleNamespace
 from typing import Callable, Iterator
 
 from pulpo.authority import ApprovalEnvelope
-from pulpo.commerce import DomainPurchaseOrder, SQLiteBudgetAccount, purchase_intent
+from pulpo.commerce import CommerceViolation, DomainPurchaseOrder, SQLiteBudgetAccount, purchase_intent
 from pulpo.custody import CustodyViolation, SQLiteGovernanceCustody
 from pulpo.custody_domain import GovernedDomainAttemptCoordinator
 from pulpo.custody_evidence import (
@@ -280,27 +280,41 @@ class DomainCustodyService:
         )
 
     def _ref_and_order(self, handle: AttemptHandle):
+        if (type(handle) is not AttemptHandle
+                or handle.schema != "pulpo.custody-attempt-handle.v0"
+                or handle.state != self.custody.ATTEMPT_AUTHORIZED
+                or type(handle.reserved_cents) is not int):
+            raise ServiceRejected("attempt_handle_invalid")
         snapshot = self.custody.attempt(handle.attempt_id)
         if snapshot is None:
             raise ServiceRejected("attempt_unknown")
         if snapshot.object_hash != handle.order_hash:
             raise ServiceRejected("attempt_handle_order_mismatch")
+        if snapshot.target_hash != handle.target_hash:
+            raise ServiceRejected("attempt_handle_target_mismatch")
         try:
             order = self.proposals.order_for_hash(snapshot.object_hash)
         except ProposalCommitmentViolation as exc:
             raise ServiceRejected(f"attempt_provenance_missing:{exc}") from exc
+        try:
+            reservation = self.budget.reservation_for_order(order)
+        except CommerceViolation as exc:
+            raise ServiceRejected(f"attempt_reservation_missing:{exc}") from exc
+        if (reservation.reservation_id != handle.reservation_id
+                or reservation.reserved_cents != handle.reserved_cents):
+            raise ServiceRejected("attempt_handle_reservation_mismatch")
         return (
             SimpleNamespace(
-                attempt_id=handle.attempt_id,
-                order_hash=handle.order_hash,
-                reservation_id=handle.reservation_id,
+                attempt_id=snapshot.attempt_id,
+                order_hash=snapshot.object_hash,
+                reservation_id=reservation.reservation_id,
             ),
             order,
         )
 
     def execute(self, handle: AttemptHandle) -> ProviderAttemptClaim | None:
-        self._project_evidence()
         ref, order = self._ref_and_order(handle)
+        self._project_evidence()
         try:
             return self.executor.execute(ref, order, self.registrar)
         except ExternalConsequenceUnknown:
@@ -311,8 +325,8 @@ class DomainCustodyService:
             raise ServiceRejected(f"execution_rejected:{exc}") from exc
 
     def reconcile(self, handle: AttemptHandle) -> DomainReconciliationResult:
-        self._project_evidence()
         ref, order = self._ref_and_order(handle)
+        self._project_evidence()
         try:
             observation = self.observer.observe(ref, order)
             result = self.reconciler.reconcile(ref, order, observation)
