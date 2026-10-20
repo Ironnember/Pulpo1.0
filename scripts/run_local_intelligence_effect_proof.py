@@ -100,6 +100,78 @@ def build_seatbelt_profile(
     return "\n".join(lines) + "\n"
 
 
+def build_offline_python_profile(
+    runtime_root: Path,
+    *,
+    executable: Path,
+    python_prefix: Path,
+    worker_script: Path,
+    protected_read_roots: tuple[Path, ...] = (),
+) -> str:
+    """Build opt-in OS configuration for a fixed synthetic Python worker.
+
+    This grants no authority and starts no process. The caller must independently
+    review and bind the executable, source, profile and paths. Existing prepare/
+    fire callers keep their original profile. Ambient IPC/process/sysctl access
+    is not fully confined; this is not a production or deny-default sandbox.
+    """
+    supplied = (runtime_root, executable, python_prefix, worker_script, *protected_read_roots)
+    if any(not Path(path).is_absolute() for path in supplied):
+        raise ProofError("offline_profile_paths_must_be_absolute")
+    if any(any(ord(char) < 32 for char in str(path)) for path in supplied):
+        raise ProofError("offline_profile_control_character")
+    try:
+        runtime, program, prefix, worker, *protected = (
+            Path(path).resolve(strict=True) for path in supplied
+        )
+    except OSError as exc:
+        raise ProofError("offline_profile_path_unavailable") from exc
+    if any(any(ord(char) < 32 for char in str(path)) for path in (runtime, program, prefix, worker, *protected)):
+        raise ProofError("offline_profile_control_character")
+    if not runtime.is_dir() or not prefix.is_dir() or any(not path.is_dir() for path in protected):
+        raise ProofError("offline_profile_directory_required")
+    if not program.is_file() or not worker.is_file():
+        raise ProofError("offline_profile_regular_file_required")
+    if runtime == Path("/") or prefix == Path("/"):
+        raise ProofError("offline_profile_root_scope_forbidden")
+    if not program.is_relative_to(prefix):
+        raise ProofError("offline_profile_executable_outside_prefix")
+    if not worker.is_relative_to(runtime):
+        raise ProofError("offline_profile_worker_outside_runtime")
+    if runtime.is_relative_to(prefix) or prefix.is_relative_to(runtime):
+        raise ProofError("offline_profile_runtime_prefix_overlap")
+    content_roots = (prefix, Path("/System/Library").resolve(), Path("/usr/lib").resolve())
+    for root in protected:
+        if worker.is_relative_to(root) or any(
+            root.is_relative_to(allowed) or allowed.is_relative_to(root) for allowed in content_roots
+        ):
+            raise ProofError("offline_profile_protected_read_overlap")
+
+    def quoted(path: Path) -> str:
+        # Serialize captured resolved names; do not resolve them again after
+        # validation, which could silently select a different symlink target.
+        return '"' + str(path).replace("\\", "\\\\").replace('"', '\\"') + '"'
+
+    ancestors: set[Path] = set()
+    for path in (program, prefix, worker, runtime, *content_roots[1:], Path("/dev/null")):
+        ancestors.update(path.parents)
+    lines = [
+        "(version 1)", "(allow default)", "(deny file-read*)", "(deny file-write*)",
+        "(deny network*)", "(deny signal)",
+        f"(allow process-exec (literal {quoted(program)}))",
+        f"(allow file-read* (subpath {quoted(content_roots[1])}) (subpath {quoted(content_roots[2])})",
+        f"  (subpath {quoted(prefix)}) (literal {quoted(worker)})",
+        '  (literal "/dev/null") (literal "/dev/random") (literal "/dev/urandom"))',
+        f"(allow file-read-metadata (subpath {quoted(runtime)}))",
+        f"(allow file-write* (subpath {quoted(runtime)}))",
+        '(allow file-write* (literal "/dev/null"))', "(allow sysctl-read)",
+        '(allow file-read-data (literal "/"))',
+    ]
+    lines.extend(f"(allow file-read-metadata (literal {quoted(path)}))" for path in sorted(ancestors, key=str))
+    lines.extend(f"(deny file-read* (subpath {quoted(path)}))" for path in protected)
+    return "\n".join(lines) + "\n"
+
+
 def build_codex_argv(codex_path: Path, worktree: Path, runtime_root: Path, prompt: str) -> tuple[str, ...]:
     log_dir = runtime_root / "log"
     sqlite_home = runtime_root / "sqlite"
