@@ -12,7 +12,7 @@ startup-item changes, no sensitive host inspection, and no production authority.
 from __future__ import annotations
 
 import argparse
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 import hashlib
 import json
 import secrets
@@ -85,6 +85,74 @@ class SyntheticProcess:
     @property
     def resource(self) -> str:
         return f"synthetic-process:{self.pid}:{self.identity_hash}"
+
+
+class SyntheticProcessTable:
+    """Mutable fixture sink used as the separate synthetic consequence surface."""
+
+    def __init__(self, processes: list[SyntheticProcess]) -> None:
+        self._processes = {process.identity_hash: process for process in processes}
+
+    def observe(self, identity_hash: str) -> dict[str, Any] | None:
+        process = self._processes.get(identity_hash)
+        if process is None:
+            return None
+        return inspect_process(process)
+
+    def remediate(self, expected: SyntheticProcess) -> dict[str, Any]:
+        process = self._processes.get(expected.identity_hash)
+        if process is None:
+            return {
+                "schema": "pulpo.synthetic_process_post_action_observation.v1",
+                "identity_hash": expected.identity_hash,
+                "pid": expected.pid,
+                "observed": False,
+                "active": None,
+                "outcome": "unknown",
+                "reason": "target_not_found",
+            }
+        if not process.active:
+            return {
+                "schema": "pulpo.synthetic_process_post_action_observation.v1",
+                "identity_hash": expected.identity_hash,
+                "pid": expected.pid,
+                "observed": True,
+                "active": False,
+                "outcome": "unknown",
+                "reason": "target_already_inactive",
+            }
+        updated = SyntheticProcess(
+            pid=process.pid,
+            process_uid=process.process_uid,
+            command=process.command,
+            cpu_percent=process.cpu_percent,
+            sample_ns=process.sample_ns,
+            path=process.path,
+            env=process.env,
+            active=False,
+        )
+        self._processes[expected.identity_hash] = updated
+        observation = self.observe(expected.identity_hash)
+        if observation is None or observation["active"] is not False:
+            return {
+                "schema": "pulpo.synthetic_process_post_action_observation.v1",
+                "identity_hash": expected.identity_hash,
+                "pid": expected.pid,
+                "observed": observation is not None,
+                "active": None if observation is None else observation["active"],
+                "outcome": "unknown",
+                "reason": "post_action_observation_mismatch",
+            }
+        return {
+            "schema": "pulpo.synthetic_process_post_action_observation.v1",
+            "identity_hash": expected.identity_hash,
+            "pid": expected.pid,
+            "process_uid": expected.process_uid,
+            "observed": True,
+            "active": False,
+            "outcome": "remediated",
+            "reason": "post_action_observed_inactive",
+        }
 
 
 def suspicious_process() -> SyntheticProcess:
@@ -180,30 +248,28 @@ def remediation_events(kernel: GovernanceKernel, process: SyntheticProcess) -> l
     ]
 
 
-def remediate_process(kernel: GovernanceKernel, permit: str, process: SyntheticProcess) -> SyntheticProcess:
+def remediate_process(kernel: GovernanceKernel, permit: str, sink: SyntheticProcessTable, process: SyntheticProcess) -> dict[str, Any]:
     intent = intent_for(process)
     if not kernel.consume(permit, intent):
         raise ProofError("canonical permit consumption rejected")
-    if not process.active:
-        timestamp_ns = kernel._trusted_now()
-        if timestamp_ns is None:
-            raise ProofError("canonical clock rejected")
+    observation = sink.remediate(process)
+    timestamp_ns = kernel._trusted_now()
+    if timestamp_ns is None:
+        raise ProofError("canonical clock rejected")
+    if observation.get("outcome") != "remediated":
         kernel._state.append(
             "synthetic_process_remediation_unknown",
             {
                 "schema": "pulpo.synthetic_process_remediation_unknown.v1",
                 "pid": process.pid,
                 "identity_hash": process.identity_hash,
-                "reason": "target_already_inactive",
+                "reason": observation.get("reason", "unknown"),
+                "post_action_observation": observation,
                 "automatic_retry_authority": "none",
             },
             timestamp_ns,
         )
         raise ProofError("target consequence unknown")
-    remediated = replace(process, active=False)
-    timestamp_ns = kernel._trusted_now()
-    if timestamp_ns is None:
-        raise ProofError("canonical clock rejected")
     kernel._state.append(
         "synthetic_process_remediated",
         {
@@ -213,11 +279,12 @@ def remediate_process(kernel: GovernanceKernel, permit: str, process: SyntheticP
             "identity_hash": process.identity_hash,
             "intent_hash": kernel.intent_hash(intent),
             "outcome": "remediated",
+            "post_action_observation": observation,
             "authority_effect": "attempted_and_observed",
         },
         timestamp_ns,
     )
-    return remediated
+    return observation
 
 
 def check_equal(actual: Any, expected: Any, message: str) -> None:
@@ -246,6 +313,7 @@ def run_checks(workdir: Path) -> dict[str, Any]:
     kernel_secret = secrets.token_bytes(32)
     kernel, state = make_kernel(db_path, clock, verifier, kernel_secret)
     process = suspicious_process()
+    sink = SyntheticProcessTable([process])
     intent = intent_for(process)
     target = kernel.lock_target(f"synthetic-process:{process.process_uid}", intent)
     checks: list[dict[str, Any]] = []
@@ -256,7 +324,9 @@ def run_checks(workdir: Path) -> dict[str, Any]:
         checks.append({"name": name, "status": "PASS", "before_events": before, "after_events": count_remediations(kernel)})
 
     def read_only_inspection_bounded() -> None:
-        observed = inspect_process(process)
+        observed = sink.observe(process.identity_hash)
+        if observed is None:
+            raise AssertionError("fixture process was not observable")
         check_equal(observed["classification"], "abnormal_resource_use", "inspection failed to classify abnormal fixture")
         if "TOKEN" in canonical(observed) or process.path in canonical(observed):
             raise AssertionError("inspection leaked sensitive process data")
@@ -265,13 +335,13 @@ def run_checks(workdir: Path) -> dict[str, Any]:
     record("read_only_inspection_bounded", read_only_inspection_bounded)
 
     def no_permit_denies_remediation() -> None:
-        expect_denied(lambda: remediate_process(kernel, "missing-permit", process), kernel, 0)
+        expect_denied(lambda: remediate_process(kernel, "missing-permit", sink, process), kernel, 0)
 
     record("no_permit_denies_remediation", no_permit_denies_remediation)
 
     def forged_approval_denies_remediation() -> None:
         envelope = approve(kernel, verifier, intent, "approval-forged", "nonce-forged")
-        forged = replace(envelope, signature="00" * 32)
+        forged = envelope.__class__(**{**envelope.__dict__, "signature": "00" * 32})
         _, decision = evaluate_locked_target_with_approval(kernel, target.target_id, target.target_hash, forged)
         if decision is None or decision.outcome != "deny" or decision.reason != "approval_signature_invalid":
             raise AssertionError(f"expected forged approval denial, got {decision}")
@@ -295,10 +365,13 @@ def run_checks(workdir: Path) -> dict[str, Any]:
     valid_permit = decision.permit
 
     def valid_exact_approval_allows_one_remediation() -> None:
-        nonlocal process
-        process = remediate_process(kernel, valid_permit, process)
+        observation = remediate_process(kernel, valid_permit, sink, process)
         check_equal(count_remediations(kernel), 1, "valid permit did not remediate exactly once")
-        check_equal(process.active, False, "fixture process remained active")
+        check_equal(observation["outcome"], "remediated", "fixture sink did not report remediation")
+        post = sink.observe(process.identity_hash)
+        if post is None:
+            raise AssertionError("post-action process observation missing")
+        check_equal(post["active"], False, "fixture process remained active")
 
     record("valid_exact_approval_allows_one_remediation", valid_exact_approval_allows_one_remediation)
 
@@ -311,7 +384,7 @@ def run_checks(workdir: Path) -> dict[str, Any]:
     record("approval_replay_denies_second_permit", approval_replay_denies_second_permit)
 
     def permit_replay_denies_second_remediation() -> None:
-        expect_denied(lambda: remediate_process(kernel, valid_permit, process), kernel, 1)
+        expect_denied(lambda: remediate_process(kernel, valid_permit, sink, process), kernel, 1)
 
     record("permit_replay_denies_second_remediation", permit_replay_denies_second_remediation)
 
@@ -319,7 +392,7 @@ def run_checks(workdir: Path) -> dict[str, Any]:
     kernel, state = make_kernel(db_path, clock, verifier, kernel_secret)
 
     def restart_replay_denies_second_remediation() -> None:
-        expect_denied(lambda: remediate_process(kernel, valid_permit, process), kernel, 1)
+        expect_denied(lambda: remediate_process(kernel, valid_permit, sink, process), kernel, 1)
 
     record("restart_replay_denies_second_remediation", restart_replay_denies_second_remediation)
 
@@ -329,7 +402,7 @@ def run_checks(workdir: Path) -> dict[str, Any]:
         _, stale_decision = evaluate_locked_target_with_approval(kernel, target.target_id, target.target_hash, envelope)
         if stale_decision is None or stale_decision.outcome != "allow" or stale_decision.permit is None:
             raise AssertionError(f"expected permit for stale identity test, got {stale_decision}")
-        expect_denied(lambda: remediate_process(kernel, stale_decision.permit, stale), kernel, 1)
+        expect_denied(lambda: remediate_process(kernel, stale_decision.permit, sink, stale), kernel, 1)
 
     record("stale_pid_identity_denies_remediation", stale_pid_identity_denies_remediation)
 
@@ -364,20 +437,26 @@ def run_checks(workdir: Path) -> dict[str, Any]:
         check_equal(len(events), 1, "expected one remediation event")
         check_equal(events[0]["pid"], 4242, "pid mismatch")
         check_equal(events[0]["outcome"], "remediated", "outcome mismatch")
+        observation = events[0].get("post_action_observation")
+        if not isinstance(observation, dict) or observation.get("observed") is not True or observation.get("active") is not False:
+            raise AssertionError("remediation was not derived from post-action fixture observation")
         if not kernel.verify_audit():
             raise AssertionError("canonical audit chain invalid")
 
     record("post_action_observation_reconciles_exact_target", post_action_observation_reconciles_exact_target)
 
     def unknown_outcome_does_not_retry_authority() -> None:
-        already_inactive = replace(suspicious_process(), active=False)
-        inactive_intent = intent_for(already_inactive)
-        inactive_target = kernel.lock_target(f"synthetic-process:{already_inactive.process_uid}:inactive", inactive_intent)
-        envelope = approve(kernel, verifier, inactive_intent, "approval-unknown", "nonce-unknown")
-        _, unknown_decision = evaluate_locked_target_with_approval(kernel, inactive_target.target_id, inactive_target.target_hash, envelope)
+        inactive = suspicious_process()
+        inactive_sink = SyntheticProcessTable([inactive])
+        unknown_intent = intent_for(inactive)
+        unknown_target = kernel.lock_target(f"synthetic-process:{inactive.process_uid}:inactive", unknown_intent)
+        envelope = approve(kernel, verifier, unknown_intent, "approval-unknown", "nonce-unknown")
+        _, unknown_decision = evaluate_locked_target_with_approval(kernel, unknown_target.target_id, unknown_target.target_hash, envelope)
         if unknown_decision is None or unknown_decision.outcome != "allow" or unknown_decision.permit is None:
             raise AssertionError(f"expected permit for unknown outcome test, got {unknown_decision}")
-        expect_denied(lambda: remediate_process(kernel, unknown_decision.permit, already_inactive), kernel, 1)
+        # A separately authorized observer sees the target disappear or stop before the executor observes its own attempt.
+        inactive_sink.remediate(inactive)
+        expect_denied(lambda: remediate_process(kernel, unknown_decision.permit, inactive_sink, inactive), kernel, 1)
         unknown_events = [record for record in kernel.audit if record.get("event") == "synthetic_process_remediation_unknown"]
         if not unknown_events or unknown_events[-1]["payload"].get("automatic_retry_authority") != "none":
             raise AssertionError("unknown outcome did not preserve no-retry boundary")
@@ -400,6 +479,7 @@ def run_checks(workdir: Path) -> dict[str, Any]:
         "checks_total": len(checks),
         "remediation_count": 1,
         "db_path": str(db_path),
+        "db_exists": db_path.exists(),
         "boundary": "Synthetic incident-response fixture through Pulpo canonical kernel/state only. No real malware detection, process kill, file deletion, sensitive host inspection, or production authority.",
         "checks": checks,
     }
@@ -409,14 +489,20 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--output", type=Path)
     args = parser.parse_args()
+    if args.output:
+        evidence_dir = args.output.resolve().parent
+        evidence_dir.mkdir(parents=True, exist_ok=True)
+        state_dir = evidence_dir / "state"
+        result = run_checks(state_dir)
+        text = json.dumps(result, indent=2, sort_keys=True)
+        args.output.write_text(text + "\n")
+        print(text)
+        return 0 if result["result"] == "PASS" else 1
     with tempfile.TemporaryDirectory(prefix="pulpo-synthetic-incident-response-") as td:
         result = run_checks(Path(td))
-    text = json.dumps(result, indent=2, sort_keys=True)
-    if args.output:
-        args.output.parent.mkdir(parents=True, exist_ok=True)
-        args.output.write_text(text + "\n")
-    print(text)
-    return 0 if result["result"] == "PASS" else 1
+        text = json.dumps(result, indent=2, sort_keys=True)
+        print(text)
+        return 0 if result["result"] == "PASS" else 1
 
 
 if __name__ == "__main__":
