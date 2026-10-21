@@ -146,9 +146,11 @@ class GovernanceKernel:
     ) -> None:
         self.policy = policy
         self._secret = secret or secrets.token_bytes(32)
+        self._policy_hash = self._compute_policy_hash()
         self._approval_verifier = approval_verifier
         self._clock = clock or time.time_ns
         self._state = state if state is not None else InMemoryKernelState()
+        self._verified_audit_token: object | None = None
         if self._approval_verifier is not None and not self._verifier_matches_trust(self._approval_verifier):
             raise AuthorityTrustError("approval verifier does not match pinned authority trust")
         try:
@@ -166,8 +168,7 @@ class GovernanceKernel:
     def intent_hash(intent: Intent) -> str:
         return sha256(_canonical(asdict(intent))).hexdigest()
 
-    @property
-    def policy_hash(self) -> str:
+    def _compute_policy_hash(self) -> str:
         grants = [
             {
                 "principal": grant.principal,
@@ -186,6 +187,10 @@ class GovernanceKernel:
             "authority_trust": asdict(self.policy.authority_trust) if self.policy.authority_trust else None,
         }
         return sha256(_canonical(payload)).hexdigest()
+
+    @property
+    def policy_hash(self) -> str:
+        return self._policy_hash
 
     def lock_target(self, target_id: str, intent: Intent, *, version: int = 1) -> LockedTarget:
         """Record an exact proposed target without granting authority."""
@@ -221,11 +226,8 @@ class GovernanceKernel:
 
         if not target_id or version <= 0:
             return None
-        if not self.verify_audit():
-            raise StateIntegrityError("kernel state audit chain is invalid")
-        for record in reversed(self.audit):
-            if record.get("event") != "target_locked":
-                continue
+        self._require_audit_integrity()
+        for record in self._state.iter_audit(event="target_locked", reverse=True):
             payload = record.get("payload", {})
             if payload.get("target_id") != target_id or payload.get("version") != version:
                 continue
@@ -502,28 +504,29 @@ class GovernanceKernel:
             rejection_time = 0 if trusted_time is None else trusted_time
         else:
             rejection_time = timestamp_ns
-        self._state.append(
-            "approval_rejected",
-            {
-                "approval_id": envelope.approval_id,
-                "authority_id": envelope.authority_id,
-                "verifier_id": envelope.verifier_id,
-                "key_id": envelope.key_id,
-                "deployment_id": envelope.deployment_id,
-                "trust_hash": envelope.trust_hash,
-                "envelope_hash": envelope.envelope_hash,
-                "signing_payload_hash": envelope.signing_payload_hash,
-                "intent_hash": digest,
-                "policy_hash": self.policy_hash,
-                "reason": reason,
-            },
-            rejection_time,
-        )
+        rejection_payload = {
+            "approval_id": envelope.approval_id,
+            "authority_id": envelope.authority_id,
+            "verifier_id": envelope.verifier_id,
+            "key_id": envelope.key_id,
+            "deployment_id": envelope.deployment_id,
+            "trust_hash": envelope.trust_hash,
+            "envelope_hash": envelope.envelope_hash,
+            "signing_payload_hash": envelope.signing_payload_hash,
+            "intent_hash": digest,
+            "policy_hash": self.policy_hash,
+            "reason": reason,
+        }
         decision = Decision("deny", reason, digest)
-        self._state.append(
-            "decision",
-            {"outcome": "deny", "reason": reason, "intent_hash": digest},
-            rejection_time,
+        self._state.append_many(
+            [
+                ("approval_rejected", rejection_payload, rejection_time),
+                (
+                    "decision",
+                    {"outcome": "deny", "reason": reason, "intent_hash": digest},
+                    rejection_time,
+                ),
+            ]
         )
         return decision
 
@@ -531,16 +534,63 @@ class GovernanceKernel:
         digest = self.intent_hash(intent)
         return self._state.consume_permit(permit, digest, self._clock())
 
+    def _audit_integrity_token(self) -> object | None:
+        token_reader = getattr(self._state, "audit_integrity_token", None)
+        if token_reader is None:
+            return None
+        return token_reader()
+
+    def _require_audit_integrity(self) -> None:
+        current_token = self._audit_integrity_token()
+        if current_token is not None and current_token == self._verified_audit_token:
+            return
+        if not self.verify_audit():
+            raise StateIntegrityError("kernel state audit chain is invalid")
+
     def verify_audit(self) -> bool:
+        token_before = self._audit_integrity_token()
         previous = "0" * 64
-        for record in self.audit:
+        previous_delta_root = "0" * 64
+        for record in self._state.iter_audit():
             body = {key: value for key, value in record.items() if key != "hash"}
             if body["previous_hash"] != previous:
+                self._verified_audit_token = None
                 return False
             expected = sha256(_canonical(body)).hexdigest()
             if not hmac.compare_digest(record["hash"], expected):
+                self._verified_audit_token = None
                 return False
+
+            delta = body.get("delta")
+            if delta is not None:
+                if body.get("previous_delta_root") != previous_delta_root:
+                    self._verified_audit_token = None
+                    return False
+                expected_delta_root = sha256(
+                    _canonical(
+                        {
+                            "previous_delta_root": previous_delta_root,
+                            "delta": delta,
+                        }
+                    )
+                ).hexdigest()
+                if not hmac.compare_digest(body.get("delta_root", ""), expected_delta_root):
+                    self._verified_audit_token = None
+                    return False
+                previous_delta_root = expected_delta_root
+            else:
+                # Legacy records predate canonical delta logging. Their audit
+                # hash remains authoritative, and the first delta record after
+                # legacy history binds forward from the legacy audit head.
+                previous_delta_root = record["hash"]
+
             previous = record["hash"]
+
+        token_after = self._audit_integrity_token()
+        if token_before is not None and token_before != token_after:
+            self._verified_audit_token = None
+            return False
+        self._verified_audit_token = token_after
         return True
 
     def _decide(self, outcome: str, reason: str, digest: str, permit: str | None = None) -> Decision:
