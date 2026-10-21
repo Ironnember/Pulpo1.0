@@ -1,0 +1,21 @@
+{
+  "purpose": "Reduce canonical JSON encoder setup overhead without changing bytes or governance decisions.",
+  "authority_boundary": "Only JSON-to-bytes helpers change. No permit, replay, policy, checkpoint, audit writer, transaction or execution boundary changes. Synthetic records only in benchmarks; no live canonical state is used.",
+  "Flip": "Hostile input still traverses the same standard-library encoder, sorting, escaping and circular checks; error equivalence tested.",
+  "Reverse": "A wrong digest would originate at changed canonical bytes; legacy differential checks guard that earliest boundary.",
+  "Invert": "Throughput cannot count as success if bytes or governance regressions fail; both are required.",
+  "Inside-Out": "Shared encoder configuration is private and never changed during calls; encoding recursion state is per call. Concurrent differential tests exercise isolation. No new verifier or canonical authority plane.",
+  "Darken": "Threat case: shared state leaks after circular failures or across threads; recovery and concurrency tests passed for the tested corpus. Not proof against arbitrary runtime monkeypatching.",
+  "Lighten": "Recorded speed changes fit removal of encoder construction; no authority behavior change is inferred from speed alone.",
+  "Amplify": "10000/50000/100000 records and five fresh-process repetitions; 1000 concurrent serialization requests across eight threads in compatibility tests. Existing process-pool verification regression included. Benchmarks themselves use one process.",
+  "Negate": "Reuse the existing standard-library encoder settings, avoiding alternate libraries, key shortening, omitted values, raw JSON splicing or unchecked trust of stored payload bytes.",
+  "decision": "Continue: scoped source changes do not add canonical mutation or capability surfaces; correctness and governance tests must pass before completion.",
+  "temporal_transfer": "No reusable organizational lesson or historical authority proof is claimed. Current dirty checkout baseline is used. Historical Git checkpoints were not replayed; general transfer remains unverified.",
+  "claim_classification": {
+    "performance": "Recorded local measurements",
+    "byte_compatibility": "Verified over tested corpus and independent benchmark result validation",
+    "governance": "Verified only for completed named regression tests",
+    "mechanism": "Inferred reduction of encoder-construction overhead",
+    "production_and_other_machines": "Unknown"
+  }
+}
