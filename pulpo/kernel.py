@@ -529,7 +529,11 @@ class GovernanceKernel:
 
     def consume(self, permit: str, intent: Intent) -> bool:
         digest = self.intent_hash(intent)
-        return self._state.consume_permit(permit, digest, self._clock())
+        now_ns = self._trusted_now()
+        if now_ns is None:
+            self._state.append("permit_rejected", {"intent_hash": digest, "reason": "permit_clock_invalid"}, 0)
+            return False
+        return self._state.consume_permit(permit, digest, now_ns)
 
     def verify_audit(self) -> bool:
         previous = "0" * 64

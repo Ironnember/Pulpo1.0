@@ -9,6 +9,8 @@ environment.
 
 from __future__ import annotations
 
+from contextlib import closing
+
 from collections.abc import Iterator, MutableMapping
 from dataclasses import asdict
 from hashlib import sha256
@@ -270,7 +272,7 @@ class SQLiteRestartState(InMemoryState):
         )
 
     def _ensure_schema(self) -> None:
-        with sqlite3.connect(self.path) as connection:
+        with closing(sqlite3.connect(self.path)) as connection, connection:
             connection.execute(
                 """
                 CREATE TABLE IF NOT EXISTS authority_state (
@@ -291,7 +293,7 @@ class SQLiteRestartState(InMemoryState):
                 "SELECT 1 FROM authority_state WHERE singleton = 1"
             ).fetchone()
             return row is not None
-        with sqlite3.connect(self.path) as connection:
+        with closing(sqlite3.connect(self.path)) as connection, connection:
             row = connection.execute(
                 "SELECT 1 FROM authority_state WHERE singleton = 1"
             ).fetchone()
@@ -356,7 +358,7 @@ class SQLiteRestartState(InMemoryState):
         if connection is not None:
             self._write_snapshot(connection)
             return
-        with sqlite3.connect(self.path) as connection:
+        with closing(sqlite3.connect(self.path)) as connection, connection:
             connection.execute("BEGIN IMMEDIATE")
             self._write_snapshot(connection)
             connection.commit()
@@ -374,7 +376,7 @@ class SQLiteRestartState(InMemoryState):
         if connection is not None:
             payload, expected_hash = self._read_snapshot(connection)
         else:
-            with sqlite3.connect(self.path) as standalone:
+            with closing(sqlite3.connect(self.path)) as standalone, standalone:
                 payload, expected_hash = self._read_snapshot(standalone)
         actual_hash = sha256(payload.encode()).hexdigest()
         if actual_hash != expected_hash:
