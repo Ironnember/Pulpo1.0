@@ -1,7 +1,11 @@
+[build-system]
+requires = ["setuptools>=83.0.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "pulpo"
 version = "0.1.0"
-description = "A minimal governed-execution kernel for agentic systems"
+description = "A minimal AI governance and evidence kernel"
 requires-python = ">=3.11"
 
 [project.optional-dependencies]
