@@ -149,6 +149,7 @@ class GovernanceKernel:
         self._approval_verifier = approval_verifier
         self._clock = clock or time.time_ns
         self._state = state if state is not None else InMemoryKernelState()
+        self._verified_audit_token: object | None = None
         if self._approval_verifier is not None and not self._verifier_matches_trust(self._approval_verifier):
             raise AuthorityTrustError("approval verifier does not match pinned authority trust")
         try:
@@ -221,8 +222,7 @@ class GovernanceKernel:
 
         if not target_id or version <= 0:
             return None
-        if not self.verify_audit():
-            raise StateIntegrityError("kernel state audit chain is invalid")
+        self._require_audit_integrity()
         for record in reversed(self.audit):
             if record.get("event") != "target_locked":
                 continue
@@ -531,16 +531,37 @@ class GovernanceKernel:
         digest = self.intent_hash(intent)
         return self._state.consume_permit(permit, digest, self._clock())
 
+    def _audit_integrity_token(self) -> object | None:
+        token_reader = getattr(self._state, "audit_integrity_token", None)
+        if token_reader is None:
+            return None
+        return token_reader()
+
+    def _require_audit_integrity(self) -> None:
+        current_token = self._audit_integrity_token()
+        if current_token is not None and current_token == self._verified_audit_token:
+            return
+        if not self.verify_audit():
+            raise StateIntegrityError("kernel state audit chain is invalid")
+
     def verify_audit(self) -> bool:
+        token_before = self._audit_integrity_token()
         previous = "0" * 64
         for record in self.audit:
             body = {key: value for key, value in record.items() if key != "hash"}
             if body["previous_hash"] != previous:
+                self._verified_audit_token = None
                 return False
             expected = sha256(_canonical(body)).hexdigest()
             if not hmac.compare_digest(record["hash"], expected):
+                self._verified_audit_token = None
                 return False
             previous = record["hash"]
+        token_after = self._audit_integrity_token()
+        if token_before is not None and token_before != token_after:
+            self._verified_audit_token = None
+            return False
+        self._verified_audit_token = token_after
         return True
 
     def _decide(self, outcome: str, reason: str, digest: str, permit: str | None = None) -> Decision:
