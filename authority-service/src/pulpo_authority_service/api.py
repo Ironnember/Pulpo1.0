@@ -41,6 +41,7 @@ class RequestBody(BaseModel):
     session_id: str = Field(min_length=1, max_length=4_096)
     intent_hash: str = Field(min_length=64, max_length=64)
     policy_hash: str = Field(min_length=64, max_length=64)
+    provenance_hash: str | None = Field(default=None, min_length=64, max_length=64)
     deployment_id: str = Field(min_length=1, max_length=4_096)
     requested_ttl_ns: StrictInt
     request_schema: str = Field(

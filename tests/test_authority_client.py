@@ -52,6 +52,36 @@ class AuthorityClientTests(unittest.TestCase):
             self.calls,
         )
 
+    def test_request_validates_optional_provenance_hash(self):
+        with self.assertRaisesRegex(ValueError, "provenance_hash"):
+            AuthorityApprovalRequest(
+                principal="agent:publisher",
+                action="push",
+                resource="repo:origin/main",
+                cost=0,
+                session_id="session:1",
+                intent_hash="a" * 64,
+                policy_hash="b" * 64,
+                deployment_id="deployment:production",
+                requested_ttl_ns=1_000,
+                provenance_hash="not-a-digest",
+            )
+
+        bound = AuthorityApprovalRequest(
+            principal="agent:publisher",
+            action="push",
+            resource="repo:origin/main",
+            cost=0,
+            session_id="session:1",
+            intent_hash="a" * 64,
+            policy_hash="b" * 64,
+            deployment_id="deployment:production",
+            requested_ttl_ns=1_000,
+            provenance_hash="c" * 64,
+        )
+        self.client.request_approval(bound)
+        self.assertEqual("c" * 64, self.calls[-1][2]["provenance_hash"])
+
     def test_approved_poll_parses_exact_envelope(self):
         envelope = ApprovalEnvelope(
             approval_id="approval:1",
