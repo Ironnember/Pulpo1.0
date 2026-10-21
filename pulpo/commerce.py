@@ -51,6 +51,7 @@ class DomainPurchaseRequest:
     privacy_required: bool
     prohibited_upsells: tuple[str, ...]
     expires_at_ns: int
+    auto_renew_enabled: bool = False
 
     def __post_init__(self) -> None:
         if not self.request_id or not self.principal or not self.acceptable_domains:
@@ -73,6 +74,8 @@ class DomainPurchaseRequest:
             raise CommerceViolation("prohibited upsells must be normalized")
         if self.expires_at_ns <= 0:
             raise CommerceViolation("request expiration is required")
+        if type(self.auto_renew_enabled) is not bool:
+            raise CommerceViolation("auto_renew_enabled must be boolean")
 
     @property
     def request_hash(self) -> str:
@@ -128,6 +131,7 @@ class DomainPurchaseOrder:
     prohibited_upsells: tuple[str, ...]
     credential_ref: str
     expires_at_ns: int
+    auto_renew_enabled: bool = False
 
     def __post_init__(self) -> None:
         if not self.request_id or not self.quote_id or not self.principal:
@@ -152,6 +156,8 @@ class DomainPurchaseOrder:
             raise CommerceViolation("credential must be an opaque credential reference")
         if self.expires_at_ns <= 0:
             raise CommerceViolation("order expiration is required")
+        if type(self.auto_renew_enabled) is not bool:
+            raise CommerceViolation("order auto_renew_enabled must be boolean")
 
     @property
     def order_hash(self) -> str:
@@ -216,6 +222,7 @@ def assess_quote(
             prohibited_upsells=request.prohibited_upsells,
             credential_ref=credential_ref,
             expires_at_ns=min(request.expires_at_ns, quote.expires_at_ns),
+            auto_renew_enabled=request.auto_renew_enabled,
         )
 
     material = {
@@ -291,6 +298,11 @@ class VerificationEvidence:
     registration_years: int
     privacy_enabled: bool
     dns_state: str
+    auto_renew_enabled: bool | None = None
+
+    def __post_init__(self) -> None:
+        if self.auto_renew_enabled is not None and type(self.auto_renew_enabled) is not bool:
+            raise CommerceViolation("verification auto_renew_enabled must be boolean or None")
 
 
 @dataclass(frozen=True)
@@ -429,7 +441,7 @@ class SQLiteBudgetAccount:
             raise CommerceViolation("budget store path must be a regular file")
         self.ceiling_cents = ceiling_cents
         try:
-            with self._connect() as connection:
+            with closing(self._connect()) as connection, connection:
                 connection.execute("PRAGMA journal_mode=WAL")
                 connection.execute(
                     """
@@ -474,13 +486,17 @@ class SQLiteBudgetAccount:
 
     def _connect(self) -> sqlite3.Connection:
         connection = sqlite3.connect(self.path, timeout=5.0, isolation_level=None)
-        connection.execute("PRAGMA synchronous=FULL")
+        try:
+            connection.execute("PRAGMA synchronous=FULL")
+        except BaseException:
+            connection.close()
+            raise
         return connection
 
     @property
     def spent_cents(self) -> int:
         try:
-            with self._connect() as connection:
+            with closing(self._connect()) as connection, connection:
                 return int(
                     connection.execute(
                         "SELECT spent_cents FROM commerce_budget WHERE singleton = 1"
@@ -492,7 +508,7 @@ class SQLiteBudgetAccount:
     @property
     def reserved_cents(self) -> int:
         try:
-            with self._connect() as connection:
+            with closing(self._connect()) as connection, connection:
                 return int(
                     connection.execute(
                         """
@@ -520,7 +536,7 @@ class SQLiteBudgetAccount:
             }
         )
         try:
-            with self._connect() as connection:
+            with closing(self._connect()) as connection, connection:
                 connection.execute("BEGIN IMMEDIATE")
                 if connection.execute(
                     "SELECT 1 FROM commerce_reservations WHERE order_hash = ?",
@@ -590,7 +606,7 @@ class SQLiteBudgetAccount:
         if now_ns <= 0 or now_ns >= order.expires_at_ns:
             raise CommerceViolation("order_expired")
         try:
-            with self._connect() as connection:
+            with closing(self._connect()) as connection, connection:
                 row = connection.execute(
                     """
                     SELECT order_hash, reserved_cents, state
@@ -613,7 +629,7 @@ class SQLiteBudgetAccount:
 
     def mark_attempted(self, reservation_id: str) -> None:
         try:
-            with self._connect() as connection:
+            with closing(self._connect()) as connection, connection:
                 connection.execute("BEGIN IMMEDIATE")
                 cursor = connection.execute(
                     """
@@ -634,7 +650,7 @@ class SQLiteBudgetAccount:
 
     def reconcile(self, reservation_id: str, payment: PaymentEvidence) -> Reconciliation:
         try:
-            with self._connect() as connection:
+            with closing(self._connect()) as connection, connection:
                 connection.execute("BEGIN IMMEDIATE")
                 row = connection.execute(
                     """
@@ -766,6 +782,10 @@ def accept_delivery(
         raise CommerceViolation("registration_period_not_verified")
     if order.privacy_required and not verification.privacy_enabled:
         raise CommerceViolation("privacy_not_verified")
+    if verification.auto_renew_enabled is None:
+        raise CommerceViolation("auto_renew_not_verified")
+    if verification.auto_renew_enabled != order.auto_renew_enabled:
+        raise CommerceViolation("auto_renew_mismatch")
     if verification.dns_state not in {"registered", "configured"}:
         raise CommerceViolation("dns_state_not_accepted")
     outcome.verification = verification
