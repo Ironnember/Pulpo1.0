@@ -1,0 +1,11 @@
+{
+  "baseline_tests": 389,
+  "final_tests": 408,
+  "baseline_failures": 13,
+  "baseline_errors": 126,
+  "final_failures": 13,
+  "final_errors": 126,
+  "additional_final_failures": [],
+  "baseline_only_failures": [],
+  "same_failure_ids_and_multiplicities": true
+}

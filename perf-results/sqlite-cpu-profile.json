@@ -1,0 +1,194 @@
+{
+  "label": "cpu-profile",
+  "python": "3.12.10",
+  "sqlite": "3.49.1",
+  "platform": "Windows-11-10.0.26200-SP0",
+  "iterations": 200,
+  "history": 10000,
+  "repeats": 5,
+  "results": [
+    {
+      "variant": "baseline",
+      "case": "append",
+      "median_seconds": 0.7139180999947712,
+      "operations_per_second": 280.14417900521755,
+      "samples_seconds": [
+        0.7139180999947712,
+        1.0521729000029154,
+        0.6063660000218078,
+        0.63090230000671,
+        0.7544554999913089
+      ],
+      "journal_mode": "delete",
+      "synchronous": 2
+    },
+    {
+      "variant": "cpu-profile",
+      "case": "append",
+      "median_seconds": 0.6709374000201933,
+      "operations_per_second": 298.09040305992863,
+      "samples_seconds": [
+        0.6709374000201933,
+        0.5976786999963224,
+        1.0222307000076398,
+        0.601616500003729,
+        1.0215903000207618
+      ],
+      "journal_mode": "delete",
+      "synchronous": 2
+    },
+    {
+      "variant": "cpu-profile_indexed",
+      "case": "append",
+      "median_seconds": 0.6385136999888346,
+      "operations_per_second": 313.2274217506959,
+      "samples_seconds": [
+        0.6214946000254713,
+        0.7509577000164427,
+        0.6307939999969676,
+        0.6385136999888346,
+        0.7857212999952026
+      ],
+      "journal_mode": "delete",
+      "synchronous": 2
+    },
+    {
+      "variant": "baseline",
+      "case": "issue_and_consume",
+      "median_seconds": 1.44821200001752,
+      "operations_per_second": 138.10132770449385,
+      "samples_seconds": [
+        1.4520157999941148,
+        1.4451008000178263,
+        1.44821200001752,
+        1.4364597999956459,
+        1.454264800006058
+      ],
+      "journal_mode": "delete",
+      "synchronous": 2
+    },
+    {
+      "variant": "cpu-profile",
+      "case": "issue_and_consume",
+      "median_seconds": 1.9003644000040367,
+      "operations_per_second": 105.2429734000359,
+      "samples_seconds": [
+        1.440952900040429,
+        1.6292906000162475,
+        1.9003644000040367,
+        2.229935100011062,
+        2.0035154999932274
+      ],
+      "journal_mode": "delete",
+      "synchronous": 2
+    },
+    {
+      "variant": "cpu-profile_indexed",
+      "case": "issue_and_consume",
+      "median_seconds": 1.5527163000078872,
+      "operations_per_second": 128.8065308511182,
+      "samples_seconds": [
+        1.9664752999669872,
+        2.1676752000348642,
+        1.5079212000127882,
+        1.5168574000126682,
+        1.5527163000078872
+      ],
+      "journal_mode": "delete",
+      "synchronous": 2
+    },
+    {
+      "variant": "baseline",
+      "case": "unique_new",
+      "median_seconds": 0.8398840999579988,
+      "operations_per_second": 238.1280941144161,
+      "samples_seconds": [
+        0.7020342000178061,
+        0.7036010999581777,
+        0.8459153000148945,
+        0.8398840999579988,
+        1.0962499000015669
+      ],
+      "journal_mode": "delete",
+      "synchronous": 2
+    },
+    {
+      "variant": "cpu-profile",
+      "case": "unique_new",
+      "median_seconds": 0.80438139999751,
+      "operations_per_second": 248.63827035361473,
+      "samples_seconds": [
+        0.70504470000742,
+        0.8333122000331059,
+        0.9431342000025325,
+        0.7023883999790996,
+        0.80438139999751
+      ],
+      "journal_mode": "delete",
+      "synchronous": 2
+    },
+    {
+      "variant": "cpu-profile_indexed",
+      "case": "unique_new",
+      "median_seconds": 0.6814393000095151,
+      "operations_per_second": 293.4964273372659,
+      "samples_seconds": [
+        1.602355599985458,
+        0.6645777000230737,
+        0.6540452999761328,
+        0.7110166000202298,
+        0.6814393000095151
+      ],
+      "journal_mode": "delete",
+      "synchronous": 2
+    },
+    {
+      "variant": "baseline",
+      "case": "unique_replay",
+      "median_seconds": 0.08766040002228692,
+      "operations_per_second": 2281.53191120679,
+      "samples_seconds": [
+        0.08652930002426729,
+        0.08792180003365502,
+        0.0880953999585472,
+        0.08766040002228692,
+        0.08727140002883971
+      ],
+      "journal_mode": "delete",
+      "synchronous": 2
+    },
+    {
+      "variant": "cpu-profile",
+      "case": "unique_replay",
+      "median_seconds": 0.08718040003441274,
+      "operations_per_second": 2294.0936256435384,
+      "samples_seconds": [
+        0.08763289998751134,
+        0.08718040003441274,
+        0.08633130002999678,
+        0.08598109998274595,
+        0.08816200000001118
+      ],
+      "journal_mode": "delete",
+      "synchronous": 2
+    },
+    {
+      "variant": "cpu-profile_indexed",
+      "case": "unique_replay",
+      "median_seconds": 0.01757629995699972,
+      "operations_per_second": 11378.959194443565,
+      "samples_seconds": [
+        0.017698799958452582,
+        0.01757629995699972,
+        0.017866200010757893,
+        0.01740119996247813,
+        0.01750819996232167
+      ],
+      "journal_mode": "delete",
+      "synchronous": 2
+    }
+  ],
+  "state_source_sha256": "9e0f8b10f57ccd3d7e861adc50181db79932f9d55c1c4417847121d09e112e56",
+  "baseline_revision": "73ec97b68a3228c52ecba717d867a1d99340ab15",
+  "baseline_state_source_sha256": "dab57d3ff8640e40b5171462068a66aba483d985048c1570cceae29ecc393cad"
+}

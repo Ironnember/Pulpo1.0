@@ -112,6 +112,31 @@ Workers do **not** issue permits, change policy, grant authority, bypass replay 
 
 Historical development measurements recorded about **2.7× faster** verification for a 10,000-record synthetic audit with four warm workers, plus lower repeated-check latency with caching. Those figures are development measurements, not universal performance guarantees. See [multi-core audit verification](docs/AUDIT_CPU_WORKERS.md).
 
+### Performance engineering
+
+**Proposed engineering standard:** benchmarks are Pulpo's feedback loop for
+determining whether SQL, memory, audit, batching, serialization, concurrency,
+and other component changes improve overall system efficiency. The core measure
+is how efficiently Pulpo converts CPU, memory, storage, and I/O into governed
+record processing while preserving governance guarantees.
+
+Evaluate changes against comparable workloads and record these dimensions:
+
+- **Throughput:** records or operations processed per second.
+- **CPU efficiency:** CPU time per record or per 1,000 records.
+- **Memory efficiency:** peak memory and memory growth as record history increases.
+- **Latency:** typical latency and p95/p99 tail latency under load.
+- **Scaling:** capacity across increasing record histories and hardware/core configurations.
+- **Governance/evidence overhead:** CPU, memory, storage, and I/O cost of governance and audit evidence per record.
+- **Correctness under load:** preservation of governance invariants, including restart and failure behavior.
+
+An optimization can be worthwhile even if one operation consumes slightly more
+resources when overall governed processing capacity improves. No performance
+gain counts if replay protection, durability, rollback, permit semantics,
+audit-chain verification, tamper detection, or other governance invariants are
+weakened. Report measured gains with their workload, configuration, and evidence
+boundaries; unverified gains remain **Unknown**.
+
 ## Designed for consequential systems
 
 Pulpo's architecture is intended for systems where an AI recommendation can eventually reach something that matters: infrastructure, autonomous agents, robotics, drones, governed transactions, APIs, databases, and on-prem execution.
