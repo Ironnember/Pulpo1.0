@@ -1,0 +1,194 @@
+{
+  "baseline_revision": "d674dbb7a00b471d69bcca84d2f034cf74705e1a",
+  "baseline_sha256": "1d64b9f1b3027985ac661d802f0f54077ad08e7ce2c497cffb8f49eaec3a3041",
+  "candidate_sha256": "f273d4eb6f95ed9efff5c2b6b6bb6747ae1cbb38b43bd66b6f5f9629a75f3190",
+  "python": "3.12.14",
+  "sqlite": "3.53.1",
+  "platform": "Linux-6.18.33.2-microsoft-standard-WSL2-x86_64-with-glibc2.43",
+  "arguments": {
+    "compare_ref": "d674dbb7a00b471d69bcca84d2f034cf74705e1a",
+    "history": [
+      1000,
+      10000
+    ],
+    "payload_bytes": 1024,
+    "iterations": 10,
+    "repeats": 5,
+    "json": "/mnt/c/Users/spike/Documents/Codex/2026-10-05/referenced-chatgpt-conversation-this-is-an-3/outputs/upstream-validation/benchmark.json"
+  },
+  "measurement": "Measure same-event reconciliation lookup time and Python allocation peak.\n\nFixture setup and full chain proof are excluded. Allocation tracing is a\nseparate untimed pass. Alternate exact-baseline and candidate order each repeat.\n",
+  "results": [
+    {
+      "history": 1000,
+      "variant": "baseline",
+      "samples": [
+        {
+          "seconds": 0.028012589000013577,
+          "peak_python_bytes": 1100957,
+          "lookup_rows_changed": 0,
+          "journal_mode": "delete",
+          "synchronous": 2
+        },
+        {
+          "seconds": 0.02389935000002197,
+          "peak_python_bytes": 1100957,
+          "lookup_rows_changed": 0,
+          "journal_mode": "delete",
+          "synchronous": 2
+        },
+        {
+          "seconds": 0.02444942900001479,
+          "peak_python_bytes": 1100957,
+          "lookup_rows_changed": 0,
+          "journal_mode": "delete",
+          "synchronous": 2
+        },
+        {
+          "seconds": 0.022289263000004667,
+          "peak_python_bytes": 1100957,
+          "lookup_rows_changed": 0,
+          "journal_mode": "delete",
+          "synchronous": 2
+        },
+        {
+          "seconds": 0.022527403999987428,
+          "peak_python_bytes": 1100957,
+          "lookup_rows_changed": 0,
+          "journal_mode": "delete",
+          "synchronous": 2
+        }
+      ],
+      "median_ms_per_lookup": 2.389935000002197,
+      "median_peak_python_bytes": 1100957
+    },
+    {
+      "history": 1000,
+      "variant": "candidate",
+      "samples": [
+        {
+          "seconds": 0.022210128000011764,
+          "peak_python_bytes": 6511,
+          "lookup_rows_changed": 0,
+          "journal_mode": "delete",
+          "synchronous": 2
+        },
+        {
+          "seconds": 0.022724488999983805,
+          "peak_python_bytes": 6511,
+          "lookup_rows_changed": 0,
+          "journal_mode": "delete",
+          "synchronous": 2
+        },
+        {
+          "seconds": 0.02457933900001308,
+          "peak_python_bytes": 6511,
+          "lookup_rows_changed": 0,
+          "journal_mode": "delete",
+          "synchronous": 2
+        },
+        {
+          "seconds": 0.02309745100001237,
+          "peak_python_bytes": 6511,
+          "lookup_rows_changed": 0,
+          "journal_mode": "delete",
+          "synchronous": 2
+        },
+        {
+          "seconds": 0.02275937699999986,
+          "peak_python_bytes": 6511,
+          "lookup_rows_changed": 0,
+          "journal_mode": "delete",
+          "synchronous": 2
+        }
+      ],
+      "median_ms_per_lookup": 2.275937699999986,
+      "median_peak_python_bytes": 6511
+    },
+    {
+      "history": 10000,
+      "variant": "baseline",
+      "samples": [
+        {
+          "seconds": 0.32182188599998085,
+          "peak_python_bytes": 11354317,
+          "lookup_rows_changed": 0,
+          "journal_mode": "delete",
+          "synchronous": 2
+        },
+        {
+          "seconds": 0.2789934399999936,
+          "peak_python_bytes": 11354317,
+          "lookup_rows_changed": 0,
+          "journal_mode": "delete",
+          "synchronous": 2
+        },
+        {
+          "seconds": 0.26441826200002083,
+          "peak_python_bytes": 11354317,
+          "lookup_rows_changed": 0,
+          "journal_mode": "delete",
+          "synchronous": 2
+        },
+        {
+          "seconds": 0.2671948790000158,
+          "peak_python_bytes": 11354317,
+          "lookup_rows_changed": 0,
+          "journal_mode": "delete",
+          "synchronous": 2
+        },
+        {
+          "seconds": 0.26119732899999804,
+          "peak_python_bytes": 11354317,
+          "lookup_rows_changed": 0,
+          "journal_mode": "delete",
+          "synchronous": 2
+        }
+      ],
+      "median_ms_per_lookup": 26.71948790000158,
+      "median_peak_python_bytes": 11354317
+    },
+    {
+      "history": 10000,
+      "variant": "candidate",
+      "samples": [
+        {
+          "seconds": 0.2574877559999891,
+          "peak_python_bytes": 7504,
+          "lookup_rows_changed": 0,
+          "journal_mode": "delete",
+          "synchronous": 2
+        },
+        {
+          "seconds": 0.2744948469999997,
+          "peak_python_bytes": 7504,
+          "lookup_rows_changed": 0,
+          "journal_mode": "delete",
+          "synchronous": 2
+        },
+        {
+          "seconds": 0.25639117600002237,
+          "peak_python_bytes": 7504,
+          "lookup_rows_changed": 0,
+          "journal_mode": "delete",
+          "synchronous": 2
+        },
+        {
+          "seconds": 0.26052114199998755,
+          "peak_python_bytes": 7504,
+          "lookup_rows_changed": 0,
+          "journal_mode": "delete",
+          "synchronous": 2
+        },
+        {
+          "seconds": 0.2662178719999986,
+          "peak_python_bytes": 7504,
+          "lookup_rows_changed": 0,
+          "journal_mode": "delete",
+          "synchronous": 2
+        }
+      ],
+      "median_ms_per_lookup": 26.052114199998755,
+      "median_peak_python_bytes": 7504
+    }
+  ]
+}

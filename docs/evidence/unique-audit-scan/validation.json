@@ -1,0 +1,176 @@
+{
+  "base": "d674dbb7a00b471d69bcca84d2f034cf74705e1a",
+  "environment": "{\"python\": \"3.12.14 (main, Sep 24 2026, 17:57:43) [Clang 22.1.3 ]\", \"platform\": \"Linux-6.18.33.2-microsoft-standard-WSL2-x86_64-with-glibc2.43\", \"sqlite\": \"3.53.1\"}",
+  "production_source_sha256": "f273d4eb6f95ed9efff5c2b6b6bb6747ae1cbb38b43bd66b6f5f9629a75f3190",
+  "note": "Initial full runs lacked exact historical fixture 0eb1266fecf586c79457e0fcaf412bc6345545a2; repaired full runs pass. Baseline and candidate both include the seven new tests.",
+  "logs": [
+    {
+      "file": "authority-service-baseline.log",
+      "sha256": "4cc8c63e9523e63d11f77e3ccea3861595636510733370be7ad8b45e832f5394",
+      "summary": [
+        "Ran 63 tests in 0.277s",
+        "OK (skipped=4)"
+      ],
+      "retained_in_pr": false
+    },
+    {
+      "file": "authority-service-candidate.log",
+      "sha256": "c79fdc708a8c89814d7613e520a3baff7a70e3bb0c8adb6b55e832568f37d77b",
+      "summary": [
+        "Ran 63 tests in 0.260s",
+        "OK (skipped=4)"
+      ],
+      "retained_in_pr": false
+    },
+    {
+      "file": "benchmark.log",
+      "sha256": "63e3e0c8f09fd8f22bd3f6aaf231ca113cd6dc5581b918139bfd72ac7046f3f8",
+      "summary": [],
+      "retained_in_pr": false
+    },
+    {
+      "file": "checkout-baseline.log",
+      "sha256": "1cf6ae88a60d7cc416a27c13272f69d9c6570efb157fce0f8e974b7de58c0a3e",
+      "summary": [],
+      "retained_in_pr": false
+    },
+    {
+      "file": "checkout-candidate.log",
+      "sha256": "1cf6ae88a60d7cc416a27c13272f69d9c6570efb157fce0f8e974b7de58c0a3e",
+      "summary": [],
+      "retained_in_pr": false
+    },
+    {
+      "file": "clone-baseline.log",
+      "sha256": "721b71906ceabb150447763bd9f853ce276c231317e168bdacc77eebb542d8a6",
+      "summary": [],
+      "retained_in_pr": false
+    },
+    {
+      "file": "clone-candidate.log",
+      "sha256": "f22be871f99cd2f853d7c5593d299fefe3c7666f4cee8b7a6117f83ba3f02170",
+      "summary": [],
+      "retained_in_pr": false
+    },
+    {
+      "file": "compile-baseline.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "summary": [],
+      "retained_in_pr": false
+    },
+    {
+      "file": "compile-benchmark.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "summary": [],
+      "retained_in_pr": false
+    },
+    {
+      "file": "compile-candidate.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "summary": [],
+      "retained_in_pr": false
+    },
+    {
+      "file": "core-baseline.log",
+      "sha256": "2425011de71830f87bce7d39c97adf56b5acebe21beca2b2195d048f58f7ce34",
+      "summary": [
+        "Ran 374 tests in 13.946s",
+        "FAILED (errors=1)"
+      ],
+      "retained_in_pr": false
+    },
+    {
+      "file": "core-candidate.log",
+      "sha256": "857bc1788d6be12b6b1a3cf1f63bce6393fdbea51a1a88cd956c435b20e23560",
+      "summary": [
+        "Ran 374 tests in 13.980s",
+        "FAILED (errors=1)"
+      ],
+      "retained_in_pr": false
+    },
+    {
+      "file": "core-repaired-baseline.log",
+      "sha256": "c0d174fab64b90ef88b160e96069ff41c7f84da53e796a7d474f37a6d1814604",
+      "summary": [
+        "Ran 380 tests in 14.032s",
+        "OK"
+      ],
+      "retained_in_pr": true
+    },
+    {
+      "file": "core-repaired-candidate.log",
+      "sha256": "32793911ecb01f95b28190d965cc816425bad908a3eb8e2551aac268c40d7317",
+      "summary": [
+        "Ran 380 tests in 14.431s",
+        "OK"
+      ],
+      "retained_in_pr": true
+    },
+    {
+      "file": "custody-service-baseline.log",
+      "sha256": "89f788917c04cdbc7d34fdc5c5db8fd81ce2dacd298c081eac616ef2328471af",
+      "summary": [
+        "Ran 26 tests in 0.335s",
+        "OK"
+      ],
+      "retained_in_pr": false
+    },
+    {
+      "file": "custody-service-candidate.log",
+      "sha256": "bc3cb3ec01f92defd83bb69649c916ce8b57ae29a21643977c99ddb7ee52965b",
+      "summary": [
+        "Ran 26 tests in 0.332s",
+        "OK"
+      ],
+      "retained_in_pr": false
+    },
+    {
+      "file": "dependencies.log",
+      "sha256": "3d1a531331d6df6055fa0c0f57dee7463b5b7d6a90b82164fdd014d14c8d7eac",
+      "summary": [],
+      "retained_in_pr": false
+    },
+    {
+      "file": "environment.log",
+      "sha256": "1be06a5b25520c0bcb670b20f76060b148e805297439b122dfab8ffb9317d99d",
+      "summary": [],
+      "retained_in_pr": false
+    },
+    {
+      "file": "fixture-fetch-baseline.log",
+      "sha256": "0d2b230b18a4b660b69da6f48cd2edd587c38d0dccb1a29601986649031c0de1",
+      "summary": [],
+      "retained_in_pr": false
+    },
+    {
+      "file": "fixture-fetch-candidate.log",
+      "sha256": "0d2b230b18a4b660b69da6f48cd2edd587c38d0dccb1a29601986649031c0de1",
+      "summary": [],
+      "retained_in_pr": false
+    },
+    {
+      "file": "focused-baseline.log",
+      "sha256": "2e07522ecaa6850f93d7148279338ec629e97f23657822fc3b31b3da146d4341",
+      "summary": [
+        "Ran 33 tests in 0.232s",
+        "OK"
+      ],
+      "retained_in_pr": true
+    },
+    {
+      "file": "focused-candidate.log",
+      "sha256": "7a3fc267a7d452f90c93997cc265e1c187e87eeab7bf5f23e8030918dfc9ac61",
+      "summary": [
+        "Ran 33 tests in 0.233s",
+        "OK"
+      ],
+      "retained_in_pr": true
+    },
+    {
+      "file": "venv.log",
+      "sha256": "1e8df4b3beae81892eec3e7be6baa6a1c7f6dea80fd2751ec6c45ad34d6c7e1e",
+      "summary": [],
+      "retained_in_pr": false
+    }
+  ]
+}
