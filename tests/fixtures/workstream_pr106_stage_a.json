@@ -1,0 +1,117 @@
+{
+  "schema": "pulpo.sanitized-workstream-fixture.v0",
+  "workstream": {
+    "session_id": "session:pr106-stage-a",
+    "workstream_id": "workstream:pr106-stage-a",
+    "transcript_claims": [
+      "Stage A proves zero unauthorized external effects",
+      "the benchmark is production security evidence"
+    ]
+  },
+  "decisions": [
+    {
+      "decision_id": "decision:pr106-code-head",
+      "workstream_id": "workstream:pr106-stage-a",
+      "claim_id": "claim:pr106-code-state",
+      "object_id": "git:Ironnember/Pulpo1.0",
+      "object_version": "e3201e1811c2373041726896bbbb42357a07e87e"
+    }
+  ],
+  "evidence": [
+    {
+      "evidence_id": "git:pr106-head",
+      "claim_id": "claim:pr106-code-state",
+      "claim_kind": "code_state",
+      "object_id": "git:Ironnember/Pulpo1.0",
+      "object_version": "e3201e1811c2373041726896bbbb42357a07e87e",
+      "source_kind": "git",
+      "provenance_id": "github:Ironnember/Pulpo1.0",
+      "authenticated": true,
+      "observed_at_ns": 100,
+      "valid_until_ns": 200,
+      "outcome_class": "SUCCESS_VERIFIED",
+      "detail": "PR #106 exact implementation head recorded"
+    },
+    {
+      "evidence_id": "ci:376",
+      "claim_id": "claim:pr106-code-state",
+      "claim_kind": "code_state",
+      "object_id": "git:Ironnember/Pulpo1.0",
+      "object_version": "e3201e1811c2373041726896bbbb42357a07e87e",
+      "source_kind": "ci",
+      "provenance_id": "github-actions:ci:33300952877",
+      "authenticated": true,
+      "observed_at_ns": 110,
+      "valid_until_ns": 200,
+      "outcome_class": "SUCCESS_VERIFIED",
+      "detail": "CI #376 completed success"
+    },
+    {
+      "evidence_id": "ci:constitutional-survival:50",
+      "claim_id": "claim:pr106-code-state",
+      "claim_kind": "code_state",
+      "object_id": "git:Ironnember/Pulpo1.0",
+      "object_version": "e3201e1811c2373041726896bbbb42357a07e87e",
+      "source_kind": "ci",
+      "provenance_id": "github-actions:constitutional-survival:33300952905",
+      "authenticated": true,
+      "observed_at_ns": 111,
+      "valid_until_ns": 200,
+      "outcome_class": "SUCCESS_VERIFIED",
+      "detail": "Constitutional Survival Proof #50 completed success"
+    },
+    {
+      "evidence_id": "observer:poison-unrelated",
+      "claim_id": "claim:other",
+      "claim_kind": "code_state",
+      "object_id": "git:other/repo",
+      "object_version": "deadbeef",
+      "source_kind": "external_observer",
+      "provenance_id": "external:unrelated",
+      "authenticated": true,
+      "observed_at_ns": 115,
+      "valid_until_ns": 200,
+      "outcome_class": "EXECUTION_FAILURE",
+      "detail": "authenticated but irrelevant evidence must not alter PR #106 code-state outcome"
+    },
+    {
+      "evidence_id": "observer:stale-exact",
+      "claim_id": "claim:pr106-code-state",
+      "claim_kind": "code_state",
+      "object_id": "git:Ironnember/Pulpo1.0",
+      "object_version": "e3201e1811c2373041726896bbbb42357a07e87e",
+      "source_kind": "external_observer",
+      "provenance_id": "external:stale",
+      "authenticated": true,
+      "observed_at_ns": 1,
+      "valid_until_ns": 50,
+      "outcome_class": "EXECUTION_FAILURE",
+      "detail": "stale exact-object evidence must not alter current classification"
+    },
+    {
+      "evidence_id": "observer:unauthenticated-exact",
+      "claim_id": "claim:pr106-code-state",
+      "claim_kind": "code_state",
+      "object_id": "git:Ironnember/Pulpo1.0",
+      "object_version": "e3201e1811c2373041726896bbbb42357a07e87e",
+      "source_kind": "external_observer",
+      "provenance_id": "caller:poison",
+      "authenticated": false,
+      "observed_at_ns": 120,
+      "valid_until_ns": 200,
+      "outcome_class": "EXECUTION_FAILURE",
+      "detail": "poisoned unauthenticated exact-object evidence must be rejected"
+    }
+  ],
+  "expected": {
+    "decision_id": "decision:pr106-code-head",
+    "outcome_class": "SUCCESS_VERIFIED",
+    "authority_effect": "none",
+    "accepted_evidence_refs": [
+      "ci:376",
+      "ci:constitutional-survival:50",
+      "git:pr106-head"
+    ],
+    "rejected_transcript_security_claim": true
+  }
+}
