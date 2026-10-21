@@ -31,6 +31,37 @@ class GovernanceKernelTests(unittest.TestCase):
         decision = self.kernel.evaluate(first)
         self.assertFalse(self.kernel.consume(decision.permit, second))
 
+    def test_unspent_permit_expires_after_policy_ttl(self):
+        now = 1_000_000
+        kernel = GovernanceKernel(
+            Policy(frozenset({"write"}), 100, permit_ttl_ns=10),
+            secret=b"test-secret",
+            clock=lambda: now,
+        )
+        intent = Intent("agent", "write", "repo:file", 10, "session-disconnected")
+        decision = kernel.evaluate(intent)
+        self.assertEqual("allow", decision.outcome)
+        now += 10
+        self.assertFalse(kernel.consume(decision.permit, intent))
+        self.assertEqual("permit_rejected", kernel.audit[-1]["event"])
+
+    def test_policy_hash_changes_when_permit_ttl_changes(self):
+        short = GovernanceKernel(
+            Policy(frozenset({"read"}), 0, permit_ttl_ns=10),
+            secret=b"test-secret",
+        )
+        long = GovernanceKernel(
+            Policy(frozenset({"read"}), 0, permit_ttl_ns=20),
+            secret=b"test-secret",
+        )
+        self.assertNotEqual(short.policy_hash, long.policy_hash)
+
+    def test_invalid_permit_ttl_is_rejected(self):
+        for ttl in (0, -1, True):
+            with self.subTest(ttl=ttl):
+                with self.assertRaisesRegex(ValueError, "permit_ttl_ns"):
+                    Policy(frozenset({"read"}), 0, permit_ttl_ns=ttl)
+
     def test_fail_closed_policy_boundaries(self):
         self.assertEqual("deny", self.kernel.evaluate(Intent("agent", "delete", "repo", 0)).outcome)
         self.assertEqual("deny", self.kernel.evaluate(Intent("agent", "write", "repo", 101)).outcome)
