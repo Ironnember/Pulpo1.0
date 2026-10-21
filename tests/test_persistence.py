@@ -90,6 +90,112 @@ class RestartSafeStateTests(unittest.TestCase):
         self.assertFalse(final_kernel.consume(decision.permit, self.intent))
         self.assertTrue(final_kernel.verify_audit())
 
+    def test_permit_expiry_survives_restart(self):
+        now = [NOW]
+        policy = Policy(
+            frozenset({"write"}),
+            100,
+            permit_ttl_ns=10,
+        )
+        intent = Intent("agent", "write", "repo:file", 0, "session-expiry")
+
+        first_state = SQLiteKernelState(self.path)
+        first_kernel = GovernanceKernel(
+            policy,
+            secret=b"expiry-secret",
+            clock=lambda: now[0],
+            state=first_state,
+        )
+        decision = first_kernel.evaluate(intent)
+        self.assertEqual("allow", decision.outcome)
+        first_state.close()
+
+        now[0] += 10
+        restarted_state = SQLiteKernelState(self.path)
+        self.addCleanup(restarted_state.close)
+        restarted_kernel = GovernanceKernel(
+            policy,
+            secret=b"expiry-secret",
+            clock=lambda: now[0],
+            state=restarted_state,
+        )
+        self.assertFalse(restarted_kernel.consume(decision.permit, intent))
+        self.assertEqual("permit_rejected", restarted_kernel.audit[-1]["event"])
+        self.assertEqual(
+            NOW + 10,
+            restarted_kernel.audit[-1]["payload"]["permit_expires_at_ns"],
+        )
+
+    def test_legacy_permit_without_expiry_fails_closed_after_schema_migration(self):
+        connection = sqlite3.connect(self.path)
+        connection.execute(
+            "CREATE TABLE permits ("
+            "permit TEXT PRIMARY KEY, "
+            "intent_hash TEXT NOT NULL, "
+            "spent INTEGER NOT NULL DEFAULT 0 CHECK (spent IN (0, 1))"
+            ")"
+        )
+        connection.execute(
+            "INSERT INTO permits (permit, intent_hash, spent) VALUES (?, ?, 0)",
+            ("legacy-permit", "legacy-intent"),
+        )
+        connection.commit()
+        connection.close()
+
+        state = SQLiteKernelState(self.path)
+        self.addCleanup(state.close)
+        columns = {
+            row[1]
+            for row in state._connection.execute("PRAGMA table_info(permits)").fetchall()
+        }
+        self.assertIn("expires_at_ns", columns)
+        self.assertFalse(
+            state.consume_permit(
+                "legacy-permit",
+                "legacy-intent",
+                NOW,
+            )
+        )
+        self.assertEqual("permit_rejected", state.audit[-1]["event"])
+        self.assertIsNone(state.audit[-1]["payload"]["permit_expires_at_ns"])
+
+    def test_approval_backed_permit_cannot_outlive_approval_envelope(self):
+        now = [NOW]
+        verifier = HmacTestVerifier()
+        policy = Policy(
+            frozenset({"push"}),
+            100,
+            frozenset({"push"}),
+            authority_trust=trust_for(verifier),
+            permit_ttl_ns=10_000,
+        )
+        intent = Intent("agent", "push", "repo:origin/main", 0, "session-envelope")
+        state = SQLiteKernelState(self.path)
+        self.addCleanup(state.close)
+        kernel = GovernanceKernel(
+            policy,
+            secret=b"approval-expiry-secret",
+            approval_verifier=verifier,
+            clock=lambda: now[0],
+            state=state,
+        )
+        envelope = signed_envelope(
+            kernel,
+            intent,
+            verifier,
+            now_ns=NOW,
+            ttl_ns=100,
+        )
+        decision = kernel.evaluate_with_approval(intent, envelope)
+        self.assertEqual("allow", decision.outcome)
+
+        now[0] += 100
+        self.assertFalse(kernel.consume(decision.permit, intent))
+        self.assertEqual(
+            envelope.expires_at_ns,
+            kernel.audit[-1]["payload"]["permit_expires_at_ns"],
+        )
+
     def test_concurrent_identical_approval_allows_exactly_once(self):
         signing_state = SQLiteKernelState(self.path)
         signing_kernel = self.kernel(signing_state)
