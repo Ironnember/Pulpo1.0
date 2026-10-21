@@ -1,0 +1,46 @@
+name: Performance Benchmark
+
+on:
+  workflow_dispatch:
+    inputs:
+      sizes:
+        description: "Comma-separated audit sizes"
+        required: true
+        default: "1000,10000,100000"
+      samples:
+        description: "Measured samples per benchmark"
+        required: true
+        default: "15"
+      warmup:
+        description: "Warmup samples"
+        required: true
+        default: "3"
+
+permissions:
+  contents: read
+
+jobs:
+  benchmark:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Run Pulpo performance benchmark
+        run: |
+          python scripts/benchmark_performance.py \
+            --sizes "${{ inputs.sizes }}" \
+            --samples "${{ inputs.samples }}" \
+            --warmup "${{ inputs.warmup }}" \
+            --json pulpo-benchmark.json \
+            --csv pulpo-benchmark.csv
+      - name: Upload benchmark evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: pulpo-performance-${{ github.sha }}
+          path: |
+            pulpo-benchmark.json
+            pulpo-benchmark.csv
+          if-no-files-found: error
