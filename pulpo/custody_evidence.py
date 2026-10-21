@@ -14,6 +14,7 @@ idempotent by custody transition hash.
 
 from __future__ import annotations
 
+from contextlib import closing
 from dataclasses import asdict
 from hashlib import sha256
 import hmac
@@ -43,7 +44,11 @@ class SQLiteCustodyEvidenceConvergence:
         custody: SQLiteGovernanceCustody,
         *,
         fault_hook: FaultHook | None = None,
+        reuse_connection: bool = False,
     ) -> None:
+        if type(reuse_connection) is not bool:
+            raise ValueError("reuse_connection must be a host boolean")
+        self._reuse_connection = reuse_connection
         self.custody = custody
         self.path = Path(custody.path)
         self._fault_hook = fault_hook
@@ -55,13 +60,17 @@ class SQLiteCustodyEvidenceConvergence:
 
     def _connect(self) -> sqlite3.Connection:
         connection = sqlite3.connect(self.path, timeout=5.0, isolation_level=None)
-        connection.execute("PRAGMA foreign_keys = ON")
-        connection.execute("PRAGMA synchronous = FULL")
+        try:
+            connection.execute("PRAGMA foreign_keys = ON")
+            connection.execute("PRAGMA synchronous = FULL")
+        except BaseException:
+            connection.close()
+            raise
         return connection
 
     def _initialize(self) -> None:
         try:
-            with self._connect() as connection:
+            with closing(self._connect()) as connection, connection:
                 connection.execute("BEGIN IMMEDIATE")
                 # The canonical kernel state must already own this audit table.
                 audit = connection.execute(
@@ -146,7 +155,7 @@ class SQLiteCustodyEvidenceConvergence:
 
     def pending_count(self) -> int:
         try:
-            with self._connect() as connection:
+            with closing(self._connect()) as connection, connection:
                 return int(
                     connection.execute(
                         "SELECT COUNT(*) FROM custody_evidence_outbox WHERE projected = 0"
@@ -224,7 +233,11 @@ class SQLiteCustodyEvidenceConvergence:
     def project_one(self) -> str | None:
         """Project one pending transition atomically into canonical audit evidence."""
 
-        connection = self._connect()
+        with closing(self._connect()) as connection:
+            return self._project_one_connection(connection)
+
+    def _project_one_connection(self, connection: sqlite3.Connection) -> str | None:
+        # Same per-transition transaction, validations, fault hooks and commits.
         try:
             connection.execute("BEGIN IMMEDIATE")
             row = connection.execute(
@@ -294,10 +307,18 @@ class SQLiteCustodyEvidenceConvergence:
             if isinstance(exc, (KeyboardInterrupt, SystemExit)):
                 raise
             raise CustodyEvidenceViolation("custody_evidence_projection_failed") from exc
-        finally:
-            connection.close()
 
     def project_all(self) -> tuple[str, ...]:
+        if self._reuse_connection:
+            # Invocation-local owner connection only. Never retained across calls
+            # or shared with another thread; each transition still commits alone.
+            with closing(self._connect()) as connection:
+                projected: list[str] = []
+                while True:
+                    value = self._project_one_connection(connection)
+                    if value is None:
+                        return tuple(projected)
+                    projected.append(value)
         projected: list[str] = []
         while True:
             value = self.project_one()
@@ -307,7 +328,7 @@ class SQLiteCustodyEvidenceConvergence:
 
     def canonical_event_count(self, transition_hash: str) -> int:
         try:
-            with self._connect() as connection:
+            with closing(self._connect()) as connection, connection:
                 rows = connection.execute(
                     "SELECT payload_json FROM audit WHERE event = ?",
                     (self.EVENT,),
