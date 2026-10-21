@@ -28,6 +28,36 @@ PROFILE_NAME = "permit-bound-local-intelligence-v2-disposable-codex-home"
 AUTH_PROJECTION_MODE = "fire-staged-copy-0600"
 
 
+def require_auth_projection_opt_in(auth_source: Path | None, *, allowed: bool) -> None:
+    if auth_source is not None and not allowed:
+        raise v1.ProofError("file_auth_projection_requires_explicit_opt_in")
+
+
+def build_injection_hardened_profile(
+    runtime_root: Path,
+    real_codex_home: Path,
+    *,
+    allow_network: bool,
+) -> str:
+    """Deny reads from the operator home while preserving the disposable runtime.
+
+    The cloned target and disposable Codex home live under the temporary runtime
+    island, so untrusted repository instructions cannot use the local proof to
+    browse the operator's normal home tree. Network remains fail-closed unless
+    PREPARE explicitly widens it.
+    """
+    real_home = Path.home().resolve()
+    protected = [real_home]
+    resolved_codex_home = real_codex_home.resolve()
+    if resolved_codex_home != real_home and real_home not in resolved_codex_home.parents:
+        protected.append(resolved_codex_home)
+    return v1.build_seatbelt_profile(
+        runtime_root,
+        protected_read_roots=tuple(protected),
+        allow_network=allow_network,
+    )
+
+
 def prepare_runtime_codex_home(real_codex_home: Path, runtime_root: Path) -> tuple[Path, Path | None, str | None, str]:
     runtime_codex_home = (runtime_root / "codex-home").resolve()
     runtime_codex_home.mkdir(parents=True, exist_ok=False)
@@ -117,15 +147,19 @@ def _prepare(args) -> int:
     runtime_root.mkdir()
     (runtime_root / "log").mkdir()
     (runtime_root / "sqlite").mkdir()
+    runtime_home = (runtime_root / "home").resolve()
+    runtime_home.mkdir()
     runtime_codex_home, auth_source, auth_source_sha256, auth_projection_mode = prepare_runtime_codex_home(
         real_codex_home, runtime_root
     )
+    require_auth_projection_opt_in(auth_source, allowed=args.allow_file_auth_projection)
     v1._clone_target(repo_root, target_worktree, args.target_sha)
 
     profile_path = control_root / "seatbelt.sb"
-    profile_text = v1.build_seatbelt_profile(
+    profile_text = build_injection_hardened_profile(
         runtime_root,
-        protected_read_roots=(pulpo_home, Path.home() / ".ssh"),
+        real_codex_home,
+        allow_network=args.allow_model_network,
     )
     profile_path.write_text(profile_text, encoding="utf-8")
     os.chmod(profile_path, 0o600)
@@ -133,7 +167,12 @@ def _prepare(args) -> int:
     codex_sha = v1._sha256_file(codex_path)
     seatbelt_sha = v1._sha256_file(seatbelt)
     seatbelt_profile_sha = sha256(profile_text.encode()).hexdigest()
-    env = v1.sanitize_environment(dict(os.environ), runtime_root, codex_home=runtime_codex_home)
+    env = v1.sanitize_environment(
+        dict(os.environ),
+        runtime_root,
+        codex_home=runtime_codex_home,
+        home_override=runtime_home,
+    )
     version_text = v1._version_probe(seatbelt, profile_path, codex_path, env, args.expected_codex_version)
 
     codex_argv = v1.build_codex_argv(codex_path, target_worktree, runtime_root, args.prompt)
@@ -181,9 +220,20 @@ def _prepare(args) -> int:
         "pulpo_home": str(pulpo_home),
         "codex_home": str(runtime_codex_home),
         "real_codex_home": str(real_codex_home),
+        "home_override": str(runtime_home),
         "auth_source": str(auth_source) if auth_source else None,
         "auth_source_sha256": auth_source_sha256,
         "auth_projection_mode": auth_projection_mode,
+        "allow_file_auth_projection": args.allow_file_auth_projection,
+        "allow_model_network": args.allow_model_network,
+        "prompt_injection_posture": {
+            "operator_home_read": "denied",
+            "network": "explicitly_allowed" if args.allow_model_network else "denied_default",
+            "file_auth_projection": (
+                "explicitly_allowed" if auth_source is not None and args.allow_file_auth_projection else "none"
+            ),
+            "semantic_prompt_filter_is_authority": False,
+        },
         "codex_path": str(codex_path),
         "codex_sha256": codex_sha,
         "codex_version_expected": args.expected_codex_version,
@@ -215,7 +265,9 @@ def _prepare(args) -> int:
         "codex_version_probe": version_text,
         "runtime_codex_home": str(runtime_codex_home),
         "real_codex_home": str(real_codex_home),
+        "runtime_home": str(runtime_home),
         "auth_projection_mode": auth_projection_mode,
+        "network_posture": "explicitly_allowed" if args.allow_model_network else "denied_default",
         "auth_source_sha256": auth_source_sha256,
         "seatbelt_sha256": seatbelt_sha,
         "seatbelt_profile_sha256": seatbelt_profile_sha,
