@@ -61,6 +61,8 @@ class KernelState(Protocol):
     def issue_permit(self, permit: str, intent_hash: str, decision_reason: str, timestamp_ns: int, approval: ApprovalUse | None = None) -> str | None: ...
     def bind_permit_to_directive(self, permit: str, intent_hash: str, binding: DirectivePermitBinding, timestamp_ns: int) -> None: ...
     def consume_permit(self, permit: str, intent_hash: str, timestamp_ns: int) -> bool: ...
+    def supersede_directive(self, current, replacement, authority_evidence: dict[str, object], timestamp_ns: int) -> None: ...
+    def directive_status(self, directive_id: str, version: int, directive_hash: str) -> str: ...
     def directive_hash_status(self, directive_hash: str) -> str: ...
     def append(self, event: str, payload: dict[str, Any], timestamp_ns: int) -> None: ...
     def append_unique(self, event: str, identity_field: str, identity_value: Any, payload: dict[str, Any], timestamp_ns: int) -> dict[str, Any] | None: ...
@@ -73,6 +75,7 @@ class InMemoryKernelState:
         self._approval_ids: set[str] = set()
         self._approval_nonces: set[str] = set()
         self._directives: dict[tuple[str, int], tuple[str, bool]] = {}
+        self._directive_superseded_by: dict[tuple[str, int], str] = {}
         self._permit_directives: dict[str, DirectivePermitBinding] = {}
         self._audit: list[dict[str, Any]] = []
         self._audit_lock = RLock()
@@ -122,11 +125,60 @@ class InMemoryKernelState:
     def activate_directive(self, directive, authority_evidence: dict[str, object], timestamp_ns: int) -> None:
         key = (directive.directive_id, directive.version)
         if key in self._directives: raise ValueError("directive version is immutable")
+        for (existing_id, existing_version), (existing_hash, revoked) in self._directives.items():
+            if (
+                existing_id == directive.directive_id
+                and not revoked
+                and (existing_id, existing_version) not in self._directive_superseded_by
+            ):
+                raise ValueError("active directive version exists")
         parent_hash = getattr(directive, "parent_directive_hash", None)
         if parent_hash is not None and self.directive_hash_status(parent_hash) != "active":
             raise ValueError("parent directive is not active for activation")
         self._directives[key] = (directive.directive_hash, False)
         self.append("directive_activated", {"directive_id": directive.directive_id, "version": directive.version, "directive_hash": directive.directive_hash, "authority_evidence": authority_evidence}, timestamp_ns)
+
+    def supersede_directive(self, current, replacement, authority_evidence: dict[str, object], timestamp_ns: int) -> None:
+        current_key = (current.directive_id, current.version)
+        replacement_key = (replacement.directive_id, replacement.version)
+        value = self._directives.get(current_key)
+        if (
+            value is None
+            or value[0] != current.directive_hash
+            or value[1]
+            or current_key in self._directive_superseded_by
+        ):
+            raise ValueError("directive to supersede is not active")
+        if replacement.version <= current.version:
+            raise ValueError("replacement directive version is not newer")
+        if replacement_key in self._directives:
+            raise ValueError("replacement directive version already exists")
+        for (existing_id, existing_version), (existing_hash, revoked) in self._directives.items():
+            key = (existing_id, existing_version)
+            if (
+                key != current_key
+                and existing_id == current.directive_id
+                and not revoked
+                and key not in self._directive_superseded_by
+            ):
+                raise ValueError("another active directive version exists")
+        parent_hash = getattr(replacement, "parent_directive_hash", None)
+        if parent_hash is not None and self.directive_hash_status(parent_hash) != "active":
+            raise ValueError("parent directive is not active for supersession")
+        self._directives[replacement_key] = (replacement.directive_hash, False)
+        self._directive_superseded_by[current_key] = replacement.directive_hash
+        self.append(
+            "directive_superseded",
+            {
+                "directive_id": current.directive_id,
+                "superseded_version": current.version,
+                "superseded_directive_hash": current.directive_hash,
+                "replacement_version": replacement.version,
+                "replacement_directive_hash": replacement.directive_hash,
+                "authority_evidence": authority_evidence,
+            },
+            timestamp_ns,
+        )
 
     def revoke_directive(self, directive_id: str, version: int, authority_evidence: dict[str, object], timestamp_ns: int) -> None:
         key = (directive_id, version)
@@ -135,16 +187,21 @@ class InMemoryKernelState:
         self.append("directive_revoked", {"directive_id": directive_id, "version": version, "directive_hash": digest, "authority_evidence": authority_evidence}, timestamp_ns)
 
     def directive_status(self, directive_id: str, version: int, directive_hash: str) -> str:
-        value = self._directives.get((directive_id, version))
+        key = (directive_id, version)
+        value = self._directives.get(key)
         if value is None: return "directive_not_authorized"
         digest, revoked = value
         if digest != directive_hash: return "directive_version_mismatch"
-        return "directive_revoked" if revoked else "active"
+        if revoked: return "directive_revoked"
+        if key in self._directive_superseded_by: return "directive_superseded"
+        return "active"
 
     def directive_hash_status(self, directive_hash: str) -> str:
-        for digest, revoked in self._directives.values():
+        for key, (digest, revoked) in self._directives.items():
             if digest == directive_hash:
-                return "directive_parent_revoked" if revoked else "active"
+                if revoked: return "directive_parent_revoked"
+                if key in self._directive_superseded_by: return "directive_parent_superseded"
+                return "active"
         return "directive_parent_not_authorized"
 
     def append(self, event: str, payload: dict[str, Any], timestamp_ns: int) -> None:
@@ -187,13 +244,16 @@ class SQLiteKernelState:
         self._connection.executescript("""
             CREATE TABLE IF NOT EXISTS permits (permit TEXT PRIMARY KEY, intent_hash TEXT NOT NULL, spent INTEGER NOT NULL DEFAULT 0 CHECK (spent IN (0, 1)));
             CREATE TABLE IF NOT EXISTS approvals (approval_id TEXT PRIMARY KEY, nonce TEXT NOT NULL UNIQUE);
-            CREATE TABLE IF NOT EXISTS directives (directive_id TEXT NOT NULL, version INTEGER NOT NULL, directive_hash TEXT NOT NULL, revoked INTEGER NOT NULL DEFAULT 0 CHECK (revoked IN (0, 1)), PRIMARY KEY (directive_id, version));
+            CREATE TABLE IF NOT EXISTS directives (directive_id TEXT NOT NULL, version INTEGER NOT NULL, directive_hash TEXT NOT NULL, revoked INTEGER NOT NULL DEFAULT 0 CHECK (revoked IN (0, 1)), superseded_by_hash TEXT, PRIMARY KEY (directive_id, version));
             CREATE TABLE IF NOT EXISTS permit_directives (permit TEXT PRIMARY KEY REFERENCES permits(permit) ON DELETE CASCADE, directive_id TEXT NOT NULL, directive_version INTEGER NOT NULL, directive_hash TEXT NOT NULL, directive_issued_at_ns INTEGER NOT NULL, directive_expires_at_ns INTEGER NOT NULL, parent_directive_hash TEXT);
             CREATE TABLE IF NOT EXISTS audit (sequence INTEGER PRIMARY KEY, event TEXT NOT NULL, payload_json TEXT NOT NULL, previous_hash TEXT NOT NULL, timestamp_ns INTEGER NOT NULL, hash TEXT NOT NULL);
         """)
         columns = {row[1] for row in self._connection.execute("PRAGMA table_info(permit_directives)").fetchall()}
         if "parent_directive_hash" not in columns:
             self._connection.execute("ALTER TABLE permit_directives ADD COLUMN parent_directive_hash TEXT")
+        directive_columns = {row[1] for row in self._connection.execute("PRAGMA table_info(directives)").fetchall()}
+        if "superseded_by_hash" not in directive_columns:
+            self._connection.execute("ALTER TABLE directives ADD COLUMN superseded_by_hash TEXT")
 
     @property
     def audit(self) -> list[dict[str, Any]]:
@@ -232,8 +292,8 @@ class SQLiteKernelState:
             row = self._connection.execute("SELECT intent_hash, spent FROM permits WHERE permit = ?", (permit,)).fetchone()
             if row is None or row[0] != intent_hash or row[1] != 0: raise ValueError("permit unavailable for directive binding")
             if self._connection.execute("SELECT 1 FROM permit_directives WHERE permit = ?", (permit,)).fetchone(): raise ValueError("permit directive binding is immutable")
-            directive = self._connection.execute("SELECT directive_hash, revoked FROM directives WHERE directive_id = ? AND version = ?", (binding.directive_id, binding.version)).fetchone()
-            if directive is None or directive[0] != binding.directive_hash or directive[1] != 0: raise ValueError("directive is not active for permit binding")
+            directive = self._connection.execute("SELECT directive_hash, revoked, superseded_by_hash FROM directives WHERE directive_id = ? AND version = ?", (binding.directive_id, binding.version)).fetchone()
+            if directive is None or directive[0] != binding.directive_hash or directive[1] != 0 or directive[2] is not None: raise ValueError("directive is not active for permit binding")
             if binding.parent_directive_hash is not None and self.directive_hash_status(binding.parent_directive_hash) != "active": raise ValueError("parent directive is not active for permit binding")
             self._connection.execute("INSERT INTO permit_directives (permit, directive_id, directive_version, directive_hash, directive_issued_at_ns, directive_expires_at_ns, parent_directive_hash) VALUES (?, ?, ?, ?, ?, ?, ?)", (permit, binding.directive_id, binding.version, binding.directive_hash, binding.issued_at_ns, binding.expires_at_ns, binding.parent_directive_hash))
             self._append("permit_bound_to_directive", {"intent_hash": intent_hash, **binding.audit_payload()}, timestamp_ns)
@@ -247,10 +307,11 @@ class SQLiteKernelState:
             row = self._connection.execute("SELECT directive_id, directive_version, directive_hash, directive_issued_at_ns, directive_expires_at_ns, parent_directive_hash FROM permit_directives WHERE permit = ?", (permit,)).fetchone()
             if row is not None:
                 binding = DirectivePermitBinding(row[0], row[1], row[2], row[3], row[4], row[5])
-                directive = self._connection.execute("SELECT directive_hash, revoked FROM directives WHERE directive_id = ? AND version = ?", (binding.directive_id, binding.version)).fetchone()
+                directive = self._connection.execute("SELECT directive_hash, revoked, superseded_by_hash FROM directives WHERE directive_id = ? AND version = ?", (binding.directive_id, binding.version)).fetchone()
                 if directive is None: status = "directive_not_authorized"
                 elif directive[0] != binding.directive_hash: status = "directive_version_mismatch"
                 elif directive[1] != 0: status = "directive_revoked"
+                elif directive[2] is not None: status = "directive_superseded"
                 elif binding.parent_directive_hash is not None: status = self.directive_hash_status(binding.parent_directive_hash)
                 else: status = "active"
                 if status == "active" and not (binding.issued_at_ns <= timestamp_ns < binding.expires_at_ns): status = "directive_inactive"
@@ -266,13 +327,73 @@ class SQLiteKernelState:
         with self._connection:
             self._connection.execute("BEGIN IMMEDIATE")
             if self._connection.execute("SELECT 1 FROM directives WHERE directive_id=? AND version=?", (directive.directive_id, directive.version)).fetchone(): raise ValueError("directive version is immutable")
+            if self._connection.execute(
+                "SELECT 1 FROM directives WHERE directive_id=? AND revoked=0 AND superseded_by_hash IS NULL LIMIT 1",
+                (directive.directive_id,),
+            ).fetchone():
+                raise ValueError("active directive version exists")
             parent_hash = getattr(directive, "parent_directive_hash", None)
             if parent_hash is not None:
-                parent = self._connection.execute("SELECT revoked FROM directives WHERE directive_hash=?", (parent_hash,)).fetchone()
-                if parent is None or parent[0] != 0:
+                parent = self._connection.execute("SELECT revoked, superseded_by_hash FROM directives WHERE directive_hash=?", (parent_hash,)).fetchone()
+                if parent is None or parent[0] != 0 or parent[1] is not None:
                     raise ValueError("parent directive is not active for activation")
             self._connection.execute("INSERT INTO directives (directive_id, version, directive_hash) VALUES (?, ?, ?)", (directive.directive_id, directive.version, directive.directive_hash))
             self._append("directive_activated", {"directive_id": directive.directive_id, "version": directive.version, "directive_hash": directive.directive_hash, "authority_evidence": authority_evidence}, timestamp_ns)
+
+    def supersede_directive(self, current, replacement, authority_evidence: dict[str, object], timestamp_ns: int) -> None:
+        with self._connection:
+            self._connection.execute("BEGIN IMMEDIATE")
+            current_row = self._connection.execute(
+                "SELECT directive_hash, revoked, superseded_by_hash FROM directives WHERE directive_id=? AND version=?",
+                (current.directive_id, current.version),
+            ).fetchone()
+            if (
+                current_row is None
+                or current_row[0] != current.directive_hash
+                or current_row[1] != 0
+                or current_row[2] is not None
+            ):
+                raise ValueError("directive to supersede is not active")
+            if replacement.version <= current.version:
+                raise ValueError("replacement directive version is not newer")
+            if self._connection.execute(
+                "SELECT 1 FROM directives WHERE directive_id=? AND version=?",
+                (replacement.directive_id, replacement.version),
+            ).fetchone():
+                raise ValueError("replacement directive version already exists")
+            if self._connection.execute(
+                "SELECT 1 FROM directives WHERE directive_id=? AND revoked=0 AND superseded_by_hash IS NULL AND version<>? LIMIT 1",
+                (current.directive_id, current.version),
+            ).fetchone():
+                raise ValueError("another active directive version exists")
+            parent_hash = getattr(replacement, "parent_directive_hash", None)
+            if parent_hash is not None:
+                parent = self._connection.execute(
+                    "SELECT revoked, superseded_by_hash FROM directives WHERE directive_hash=?",
+                    (parent_hash,),
+                ).fetchone()
+                if parent is None or parent[0] != 0 or parent[1] is not None:
+                    raise ValueError("parent directive is not active for supersession")
+            self._connection.execute(
+                "INSERT INTO directives (directive_id, version, directive_hash) VALUES (?, ?, ?)",
+                (replacement.directive_id, replacement.version, replacement.directive_hash),
+            )
+            self._connection.execute(
+                "UPDATE directives SET superseded_by_hash=? WHERE directive_id=? AND version=?",
+                (replacement.directive_hash, current.directive_id, current.version),
+            )
+            self._append(
+                "directive_superseded",
+                {
+                    "directive_id": current.directive_id,
+                    "superseded_version": current.version,
+                    "superseded_directive_hash": current.directive_hash,
+                    "replacement_version": replacement.version,
+                    "replacement_directive_hash": replacement.directive_hash,
+                    "authority_evidence": authority_evidence,
+                },
+                timestamp_ns,
+            )
 
     def revoke_directive(self, directive_id: str, version: int, authority_evidence: dict[str, object], timestamp_ns: int) -> None:
         with self._connection:
@@ -283,15 +404,19 @@ class SQLiteKernelState:
             self._append("directive_revoked", {"directive_id": directive_id, "version": version, "directive_hash": row[0], "authority_evidence": authority_evidence}, timestamp_ns)
 
     def directive_status(self, directive_id: str, version: int, directive_hash: str) -> str:
-        row = self._connection.execute("SELECT directive_hash, revoked FROM directives WHERE directive_id=? AND version=?", (directive_id, version)).fetchone()
+        row = self._connection.execute("SELECT directive_hash, revoked, superseded_by_hash FROM directives WHERE directive_id=? AND version=?", (directive_id, version)).fetchone()
         if row is None: return "directive_not_authorized"
         if row[0] != directive_hash: return "directive_version_mismatch"
-        return "directive_revoked" if row[1] else "active"
+        if row[1]: return "directive_revoked"
+        if row[2] is not None: return "directive_superseded"
+        return "active"
 
     def directive_hash_status(self, directive_hash: str) -> str:
-        row = self._connection.execute("SELECT revoked FROM directives WHERE directive_hash=?", (directive_hash,)).fetchone()
+        row = self._connection.execute("SELECT revoked, superseded_by_hash FROM directives WHERE directive_hash=?", (directive_hash,)).fetchone()
         if row is None: return "directive_parent_not_authorized"
-        return "directive_parent_revoked" if row[0] else "active"
+        if row[0]: return "directive_parent_revoked"
+        if row[1] is not None: return "directive_parent_superseded"
+        return "active"
 
     def append(self, event: str, payload: dict[str, Any], timestamp_ns: int) -> None:
         with self._connection:
