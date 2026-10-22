@@ -1,0 +1,89 @@
+name: Pulpo GitHub Actions Custody Proof
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  authority:
+    if: ${{ github.ref == 'refs/heads/main' }}
+    environment: pulpo-proof-authority
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      approval_b64: ${{ steps.sign.outputs.approval_b64 }}
+      payload_b64: ${{ steps.sign.outputs.payload_b64 }}
+      artifact_name: ${{ steps.sign.outputs.artifact_name }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install verification dependency
+        run: python -m pip install '.[authority]'
+      - name: Sign exact run-specific action
+        id: sign
+        env:
+          PULPO_PROOF_ED25519_PRIVATE_KEY_PEM: ${{ secrets.PULPO_PROOF_ED25519_PRIVATE_KEY_PEM }}
+        run: python -m proofs.github_actions_custody.sign_action
+
+  adversarial:
+    needs: authority
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install verification dependency
+        run: python -m pip install '.[authority]'
+      - name: Deny missing permit
+        env:
+          PULPO_EXPECT_DENY: "1"
+          PULPO_PAYLOAD_B64: ${{ needs.authority.outputs.payload_b64 }}
+        run: python -m proofs.github_actions_custody.execute_action
+      - name: Deny exact-object substitution
+        env:
+          PULPO_EXPECT_DENY: "1"
+          PULPO_TAMPER: artifact
+          PULPO_APPROVAL_B64: ${{ needs.authority.outputs.approval_b64 }}
+          PULPO_PAYLOAD_B64: ${{ needs.authority.outputs.payload_b64 }}
+        run: python -m proofs.github_actions_custody.execute_action
+      - name: Deny signature substitution
+        env:
+          PULPO_EXPECT_DENY: "1"
+          PULPO_TAMPER: signature
+          PULPO_APPROVAL_B64: ${{ needs.authority.outputs.approval_b64 }}
+          PULPO_PAYLOAD_B64: ${{ needs.authority.outputs.payload_b64 }}
+        run: python -m proofs.github_actions_custody.execute_action
+      - name: Assert negative paths produced no consequence
+        run: test ! -e build/github-actions-custody
+
+  executor:
+    needs:
+      - authority
+      - adversarial
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install verification dependency
+        run: python -m pip install '.[authority]'
+      - name: Consume one exact Pulpo permit
+        env:
+          PULPO_APPROVAL_B64: ${{ needs.authority.outputs.approval_b64 }}
+          PULPO_PAYLOAD_B64: ${{ needs.authority.outputs.payload_b64 }}
+        run: python -m proofs.github_actions_custody.execute_action
+      - name: Upload governed consequence artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ needs.authority.outputs.artifact_name }}
+          path: build/github-actions-custody/*.json
+          if-no-files-found: error
+          retention-days: 1

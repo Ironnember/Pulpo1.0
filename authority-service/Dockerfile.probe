@@ -1,0 +1,24 @@
+FROM python:3.11-slim@sha256:9534e5a8e315485d4061ed659af0fd78a284c015f9b73661b41d6bab25604534
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    PYTHONPATH=/opt/pulpo/authority-service/src
+
+RUN groupadd --system pulpo \
+    && useradd --system --gid pulpo --home-dir /nonexistent --shell /usr/sbin/nologin pulpo \
+    && mkdir -p /opt/pulpo/authority-service/src/pulpo_authority_service
+
+WORKDIR /opt/pulpo
+
+COPY authority-service/src/pulpo_authority_service/cloud_sql_state.py ./authority-service/src/pulpo_authority_service/cloud_sql_state.py
+COPY authority-service/src/pulpo_authority_service/cloud_sql_probe.py ./authority-service/src/pulpo_authority_service/cloud_sql_probe.py
+
+RUN python -m pip install --no-cache-dir \
+      'cloud-sql-python-connector==1.22.0' \
+      'pg8000==1.31.5' \
+    && chown -R pulpo:pulpo /opt/pulpo
+
+USER pulpo
+
+CMD ["python", "-m", "pulpo_authority_service.cloud_sql_probe"]
