@@ -25,9 +25,10 @@ import json
 from typing import Any, Mapping, Protocol
 from urllib.error import HTTPError, URLError
 from urllib.parse import quote, urlencode
-from urllib.request import Request, urlopen
+from urllib.request import Request
 
 from .commerce import DomainPurchaseOrder, RegistrarResult
+from .transport import build_secure_opener
 
 
 class NameComViolation(RuntimeError):
@@ -73,11 +74,12 @@ class UrllibNameComTransport:
         if timeout_seconds <= 0:
             raise ValueError("timeout_seconds must be positive")
         self.timeout_seconds = timeout_seconds
+        self._opener = build_secure_opener()
 
     def request(self, method, url, headers, body):
         request = Request(url, data=body, headers=dict(headers), method=method)
         try:
-            with urlopen(request, timeout=self.timeout_seconds) as response:
+            with self._opener.open(request, timeout=self.timeout_seconds) as response:
                 return NameComResponse(
                     int(response.status),
                     {key: value for key, value in response.headers.items()},
