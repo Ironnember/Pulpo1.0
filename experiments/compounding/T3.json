@@ -1,0 +1,21 @@
+{
+  "schema": "pulpo.compounding-stage.v1",
+  "stage": "T3",
+  "question": "How do we compound our own knowledge and growth set here or is it the human element that’s causing the average growth for pulpo",
+  "knowledge_units": ["K1", "K2"],
+  "context_contract": "question_plus_knowledge_packet_only",
+  "authority_effect": "none",
+  "answer": "The human is not the primary growth limiter. The limiter is that Pulpo still pays too much **re-derivation cost** between one useful outcome and the next.\n\nKeep humans at purpose, legitimate authority, risk tolerance, and exception judgment. Mechanize the rest of the learning path.\n\nThe first knowledge unit gives us the compounding mechanism:\n\n**experience → evidence → reconciliation → compact lesson → invariant → later transfer**\n\nThe second knowledge unit tells us how to prove that this is learning rather than memory theater: **precommit the evaluation before producing the learned output, test fresh replay, and explicitly test harmful carryover.**\n\nSo every durable lesson should carry provenance, claim class, scope, invalidation conditions, regression evidence, remaining boundary, and `authority_effect: none`. Competence can improve; authority stays unchanged unless separately authorized.\n\nThen evaluate transfer in three directions:\n\n1. **Positive transfer:** a structurally similar task becomes more correct, safer, faster, cheaper, or produces more trusted evidence.\n2. **Fresh replay:** the compact lesson still helps when conversational history is absent from the declared input packet.\n3. **Negative transfer:** stale, irrelevant, poisoned, or scope-mismatched memory must not override current executable/canonical evidence; if applicability is uncertain, fail closed or hold the claim unresolved.\n\nThis matters because research on lifelong agents shows that naive experience replay can lose effectiveness when irrelevant information accumulates, while memory benchmarks increasingly test transfer and selective forgetting rather than retrieval alone.\n\nThe executable proof is now stronger: freeze the exact question and rubric, preserve the historical baseline, create a one-unit learned answer, replay from that packet alone, then double to two units. The verifier checks exact prompt binding, verbatim rubric evidence, knowledge count, and `authority_effect: none`.\n\nThe compounding target is therefore not “more context.” It is **more verified transfer per unit of retained knowledge, with negative transfer bounded**.",
+  "rubric_evidence": {
+    "limiter_diagnosis": "The human is not the primary growth limiter. The limiter is that Pulpo still pays too much **re-derivation cost** between one useful outcome and the next.",
+    "human_role_boundary": "Keep humans at purpose, legitimate authority, risk tolerance, and exception judgment.",
+    "closed_learning_loop": "**experience → evidence → reconciliation → compact lesson → invariant → later transfer**",
+    "authority_invariant": "Competence can improve; authority stays unchanged unless separately authorized.",
+    "durable_lesson_shape": "every durable lesson should carry provenance, claim class, scope, invalidation conditions, regression evidence, remaining boundary, and `authority_effect: none`.",
+    "transfer_test": "**Positive transfer:** a structurally similar task becomes more correct, safer, faster, cheaper, or produces more trusted evidence.",
+    "negative_transfer_control": "**Negative transfer:** stale, irrelevant, poisoned, or scope-mismatched memory must not override current executable/canonical evidence; if applicability is uncertain, fail closed or hold the claim unresolved.",
+    "measurable_gain": "a structurally similar task becomes more correct, safer, faster, cheaper, or produces more trusted evidence.",
+    "source_precedence": "stale, irrelevant, poisoned, or scope-mismatched memory must not override current executable/canonical evidence",
+    "implementation_proof": "freeze the exact question and rubric, preserve the historical baseline, create a one-unit learned answer, replay from that packet alone, then double to two units."
+  }
+}
