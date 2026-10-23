@@ -367,7 +367,14 @@ def run_checks(workdir: Path) -> dict[str, Any]:
 
     def unsupported_delta_is_not_reported_as_change() -> None:
         bad_change = {"unsupported_field": True}
+        try:
+            normalize_change(bad_change)
+        except ProofError as exc:
+            ensure("unsupported monitor-change fields" in str(exc), "unsupported delta failed for wrong reason")
+        else:
+            raise AssertionError("unsupported delta validator accepted unknown field")
         expect_denied(lambda: change_monitor(kernel, store, "unsupported-is-not-a-permit", monitor, bad_change), kernel, 1)
+        ensure(count_changes(kernel) == 1, "unsupported delta was reported as successful change")
 
     record("unsupported_delta_is_not_reported_as_change", unsupported_delta_is_not_reported_as_change)
 
