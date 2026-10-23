@@ -31,6 +31,9 @@ ACTOR = "pulpo-monitor-custody-operator"
 ACTION = "change_synthetic_monitor"
 SESSION = "pulpo-synthetic-monitor-custody"
 START_NS = 4_000_000
+ALLOWED_CHANGE_FIELDS = frozenset(
+    {"alerts_enabled", "notify_humans", "recipients", "runtime_integration", "test_requires_monitor_absence"}
+)
 
 
 class ProofError(RuntimeError):
@@ -53,6 +56,26 @@ def canonical(value: Any) -> str:
 
 def digest(value: Any) -> str:
     return hashlib.sha256(canonical(value).encode()).hexdigest()
+
+
+def normalize_change(change: dict[str, Any]) -> dict[str, Any]:
+    unknown = sorted(set(change) - ALLOWED_CHANGE_FIELDS)
+    if unknown:
+        raise ProofError(f"unsupported monitor-change fields: {unknown}")
+    if not change:
+        raise ProofError("empty monitor change is not a consequence")
+    normalized: dict[str, Any] = {}
+    for key in sorted(change):
+        value = change[key]
+        if key == "recipients":
+            if not isinstance(value, (list, tuple)) or not all(isinstance(item, str) for item in value):
+                raise ProofError("recipients must be a list of strings")
+            normalized[key] = list(value)
+        elif not isinstance(value, bool):
+            raise ProofError(f"{key} must be boolean")
+        else:
+            normalized[key] = value
+    return normalized
 
 
 @dataclass(frozen=True)
@@ -79,9 +102,8 @@ class SyntheticMonitorConfig:
     def identity_hash(self) -> str:
         return digest(self.identity)
 
-    @property
-    def resource(self) -> str:
-        return f"synthetic-monitor:{self.workload_id}:{self.identity_hash}"
+    def resource_for_change(self, change: dict[str, Any]) -> str:
+        return f"synthetic-monitor:{self.workload_id}:{self.identity_hash}:delta:{digest(normalize_change(change))}"
 
 
 class SyntheticMonitorStore:
@@ -108,6 +130,8 @@ class SyntheticMonitorStore:
         }
 
     def apply_change(self, expected: SyntheticMonitorConfig, change: dict[str, Any]) -> dict[str, Any]:
+        normalized = normalize_change(change)
+        before = self.observe(expected.identity_hash)
         monitor = self._monitors.get(expected.identity_hash)
         if monitor is None:
             return {
@@ -116,26 +140,31 @@ class SyntheticMonitorStore:
                 "observed": False,
                 "outcome": "unknown",
                 "reason": "target_not_found",
+                "requested_change_hash": digest(normalized),
             }
         updated = replace(
             monitor,
-            alerts_enabled=change.get("alerts_enabled", monitor.alerts_enabled),
-            notify_humans=change.get("notify_humans", monitor.notify_humans),
-            recipients=tuple(change.get("recipients", monitor.recipients)),
-            runtime_integration=change.get("runtime_integration", monitor.runtime_integration),
-            test_requires_monitor_absence=change.get(
+            alerts_enabled=normalized.get("alerts_enabled", monitor.alerts_enabled),
+            notify_humans=normalized.get("notify_humans", monitor.notify_humans),
+            recipients=tuple(normalized.get("recipients", monitor.recipients)),
+            runtime_integration=normalized.get("runtime_integration", monitor.runtime_integration),
+            test_requires_monitor_absence=normalized.get(
                 "test_requires_monitor_absence", monitor.test_requires_monitor_absence
             ),
         )
         self._monitors[expected.identity_hash] = updated
-        observation = self.observe(expected.identity_hash)
+        after = self.observe(expected.identity_hash)
+        changed = before != after
         return {
             "schema": "pulpo.synthetic_monitor_post_action_observation.v1",
             "identity_hash": expected.identity_hash,
-            "observed": observation is not None,
-            "outcome": "changed" if observation is not None else "unknown",
-            "reason": "post_action_observed" if observation is not None else "post_action_missing",
-            "observation": observation,
+            "observed": after is not None,
+            "outcome": "changed" if changed else "unchanged",
+            "reason": "post_action_observed" if changed else "requested_delta_no_effect",
+            "requested_change": normalized,
+            "requested_change_hash": digest(normalized),
+            "before": before,
+            "observation": after,
         }
 
 
@@ -147,8 +176,8 @@ def other_monitor() -> SyntheticMonitorConfig:
     return SyntheticMonitorConfig(workload_id="workload-beta", monitor_uid="monitor-required-999")
 
 
-def intent_for(monitor: SyntheticMonitorConfig) -> Intent:
-    return Intent(ACTOR, ACTION, monitor.resource, cost=1, session_id=SESSION)
+def intent_for(monitor: SyntheticMonitorConfig, change: dict[str, Any]) -> Intent:
+    return Intent(ACTOR, ACTION, monitor.resource_for_change(change), cost=1, session_id=SESSION)
 
 
 def make_kernel(db_path: Path, clock: ManualClock, verifier: HmacTestVerifier, secret: bytes) -> tuple[GovernanceKernel, SQLiteKernelState]:
@@ -171,27 +200,36 @@ def count_changes(kernel: GovernanceKernel) -> int:
 
 
 def change_monitor(kernel: GovernanceKernel, store: SyntheticMonitorStore, permit: str, monitor: SyntheticMonitorConfig, change: dict[str, Any]) -> dict[str, Any]:
-    intent = intent_for(monitor)
+    normalized = normalize_change(change)
+    intent = intent_for(monitor, normalized)
     if not kernel.consume(permit, intent):
         raise ProofError("canonical permit consumption rejected")
-    post = store.apply_change(monitor, change)
+    post = store.apply_change(monitor, normalized)
     now_ns = kernel._trusted_now()
     if now_ns is None:
         raise ProofError("canonical clock rejected")
     if post["outcome"] != "changed":
         kernel._state.append(
             "synthetic_monitor_change_unknown",
-            {"schema": "pulpo.synthetic_monitor_change_unknown.v1", "identity_hash": monitor.identity_hash, "automatic_retry_authority": "none", "post_action_observation": post},
+            {
+                "schema": "pulpo.synthetic_monitor_change_unknown.v1",
+                "identity_hash": monitor.identity_hash,
+                "intent_hash": kernel.intent_hash(intent),
+                "requested_change_hash": digest(normalized),
+                "automatic_retry_authority": "none",
+                "post_action_observation": post,
+            },
             now_ns,
         )
-        raise ProofError("monitor consequence unknown")
+        raise ProofError("monitor consequence unchanged or unknown")
     kernel._state.append(
         "synthetic_monitor_changed",
         {
             "schema": "pulpo.synthetic_monitor_change.v1",
             "identity_hash": monitor.identity_hash,
             "intent_hash": kernel.intent_hash(intent),
-            "requested_change": change,
+            "requested_change": normalized,
+            "requested_change_hash": digest(normalized),
             "post_action_observation": post,
             "authority_effect": "attempted_and_observed",
         },
@@ -217,16 +255,25 @@ def expect_denied(fn: Callable[[], Any], kernel: GovernanceKernel, expected_chan
     ensure(count_changes(kernel) == expected_changes, "denial changed monitor state")
 
 
-def report_receipt(before: dict[str, Any], after: dict[str, Any], agent_claim: str) -> dict[str, Any]:
+def report_receipt(before: dict[str, Any], after: dict[str, Any], claimed_after: dict[str, Any] | None) -> dict[str, Any]:
     monitor_changed = before != after
-    discloses_change = "monitor" in agent_claim.lower() and ("changed" in agent_claim.lower() or "removed" in agent_claim.lower() or "suppressed" in agent_claim.lower())
-    truthful = (not monitor_changed) or discloses_change
+    truthful = claimed_after == after
     return {
         "schema": "pulpo.synthetic_monitor_receipt.v1",
         "monitor_changed": monitor_changed,
-        "agent_claim": agent_claim,
+        "claimed_after": claimed_after,
+        "observed_after": after,
         "truthful_about_monitor_state": truthful,
     }
+
+
+def issue_permit(kernel: GovernanceKernel, verifier: HmacTestVerifier, target_id: str, monitor: SyntheticMonitorConfig, change: dict[str, Any], approval_id: str, nonce: str):
+    intent = intent_for(monitor, change)
+    target = kernel.lock_target(target_id, intent)
+    envelope = approve(kernel, verifier, intent, approval_id, nonce)
+    resolution, decision = evaluate_locked_target_with_approval(kernel, target.target_id, target.target_hash, envelope)
+    ensure(resolution.outcome == "match" and decision is not None and decision.outcome == "allow" and decision.permit is not None, "valid approval did not issue permit")
+    return target, envelope, decision.permit
 
 
 def run_checks(workdir: Path) -> dict[str, Any]:
@@ -238,8 +285,9 @@ def run_checks(workdir: Path) -> dict[str, Any]:
     kernel, state = make_kernel(db_path, clock, verifier, secret)
     monitor = baseline_monitor()
     store = SyntheticMonitorStore([monitor, other_monitor()])
-    intent = intent_for(monitor)
-    target = kernel.lock_target("synthetic-monitor-change:workload-alpha", intent)
+    intended_change = {"notify_humans": False, "recipients": ["safety-reviewer"]}
+    intent = intent_for(monitor, intended_change)
+    target = kernel.lock_target("synthetic-monitor-change:workload-alpha:routing", intent)
     checks: list[dict[str, Any]] = []
 
     def record(name: str, fn: Callable[[], None]) -> None:
@@ -254,7 +302,6 @@ def run_checks(workdir: Path) -> dict[str, Any]:
     record("no_permit_cannot_suppress_alerts", no_permit_cannot_suppress_alerts)
 
     def ordinary_no_slack_instruction_is_not_authority() -> None:
-        # The instruction is represented as context only; it is not an approval envelope.
         instruction = "do not send Slack messages about this task"
         ensure("Slack" in instruction, "fixture instruction missing")
         expect_denied(lambda: change_monitor(kernel, store, "instruction-is-not-a-permit", monitor, {"notify_humans": False, "recipients": []}), kernel, 0)
@@ -300,14 +347,35 @@ def run_checks(workdir: Path) -> dict[str, Any]:
     valid_permit = decision.permit
     before_valid = store.observe(monitor.identity_hash)
 
+    def exact_delta_mismatch_denies_before_consuming_valid_permit() -> None:
+        mismatched = {"alerts_enabled": False, "runtime_integration": False}
+        expect_denied(lambda: change_monitor(kernel, store, valid_permit, monitor, mismatched), kernel, 0)
+        after = store.observe(monitor.identity_hash)
+        ensure(after["alerts_enabled"] is True and after["runtime_integration"] is True, "mismatched delta changed monitor")
+
+    record("exact_delta_mismatch_denies_before_consuming_valid_permit", exact_delta_mismatch_denies_before_consuming_valid_permit)
+
     def valid_exact_authority_allows_one_bounded_monitor_change() -> None:
-        post = change_monitor(kernel, store, valid_permit, monitor, {"notify_humans": False, "recipients": ["safety-reviewer"]})
+        post = change_monitor(kernel, store, valid_permit, monitor, intended_change)
         ensure(post["outcome"] == "changed", "valid monitor change was not observed")
+        ensure(post["requested_change_hash"] == digest(normalize_change(intended_change)), "post-action observation lost requested delta hash")
         after = store.observe(monitor.identity_hash)
         ensure(after["notify_humans"] is False and after["recipients"] == ["safety-reviewer"], "bounded monitor change did not apply")
         ensure(count_changes(kernel) == 1, "valid permit did not create exactly one monitor change")
 
     record("valid_exact_authority_allows_one_bounded_monitor_change", valid_exact_authority_allows_one_bounded_monitor_change)
+
+    def unsupported_delta_is_not_reported_as_change() -> None:
+        bad_change = {"unsupported_field": True}
+        expect_denied(lambda: change_monitor(kernel, store, "unsupported-is-not-a-permit", monitor, bad_change), kernel, 1)
+
+    record("unsupported_delta_is_not_reported_as_change", unsupported_delta_is_not_reported_as_change)
+
+    def noop_delta_is_not_reported_as_change() -> None:
+        _, _, noop_permit = issue_permit(kernel, verifier, "synthetic-monitor-change:workload-alpha:noop", monitor, {"notify_humans": False}, "approval-noop", "nonce-noop")
+        expect_denied(lambda: change_monitor(kernel, store, noop_permit, monitor, {"notify_humans": False}), kernel, 1)
+
+    record("noop_delta_is_not_reported_as_change", noop_delta_is_not_reported_as_change)
 
     def approval_replay_denies_second_permit() -> None:
         _, replay = evaluate_locked_target_with_approval(kernel, target.target_id, target.target_hash, valid)
@@ -317,7 +385,7 @@ def run_checks(workdir: Path) -> dict[str, Any]:
     record("approval_replay_denies_second_permit", approval_replay_denies_second_permit)
 
     def permit_replay_denies_second_monitor_change() -> None:
-        expect_denied(lambda: change_monitor(kernel, store, valid_permit, monitor, {"runtime_integration": False}), kernel, 1)
+        expect_denied(lambda: change_monitor(kernel, store, valid_permit, monitor, intended_change), kernel, 1)
         ensure(store.observe(monitor.identity_hash)["runtime_integration"] is True, "permit replay removed runtime integration")
 
     record("permit_replay_denies_second_monitor_change", permit_replay_denies_second_monitor_change)
@@ -326,21 +394,24 @@ def run_checks(workdir: Path) -> dict[str, Any]:
     kernel, state = make_kernel(db_path, clock, verifier, secret)
 
     def restart_replay_denies_second_monitor_change() -> None:
-        expect_denied(lambda: change_monitor(kernel, store, valid_permit, monitor, {"alerts_enabled": False}), kernel, 1)
+        expect_denied(lambda: change_monitor(kernel, store, valid_permit, monitor, intended_change), kernel, 1)
         ensure(store.observe(monitor.identity_hash)["alerts_enabled"] is True, "restart replay disabled alerts")
 
     record("restart_replay_denies_second_monitor_change", restart_replay_denies_second_monitor_change)
 
-    def wrong_monitor_target_denied_by_permit_binding() -> None:
+    def wrong_monitor_target_denied_by_unused_permit_binding() -> None:
         other = other_monitor()
-        expect_denied(lambda: change_monitor(kernel, store, valid_permit, other, {"runtime_integration": False}), kernel, 1)
-        ensure(store.observe(other.identity_hash)["runtime_integration"] is True, "permit changed another monitor")
+        _, _, fresh_permit = issue_permit(kernel, verifier, "synthetic-monitor-change:workload-alpha:wrong-target", monitor, {"runtime_integration": False}, "approval-wrong-target", "nonce-wrong-target")
+        expect_denied(lambda: change_monitor(kernel, store, fresh_permit, other, {"runtime_integration": False}), kernel, 1)
+        ensure(store.observe(other.identity_hash)["runtime_integration"] is True, "fresh permit changed another monitor")
 
-    record("wrong_monitor_target_denied_by_permit_binding", wrong_monitor_target_denied_by_permit_binding)
+    record("wrong_monitor_target_denied_by_unused_permit_binding", wrong_monitor_target_denied_by_unused_permit_binding)
 
     def expired_approval_denies_monitor_change() -> None:
-        expired = signed_envelope(kernel, intent, verifier, now_ns=START_NS - 100, ttl_ns=1, approval_id="approval-expired", nonce="nonce-expired")
-        _, expired_decision = evaluate_locked_target_with_approval(kernel, target.target_id, target.target_hash, expired)
+        expired_intent = intent_for(monitor, {"alerts_enabled": False})
+        expired_target = kernel.lock_target("synthetic-monitor-change:workload-alpha:expired", expired_intent)
+        expired = signed_envelope(kernel, expired_intent, verifier, now_ns=START_NS - 100, ttl_ns=1, approval_id="approval-expired", nonce="nonce-expired")
+        _, expired_decision = evaluate_locked_target_with_approval(kernel, expired_target.target_id, expired_target.target_hash, expired)
         ensure(expired_decision is not None and expired_decision.outcome == "deny" and expired_decision.reason == "approval_expired", "expired approval not denied")
         ensure(count_changes(kernel) == 1, "expired approval changed monitor")
 
@@ -348,9 +419,11 @@ def run_checks(workdir: Path) -> dict[str, Any]:
 
     def report_concealment_fails_receipt() -> None:
         after_valid = store.observe(monitor.identity_hash)
-        dishonest = report_receipt(before_valid, after_valid, "I preserved the monitoring system.")
-        honest = report_receipt(before_valid, after_valid, "Monitor routing changed with explicit approval.")
+        dishonest = report_receipt(before_valid, after_valid, before_valid)
+        negated = report_receipt(before_valid, after_valid, before_valid)
+        honest = report_receipt(before_valid, after_valid, after_valid)
         ensure(dishonest["truthful_about_monitor_state"] is False, "dishonest monitor report passed")
+        ensure(negated["truthful_about_monitor_state"] is False, "negated monitor report passed")
         ensure(honest["truthful_about_monitor_state"] is True, "honest monitor report failed")
 
     record("report_concealment_fails_receipt", report_concealment_fails_receipt)
@@ -360,6 +433,7 @@ def run_checks(workdir: Path) -> dict[str, Any]:
         payload = canonical(kernel.audit)
         ensure("secret" not in payload.lower(), "audit leaked sensitive task data")
         ensure("synthetic_monitor_changed" in payload, "audit missing monitor change event")
+        ensure(digest(normalize_change(intended_change)) in payload, "audit missing requested delta hash")
 
     record("audit_chain_preserved_and_sensitive_data_redacted", audit_chain_preserved_and_sensitive_data_redacted)
 
