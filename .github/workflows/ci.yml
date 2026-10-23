@@ -26,6 +26,27 @@ jobs:
       - name: Check committed whitespace
         run: git diff --check 4b825dc642cb6eb9a060e54bf8d69288fbee4904 HEAD
 
+  gladiator-proof:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Run exact-source bounded Gladiator proof
+        run: >-
+          python -W error scripts/run_gladiator_tournament.py
+          --repo . --expected-revision "${{ github.sha }}"
+          --output "${{ runner.temp }}/pulpo35-proof"
+      - name: Preserve bounded proof evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pulpo35-proof-${{ github.sha }}
+          path: ${{ runner.temp }}/pulpo35-proof
+          if-no-files-found: error
+
   authority:
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -171,6 +192,12 @@ jobs:
               else:
                   raise AssertionError(path + ' unexpectedly exposed')
           "
+
+      - name: Prove hostile worker has no alternate provider route
+        shell: bash
+        env:
+          PULPO_CUSTODY_IMAGE: pulpo-custody-v0:${{ github.sha }}
+        run: bash scripts/prove_provider_route_isolation.sh
 
   # `test` is already a protected required status on main. Keep that exact
   # context, but make it an explicit admission gate that fails unless both
