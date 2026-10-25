@@ -425,6 +425,10 @@ class GovernanceKernel:
                     )
                 except Exception:
                     return self._approval_decide("approval_ceremony_evidence_unavailable_or_mismatch", digest, envelope)
+            elif ceremony_evidence_ref is not None:
+                # Never silently downgrade a reference-bearing request to the
+                # legacy raw-proof path when protected custody is unavailable.
+                return self._approval_decide("approval_ceremony_evidence_reader_unavailable", digest, envelope)
             if not isinstance(ceremony_proof, CeremonyProof):
                 return self._approval_decide("approval_ceremony_proof_missing", digest, envelope)
             ceremony_verifier = self._ceremony_verifier
