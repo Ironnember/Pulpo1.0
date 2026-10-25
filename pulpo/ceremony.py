@@ -138,3 +138,104 @@ def expected_ceremony_challenge(envelope: ApprovalEnvelope, request_id: str) -> 
             }
         )
     ).digest()
+
+
+
+# The authority worker receives a digest only. The full WebAuthn assertion is
+# retrieved by the trusted kernel-side evidence reader, never by the worker.
+MAX_CEREMONY_EVIDENCE_BYTES = 262_144
+
+
+@dataclass(frozen=True)
+class CeremonyEvidenceReference:
+    """Non-authoritative locator for one protected authority evidence object."""
+
+    request_id: str
+    evidence_hash: str
+    schema: str = "pulpo.ceremony-evidence-ref.v0"
+
+    def __post_init__(self) -> None:
+        _require_text(self.request_id, "request_id")
+        _require_sha256(self.evidence_hash, "evidence_hash")
+        if self.schema != "pulpo.ceremony-evidence-ref.v0":
+            raise ValueError("unsupported ceremony evidence reference schema")
+
+
+class CeremonyEvidenceReader(Protocol):
+    """Protected, read-only data seam; the worker must not possess this reader.
+
+    Production custody, pinned bucket identity, read IAM and power-loss
+    durability must be proven independently. This is not an authority issuer.
+    """
+
+    def read(self, evidence_hash: str) -> bytes:
+        """Read bytes from the one pinned protected evidence store."""
+
+
+def ceremony_proof_from_evidence(
+    source: bytes,
+    *,
+    reference: CeremonyEvidenceReference,
+    envelope: ApprovalEnvelope,
+) -> CeremonyProof:
+    """Check the exact immutable evidence bundle before independent WebAuthn verification.
+
+    The digest is a locator and integrity check, not proof of authority.
+    The caller must obtain the bytes using a protected reader inaccessible
+    to the worker. Only the pinned verifier can authenticate the assertion.
+    """
+
+    if type(source) is not bytes or not source or len(source) > MAX_CEREMONY_EVIDENCE_BYTES:
+        raise ValueError("ceremony evidence is absent, invalid or oversized")
+    try:
+        value = json.loads(source)
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise ValueError("ceremony evidence is not canonical JSON") from exc
+    if not isinstance(value, dict):
+        raise ValueError("ceremony evidence must be an object")
+    canonical = _canonical(value)
+    if source != canonical + b"\n":
+        raise ValueError("ceremony evidence bytes are not canonical")
+    if sha256(canonical).hexdigest() != reference.evidence_hash:
+        raise ValueError("ceremony evidence hash mismatch")
+
+    required = {
+        "schema", "sequence", "request", "request_id", "challenge_hash",
+        "credential_id_hash", "assertion", "envelope",
+    }
+    if set(value) != required or value["schema"] != "pulpo.authority-evidence.v1":
+        raise ValueError("unsupported ceremony evidence object")
+    if type(value["sequence"]) is not int or value["sequence"] <= 0:
+        raise ValueError("ceremony evidence sequence invalid")
+    if value["request_id"] != reference.request_id:
+        raise ValueError("ceremony evidence request mismatch")
+    if value["envelope"] != asdict(envelope):
+        raise ValueError("ceremony evidence envelope mismatch")
+
+    request = value["request"]
+    if not isinstance(request, dict) or any(
+        request.get(field) != getattr(envelope, field)
+        for field in ("principal", "session_id", "intent_hash", "policy_hash", "deployment_id")
+    ):
+        raise ValueError("ceremony evidence request not bound to approval")
+    if value["challenge_hash"] != sha256(
+        expected_ceremony_challenge(envelope, reference.request_id)
+    ).hexdigest():
+        raise ValueError("ceremony evidence challenge mismatch")
+
+    assertion = value["assertion"]
+    if not isinstance(assertion, str) or not assertion or len(assertion) > 131_072:
+        raise ValueError("ceremony evidence assertion invalid")
+    try:
+        credential = json.loads(assertion)
+    except json.JSONDecodeError as exc:
+        raise ValueError("ceremony evidence assertion is not JSON") from exc
+    if not isinstance(credential, dict):
+        raise ValueError("ceremony evidence credential invalid")
+    credential_id = credential.get("id")
+    if not isinstance(credential_id, str) or not credential_id or len(credential_id) > 4_096:
+        raise ValueError("ceremony evidence credential id invalid")
+    if sha256(credential_id.encode()).hexdigest() != value["credential_id_hash"]:
+        raise ValueError("ceremony evidence credential hash mismatch")
+
+    return CeremonyProof(reference.request_id, credential_id, assertion)
