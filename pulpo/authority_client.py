@@ -9,7 +9,7 @@ from urllib.parse import quote, urlparse
 from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 from .authority import ApprovalEnvelope, _require_sha256, _require_text
-from .ceremony import CeremonyProof
+from .ceremony import CeremonyProof, CeremonyEvidenceReference
 
 
 MAX_AUTHORITY_RESPONSE_BYTES = 1_048_576
@@ -66,12 +66,19 @@ class AuthorityPoll:
     envelope: ApprovalEnvelope | None = None
     reason: str | None = None
     ceremony_proof: CeremonyProof | None = None
+    ceremony_evidence_ref: CeremonyEvidenceReference | None = None
 
     def __post_init__(self) -> None:
         if self.status not in {"pending", "approved", "denied", "expired"}:
             raise ValueError("unsupported authority poll status")
         if (self.status == "approved") != (self.envelope is not None):
             raise ValueError("only approved polls contain an envelope")
+        if self.ceremony_proof is not None and self.ceremony_evidence_ref is not None:
+            raise ValueError("raw proof and evidence reference cannot coexist")
+        if self.ceremony_evidence_ref is not None and (
+            self.status != "approved" or not isinstance(self.ceremony_evidence_ref, CeremonyEvidenceReference)
+        ):
+            raise ValueError("only approved polls contain a valid evidence reference")
         if self.ceremony_proof is not None and (
             self.status != "approved" or not isinstance(self.ceremony_proof, CeremonyProof)
         ):
@@ -126,10 +133,16 @@ class AuthorityClient:
         if proof_value is not None and not isinstance(proof_value, dict):
             raise ValueError("authority returned an invalid ceremony proof")
         proof = CeremonyProof(**proof_value) if proof_value is not None else None
+        ref_value = result.get("ceremony_evidence_ref")
+        if ref_value is not None and not isinstance(ref_value, dict):
+            raise ValueError("authority returned an invalid ceremony evidence reference")
+        evidence_ref = CeremonyEvidenceReference(**ref_value) if ref_value is not None else None
+        if ref_value is not None and set(ref_value) != {"schema", "request_id", "evidence_hash"}:
+            raise ValueError("authority evidence reference contains unknown fields")
         reason = result.get("reason")
         if reason is not None and not isinstance(reason, str):
             raise ValueError("authority returned an invalid reason")
-        return AuthorityPoll(status, envelope, reason, proof)
+        return AuthorityPoll(status, envelope, reason, proof, evidence_ref)
 
     def _https_transport(
         self,
