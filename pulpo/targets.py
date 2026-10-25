@@ -8,7 +8,7 @@ principal, or create another router or authority path.
 from __future__ import annotations
 
 from .authority import ApprovalEnvelope
-from .ceremony import CeremonyProof
+from .ceremony import CeremonyProof, CeremonyEvidenceReference
 from .kernel import Decision, GovernanceKernel, TargetResolution
 
 
@@ -20,6 +20,7 @@ def evaluate_locked_target_with_approval(
     *,
     version: int = 1,
     ceremony_proof: CeremonyProof | None = None,
+    ceremony_evidence_ref: CeremonyEvidenceReference | None = None,
 ) -> tuple[TargetResolution, Decision | None]:
     """Resolve one exact locked target, then use the kernel's approval path.
 
@@ -36,5 +37,6 @@ def evaluate_locked_target_with_approval(
     if resolution.outcome != "match" or resolution.target is None:
         return resolution, None
     return resolution, kernel.evaluate_with_approval(
-        resolution.target.intent, envelope, ceremony_proof=ceremony_proof
+        resolution.target.intent, envelope, ceremony_proof=ceremony_proof,
+        ceremony_evidence_ref=ceremony_evidence_ref,
     )
