@@ -123,6 +123,27 @@ class ProtectedReferenceTests(unittest.TestCase):
         self.set_bundle(changed)
         self.assertEqual("approval_ceremony_verification_failed", self.evaluate().reason)
 
+    def test_no_protected_reader_with_reference_denies_even_with_valid_signature(self):
+        kernel = GovernanceKernel(
+            self.kernel.policy,
+            approval_verifier=self.signer,
+            ceremony_verifier=Verifier(),
+            clock=lambda: 1_000_000,
+        )
+        result = kernel.evaluate_with_approval(
+            self.intent, self.envelope, ceremony_evidence_ref=self.reference
+        )
+        self.assertEqual("approval_ceremony_evidence_reader_unavailable", result.reason)
+        self.assertIsNone(result.permit)
+
+    def test_missing_reference_and_wrong_reader_cannot_compose_into_authority(self):
+        missing = self.kernel.evaluate_with_approval(self.intent, self.envelope)
+        self.assertEqual("approval_ceremony_evidence_reference_missing", missing.reason)
+        self.reader.content = None
+        unavailable = self.evaluate()
+        self.assertEqual("approval_ceremony_evidence_unavailable_or_mismatch", unavailable.reason)
+        self.assertIsNone(unavailable.permit)
+
     def test_noncanonical_bytes_denied(self):
         self.reader.content = canonical(self.bundle)
         self.assertEqual("approval_ceremony_evidence_unavailable_or_mismatch", self.evaluate().reason)
