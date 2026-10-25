@@ -161,6 +161,8 @@ class PulpoOrchestrator:
             return AuthorizationAttempt(handle=handle, resolution=resolution, poll=poll)
         if poll.ceremony_proof is not None and poll.ceremony_proof.request_id != handle.request_id:
             raise OrchestrationError("approval_ceremony_request_mismatch")
+        if poll.ceremony_evidence_ref is not None and poll.ceremony_evidence_ref.request_id != handle.request_id:
+            raise OrchestrationError("approval_ceremony_evidence_request_mismatch")
 
         exact_resolution, decision = evaluate_locked_target_with_approval(
             self.kernel,
@@ -169,6 +171,7 @@ class PulpoOrchestrator:
             poll.envelope,
             version=handle.version,
             ceremony_proof=poll.ceremony_proof,
+            ceremony_evidence_ref=poll.ceremony_evidence_ref,
         )
         return AuthorizationAttempt(
             handle=handle,
