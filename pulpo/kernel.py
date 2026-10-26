@@ -404,6 +404,8 @@ class GovernanceKernel:
             return self._approval_decide("approval_signature_invalid", digest, envelope)
 
         ceremony_evidence: dict[str, object] | None = None
+        ceremony_credential_id_hash: str | None = None
+        ceremony_sign_count: int | None = None
         if intent.action in self.policy.ceremony_actions:
             if not isinstance(ceremony_proof, CeremonyProof):
                 return self._approval_decide("approval_ceremony_proof_missing", digest, envelope)
@@ -427,12 +429,16 @@ class GovernanceKernel:
                 return self._approval_decide("approval_ceremony_user_verification_required", digest, envelope)
             if ceremony_result.backup_eligible is not False or ceremony_result.backed_up is not False:
                 return self._approval_decide("approval_ceremony_backup_credential_prohibited", digest, envelope)
+            if ceremony_result.new_sign_count <= 0:
+                return self._approval_decide("approval_ceremony_sign_count_unavailable", digest, envelope)
+            ceremony_credential_id_hash = sha256(ceremony_proof.credential_id.encode()).hexdigest()
+            ceremony_sign_count = ceremony_result.new_sign_count
             ceremony_evidence = {
                 "ceremony_verifier_id": ceremony_verifier.verifier_id,
                 "ceremony_trust_hash": self.policy.ceremony_trust.trust_hash,
                 "ceremony_proof_hash": ceremony_proof.proof_hash,
-                "ceremony_credential_id_hash": sha256(ceremony_proof.credential_id.encode()).hexdigest(),
-                "ceremony_sign_count": ceremony_result.new_sign_count,
+                "ceremony_credential_id_hash": ceremony_credential_id_hash,
+                "ceremony_sign_count": ceremony_sign_count,
             }
 
         verified_at_ns = self._trusted_now()
@@ -471,6 +477,8 @@ class GovernanceKernel:
             envelope.approval_id,
             envelope.nonce,
             approval_payload,
+            ceremony_credential_id_hash=ceremony_credential_id_hash,
+            ceremony_sign_count=ceremony_sign_count,
         )
         return self._issue_permit(
             digest,
