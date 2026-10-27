@@ -128,6 +128,8 @@ class AuthorityClient:
         # reference; only the protected kernel-side reader may retrieve its bytes.
         if "ceremony_proof" in result:
             raise ValueError("raw ceremony proof forbidden on worker approval poll")
+        if set(result) - {"status", "envelope", "reason", "ceremony_evidence_ref"}:
+            raise ValueError("worker approval poll contains unadmitted fields")
         ref_value = result.get("ceremony_evidence_ref")
         if ref_value is not None and not isinstance(ref_value, dict):
             raise ValueError("authority returned an invalid ceremony evidence reference")

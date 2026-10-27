@@ -55,3 +55,21 @@ The old *direct kernel test interface* still supports raw synthetic proof when n
 **Unknown:** Real human ceremony, HSM-backed signer, deployment containment, external-provider result, commercial readiness.
 
 **No cloud, billing, credential, IAM, GitHub mainline merge or real provider effect is authorized or performed by this note.**
+
+## Additional source-to-kernel wire integration evidence
+
+- The `AuthorityService` fixture uses a test Ed25519 signer and synthetic
+  WebAuthn verifier to approve exact intent, preserve an evidence bundle,
+  and return only `ceremony_evidence_ref`.
+- The **actual** `AuthorityClient.poll_approval` parses the service's response
+  and rejects raw or unknown fields. A fixture reader retrieves the matching
+  canonical bytes for `GovernanceKernel`; the pinned synthetic verifier,
+  exact policy and permit rules are checked before one-use consumption.
+- Four end-to-end *service-to-kernel* tests cover the positive case, missing
+  reader, wrong evidence reference and incomplete approved service state.
+  Other tests preserve the durable authenticator-counter replay denial.
+- These are cross-module software tests, **not** a real WebAuthn human ceremony:
+  the origin, credential and signed envelope are test fixtures. The fixture
+  reader is not independent production IAM or protected retention.
+- Local reruns and hosted test results must be tied to the **final PR head SHA**,
+  not assumed from pre-merge parent commits.

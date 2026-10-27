@@ -177,6 +177,16 @@ class CeremonyHandoffTests(unittest.TestCase):
                         client.poll_approval(REQUEST)
         self.assertEqual(0, self.reader.calls)
 
+    def test_unadmitted_wire_fields_are_rejected(self):
+        client = AuthorityClient("https://authority.example.com", transport=lambda *_: {
+            "status": "approved", "envelope": asdict(self.envelope),
+            "ceremony_evidence_ref": asdict(self.reference),
+            "assertion": "unadmitted raw material",
+        })
+        with self.assertRaisesRegex(ValueError, "unadmitted fields"):
+            client.poll_approval(REQUEST)
+        self.assertEqual(0, self.reader.calls)
+
     def test_target_substitution_stops_before_poll(self):
         orchestrator, handle, calls = self.orchestrator()
         attempt = orchestrator.authorize_target(replace(handle, target_hash="0" * 64))
