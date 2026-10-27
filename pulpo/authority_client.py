@@ -9,6 +9,7 @@ from urllib.parse import quote, urlparse
 from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 from .authority import ApprovalEnvelope, _require_sha256, _require_text
+from .ceremony import CeremonyProof
 
 
 MAX_AUTHORITY_RESPONSE_BYTES = 1_048_576
@@ -64,12 +65,17 @@ class AuthorityPoll:
     status: str
     envelope: ApprovalEnvelope | None = None
     reason: str | None = None
+    ceremony_proof: CeremonyProof | None = None
 
     def __post_init__(self) -> None:
         if self.status not in {"pending", "approved", "denied", "expired"}:
             raise ValueError("unsupported authority poll status")
         if (self.status == "approved") != (self.envelope is not None):
             raise ValueError("only approved polls contain an envelope")
+        if self.ceremony_proof is not None and (
+            self.status != "approved" or not isinstance(self.ceremony_proof, CeremonyProof)
+        ):
+            raise ValueError("only approved polls contain a valid ceremony proof")
 
 
 Transport = Callable[[str, str, dict[str, object] | None], dict[str, Any]]
@@ -116,10 +122,14 @@ class AuthorityClient:
             raise ValueError("authority returned an invalid status")
         envelope_value = result.get("envelope")
         envelope = ApprovalEnvelope(**envelope_value) if isinstance(envelope_value, dict) else None
+        proof_value = result.get("ceremony_proof")
+        if proof_value is not None and not isinstance(proof_value, dict):
+            raise ValueError("authority returned an invalid ceremony proof")
+        proof = CeremonyProof(**proof_value) if proof_value is not None else None
         reason = result.get("reason")
         if reason is not None and not isinstance(reason, str):
             raise ValueError("authority returned an invalid reason")
-        return AuthorityPoll(status, envelope, reason)
+        return AuthorityPoll(status, envelope, reason, proof)
 
     def _https_transport(
         self,

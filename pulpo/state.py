@@ -25,11 +25,57 @@ def _audit_record(previous_hash: str, event: str, payload: dict[str, Any], times
     return {**body, "hash": sha256(_canonical(body)).hexdigest()}
 
 
+def _prior_ceremony_sign_count(
+    payloads: list[object],
+    credential_id_hash: str,
+) -> int | None:
+    prior = None
+    for payload in payloads:
+        if not isinstance(payload, dict):
+            raise ValueError("canonical ceremony counter evidence is invalid")
+        if payload.get("ceremony_credential_id_hash") != credential_id_hash:
+            continue
+        sign_count = payload.get("ceremony_sign_count")
+        if isinstance(sign_count, bool) or not isinstance(sign_count, int) or sign_count <= 0:
+            raise ValueError("canonical ceremony counter evidence is invalid")
+        prior = sign_count if prior is None else max(prior, sign_count)
+    return prior
+
+
+def _ceremony_counter_input_reason(approval: "ApprovalUse") -> str | None:
+    credential_hash = approval.ceremony_credential_id_hash
+    sign_count = approval.ceremony_sign_count
+    audit_hash = approval.audit_payload.get("ceremony_credential_id_hash")
+    audit_count = approval.audit_payload.get("ceremony_sign_count")
+    if (credential_hash is None) != (sign_count is None):
+        return "approval_ceremony_counter_invalid"
+    if credential_hash is None:
+        if audit_hash is not None or audit_count is not None:
+            return "approval_ceremony_counter_invalid"
+        return None
+    if (
+        not isinstance(credential_hash, str)
+        or len(credential_hash) != 64
+        or credential_hash != credential_hash.lower()
+        or any(character not in "0123456789abcdef" for character in credential_hash)
+        or isinstance(sign_count, bool)
+        or not isinstance(sign_count, int)
+        or audit_hash != credential_hash
+        or audit_count != sign_count
+    ):
+        return "approval_ceremony_counter_invalid"
+    if sign_count <= 0:
+        return "approval_ceremony_sign_count_unavailable"
+    return None
+
+
 @dataclass(frozen=True)
 class ApprovalUse:
     approval_id: str
     nonce: str
     audit_payload: dict[str, Any]
+    ceremony_credential_id_hash: str | None = None
+    ceremony_sign_count: int | None = None
 
 
 @dataclass(frozen=True)
@@ -82,19 +128,45 @@ class InMemoryKernelState:
         return self._audit
 
     def approval_replay_reason(self, approval_id: str, nonce: str) -> str | None:
-        if approval_id in self._approval_ids: return "approval_id_replayed"
-        if nonce in self._approval_nonces: return "approval_nonce_replayed"
-        return None
+        with self._audit_lock:
+            if approval_id in self._approval_ids: return "approval_id_replayed"
+            if nonce in self._approval_nonces: return "approval_nonce_replayed"
+            return None
 
     def issue_permit(self, permit: str, intent_hash: str, decision_reason: str, timestamp_ns: int, approval: ApprovalUse | None = None) -> str | None:
-        if approval is not None:
-            replay = self.approval_replay_reason(approval.approval_id, approval.nonce)
-            if replay: return replay
-            self._approval_ids.add(approval.approval_id); self._approval_nonces.add(approval.nonce)
-            self.append("approval_verified", approval.audit_payload, timestamp_ns)
-        self._issued[permit] = intent_hash
-        self.append("decision", {"outcome": "allow", "reason": decision_reason, "intent_hash": intent_hash}, timestamp_ns)
-        return None
+        with self._audit_lock:
+            approval_payload = None
+            if approval is not None:
+                replay = self.approval_replay_reason(approval.approval_id, approval.nonce)
+                if replay: return replay
+                credential_hash = approval.ceremony_credential_id_hash
+                sign_count = approval.ceremony_sign_count
+                counter_input_reason = _ceremony_counter_input_reason(approval)
+                if counter_input_reason: return counter_input_reason
+                if credential_hash is not None:
+                    try:
+                        previous = _prior_ceremony_sign_count(
+                            [
+                                record["payload"]
+                                for record in self._audit
+                                if record.get("event") == "approval_verified"
+                                and isinstance(record.get("payload"), dict)
+                            ],
+                            credential_hash,
+                        )
+                    except ValueError:
+                        return "approval_ceremony_counter_invalid"
+                    if previous is not None and sign_count <= previous:
+                        return "approval_ceremony_sign_count_replayed"
+                    approval_payload = dict(approval.audit_payload)
+                    approval_payload["ceremony_previous_sign_count"] = previous
+                else:
+                    approval_payload = approval.audit_payload
+                self._approval_ids.add(approval.approval_id); self._approval_nonces.add(approval.nonce)
+                self.append("approval_verified", approval_payload, timestamp_ns)
+            self._issued[permit] = intent_hash
+            self.append("decision", {"outcome": "allow", "reason": decision_reason, "intent_hash": intent_hash}, timestamp_ns)
+            return None
 
     def bind_permit_to_directive(self, permit: str, intent_hash: str, binding: DirectivePermitBinding, timestamp_ns: int) -> None:
         if self._issued.get(permit) != intent_hash or permit in self._spent: raise ValueError("permit unavailable for directive binding")
@@ -217,12 +289,36 @@ class SQLiteKernelState:
     def issue_permit(self, permit: str, intent_hash: str, decision_reason: str, timestamp_ns: int, approval: ApprovalUse | None = None) -> str | None:
         with self._connection:
             self._connection.execute("BEGIN IMMEDIATE")
+            approval_payload = None
             if approval is not None:
                 replay = self._approval_replay_reason(approval.approval_id, approval.nonce)
                 if replay: return replay
+                credential_hash = approval.ceremony_credential_id_hash
+                sign_count = approval.ceremony_sign_count
+                counter_input_reason = _ceremony_counter_input_reason(approval)
+                if counter_input_reason: return counter_input_reason
+                if credential_hash is not None:
+                    try:
+                        previous = _prior_ceremony_sign_count(
+                            [
+                                json.loads(row[0])
+                                for row in self._connection.execute(
+                                    "SELECT payload_json FROM audit WHERE event = 'approval_verified'"
+                                ).fetchall()
+                            ],
+                            credential_hash,
+                        )
+                    except (TypeError, ValueError, json.JSONDecodeError):
+                        return "approval_ceremony_counter_invalid"
+                    if previous is not None and sign_count <= previous:
+                        return "approval_ceremony_sign_count_replayed"
+                    approval_payload = dict(approval.audit_payload)
+                    approval_payload["ceremony_previous_sign_count"] = previous
+                else:
+                    approval_payload = approval.audit_payload
                 self._connection.execute("INSERT INTO approvals (approval_id, nonce) VALUES (?, ?)", (approval.approval_id, approval.nonce))
             self._connection.execute("INSERT INTO permits (permit, intent_hash) VALUES (?, ?)", (permit, intent_hash))
-            if approval is not None: self._append("approval_verified", approval.audit_payload, timestamp_ns)
+            if approval is not None: self._append("approval_verified", approval_payload, timestamp_ns)
             self._append("decision", {"outcome": "allow", "reason": decision_reason, "intent_hash": intent_hash}, timestamp_ns)
         return None
 
