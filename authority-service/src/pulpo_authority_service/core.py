@@ -400,6 +400,13 @@ class AuthorityService:
             result: dict[str, object] = {"status": record.status}
             if record.status == "approved" and record.envelope is not None:
                 result["envelope"] = asdict(record.envelope)
+                if record.evidence_hash is None:
+                    raise RuntimeError("approved authority evidence is incomplete")
+                result["ceremony_evidence_ref"] = {
+                    "schema": "pulpo.ceremony-evidence-ref.v0",
+                    "request_id": request_id,
+                    "evidence_hash": record.evidence_hash,
+                }
             elif record.status in {"denied", "expired"}:
                 result["reason"] = record.reason or record.status
             return result

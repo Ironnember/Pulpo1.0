@@ -9,7 +9,7 @@ from urllib.parse import quote, urlparse
 from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 from .authority import ApprovalEnvelope, _require_sha256, _require_text
-from .ceremony import CeremonyProof
+from .ceremony import CeremonyEvidenceReference
 
 
 MAX_AUTHORITY_RESPONSE_BYTES = 1_048_576
@@ -65,17 +65,17 @@ class AuthorityPoll:
     status: str
     envelope: ApprovalEnvelope | None = None
     reason: str | None = None
-    ceremony_proof: CeremonyProof | None = None
+    ceremony_evidence_ref: CeremonyEvidenceReference | None = None
 
     def __post_init__(self) -> None:
         if self.status not in {"pending", "approved", "denied", "expired"}:
             raise ValueError("unsupported authority poll status")
         if (self.status == "approved") != (self.envelope is not None):
             raise ValueError("only approved polls contain an envelope")
-        if self.ceremony_proof is not None and (
-            self.status != "approved" or not isinstance(self.ceremony_proof, CeremonyProof)
+        if self.ceremony_evidence_ref is not None and (
+            self.status != "approved" or not isinstance(self.ceremony_evidence_ref, CeremonyEvidenceReference)
         ):
-            raise ValueError("only approved polls contain a valid ceremony proof")
+            raise ValueError("only approved polls contain a valid evidence reference")
 
 
 Transport = Callable[[str, str, dict[str, object] | None], dict[str, Any]]
@@ -122,14 +122,22 @@ class AuthorityClient:
             raise ValueError("authority returned an invalid status")
         envelope_value = result.get("envelope")
         envelope = ApprovalEnvelope(**envelope_value) if isinstance(envelope_value, dict) else None
-        proof_value = result.get("ceremony_proof")
-        if proof_value is not None and not isinstance(proof_value, dict):
-            raise ValueError("authority returned an invalid ceremony proof")
-        proof = CeremonyProof(**proof_value) if proof_value is not None else None
+        # Worker-facing approval polling never transports raw WebAuthn assertions.
+        # Even an explicitly null raw proof field is not an admitted wire schema.
+        # The independent authority service returns a digest-addressed evidence
+        # reference; only the protected kernel-side reader may retrieve its bytes.
+        if "ceremony_proof" in result:
+            raise ValueError("raw ceremony proof forbidden on worker approval poll")
+        ref_value = result.get("ceremony_evidence_ref")
+        if ref_value is not None and not isinstance(ref_value, dict):
+            raise ValueError("authority returned an invalid ceremony evidence reference")
+        evidence_ref = CeremonyEvidenceReference(**ref_value) if ref_value is not None else None
+        if ref_value is not None and set(ref_value) != {"schema", "request_id", "evidence_hash"}:
+            raise ValueError("authority evidence reference contains unknown fields")
         reason = result.get("reason")
         if reason is not None and not isinstance(reason, str):
             raise ValueError("authority returned an invalid reason")
-        return AuthorityPoll(status, envelope, reason, proof)
+        return AuthorityPoll(status, envelope, reason, evidence_ref)
 
     def _https_transport(
         self,

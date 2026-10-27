@@ -13,6 +13,9 @@ from typing import Any, Callable
 from .authority import ApprovalEnvelope, ApprovalVerifier, AuthorityTrust
 from .ceremony import (
     CeremonyProof,
+    CeremonyEvidenceReference,
+    CeremonyEvidenceReader,
+    ceremony_proof_from_evidence,
     CeremonyTrust,
     CeremonyVerification,
     CeremonyVerifier,
@@ -161,6 +164,7 @@ class GovernanceKernel:
         secret: bytes | None = None,
         approval_verifier: ApprovalVerifier | None = None,
         ceremony_verifier: CeremonyVerifier | None = None,
+        ceremony_evidence_reader: CeremonyEvidenceReader | None = None,
         clock: Callable[[], int] | None = None,
         state: KernelState | None = None,
     ) -> None:
@@ -168,6 +172,7 @@ class GovernanceKernel:
         self._secret = secret or secrets.token_bytes(32)
         self._approval_verifier = approval_verifier
         self._ceremony_verifier = ceremony_verifier
+        self._ceremony_evidence_reader = ceremony_evidence_reader
         self._clock = clock or time.time_ns
         self._state = state if state is not None else InMemoryKernelState()
         if self._approval_verifier is not None and not self._verifier_matches_trust(self._approval_verifier):
@@ -343,6 +348,7 @@ class GovernanceKernel:
         intent: Intent,
         envelope: ApprovalEnvelope,
         ceremony_proof: CeremonyProof | None = None,
+        ceremony_evidence_ref: CeremonyEvidenceReference | None = None,
     ) -> Decision:
         """Issue a permit only after verification by the configured authority."""
 
@@ -407,6 +413,24 @@ class GovernanceKernel:
         ceremony_credential_id_hash: str | None = None
         ceremony_sign_count: int | None = None
         if intent.action in self.policy.ceremony_actions:
+            # A configured protected reader activates custody-only mode. Raw
+            # worker-supplied assertions cannot replace protected evidence.
+            if self._ceremony_evidence_reader is not None:
+                if ceremony_proof is not None:
+                    return self._approval_decide("approval_ceremony_raw_proof_rejected", digest, envelope)
+                if not isinstance(ceremony_evidence_ref, CeremonyEvidenceReference):
+                    return self._approval_decide("approval_ceremony_evidence_reference_missing", digest, envelope)
+                try:
+                    evidence = self._ceremony_evidence_reader.read(ceremony_evidence_ref.evidence_hash)
+                    ceremony_proof = ceremony_proof_from_evidence(
+                        evidence, reference=ceremony_evidence_ref, envelope=envelope
+                    )
+                except Exception:
+                    return self._approval_decide("approval_ceremony_evidence_unavailable_or_mismatch", digest, envelope)
+            elif ceremony_evidence_ref is not None:
+                # Never silently downgrade a reference-bearing request to the
+                # legacy raw-proof path when protected custody is unavailable.
+                return self._approval_decide("approval_ceremony_evidence_reader_unavailable", digest, envelope)
             if not isinstance(ceremony_proof, CeremonyProof):
                 return self._approval_decide("approval_ceremony_proof_missing", digest, envelope)
             ceremony_verifier = self._ceremony_verifier
