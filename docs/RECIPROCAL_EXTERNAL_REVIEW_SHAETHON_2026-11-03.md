@@ -136,9 +136,14 @@ response bodies were not retained, so the receipts could not be
 inspected. Five identical re-runs with full capture produced exactly 1
 execution each (100 spends). Under the standard both parties apply — an
 unreproduced result is not a finding — this is recorded as an
-**unreproduced anomaly**, with the gate's own ledger (which verified
-clean) identified as the ground truth for the window (2026-11-03
-~20:10 UTC, caller `austin-test-2`).
+**unreproduced anomaly** (window 2026-11-03 ~20:10 UTC, caller
+`austin-test-2`). SHAETHON AI checked the ledger from its side on
+2026-11-03 (517 records, valid and anchored) and reports that the
+pilot's public verification proves the chain's integrity but does not
+enumerate per-permit receipts, so that window cannot be replayed from
+the gate side either. The anomaly therefore stands exactly as filed —
+open, not a break — with a joint supervised concurrency soak agreed as
+part of the patched-gate re-run.
 
 Observation (deployment surface): the CDN in front of the gate
 (Cloudflare error 1010) refuses POSTs from non-browser user agents.
@@ -288,4 +293,6 @@ Sign-off: given to his agent in session, 2026-11-03 (record retained by Iron & E
 
 **Direction 1 tester / Tether publisher:**
 Michael Dill, Founder, SHAETHON AI
-Signature: ______________________________  Date: ____________
+Sign-off: given by email, 2026-11-03 — "The record reads true to me —
+both directions, the limits, the anomaly, the flags, and the Preview
+scoping on my side's evidence. That's my sign-off; put it in as-is."
