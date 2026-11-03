@@ -163,10 +163,11 @@ class GovernanceKernel:
         policy: Policy,
         secret: bytes | None = None,
         approval_verifier: ApprovalVerifier | None = None,
-        ceremony_verifier: CeremonyVerifier | None = None,
-        ceremony_evidence_reader: CeremonyEvidenceReader | None = None,
         clock: Callable[[], int] | None = None,
         state: KernelState | None = None,
+        *,
+        ceremony_verifier: CeremonyVerifier | None = None,
+        ceremony_evidence_reader: CeremonyEvidenceReader | None = None,
     ) -> None:
         self.policy = policy
         self._secret = secret or secrets.token_bytes(32)
