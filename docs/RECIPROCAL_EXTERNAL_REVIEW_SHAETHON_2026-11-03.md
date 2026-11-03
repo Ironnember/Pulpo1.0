@@ -181,6 +181,15 @@ The three flags, in the owner's classification:
    already registered cannot be re-claimed under a different key, 403);
    fresh-name claiming was not tested.*
 
+On Flag 2, Iron & Ember records a classification **dissent**: the
+callers of a gate like this are agents, and agents produce casing
+variance as ordinary input — a governance read that fails open on casing
+is break-shaped even where the signature gate behind it holds. SHAETHON
+AI keeps its flag classification (the signed-permit gate itself held)
+and, on 2026-11-03, recorded this dissent alongside it; the fix follows
+the dissent's prescription (normalize before comparison; pin the enum in
+the client contract).
+
 All three fixes are scoped by the owner and, at the date of this record,
 deliberately **undeployed** — the gate Direction 2 attacked is the gate
 as the owner tested it. The Direction 2 concurrency anomaly does not
