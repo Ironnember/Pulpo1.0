@@ -1,6 +1,6 @@
 # Pulpo Current State
 
-Status date: 2026-09-08
+Status date: 2026-11-03
 
 ## Canonical source
 
@@ -8,10 +8,19 @@ Status date: 2026-09-08
 
 At this reconciliation, protected `main` is:
 
-`b44dcd40a1ad2bd5413756bd413807f54f9283da`
+`f9dd6bd4deeb89538d26bec98a9b01fa10476483`
 
-This commit canonically admits PR #200, `Feature: trusted frozen MCP snapshot
-export v0`, on top of the previously admitted governed outcome-memory path.
+This commit canonically admits PR #336, the dual-signed reciprocal external
+review record with SHAETHON AI (documentation/evidence only; it changes no
+kernel behavior), on top of the kernel head
+`6b3caacbc28a7b40ebf5ea6295bc8058804de6e3`. The full test suite at that
+kernel head was re-run in a clean detached worktree on 2026-10-24: 422
+tests OK, 4 skipped.
+
+The 2026-09-08 reconciliation this document previously carried pinned
+`b44dcd40a1ad2bd5413756bd413807f54f9283da` (PR #200). Sections below are
+unchanged where the behavior they describe is unchanged, and are marked
+with their update date where this reconciliation revised them.
 
 The SHA is an inspection point, not a permanently pinned source-of-truth designation.
 
@@ -72,6 +81,20 @@ Each approval envelope binds approval identity, authority, verifier, key, deploy
 
 This is verified canonical software behavior for the approval contract. It does not prove that the complete independent `authority.pulpo.ai` service is deployed or acceptance-proven.
 
+**The ceremony gap (Verified, named 2026-11-03).** The approval contract
+binds and verifies a signature. It does not require, and the kernel does
+not check, evidence that a human authority ceremony occurred:
+`VALID_AUTHORITY_SIGNATURE != PROOF_OF_HUMAN_AUTHORITY_CEREMONY`. PR #280
+preserved the proof of this gap; a repair candidate (PR #288, requiring
+independent ceremony proof for opted-in approvals) was closed unmerged,
+and a further candidate revision is Recorded from operator runs on
+2026-10-24 (33 targeted ceremony-evidence and authority/restart tests
+passing in a clean isolated checkout; artifacts retained off-repository).
+A canonical, kernel-checked ceremony-evidence implementation is in
+progress as of this reconciliation. Until it is admitted, ceremony lives
+in operator process around the kernel, and no claim in this document
+should be read as kernel-proven human ceremony.
+
 ### Capability-stripped MCP boundary
 
 PR #134 is canonical.
@@ -122,6 +145,38 @@ The same exact reconciliation transition cannot create multiple canonical outcom
 Successful outcome memory remains non-authoritative and cannot mint a permit, alter policy, or authorize an otherwise denied intent.
 
 This is a software/custody/observer proof. It is not a claim of real external-provider containment.
+
+## Reciprocal external evidence (2026-11-03)
+
+PR #336 admitted `docs/RECIPROCAL_EXTERNAL_REVIEW_SHAETHON_2026-11-03.md`,
+a dual-signed reciprocal external review between Iron & Ember and
+SHAETHON AI, direct competitors in permit-gated execution. Both parties
+signed the record as written.
+
+- **Direction 1 (Recorded).** SHAETHON AI independently tested the
+  **Pulpo-Preview source release, commit `ec52708` (2026-10-31)** — not
+  canonical `main`. Of the release's published 1,030 tests, 1,024 ran:
+  936 passed, 60 skipped, 4 failed, 24 errored, with no failure in the
+  permit, governance, or verifier suites; the failures are
+  environment-sensitive and the tester's second pass is outstanding. A
+  31-probe adversarial boundary battery held in full (31 held, 0 broke).
+  The tester has since been commissioned to run the independent
+  reproduction protocol against canonical `main` at
+  `6b3caacbc28a7b40ebf5ea6295bc8058804de6e3`; that pass is **Proposed**
+  until its results land.
+- **Direction 2 (Verified from this side).** Iron & Ember tested the
+  live Tether pilot gate under its owner's written rules: ~45 cases, no
+  reproduced breaks, governance edges behaving as documented. One
+  unreproduced concurrency anomaly is recorded as an open item on both
+  sides, with a joint supervised re-run agreed after the gate owner's
+  fixes deploy. Two of the gate owner's three self-disclosed flags were
+  independently confirmed from this side; the publishing side's dissent
+  on one flag's classification is preserved in the record.
+
+This record establishes reciprocal black-box behavior of the exact
+objects tested. It does not establish production readiness, canonical
+reproduction, or deployed authority for either system, and it is not a
+partnership or endorsement.
 
 ## Governance and repository admission
 
@@ -221,10 +276,11 @@ Canonical Pulpo currently has:
 - concurrent exactly-once outcome-memory admission;
 - memory non-authority;
 - protected repository admission controls with executable denial/allow evidence.
+- one dual-signed reciprocal external review record admitted to canonical `main` (PR #336, 2026-11-03), with both parties' results, limits, and open items stated in the record itself.
 
 ### Recorded
 
-Recorded evidence includes the exact Issue #90 HSM signer acceptance record, Keel experiments, historical Stage-C structural work, and held/stale corrective branches.
+Recorded evidence includes the exact Issue #90 HSM signer acceptance record, Keel experiments, historical Stage-C structural work, and held/stale corrective branches. As of 2026-11-03 it also includes SHAETHON AI's Pulpo-Preview test results (Direction 1 of the reciprocal review; harness and raw logs in transfer) and the ceremony-custody candidate rerun of 2026-10-24 (33 targeted tests passing at a pinned non-canonical revision, artifacts retained off-repository).
 
 These are not automatically canonical or production proof.
 
@@ -251,6 +307,8 @@ The next technical sequence is:
 
 Pulpo does not yet establish:
 
+- kernel-checked evidence of a human authority ceremony (the ceremony gap named above; a canonical implementation is in progress);
+- independent third-party reproduction of canonical `main` (the reciprocal tester's pass under the reproduction protocol is commissioned and outstanding at this date);
 - real external-provider containment;
 - a real external unauthorized-effect rate;
 - fully accepted independent production authority;
