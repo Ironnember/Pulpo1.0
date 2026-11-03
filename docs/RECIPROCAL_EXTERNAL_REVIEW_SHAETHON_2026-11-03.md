@@ -19,9 +19,14 @@ each side classified under this repository's claim discipline
   dispatch is a receipt-only stub; Direction 2 establishes authorization
   behavior, not custody of any real-world effect.
 - Both directions: the tested system's published claims **held** under the
-  other party's battery. Each direction carries one disclosed open item
-  (Direction 1: environment-sensitive suite failures; Direction 2: one
-  unreproduced concurrency anomaly). Neither open item is a reproduced break.
+  other party's battery, and neither direction produced a reproduced
+  break. Open items, stated in full: Direction 1 — environment-sensitive
+  suite failures, with the tester's second pass outstanding. Direction 2 —
+  one unreproduced concurrency anomaly (open on both sides), and three
+  flags the gate owner disclosed from his own testing, with fixes scoped
+  but deliberately undeployed at the date of this record (two of the three
+  independently confirmed from this side; the publishing side's dissent on
+  Flag 2's classification is recorded in the Direction 2 addendum).
 
 ## Parties and affiliation disclosure
 
@@ -257,6 +262,49 @@ parties are formalizing as a mutual test document:
 8. **Temporal replay:** no historical checkpoint is applicable to this
    external evidence record; no lesson is generalized from it beyond the
    exact objects tested. Recorded explicitly per the replay boundary.
+
+**Adversarial transformation review** (required by AGENTS.md for
+material evidence records and consequential near-misses; analytical
+only, grants no authority):
+
+- **Flip** (swap tester and tested): had Iron & Ember authored
+  Direction 1's account of its own system, it would be self-attestation
+  and classified accordingly. It is not: Direction 1 is a competitor's
+  independent attestation — which is why it is Recorded rather than
+  dismissed, and why it is not Verified either, its harness and logs not
+  yet being in this repository's custody.
+- **Reverse** (read the sequence backward): sign-off followed the
+  completed record; the flag disclosures followed the blind battery they
+  describe; no step in the exchange depended on a later step having gone
+  well. A reversed reading surfaces no retrofitted step.
+- **Invert** (assume the record is wrong): the most plausible error
+  sites are (i) the anomaly being a genuine double execution
+  misclassified as open — bounded by five clean reproduction rounds and
+  by the gate ledger's integrity check, and kept open rather than closed
+  for exactly this reason; and (ii) Direction 1's numbers being
+  inaccurate — bounded by their Recorded class and the outstanding
+  harness transfer.
+- **Inside-Out** (read as a diligence outsider): the Summary and the
+  non-claims section bound every result to its exact tested object; no
+  sentence in this record claims production readiness, canonical-main
+  verification, or custody of real-world effects.
+- **Darken** (worst case): if the anomaly reproduces on the patched
+  gate, Direction 2 gains a confirmed break and this record is amended,
+  not rewritten — the anomaly's disclosure here is what makes that
+  amendment cheap and credible.
+- **Lighten** (best case): every claim is exactly as strong as its class
+  states, and the two directions' open items close by the agreed re-runs
+  without amendment to any result recorded here.
+- **Amplify** (scale the record's reach): if this document were the
+  public face of both systems, its strongest sentence — that each
+  system's published claims held under a competitor's battery — remains
+  true only with its scoping attached (a Preview release; a receipt-only
+  pilot gate). That scoping sits in the Summary's first two bullets, not
+  in a footnote.
+- **Negate** (what the record is not): not a certification, not a
+  partnership, not evidence about canonical main, not evidence about
+  ceremony, and not a claim about either system's production deployment.
+  Stated again in the non-claims section.
 
 ## Artifact index (SHA-256)
 
