@@ -267,6 +267,10 @@ parties are formalizing as a mutual test document:
   `de254102432739638473724ec73af53edf65c84b669214f07ae2d0d0c1930d0d`
 - Direction 2 flag-confirmation probes (Flags 1–2, 2026-11-03):
   `592eb4762caf6ec0aace2934acafbf63c464b527e9760c3d4ef05837273b3a4c`
+- Direction 2 anomaly packet (request shape, ledger positions,
+  retention gaps, reproduction data; prepared for SHAETHON AI
+  2026-11-03):
+  `16dcad84dffa0e99eeb47386ab0ad1243997229e6e73d49618365558a6e1d1d9`
 
 Raw logs are retained by Iron & Ember outside this repository (they
 contain third-party test material) and are available to the signatories.
