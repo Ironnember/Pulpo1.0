@@ -11,6 +11,7 @@ import time
 from typing import Any, Callable
 
 from .authority import ApprovalEnvelope, ApprovalVerifier, AuthorityTrust
+from .ceremony import CeremonyEvidence, CeremonyTrust, CeremonyVerifier
 from .state import ApprovalUse, InMemoryKernelState, KernelState
 
 
@@ -104,6 +105,8 @@ class Policy:
     approval_actions: frozenset[str] = frozenset()
     agent_grants: tuple[AgentGrant, ...] = ()
     authority_trust: AuthorityTrust | None = None
+    ceremony_actions: frozenset[str] = frozenset()
+    ceremony_trust: CeremonyTrust | None = None
 
     def __post_init__(self) -> None:
         principals = [grant.principal for grant in self.agent_grants]
@@ -115,6 +118,12 @@ class Policy:
             raise ValueError("approval actions require a pinned authority trust")
         if self.authority_trust is not None and not self.approval_actions:
             raise ValueError("authority trust requires at least one approval action")
+        if not self.ceremony_actions.issubset(self.approval_actions):
+            raise ValueError("ceremony actions must be a subset of approval actions")
+        if self.ceremony_actions and self.ceremony_trust is None:
+            raise ValueError("ceremony actions require a pinned ceremony trust")
+        if self.ceremony_trust is not None and not self.ceremony_actions:
+            raise ValueError("ceremony trust requires at least one ceremony action")
 
 
 @dataclass(frozen=True)
@@ -143,14 +152,19 @@ class GovernanceKernel:
         approval_verifier: ApprovalVerifier | None = None,
         clock: Callable[[], int] | None = None,
         state: KernelState | None = None,
+        *,
+        ceremony_verifier: CeremonyVerifier | None = None,
     ) -> None:
         self.policy = policy
         self._secret = secret or secrets.token_bytes(32)
         self._approval_verifier = approval_verifier
+        self._ceremony_verifier = ceremony_verifier
         self._clock = clock or time.time_ns
         self._state = state if state is not None else InMemoryKernelState()
         if self._approval_verifier is not None and not self._verifier_matches_trust(self._approval_verifier):
             raise AuthorityTrustError("approval verifier does not match pinned authority trust")
+        if self._ceremony_verifier is not None and not self._ceremony_verifier_matches_trust(self._ceremony_verifier):
+            raise AuthorityTrustError("ceremony verifier does not match pinned ceremony trust")
         try:
             audit_valid = self.verify_audit()
         except Exception as exc:
@@ -185,6 +199,12 @@ class GovernanceKernel:
             "agent_grants": grants,
             "authority_trust": asdict(self.policy.authority_trust) if self.policy.authority_trust else None,
         }
+        if self.policy.ceremony_actions or self.policy.ceremony_trust is not None:
+            # Opted-in policies bind their ceremony configuration into the
+            # policy hash. Policies that never opted in keep the exact
+            # pre-ceremony hash, so their envelopes and behavior are unchanged.
+            payload["ceremony_actions"] = sorted(self.policy.ceremony_actions)
+            payload["ceremony_trust"] = asdict(self.policy.ceremony_trust) if self.policy.ceremony_trust else None
         return sha256(_canonical(payload)).hexdigest()
 
     def lock_target(self, target_id: str, intent: Intent, *, version: int = 1) -> LockedTarget:
@@ -316,8 +336,19 @@ class GovernanceKernel:
         self,
         intent: Intent,
         envelope: ApprovalEnvelope,
+        *,
+        ceremony_evidence: CeremonyEvidence | None = None,
     ) -> Decision:
-        """Issue a permit only after verification by the configured authority."""
+        """Issue a permit only after verification by the configured authority.
+
+        For actions the policy marks as ceremony-required, a verified
+        envelope signature is not sufficient: the kernel additionally
+        requires ceremony evidence, checked here in the evaluation path,
+        that is signed under the separately pinned ceremony trust and bound
+        to this exact approval context. Missing or invalid evidence fails
+        closed. Actions that are not ceremony-required ignore the evidence
+        parameter entirely and behave exactly as before.
+        """
 
         digest = self.intent_hash(intent)
         failure = self._policy_failure(intent)
@@ -388,6 +419,40 @@ class GovernanceKernel:
                 timestamp_ns=verified_at_ns,
             )
 
+        ceremony_payload: dict[str, Any] = {}
+        ceremony_evidence_id: str | None = None
+        if intent.action in self.policy.ceremony_actions:
+            ceremony_failure = self._ceremony_failure(
+                intent,
+                envelope,
+                ceremony_evidence,
+                digest,
+                verified_at_ns,
+            )
+            if ceremony_failure is not None:
+                return self._approval_decide(
+                    ceremony_failure,
+                    digest,
+                    envelope,
+                    timestamp_ns=verified_at_ns,
+                )
+            if not isinstance(ceremony_evidence, CeremonyEvidence) or self.policy.ceremony_trust is None:
+                raise RuntimeError("ceremony gate passed without verified evidence")
+            ceremony_evidence_id = ceremony_evidence.evidence_id
+            ceremony_payload = {
+                "ceremony_evidence_id": ceremony_evidence.evidence_id,
+                "ceremony_evidence_hash": ceremony_evidence.evidence_hash,
+                "ceremony_signing_payload_hash": ceremony_evidence.signing_payload_hash,
+                "ceremony_authority_id": ceremony_evidence.authority_id,
+                "ceremony_verifier_id": ceremony_evidence.verifier_id,
+                "ceremony_key_id": ceremony_evidence.key_id,
+                "ceremony_algorithm": self.policy.ceremony_trust.algorithm,
+                "ceremony_key_fingerprint": self.policy.ceremony_trust.key_fingerprint,
+                "ceremony_method": ceremony_evidence.method,
+                "ceremony_issued_at_ns": ceremony_evidence.issued_at_ns,
+                "ceremony_expires_at_ns": ceremony_evidence.expires_at_ns,
+            }
+
         approval = ApprovalUse(
             envelope.approval_id,
             envelope.nonce,
@@ -407,7 +472,9 @@ class GovernanceKernel:
                 "issued_at_ns": envelope.issued_at_ns,
                 "expires_at_ns": envelope.expires_at_ns,
                 "verified_at_ns": verified_at_ns,
+                **ceremony_payload,
             },
+            ceremony_evidence_id=ceremony_evidence_id,
         )
         return self._issue_permit(
             digest,
@@ -439,6 +506,100 @@ class GovernanceKernel:
             trust.key_fingerprint,
         )
         return actual == expected
+
+    def _ceremony_verifier_matches_trust(self, verifier: CeremonyVerifier) -> bool:
+        trust = self.policy.ceremony_trust
+        if trust is None:
+            return False
+        try:
+            actual = (
+                verifier.authority_id,
+                verifier.verifier_id,
+                verifier.key_id,
+                verifier.algorithm,
+                verifier.key_fingerprint,
+            )
+        except Exception:
+            return False
+        expected = (
+            trust.authority_id,
+            trust.verifier_id,
+            trust.key_id,
+            trust.algorithm,
+            trust.key_fingerprint,
+        )
+        return actual == expected
+
+    def _ceremony_failure(
+        self,
+        intent: Intent,
+        envelope: ApprovalEnvelope,
+        evidence: CeremonyEvidence | None,
+        digest: str,
+        now_ns: int,
+    ) -> str | None:
+        """Return a deny reason unless the ceremony evidence is fully valid.
+
+        Runs only for ceremony-required actions, and only after the approval
+        envelope itself has verified: an invalid envelope denies before any
+        ceremony check, so ceremony verification is never an oracle for
+        holders of invalid envelopes.
+        """
+
+        if evidence is None:
+            return "ceremony_evidence_missing"
+        if not isinstance(evidence, CeremonyEvidence):
+            return "ceremony_evidence_invalid"
+        trust = self.policy.ceremony_trust
+        if trust is None:
+            return "ceremony_trust_unavailable"
+        verifier = self._ceremony_verifier
+        if verifier is None:
+            return "ceremony_verifier_unavailable"
+        if not self._ceremony_verifier_matches_trust(verifier):
+            return "ceremony_verifier_untrusted"
+        if evidence.authority_id != trust.authority_id:
+            return "ceremony_authority_mismatch"
+        if evidence.verifier_id != trust.verifier_id:
+            return "ceremony_verifier_mismatch"
+        if evidence.key_id != trust.key_id:
+            return "ceremony_key_mismatch"
+        if evidence.method != trust.method:
+            return "ceremony_method_mismatch"
+        if evidence.trust_hash != trust.trust_hash:
+            return "ceremony_trust_mismatch"
+        if not evidence.signature:
+            return "ceremony_signature_missing"
+        if evidence.approval_id != envelope.approval_id:
+            return "ceremony_approval_mismatch"
+        if evidence.envelope_hash != envelope.envelope_hash:
+            return "ceremony_envelope_mismatch"
+        if evidence.intent_hash != digest:
+            return "ceremony_intent_mismatch"
+        if evidence.policy_hash != self.policy_hash:
+            return "ceremony_policy_mismatch"
+        if evidence.principal != intent.principal:
+            return "ceremony_principal_mismatch"
+        if evidence.session_id != intent.session_id:
+            return "ceremony_session_mismatch"
+        if evidence.approval_nonce != envelope.nonce:
+            return "ceremony_nonce_mismatch"
+        if now_ns < evidence.issued_at_ns:
+            return "ceremony_not_yet_valid"
+        if evidence.expires_at_ns - evidence.issued_at_ns > trust.max_evidence_ttl_ns:
+            return "ceremony_ttl_exceeded"
+        if now_ns >= evidence.expires_at_ns:
+            return "ceremony_expired"
+        replay = self._state.ceremony_replay_reason(evidence.evidence_id)
+        if replay:
+            return replay
+        try:
+            signature_valid = verifier.verify(evidence.signing_bytes(), evidence.signature)
+        except Exception:
+            return "ceremony_verifier_failed"
+        if signature_valid is not True:
+            return "ceremony_signature_invalid"
+        return None
 
     def _trusted_now(self) -> int | None:
         try:

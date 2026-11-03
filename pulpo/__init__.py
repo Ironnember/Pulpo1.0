@@ -8,6 +8,7 @@ from .authority import (
     P256ApprovalVerifier,
 )
 from .authority_client import AuthorityApprovalRequest, AuthorityClient, AuthorityPoll
+from .ceremony import CeremonyEvidence, CeremonyTrust, CeremonyVerifier
 from .commerce import SQLiteBudgetAccount
 from .kernel import (
     AgentGrant,
@@ -53,6 +54,9 @@ __all__ = [
     "EvidenceSnapshot",
     "GovernanceKernel",
     "GovernedTargetReconciliation",
+    "CeremonyEvidence",
+    "CeremonyTrust",
+    "CeremonyVerifier",
     "InMemoryKernelState",
     "Intent",
     "KernelState",
