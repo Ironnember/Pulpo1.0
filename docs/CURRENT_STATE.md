@@ -98,8 +98,13 @@ now additionally requires a ceremony attestation signed under a
 ceremony trust pinned separately from the approval authority trust,
 bound to the approval id, envelope hash, intent, policy, principal,
 session, and nonce, verified with expiry and clock-rollback re-checked
-when verification completes, and consumed single-use in the same
-transaction. Shipped ceremony verifiers derive their key fingerprint
+when verification completes, and consumed single-use: in the
+persistent SQLite backend the check-and-record transition runs inside
+the same `BEGIN IMMEDIATE` transaction that issues the permit. The
+in-memory backend records evidence ids without serializing that
+transition, so the single-use guarantee under concurrent callers is
+established for the SQLite backend; the in-memory state store is a
+test and demonstration backend and does not carry the guarantee. Shipped ceremony verifiers derive their key fingerprint
 from the pinned public key (the same derivation as the approval
 adapters), and policy construction rejects a ceremony fingerprint
 equal to the approval fingerprint, so the envelope signer cannot
@@ -204,8 +209,8 @@ signed the record as written.
   harness-side counting and write-up error on the testing side — the
   gate executed the permit exactly once — and that reconciliation was
   verified against the testing side's retained files. It is closed,
-  not a break; the amendment addendum is recorded in PR #339, pending
-  the gate owner's sign-off at this date. Two of the gate owner's three self-disclosed flags were
+  not a break; the amendment addendum is recorded in PR #339, with the
+  gate owner's written sign-off recorded in it on 2026-11-03. Two of the gate owner's three self-disclosed flags were
   independently confirmed from this side; the publishing side's dissent
   on one flag's classification is preserved in the record. The gate
   owner later reported deploying all three fixes and re-running his own
