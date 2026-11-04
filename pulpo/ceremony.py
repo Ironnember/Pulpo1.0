@@ -12,7 +12,14 @@ gap. When policy opts an action in, the kernel additionally requires a
 
 - is signed under a ceremony key pinned separately from the approval
   authority key in ``CeremonyTrust`` (key separation is the substance of the
-  fix: the envelope signer cannot self-attest ceremony);
+  fix: the envelope signer cannot self-attest ceremony). Separation is only
+  as real as the fingerprint's derivation: a ``key_fingerprint`` that is
+  merely asserted metadata proves nothing about effective key material, so
+  the verifiers shipped here (``Ed25519CeremonyVerifier``,
+  ``P256CeremonyVerifier``) derive the fingerprint from the pinned public
+  key at construction and expose it read-only. Policy construction rejects
+  a ceremony fingerprint equal to the approval fingerprint, which — for
+  key-derived verifiers — is a check on the effective keys themselves;
 - binds the exact approval context the envelope binds (approval id, envelope
   hash, intent hash, policy hash, principal, session, approval nonce);
 - is fresh under the kernel's trusted clock and a pinned maximum TTL; and
@@ -161,6 +168,20 @@ class CeremonyVerifier(Protocol):
     verification adapter (Ed25519, P-256) can be configured with ceremony
     identity and a ceremony key. It is verification-only: it cannot issue
     evidence.
+
+    Contract: ``key_fingerprint`` MUST be derived from the verification key
+    material itself (for the shipped adapters, SHA-256 of the pinned public
+    key, computed at construction and read-only thereafter), never free
+    metadata chosen by the implementation. The kernel compares the
+    configured verifier's fingerprint against the pinned ``CeremonyTrust``
+    and policy construction rejects a ceremony fingerprint equal to the
+    approval fingerprint; those checks establish key separation only when
+    both fingerprints are honestly key-derived. A custom verifier whose
+    fingerprint merely asserts an identity while its ``verify`` delegates
+    to the approval key defeats them, and no in-process check can detect
+    that: verifier implementations are trusted control-plane code, exactly
+    as on the approval side. Deployments that need separation as a proved
+    property use the shipped key-derived adapters.
     """
 
     authority_id: str
@@ -171,3 +192,168 @@ class CeremonyVerifier(Protocol):
 
     def verify(self, payload: bytes, signature: str) -> bool:
         """Return true only for a signature from the ceremony authority."""
+
+
+class _KeyDerivedCeremonyVerifier:
+    """Base for the shipped ceremony verifiers.
+
+    Identity and the key fingerprint are computed or captured once, at
+    construction, from the pinned public key, and are exposed read-only:
+    there is no setter, so a configured verifier cannot be re-labelled
+    after the fact, and wrapping one of these adapters cannot change the
+    fingerprint it reports — a wrapper around the approval key's adapter
+    still reports the approval key's fingerprint.
+    """
+
+    algorithm: str
+
+    def __init__(
+        self,
+        *,
+        authority_id: str,
+        verifier_id: str,
+        key_id: str,
+        key_fingerprint: str,
+    ) -> None:
+        for value, field in (
+            (authority_id, "authority_id"),
+            (verifier_id, "verifier_id"),
+            (key_id, "key_id"),
+        ):
+            _require_text(value, field)
+        _require_sha256(key_fingerprint, "key_fingerprint")
+        self.__authority_id = authority_id
+        self.__verifier_id = verifier_id
+        self.__key_id = key_id
+        self.__key_fingerprint = key_fingerprint
+
+    @property
+    def authority_id(self) -> str:
+        return self.__authority_id
+
+    @property
+    def verifier_id(self) -> str:
+        return self.__verifier_id
+
+    @property
+    def key_id(self) -> str:
+        return self.__key_id
+
+    @property
+    def key_fingerprint(self) -> str:
+        return self.__key_fingerprint
+
+
+class Ed25519CeremonyVerifier(_KeyDerivedCeremonyVerifier):
+    """Verification-only ceremony adapter for one pinned Ed25519 public key.
+
+    The fingerprint is SHA-256 of the pinned public key, exactly as for
+    ``Ed25519ApprovalVerifier``, so an approval key and a ceremony key with
+    the same fingerprint are the same key — and policy construction
+    rejects that pairing.
+    """
+
+    algorithm = "ed25519"
+
+    def __init__(
+        self,
+        *,
+        authority_id: str,
+        verifier_id: str,
+        key_id: str,
+        public_key: bytes,
+    ) -> None:
+        if len(public_key) != 32:
+            raise ValueError("Ed25519 public_key must be exactly 32 bytes")
+        try:
+            from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
+        except ImportError as exc:
+            raise RuntimeError("Ed25519 verification requires the pulpo[authority] extra") from exc
+
+        super().__init__(
+            authority_id=authority_id,
+            verifier_id=verifier_id,
+            key_id=key_id,
+            key_fingerprint=sha256(public_key).hexdigest(),
+        )
+        self.__public_key = Ed25519PublicKey.from_public_bytes(public_key)
+
+    def verify(self, payload: bytes, signature: str) -> bool:
+        try:
+            from cryptography.exceptions import InvalidSignature
+
+            if (
+                len(signature) != 128
+                or signature != signature.lower()
+                or any(character not in "0123456789abcdef" for character in signature)
+            ):
+                return False
+            signature_bytes = bytes.fromhex(signature)
+            self.__public_key.verify(signature_bytes, payload)
+        except (InvalidSignature, ValueError):
+            return False
+        return True
+
+
+class P256CeremonyVerifier(_KeyDerivedCeremonyVerifier):
+    """Verification-only ceremony adapter for one pinned NIST P-256 public key.
+
+    Public keys are pinned as the 65-byte SEC1/X9.62 uncompressed point and
+    signatures are the fixed 64-byte ``r || s`` lowercase-hex form, exactly
+    as for ``P256ApprovalVerifier``. The fingerprint is SHA-256 of the
+    pinned public key.
+    """
+
+    algorithm = "ecdsa-p256-sha256"
+
+    def __init__(
+        self,
+        *,
+        authority_id: str,
+        verifier_id: str,
+        key_id: str,
+        public_key: bytes,
+    ) -> None:
+        if len(public_key) != 65 or public_key[:1] != b"\x04":
+            raise ValueError("P-256 public_key must be a 65-byte uncompressed SEC1 point")
+        try:
+            from cryptography.hazmat.primitives.asymmetric import ec
+        except ImportError as exc:
+            raise RuntimeError("P-256 verification requires the pulpo[authority] extra") from exc
+
+        try:
+            parsed = ec.EllipticCurvePublicKey.from_encoded_point(ec.SECP256R1(), public_key)
+        except ValueError as exc:
+            raise ValueError("P-256 public_key is not a valid SEC1 point") from exc
+
+        super().__init__(
+            authority_id=authority_id,
+            verifier_id=verifier_id,
+            key_id=key_id,
+            key_fingerprint=sha256(public_key).hexdigest(),
+        )
+        self.__public_key = parsed
+
+    def verify(self, payload: bytes, signature: str) -> bool:
+        try:
+            from cryptography.exceptions import InvalidSignature
+            from cryptography.hazmat.primitives import hashes
+            from cryptography.hazmat.primitives.asymmetric import ec
+            from cryptography.hazmat.primitives.asymmetric.utils import encode_dss_signature
+
+            if (
+                len(signature) != 128
+                or signature != signature.lower()
+                or any(character not in "0123456789abcdef" for character in signature)
+            ):
+                return False
+            raw = bytes.fromhex(signature)
+            r = int.from_bytes(raw[:32], "big")
+            s = int.from_bytes(raw[32:], "big")
+            if r == 0 or s == 0:
+                return False
+            der = encode_dss_signature(r, s)
+            self.__public_key.verify(der, payload, ec.ECDSA(hashes.SHA256()))
+        except (InvalidSignature, ValueError):
+            return False
+        return True
