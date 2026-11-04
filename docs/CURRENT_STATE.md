@@ -100,11 +100,16 @@ bound to the approval id, envelope hash, intent, policy, principal,
 session, and nonce, verified with expiry and clock-rollback re-checked
 when verification completes, and consumed single-use: in the
 persistent SQLite backend the check-and-record transition runs inside
-the same `BEGIN IMMEDIATE` transaction that issues the permit. The
-in-memory backend records evidence ids without serializing that
-transition, so the single-use guarantee under concurrent callers is
-established for the SQLite backend; the in-memory state store is a
-test and demonstration backend and does not carry the guarantee. Shipped ceremony verifiers derive their key fingerprint
+the same `BEGIN IMMEDIATE` transaction that issues the permit, and in
+the in-memory backend the same transition is serialized under the
+state store's lock, with a scheduler-forced concurrency regression
+(two callers, different approval ids, the same ceremony evidence:
+exactly one issuance, the rest denied as replays). The single-use
+guarantee under concurrent callers is therefore established for both
+shipped backends; before this change the in-memory backend recorded
+evidence ids without serializing the transition and did not carry the
+guarantee — that qualification stood in this document until the
+regression and fix landed. Shipped ceremony verifiers derive their key fingerprint
 from the pinned public key (the same derivation as the approval
 adapters), and policy construction rejects a ceremony fingerprint
 equal to the approval fingerprint, so the envelope signer cannot
