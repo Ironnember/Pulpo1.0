@@ -110,14 +110,16 @@ requires a canonical `PulpoOrchestrator`, copies only six primitive evidence
 fields, writes atomically with owner-only permissions, rejects path and symlink
 substitution, and remains absent from the MCP tool surface.
 
-An operator-host reconciliation at this exact main independently reproduced the
-configured 2,589-record frozen snapshot byte-for-byte from a disposable copy of
-the durable SQLite state. The database audit chain was valid and the resulting
-snapshot SHA-256 was
+An operator-host reconciliation recorded in `docs/MCP_BOUNDARY.md` against
+canonical main `b44dcd40a1ad2bd5413756bd413807f54f9283da` independently
+reproduced the configured 2,589-record frozen snapshot byte-for-byte from a
+disposable copy of the durable SQLite state. The database audit chain was
+valid and the resulting snapshot SHA-256 was
 `21b8a36425e63b921145dbbb15d07147fb6fbdc4fcb913cdf06045a54f26b397`.
-This verifies that exact frozen object's compatibility and provenance at the
-observation point. No Pulpo process was running, so current freshness and an
-admitted same-process runtime handoff remain **Unknown**.
+That historical evidence remains pinned to `b44dcd`; it was not rerun at
+`f9dd6bd`. This verifies that exact frozen object's compatibility and
+provenance at the observation point. No Pulpo process was running, so current
+freshness and an admitted same-process runtime handoff remain **Unknown**.
 
 ### Consequence reconciliation and governed outcome memory
 
@@ -158,9 +160,17 @@ signed the record as written.
   canonical `main`. Of the release's published 1,030 tests, 1,024 ran:
   936 passed, 60 skipped, 4 failed, 24 errored, with no failure in the
   permit, governance, or verifier suites; the failures are
-  environment-sensitive and the tester's second pass is outstanding. A
-  31-probe adversarial boundary battery held in full (31 held, 0 broke).
-  The tester has since been commissioned to run the independent
+  environment-sensitive. A 31-probe adversarial boundary battery held in
+  full (31 held, 0 broke). Later on 2026-11-03, SHAETHON delivered a
+  sanitized harness package whose enclosed counts and probe outcomes were
+  re-derived from its raw files in Iron & Ember custody: a same-day
+  reproduction run against the identical hash-verified Preview asset ran
+  1,024 tests with 940 passed, 56 skipped, the same 4 failures and 24
+  errors in the same environmental clusters, and all 31 probes held. The
+  package is expressly a reproduction, not the original run's raw
+  artifacts: the original October 31 sandbox and logs were not retained,
+  and the harness was re-implemented from the original write-up. The
+  tester has since been commissioned to run the independent
   reproduction protocol against canonical `main` at
   `6b3caacbc28a7b40ebf5ea6295bc8058804de6e3`; that pass is **Proposed**
   until its results land.
@@ -168,10 +178,17 @@ signed the record as written.
   live Tether pilot gate under its owner's written rules: ~45 cases, no
   reproduced breaks, governance edges behaving as documented. One
   unreproduced concurrency anomaly is recorded as an open item on both
-  sides, with a joint supervised re-run agreed after the gate owner's
-  fixes deploy. Two of the gate owner's three self-disclosed flags were
+  sides. Two of the gate owner's three self-disclosed flags were
   independently confirmed from this side; the publishing side's dissent
-  on one flag's classification is preserved in the record.
+  on one flag's classification is preserved in the record. The gate
+  owner later reported deploying all three fixes and re-running his own
+  battery cleanly (39 held, 0 flags; **Recorded** from his report).
+  Iron & Ember then independently verified the patched gate in a
+  targeted scope — the normal issue/execute/replay control, the
+  non-finite-confidence case returning a clean 400, lowercase,
+  mixed-case, padded, and exact-case life-safety values all denied, and
+  the ledger valid and anchored — 9 of 9 checks held. The full battery
+  rerun and joint supervised concurrency soak remain outstanding.
 
 This record establishes reciprocal black-box behavior of the exact
 objects tested. It does not establish production readiness, canonical
@@ -203,19 +220,25 @@ The full classic branch-protection metadata is not completely readable through t
 
 Canonical Pulpo proves the bounded digital-commerce foundation: exact purchase-object binding, budget ceilings, reservation/reconciliation semantics, one-use authority, and separation of provider execution claims from independent consequence evidence.
 
-A material canonical defect remains:
+The earlier auto-renew omission has been corrected in canonical code. PR #312
+(commit `dc563a089dbd9e67d6d81518d21c36916a62ec7b`, an ancestor of the
+current pin) bound provider-side auto-renew enablement into the exact
+request/order identity:
 
-provider-side auto-renew enablement is not represented in the exact canonical domain request/order identity.
+- the request and order carry a strict boolean `auto_renew_enabled` value,
+  and that value is carried from the assessed request into the order and
+  bound by their hashes;
+- the Name.com V0 path supports only the disabled state and rejects an
+  enabled order before provider entry;
+- delivery acceptance requires an exact independent auto-renew observation;
+  a missing observation or a mismatch fails acceptance.
 
-Current canonical objects constrain renewal price, but provider defaults could still create future renewal capability or charges not explicitly represented by the authorized object.
-
-Invariant:
+The invariant remains:
 
 `CANONICAL_ACTION_OMISSION != AUTHORIZED_PROVIDER_DEFAULT`
 
-PR #143 contains useful historical corrective work for this defect, but it is based on older canonical state, spans twelve files, and must not be admitted as-is.
-
-The next commerce correction should port the smallest authority-correct auto-renew delta onto current `main`, then earn fresh exact-head proof, review, and repository admission.
+PR #143 is historical corrective work that preceded the admitted correction;
+it is not the current-main admission object.
 
 No real registrar purchase or independently observed registrar consequence is established.
 
@@ -252,7 +275,7 @@ PR #159 is stale documentation reconciliation against pre-#161 canonical state a
 
 PR #160 remains a preserved Draft negative/composition proof showing the Issue #153 gap before the canonical #161 implementation. It is evidence history, not a production object to merge.
 
-PR #143 remains historical/current-reference evidence for the auto-renew correction, not a current-main admission candidate.
+PR #143 remains historical precursor evidence for the auto-renew correction admitted through PR #312, not the current-main admission object.
 
 PR #131 remains a Draft distribution candidate. Its capability-stripping concepts may inform future distribution work, but it is not canonical distribution or production deployment.
 
@@ -280,7 +303,7 @@ Canonical Pulpo currently has:
 
 ### Recorded
 
-Recorded evidence includes the exact Issue #90 HSM signer acceptance record, Keel experiments, historical Stage-C structural work, and held/stale corrective branches. As of 2026-11-03 it also includes SHAETHON AI's Pulpo-Preview test results (Direction 1 of the reciprocal review; harness and raw logs in transfer) and the ceremony-custody candidate rerun of 2026-10-24 (33 targeted tests passing at a pinned non-canonical revision, artifacts retained off-repository).
+Recorded evidence includes the exact Issue #90 HSM signer acceptance record, Keel experiments, historical Stage-C structural work, and held/stale corrective branches. As of 2026-11-03 it also includes SHAETHON AI's Pulpo-Preview test results (Direction 1 of the reciprocal review; the sanitized harness package is now in Iron & Ember custody and its enclosed reproduction-run counts and probe outcomes were re-derived from the raw files) and the ceremony-custody candidate rerun of 2026-10-24 (33 targeted tests passing at a pinned non-canonical revision, artifacts retained off-repository).
 
 These are not automatically canonical or production proof.
 
@@ -296,12 +319,10 @@ A compact framing remains:
 
 The next technical sequence is:
 
-1. restage the smallest auto-renew governed-effect correction against current canonical `main`;
-2. establish fresh exact-head software proof and legitimate repository admission for that correction;
-3. complete independent authority/provider qualification necessary for a genuine external consequence ceremony;
-4. freeze the exact external execution/evidence object;
-5. execute one bounded, safe external consequence through the canonical authority -> permit -> execution -> evidence -> reconciliation -> memory path;
-6. preserve the evidence bundle and obtain cold reproduction outside the build loop.
+1. complete independent authority/provider qualification necessary for a genuine external consequence ceremony;
+2. freeze the exact external execution/evidence object;
+3. execute one bounded, safe external consequence through the canonical authority -> permit -> execution -> evidence -> reconciliation -> memory path;
+4. preserve the evidence bundle and obtain cold reproduction outside the build loop.
 
 ### Unknown
 
