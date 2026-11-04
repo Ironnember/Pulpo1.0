@@ -344,3 +344,116 @@ Michael Dill, Founder, SHAETHON AI
 Sign-off: given by email, 2026-11-03 — "The record reads true to me —
 both directions, the limits, the anomaly, the flags, and the Preview
 scoping on my side's evidence. That's my sign-off; put it in as-is."
+
+---
+
+## Addendum (2026-11-03, evening) — Anomaly reconciliation: closed, harness-side
+
+The disclosed anomaly above was reconciled by SHAETHON AI from the ledger
+side and the reconciliation was checked by Iron & Ember against its own
+retained files. The original disclosure stands unchanged as the record of
+what was filed; this addendum records what the reconciliation established.
+
+**Verdict (SHAETHON AI, by email 2026-11-03):** the gate executed that
+permit exactly once. The anomaly resolves to the test-harness and
+write-up layer on the Iron & Ember side. It is closed — not a break, and
+not a gate defect.
+
+**Verified** (Iron & Ember, against its own retained artifacts):
+
+- The battery-1 B1 entry in `battery_log.json` (2026-11-03T20:02:43Z)
+  records twenty responses: nineteen HTTP 403 and one null, with a stored
+  result of "executed count = 0". No retained log records a count of 2.
+- The battery-1 verdict rule (`run_battery.py`) counted a win only on
+  HTTP 200 with `executed: true` and marked the race BROKEN whenever the
+  count was not exactly 1 — so a count of 0 produced the BROKEN verdict.
+- The rerun B1 entry (`battery_log_rerun.json`, full capture) records
+  nineteen 403s and one 200, `executed=1`, verdict HELD; the rerun script
+  (`run_battery2.py`) classifies a zero count as `SAFE-SIDE-ANOMALY`.
+- The "2 responses counted as executed" figure and the ~20:10 UTC window
+  appear only in the return report's and the anomaly packet's prose;
+  the prose conflated the battery-1 race (20:02:43 UTC, window
+  265 → 347) with the rerun window (347 → 420).
+- Five full-capture reproduction rounds each produced exactly 1
+  execution (100 spends), as originally recorded.
+
+**Inferred:** nineteen `PermitReplayed` refusals are reachable only after
+the permit's nonce has been claimed once, inside the gate; the race's
+one null response is consistent with the executed 200 having been lost
+in transport (connection resets were observed and recorded during that
+session), so the counter saw zero wins for a race the gate held. This
+reading is the only one consistent with all retained responses.
+
+**Recorded** (SHAETHON AI's reconciliation, from its email): rebuilding
+the gate's accounting rules from its source and running Iron & Ember's
+recorded checkpoints against them matched exactly in four windows
+(rerun, race reproduction, franken-permit, flag probes — records and
+anchor counts both). Stated limits from the same email: the pilot
+surface does not enumerate ledger records one by one, so the
+reconciliation rests on the gate code path, the logged data, and the
+counts; the battery-1 window also carries a two-record residual in
+baseline bookkeeping around the pre-battery control, which touches no
+test segment (the B1 segment is 22 records under any reading).
+
+**Consequence:** the anomaly line in the Direction 2 record is amended
+from "unreproduced anomaly (open)" to **closed — harness-side counting
+and write-up error**. The joint supervised concurrency soak remains
+agreed as part of the patched-gate phase; it is no longer load-bearing
+for this anomaly. A full SHAETHON memo with the window-by-window table
+exists and has been requested for the record.
+
+**Change record (this addendum):** documentation only; no authority
+gained, narrowed, or exercised; no canonical state mutation beyond this
+file; no legacy behavior source used; no temporal replay applies to an
+external-evidence addendum.
+
+**Sign-off for this addendum:**
+
+- Austin Irvan, Founder, Iron & Ember LLC — given in session, 2026-11-03.
+- Michael Dill, Founder, SHAETHON AI — given by email, 2026-11-03:
+  "The addendum reads true to me — the verdict, what each side
+  verified, the Inferred grade on the transport reading, and the
+  limits as stated. That is my sign-off; record it in the document
+  and merge PR #339 as-is." His full reconciliation memo
+  (window-by-window table) was delivered with the same email and is
+  held in Iron & Ember custody alongside the battery files
+  (SHA-256 ddd77a10e5b39988ad138edfffc4512ce51911bd254a987c4d2ebee955b20ef3).
+
+**Adversarial transformation review of this closure** (required by
+AGENTS.md for consequential near-misses; the review at lines 280–297
+assessed keeping the anomaly open and cannot cover the opposite
+decision; analytical only, grants no authority):
+
+- **Flip** (swap tester and tested): had SHAETHON reported a count of
+  2 against Pulpo in prose while its own logs showed 0, Iron & Ember
+  would require exactly this reconciliation before accepting closure —
+  the standard applied here is the one we would demand.
+- **Reverse** (read the evidence backward): start from the ledger
+  counts and predict the harness logs — four windows match exactly,
+  and the B1 segment is 22 records under any reading of the residual;
+  the reconstruction predicts the retained data rather than merely
+  accommodating it.
+- **Invert** (assume the opposite verdict): a genuine double execution
+  would require a second execution record and anchor movement the
+  ledger does not show, plus a second 200 in logs that hold none.
+  The inversion needs evidence that does not exist in either side's
+  custody.
+- **Inside-Out** (each side audits the other): Iron & Ember verified
+  SHAETHON's claims about Iron & Ember's files from the files
+  themselves; SHAETHON derived its expectations from its gate source,
+  not from Iron & Ember's summary. Neither side graded its own paper.
+- **Darken** (worst case): if a double execution someday reproduces
+  under the supervised soak, this closure is falsified by design — the
+  original disclosure text is preserved above, unedited, precisely so
+  a future break can be recorded against it.
+- **Lighten** (best case): the gate's replay refusal being reachable
+  only after a single claim is a design property worth the record;
+  the closure documents it without upgrading it to a proof about any
+  other permit or window.
+- **Amplify** (scale the claim): nothing here generalizes beyond the
+  one permit, one race, one window. The closure claims exactly that
+  event and no class of events.
+- **Negate** (remove each support in turn): remove the ledger
+  reconstruction and the retained logs still show a count of 0 with a
+  clean rerun; remove the logs and the ledger counts still admit only
+  one execution. The verdict does not rest on a single leg.
