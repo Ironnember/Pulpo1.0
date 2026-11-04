@@ -334,6 +334,79 @@ class CeremonyEvidenceTests(unittest.TestCase):
             ).reason,
         )
 
+    def test_ceremony_expiry_is_rechecked_after_signature_verification(self):
+        envelope = self.envelope(ttl_ns=5_000)
+        evidence = self.evidence(envelope, ttl_ns=1_000)
+        kernel, decision = self._evaluate_with_clock_shift(
+            envelope, evidence, NOW + 1_001
+        )
+        self.assertEqual(
+            ("deny", "ceremony_expired_during_verification"),
+            (decision.outcome, decision.reason),
+        )
+        self.assertIsNone(decision.permit)
+        self.assertFalse(
+            any(record["event"] == "approval_verified" for record in kernel.audit)
+        )
+
+    def test_approval_expiry_is_rechecked_after_ceremony_verification(self):
+        envelope = self.envelope(ttl_ns=1_200)
+        evidence = self.evidence(envelope, ttl_ns=2_000)
+        _, decision = self._evaluate_with_clock_shift(envelope, evidence, NOW + 1_201)
+        self.assertEqual(
+            ("deny", "approval_expired_during_ceremony_verification"),
+            (decision.outcome, decision.reason),
+        )
+        self.assertIsNone(decision.permit)
+
+    def test_ceremony_clock_rollback_during_verification_denies(self):
+        envelope = self.envelope(ttl_ns=5_000)
+        evidence = self.evidence(envelope, ttl_ns=1_000)
+        _, decision = self._evaluate_with_clock_shift(envelope, evidence, NOW - 1)
+        self.assertEqual(
+            ("deny", "ceremony_clock_rollback"), (decision.outcome, decision.reason)
+        )
+        self.assertIsNone(decision.permit)
+
+    def test_ceremony_completion_time_is_the_admission_time(self):
+        envelope = self.envelope(ttl_ns=5_000)
+        evidence = self.evidence(envelope, ttl_ns=1_000)
+        kernel, decision = self._evaluate_with_clock_shift(
+            envelope, evidence, NOW + 100
+        )
+        self.assertEqual(
+            ("allow", "verified_approval"), (decision.outcome, decision.reason)
+        )
+        verified = [
+            record["payload"]
+            for record in kernel.audit
+            if record["event"] == "approval_verified"
+        ]
+        self.assertEqual(NOW + 100, verified[0]["verified_at_ns"])
+
+    def _evaluate_with_clock_shift(self, envelope, evidence, shifted_now_ns):
+        clock_value = [NOW]
+        ceremony = HmacCeremonyTestVerifier()
+        genuine_verify = ceremony.verify
+
+        def verify_after_clock_shift(payload, signature):
+            valid = genuine_verify(payload, signature)
+            clock_value[0] = shifted_now_ns
+            return valid
+
+        ceremony.verify = verify_after_clock_shift
+        kernel = GovernanceKernel(
+            self.policy,
+            secret=b"unit-test-secret",
+            approval_verifier=self.verifier,
+            clock=lambda: clock_value[0],
+            ceremony_verifier=ceremony,
+        )
+        decision = kernel.evaluate_with_approval(
+            self.intent, envelope, ceremony_evidence=evidence
+        )
+        return kernel, decision
+
     def test_evidence_from_other_ceremony_trust_denies(self):
         envelope = self.envelope()
         cases = (
@@ -401,6 +474,22 @@ class CeremonyEvidenceTests(unittest.TestCase):
                 approval_verifier=self.verifier,
                 clock=lambda: NOW,
                 ceremony_verifier=mismatched,
+            )
+
+    def test_policy_rejects_ceremony_trust_reusing_approval_key(self):
+        # Distinct trust identities are not key separation if both anchors
+        # pin the approval key's fingerprint: a wrapper around that key could
+        # otherwise sign both the envelope and the ceremony evidence.
+        reused_key = HmacCeremonyTestVerifier()
+        reused_key.key_fingerprint = self.verifier.key_fingerprint
+        with self.assertRaisesRegex(ValueError, "ceremony trust key must be distinct"):
+            Policy(
+                frozenset({"read", "push"}),
+                100,
+                frozenset({"push"}),
+                authority_trust=trust_for(self.verifier),
+                ceremony_actions=frozenset({"push"}),
+                ceremony_trust=ceremony_trust_for(reused_key),
             )
 
     def test_non_opted_in_behavior_is_exactly_unchanged(self):
