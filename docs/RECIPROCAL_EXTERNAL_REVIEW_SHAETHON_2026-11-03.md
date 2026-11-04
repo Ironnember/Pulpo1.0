@@ -418,3 +418,42 @@ external-evidence addendum.
   (window-by-window table) was delivered with the same email and is
   held in Iron & Ember custody alongside the battery files
   (SHA-256 ddd77a10e5b39988ad138edfffc4512ce51911bd254a987c4d2ebee955b20ef3).
+
+**Adversarial transformation review of this closure** (required by
+AGENTS.md for consequential near-misses; the review at lines 280–297
+assessed keeping the anomaly open and cannot cover the opposite
+decision; analytical only, grants no authority):
+
+- **Flip** (swap tester and tested): had SHAETHON reported a count of
+  2 against Pulpo in prose while its own logs showed 0, Iron & Ember
+  would require exactly this reconciliation before accepting closure —
+  the standard applied here is the one we would demand.
+- **Reverse** (read the evidence backward): start from the ledger
+  counts and predict the harness logs — four windows match exactly,
+  and the B1 segment is 22 records under any reading of the residual;
+  the reconstruction predicts the retained data rather than merely
+  accommodating it.
+- **Invert** (assume the opposite verdict): a genuine double execution
+  would require a second execution record and anchor movement the
+  ledger does not show, plus a second 200 in logs that hold none.
+  The inversion needs evidence that does not exist in either side's
+  custody.
+- **Inside-Out** (each side audits the other): Iron & Ember verified
+  SHAETHON's claims about Iron & Ember's files from the files
+  themselves; SHAETHON derived its expectations from its gate source,
+  not from Iron & Ember's summary. Neither side graded its own paper.
+- **Darken** (worst case): if a double execution someday reproduces
+  under the supervised soak, this closure is falsified by design — the
+  original disclosure text is preserved above, unedited, precisely so
+  a future break can be recorded against it.
+- **Lighten** (best case): the gate's replay refusal being reachable
+  only after a single claim is a design property worth the record;
+  the closure documents it without upgrading it to a proof about any
+  other permit or window.
+- **Amplify** (scale the claim): nothing here generalizes beyond the
+  one permit, one race, one window. The closure claims exactly that
+  event and no class of events.
+- **Negate** (remove each support in turn): remove the ledger
+  reconstruction and the retained logs still show a count of 0 with a
+  clean rerun; remove the logs and the ledger counts still admit only
+  one execution. The verdict does not rest on a single leg.
