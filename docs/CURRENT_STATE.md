@@ -8,14 +8,18 @@ Status date: 2026-11-03
 
 At this reconciliation, protected `main` is:
 
-`f9dd6bd4deeb89538d26bec98a9b01fa10476483`
+`6d543980a3087f2ff9097fd483c7058e2a135e7d`
 
-This commit canonically admits PR #336, the dual-signed reciprocal external
-review record with SHAETHON AI (documentation/evidence only; it changes no
-kernel behavior), on top of the kernel head
-`6b3caacbc28a7b40ebf5ea6295bc8058804de6e3`. The full test suite at that
-kernel head was re-run in a clean detached worktree on 2026-10-24: 422
-tests OK, 4 skipped.
+This commit canonically admits PR #338, kernel-checked human-ceremony
+evidence for opted-in actions (see the ceremony section below), on top of
+PR #337 (the 2026-11-03 refresh of this document, `c2bf2b8`) and
+PR #336, the dual-signed reciprocal external review record with
+SHAETHON AI (documentation/evidence only), on top of the prior kernel
+head `6b3caacbc28a7b40ebf5ea6295bc8058804de6e3`. The full test suite at
+the current main head was run in a clean detached worktree on
+2026-11-03: 451 tests OK, 1 skipped (the run environment had the
+`cryptography` package installed; ceremony key-derivation tests skip
+without it).
 
 The 2026-09-08 reconciliation this document previously carried pinned
 `b44dcd40a1ad2bd5413756bd413807f54f9283da` (PR #200). Sections below are
@@ -81,19 +85,42 @@ Each approval envelope binds approval identity, authority, verifier, key, deploy
 
 This is verified canonical software behavior for the approval contract. It does not prove that the complete independent `authority.pulpo.ai` service is deployed or acceptance-proven.
 
-**The ceremony gap (Verified, named 2026-11-03).** The approval contract
-binds and verifies a signature. It does not require, and the kernel does
-not check, evidence that a human authority ceremony occurred:
-`VALID_AUTHORITY_SIGNATURE != PROOF_OF_HUMAN_AUTHORITY_CEREMONY`. PR #280
-preserved the proof of this gap; a repair candidate (PR #288, requiring
-independent ceremony proof for opted-in approvals) was closed unmerged,
-and a further candidate revision is Recorded from operator runs on
-2026-10-24 (33 targeted ceremony-evidence and authority/restart tests
-passing in a clean isolated checkout; artifacts retained off-repository).
-A canonical, kernel-checked ceremony-evidence implementation is in
-progress as of this reconciliation. Until it is admitted, ceremony lives
-in operator process around the kernel, and no claim in this document
-should be read as kernel-proven human ceremony.
+**Ceremony evidence (gap named 2026-11-03; kernel-checking closed by
+PR #338, merged 2026-11-03).** The approval contract binds and verifies
+a signature; as named earlier on 2026-11-03 it did not, by itself,
+require evidence that a human authority ceremony occurred
+(`VALID_AUTHORITY_SIGNATURE != PROOF_OF_HUMAN_AUTHORITY_CEREMONY` was
+the gap; PR #280 preserved its proof, and a repair candidate, PR #288,
+was closed unmerged). PR #338 closes the kernel-checking half of that
+gap for actions a policy explicitly opts in via
+`Policy.ceremony_actions`: admission inside `evaluate_with_approval`
+now additionally requires a ceremony attestation signed under a
+ceremony trust pinned separately from the approval authority trust,
+bound to the approval id, envelope hash, intent, policy, principal,
+session, and nonce, verified with expiry and clock-rollback re-checked
+when verification completes, and consumed single-use: in the
+persistent SQLite backend the check-and-record transition runs inside
+the same `BEGIN IMMEDIATE` transaction that issues the permit. The
+in-memory backend records evidence ids without serializing that
+transition, so the single-use guarantee under concurrent callers is
+established for the SQLite backend; the in-memory state store is a
+test and demonstration backend and does not carry the guarantee. Shipped ceremony verifiers derive their key fingerprint
+from the pinned public key (the same derivation as the approval
+adapters), and policy construction rejects a ceremony fingerprint
+equal to the approval fingerprint, so the envelope signer cannot
+self-attest. Policies that do not opt in are unchanged, including
+byte-identical policy hashes.
+
+Scoped limits, stated plainly: this is a technology-neutral contract
+(the kernel parses no WebAuthn or authenticator payloads) and does
+**not** establish a production hardware-backed human ceremony — that
+acceptance test remains outstanding. Authenticator counter
+monotonicity is not verified by the kernel. The authority-client /
+directives path does not yet transport ceremony evidence, so
+ceremony-required actions there fail closed. A custom ceremony
+verifier whose advertised fingerprint misrepresents its effective key
+is trusted control-plane code misrepresenting itself; proved key
+separation holds for the key-derived verifiers the kernel ships.
 
 ### Capability-stripped MCP boundary
 
@@ -177,8 +204,13 @@ signed the record as written.
 - **Direction 2 (Verified from this side).** Iron & Ember tested the
   live Tether pilot gate under its owner's written rules: ~45 cases, no
   reproduced breaks, governance edges behaving as documented. One
-  unreproduced concurrency anomaly is recorded as an open item on both
-  sides. Two of the gate owner's three self-disclosed flags were
+  concurrency anomaly was recorded as an open item on both sides; the
+  gate owner's ledger reconciliation (2026-11-03) resolved it as a
+  harness-side counting and write-up error on the testing side — the
+  gate executed the permit exactly once — and that reconciliation was
+  verified against the testing side's retained files. It is closed,
+  not a break; the amendment addendum is recorded in PR #339, with the
+  gate owner's written sign-off recorded in it on 2026-11-03. Two of the gate owner's three self-disclosed flags were
   independently confirmed from this side; the publishing side's dissent
   on one flag's classification is preserved in the record. The gate
   owner later reported deploying all three fixes and re-running his own
@@ -328,7 +360,7 @@ The next technical sequence is:
 
 Pulpo does not yet establish:
 
-- kernel-checked evidence of a human authority ceremony (the ceremony gap named above; a canonical implementation is in progress);
+- a production hardware-backed human authority ceremony (kernel-checked ceremony evidence for opted-in actions is established by PR #338 — see the ceremony section — but no hardware authenticator ceremony has been acceptance-proven, and the directives path does not yet transport ceremony evidence);
 - independent third-party reproduction of canonical `main` (the reciprocal tester's pass under the reproduction protocol is commissioned and outstanding at this date);
 - real external-provider containment;
 - a real external unauthorized-effect rate;
