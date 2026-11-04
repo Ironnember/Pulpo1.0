@@ -457,3 +457,85 @@ decision; analytical only, grants no authority):
   reconstruction and the retained logs still show a count of 0 with a
   clean rerun; remove the logs and the ledger counts still admit only
   one execution. The verdict does not rest on a single leg.
+
+---
+
+## Addendum 2026-11-04 — canonical pass recorded; evidence packages published
+
+This addendum records two events that postdate the signed record above.
+The original text and the 2026-11-03 anomaly addendum are unedited,
+including the scope sentence in the original body stating that Direction 1
+did not establish independent reproduction of canonical Pulpo at
+`6b3caac`. That sentence was true when written. This addendum records
+what happened next.
+
+### The canonical pass (2026-11-03, reported 22:27 Phoenix)
+
+After the reciprocal batteries above, SHAETHON AI executed the
+commissioned independent reproduction of canonical Pulpo at
+`6b3caacbc28a7b40ebf5ea6295bc8058804de6e3` under Iron & Ember's written
+protocol (`INDEPENDENT_REPRODUCTION.md`), on an independent host, and
+reported the same night:
+
+- Fresh clone, detached checkout; HEAD `6b3caac` and tree
+  `df6310dc0b6eaec50b7870832dd8cb379096f778` verified before and after
+  the run. Iron & Ember independently confirmed that tree hash matches
+  its own tree at `6b3caac`.
+- Suite: 422 tests ran, OK, 4 skipped — the 3 Ed25519 authority tests
+  skipped in the bare environment were run separately with
+  `cryptography==50.0.1` per protocol, 3/3 OK; the macOS Seatbelt test
+  reported as untested on Linux, not passed.
+- Gladiator: PASS_WITH_BOUNDARIES — 138 test executions, 10,600
+  scheduled mixed operations, no failures; `source_unchanged` and
+  `clean_tree_after` both true.
+- Incident proof: PASS, 14/14 checks, remediation count exactly 1.
+- Stated scope (tester's own limits): the service and container CI
+  suites were not run; no separate SHAETHON adversarial battery was
+  layered on canonical main, so the 31-probe battery remains a
+  Direction 1 (Preview) artifact. The tester offered a separate
+  probes-on-main pass as its own artifact; that offer stands open.
+
+**Claim classification:** the canonical pass is **Recorded** — an
+identified competitor's attestation, executed under a written protocol,
+with the tree-hash cross-check above performed by Iron & Ember itself.
+
+### The evidence packages (received and published 2026-11-04)
+
+On 2026-11-03 the tester offered his full evidence package "as-is,"
+to publish alongside this review. Iron & Ember accepted on 2026-11-04.
+The package arrived the same morning in two parts, sender-stated
+SHA-256 hashes recomputed and matched by Iron & Ember on receipt:
+
+- `pulpo-evidence-package-2026-11-03.zip` —
+  `cd420b6eef8f310d905bdeb2a58a8851eff2e289bea8a8e65112783ff15f0229`
+  Bit-identical to the package taken into custody on 2026-11-03.
+- `canonical-pass-evidence-2026-11-03.zip` —
+  `24c1bacce85ac5131ebcff92a9db380896f74ba5b7433da760b0336c32107e14`
+  The canonical pass's memo, raw logs, tournament results, and incident
+  database.
+
+Both are published unedited in `docs/evidence/shaethon-2026-11-03/`
+with a custody and verification index. Iron & Ember's log-level checks
+on receipt are recorded there. Publication establishes custody,
+integrity, and internal consistency of the artifacts; it does not
+convert the tester's attestation into Iron & Ember's own observation,
+and it changes no claim class in this record except this one:
+
+- The canonical pass's standing moves from *reported by email* to
+  *reported with raw artifacts in public custody, hash-verified against
+  the sender's stated hashes, and spot-checked against the reported
+  results*. It remains **Recorded**, for the reason the original record
+  gives for Direction 1: it is a competitor's independent attestation,
+  which is what makes it worth having — and worth grading as exactly
+  what it is.
+
+**Change record for this addendum:** invariant — a desirable observed
+state is not proof that the transition producing it was legitimate; this
+addendum therefore records provenance (offer, acceptance, receipt,
+hashes) before results. Authority change: none. Canonical state
+mutations: none (docs and evidence files only). Evidence: the two
+packages in `docs/evidence/shaethon-2026-11-03/` and the tester's
+2026-11-03 and 2026-11-04 emails. Boundary the evidence does not cross:
+Iron & Ember did not witness either run; the supervised concurrency
+soak remains outstanding and is the named falsifier for the anomaly
+closure above.
