@@ -539,3 +539,19 @@ packages in `docs/evidence/shaethon-2026-11-03/` and the tester's
 Iron & Ember did not witness either run; the supervised concurrency
 soak remains outstanding and is the named falsifier for the anomaly
 closure above.
+
+**Counterparty sign-off on this addendum** — Michael Dill, by email,
+2026-11-04: "Read PR #341 in full. Sign-off: approved as written. The
+canonical pass is recorded accurately — results, scope limits, and the
+grading. Recorded is the right class: you witnessed the hashes, not
+the runs, and the addendum says exactly that. The soak stays the open
+item between us, as written. Record the sign-off and merge when
+ready."
+
+**Review completion note (2026-11-04):** in response to a P2 review
+finding that the evidence set did not include the protocol the
+canonical pass ran under, `INDEPENDENT_REPRODUCTION.md` was added to
+`docs/evidence/shaethon-2026-11-03/` unchanged (SHA-256
+`78980f07b075e13853ee1c6c725ecc82629f768008844a1db71d566485675bbd`),
+and the index gained an executor-naming provenance note. Neither
+original ZIP was modified.

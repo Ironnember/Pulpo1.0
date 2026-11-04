@@ -40,6 +40,28 @@ independently recomputed by Iron & Ember on receipt; both agree.
    proof's SQLite state file — the raw artifacts of SHAETHON's canonical
    reproduction pass against Pulpo at `6b3caac` on 2026-11-03.
 
+## The protocol
+
+`INDEPENDENT_REPRODUCTION.md` in this directory is the exact protocol
+the canonical pass ran under, published unchanged at review request so
+readers can audit the commands, acceptance criteria, and boundaries
+themselves. SHA-256:
+`78980f07b075e13853ee1c6c725ecc82629f768008844a1db71d566485675bbd`.
+The file was authored by Iron & Ember and delivered to the tester
+before the run; its internal status notes reflect the time it was
+prepared, not the outcome of the pass it specifies.
+
+## Executor naming in the canonical memo
+
+The canonical package's results memo states the pass was "Executed by
+Geas (SHAETHON AI)" and references direction from "Seth." Michael Dill
+is the correspondent who delivered the package and the signatory of
+the review. The respective roles of the named executor and the
+signatory inside SHAETHON's operation are not documented beyond the
+memo's own lines, and this record attributes the pass to SHAETHON AI
+as an organization. No claim is made here that a particular human
+personally executed each step.
+
 ## Verification performed by Iron & Ember on receipt (2026-11-04)
 
 - Both SHA-256 hashes recomputed and matched to the sender's stated
