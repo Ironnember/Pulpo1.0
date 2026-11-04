@@ -410,5 +410,11 @@ external-evidence addendum.
 **Sign-off for this addendum:**
 
 - Austin Irvan, Founder, Iron & Ember LLC — given in session, 2026-11-03.
-- Michael Dill, Founder, SHAETHON AI — requested by email, 2026-11-03;
-  pending at the time this addendum was opened for review.
+- Michael Dill, Founder, SHAETHON AI — given by email, 2026-11-03:
+  "The addendum reads true to me — the verdict, what each side
+  verified, the Inferred grade on the transport reading, and the
+  limits as stated. That is my sign-off; record it in the document
+  and merge PR #339 as-is." His full reconciliation memo
+  (window-by-window table) was delivered with the same email and is
+  held in Iron & Ember custody alongside the battery files
+  (SHA-256 ddd77a10e5b39988ad138edfffc4512ce51911bd254a987c4d2ebee955b20ef3).
