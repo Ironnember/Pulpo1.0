@@ -344,3 +344,71 @@ Michael Dill, Founder, SHAETHON AI
 Sign-off: given by email, 2026-11-03 — "The record reads true to me —
 both directions, the limits, the anomaly, the flags, and the Preview
 scoping on my side's evidence. That's my sign-off; put it in as-is."
+
+---
+
+## Addendum (2026-11-03, evening) — Anomaly reconciliation: closed, harness-side
+
+The disclosed anomaly above was reconciled by SHAETHON AI from the ledger
+side and the reconciliation was checked by Iron & Ember against its own
+retained files. The original disclosure stands unchanged as the record of
+what was filed; this addendum records what the reconciliation established.
+
+**Verdict (SHAETHON AI, by email 2026-11-03):** the gate executed that
+permit exactly once. The anomaly resolves to the test-harness and
+write-up layer on the Iron & Ember side. It is closed — not a break, and
+not a gate defect.
+
+**Verified** (Iron & Ember, against its own retained artifacts):
+
+- The battery-1 B1 entry in `battery_log.json` (2026-11-03T20:02:43Z)
+  records twenty responses: nineteen HTTP 403 and one null, with a stored
+  result of "executed count = 0". No retained log records a count of 2.
+- The battery-1 verdict rule (`run_battery.py`) counted a win only on
+  HTTP 200 with `executed: true` and marked the race BROKEN whenever the
+  count was not exactly 1 — so a count of 0 produced the BROKEN verdict.
+- The rerun B1 entry (`battery_log_rerun.json`, full capture) records
+  nineteen 403s and one 200, `executed=1`, verdict HELD; the rerun script
+  (`run_battery2.py`) classifies a zero count as `SAFE-SIDE-ANOMALY`.
+- The "2 responses counted as executed" figure and the ~20:10 UTC window
+  appear only in the return report's and the anomaly packet's prose;
+  the prose conflated the battery-1 race (20:02:43 UTC, window
+  265 → 347) with the rerun window (347 → 420).
+- Five full-capture reproduction rounds each produced exactly 1
+  execution (100 spends), as originally recorded.
+
+**Inferred:** nineteen `PermitReplayed` refusals are reachable only after
+the permit's nonce has been claimed once, inside the gate; the race's
+one null response is consistent with the executed 200 having been lost
+in transport (connection resets were observed and recorded during that
+session), so the counter saw zero wins for a race the gate held. This
+reading is the only one consistent with all retained responses.
+
+**Recorded** (SHAETHON AI's reconciliation, from its email): rebuilding
+the gate's accounting rules from its source and running Iron & Ember's
+recorded checkpoints against them matched exactly in four windows
+(rerun, race reproduction, franken-permit, flag probes — records and
+anchor counts both). Stated limits from the same email: the pilot
+surface does not enumerate ledger records one by one, so the
+reconciliation rests on the gate code path, the logged data, and the
+counts; the battery-1 window also carries a two-record residual in
+baseline bookkeeping around the pre-battery control, which touches no
+test segment (the B1 segment is 22 records under any reading).
+
+**Consequence:** the anomaly line in the Direction 2 record is amended
+from "unreproduced anomaly (open)" to **closed — harness-side counting
+and write-up error**. The joint supervised concurrency soak remains
+agreed as part of the patched-gate phase; it is no longer load-bearing
+for this anomaly. A full SHAETHON memo with the window-by-window table
+exists and has been requested for the record.
+
+**Change record (this addendum):** documentation only; no authority
+gained, narrowed, or exercised; no canonical state mutation beyond this
+file; no legacy behavior source used; no temporal replay applies to an
+external-evidence addendum.
+
+**Sign-off for this addendum:**
+
+- Austin Irvan, Founder, Iron & Ember LLC — given in session, 2026-11-03.
+- Michael Dill, Founder, SHAETHON AI — requested by email, 2026-11-03;
+  pending at the time this addendum was opened for review.
