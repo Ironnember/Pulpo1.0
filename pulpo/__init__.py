@@ -8,6 +8,13 @@ from .authority import (
     P256ApprovalVerifier,
 )
 from .authority_client import AuthorityApprovalRequest, AuthorityClient, AuthorityPoll
+from .ceremony import (
+    CeremonyEvidence,
+    CeremonyTrust,
+    CeremonyVerifier,
+    Ed25519CeremonyVerifier,
+    P256CeremonyVerifier,
+)
 from .commerce import SQLiteBudgetAccount
 from .kernel import (
     AgentGrant,
@@ -53,6 +60,10 @@ __all__ = [
     "EvidenceSnapshot",
     "GovernanceKernel",
     "GovernedTargetReconciliation",
+    "CeremonyEvidence",
+    "CeremonyTrust",
+    "CeremonyVerifier",
+    "Ed25519CeremonyVerifier",
     "InMemoryKernelState",
     "Intent",
     "KernelState",
@@ -60,6 +71,7 @@ __all__ = [
     "NameComCoreAdapter",
     "OrchestrationError",
     "P256ApprovalVerifier",
+    "P256CeremonyVerifier",
     "Policy",
     "PulpoOrchestrator",
     "SQLiteBudgetAccount",
