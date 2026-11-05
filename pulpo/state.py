@@ -94,18 +94,25 @@ class InMemoryKernelState:
         return None
 
     def issue_permit(self, permit: str, intent_hash: str, decision_reason: str, timestamp_ns: int, approval: ApprovalUse | None = None) -> str | None:
-        if approval is not None:
-            replay = self.approval_replay_reason(approval.approval_id, approval.nonce)
-            if replay: return replay
-            if approval.ceremony_evidence_id is not None:
-                ceremony_replay = self.ceremony_replay_reason(approval.ceremony_evidence_id)
-                if ceremony_replay: return ceremony_replay
-                self._ceremony_evidence_ids.add(approval.ceremony_evidence_id)
-            self._approval_ids.add(approval.approval_id); self._approval_nonces.add(approval.nonce)
-            self.append("approval_verified", approval.audit_payload, timestamp_ns)
-        self._issued[permit] = intent_hash
-        self.append("decision", {"outcome": "allow", "reason": decision_reason, "intent_hash": intent_hash}, timestamp_ns)
-        return None
+        # Serialize the whole check-and-record transition under the audit
+        # lock (an RLock; append() re-enters it). The SQLite backend gets
+        # the same atomicity from its BEGIN IMMEDIATE transaction: without
+        # it, two concurrent issuances can both observe an approval or a
+        # ceremony evidence id as unconsumed before either records it,
+        # voiding single-use. Regression: tests/test_inmemory_ceremony_concurrency.py.
+        with self._audit_lock:
+            if approval is not None:
+                replay = self.approval_replay_reason(approval.approval_id, approval.nonce)
+                if replay: return replay
+                if approval.ceremony_evidence_id is not None:
+                    ceremony_replay = self.ceremony_replay_reason(approval.ceremony_evidence_id)
+                    if ceremony_replay: return ceremony_replay
+                    self._ceremony_evidence_ids.add(approval.ceremony_evidence_id)
+                self._approval_ids.add(approval.approval_id); self._approval_nonces.add(approval.nonce)
+                self.append("approval_verified", approval.audit_payload, timestamp_ns)
+            self._issued[permit] = intent_hash
+            self.append("decision", {"outcome": "allow", "reason": decision_reason, "intent_hash": intent_hash}, timestamp_ns)
+            return None
 
     def bind_permit_to_directive(self, permit: str, intent_hash: str, binding: DirectivePermitBinding, timestamp_ns: int) -> None:
         if self._issued.get(permit) != intent_hash or permit in self._spent: raise ValueError("permit unavailable for directive binding")
