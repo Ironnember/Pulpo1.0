@@ -5,6 +5,8 @@ on:
     paths:
       - ".github/workflows/synthetic-incident-response-proof.yml"
       - "proofs/incident-response/**"
+      - "proofs/agent-task-injection/**"
+      - "tests/test_agent_task_injection.py"
       - "tests/test_synthetic_incident_response.py"
       - "docs/incident-response/**"
   workflow_dispatch:
@@ -52,5 +54,47 @@ jobs:
         with:
           name: pulpo-synthetic-incident-response
           path: ${{ runner.temp }}/pulpo-synthetic-incident-response/**
+          if-no-files-found: error
+          retention-days: 14
+
+  macos-agent-task-injection:
+    name: bounded macOS task-injection custody proof
+    runs-on: macos-latest
+    timeout-minutes: 10
+    env:
+      PYTHONDONTWRITEBYTECODE: "1"
+      EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Require test OS sandbox (no skip or fallback)
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SOURCE_SHA"
+          test "$(uname -s)" = "Darwin"
+          test -x /usr/bin/sandbox-exec
+
+      - name: Run isolated task-injection fixture and related regressions
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/pulpo-agent-task-injection"
+          python3.11 -B proofs/agent-task-injection/synthetic_task_injection_proof.py --output "$evidence"
+          python3.11 -W error -m unittest tests.test_agent_task_injection tests.test_synthetic_incident_response -v
+          test -z "$(git status --short)"
+
+      - name: Preserve machine-readable task-injection proof
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: pulpo-macos-hostile-task-injection
+          path: ${{ runner.temp }}/pulpo-agent-task-injection/result.json
           if-no-files-found: error
           retention-days: 14
