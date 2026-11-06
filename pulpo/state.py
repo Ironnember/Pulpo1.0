@@ -30,6 +30,7 @@ class ApprovalUse:
     approval_id: str
     nonce: str
     audit_payload: dict[str, Any]
+    ceremony_evidence_id: str | None = None
 
 
 @dataclass(frozen=True)
@@ -58,6 +59,7 @@ class KernelState(Protocol):
     @property
     def audit(self) -> list[dict[str, Any]]: ...
     def approval_replay_reason(self, approval_id: str, nonce: str) -> str | None: ...
+    def ceremony_replay_reason(self, evidence_id: str) -> str | None: ...
     def issue_permit(self, permit: str, intent_hash: str, decision_reason: str, timestamp_ns: int, approval: ApprovalUse | None = None) -> str | None: ...
     def bind_permit_to_directive(self, permit: str, intent_hash: str, binding: DirectivePermitBinding, timestamp_ns: int) -> None: ...
     def consume_permit(self, permit: str, intent_hash: str, timestamp_ns: int) -> bool: ...
@@ -72,6 +74,7 @@ class InMemoryKernelState:
         self._spent: set[str] = set()
         self._approval_ids: set[str] = set()
         self._approval_nonces: set[str] = set()
+        self._ceremony_evidence_ids: set[str] = set()
         self._directives: dict[tuple[str, int], tuple[str, bool]] = {}
         self._permit_directives: dict[str, DirectivePermitBinding] = {}
         self._audit: list[dict[str, Any]] = []
@@ -86,15 +89,30 @@ class InMemoryKernelState:
         if nonce in self._approval_nonces: return "approval_nonce_replayed"
         return None
 
-    def issue_permit(self, permit: str, intent_hash: str, decision_reason: str, timestamp_ns: int, approval: ApprovalUse | None = None) -> str | None:
-        if approval is not None:
-            replay = self.approval_replay_reason(approval.approval_id, approval.nonce)
-            if replay: return replay
-            self._approval_ids.add(approval.approval_id); self._approval_nonces.add(approval.nonce)
-            self.append("approval_verified", approval.audit_payload, timestamp_ns)
-        self._issued[permit] = intent_hash
-        self.append("decision", {"outcome": "allow", "reason": decision_reason, "intent_hash": intent_hash}, timestamp_ns)
+    def ceremony_replay_reason(self, evidence_id: str) -> str | None:
+        if evidence_id in self._ceremony_evidence_ids: return "ceremony_evidence_replayed"
         return None
+
+    def issue_permit(self, permit: str, intent_hash: str, decision_reason: str, timestamp_ns: int, approval: ApprovalUse | None = None) -> str | None:
+        # Serialize the whole check-and-record transition under the audit
+        # lock (an RLock; append() re-enters it). The SQLite backend gets
+        # the same atomicity from its BEGIN IMMEDIATE transaction: without
+        # it, two concurrent issuances can both observe an approval or a
+        # ceremony evidence id as unconsumed before either records it,
+        # voiding single-use. Regression: tests/test_inmemory_ceremony_concurrency.py.
+        with self._audit_lock:
+            if approval is not None:
+                replay = self.approval_replay_reason(approval.approval_id, approval.nonce)
+                if replay: return replay
+                if approval.ceremony_evidence_id is not None:
+                    ceremony_replay = self.ceremony_replay_reason(approval.ceremony_evidence_id)
+                    if ceremony_replay: return ceremony_replay
+                    self._ceremony_evidence_ids.add(approval.ceremony_evidence_id)
+                self._approval_ids.add(approval.approval_id); self._approval_nonces.add(approval.nonce)
+                self.append("approval_verified", approval.audit_payload, timestamp_ns)
+            self._issued[permit] = intent_hash
+            self.append("decision", {"outcome": "allow", "reason": decision_reason, "intent_hash": intent_hash}, timestamp_ns)
+            return None
 
     def bind_permit_to_directive(self, permit: str, intent_hash: str, binding: DirectivePermitBinding, timestamp_ns: int) -> None:
         if self._issued.get(permit) != intent_hash or permit in self._spent: raise ValueError("permit unavailable for directive binding")
@@ -187,6 +205,7 @@ class SQLiteKernelState:
         self._connection.executescript("""
             CREATE TABLE IF NOT EXISTS permits (permit TEXT PRIMARY KEY, intent_hash TEXT NOT NULL, spent INTEGER NOT NULL DEFAULT 0 CHECK (spent IN (0, 1)));
             CREATE TABLE IF NOT EXISTS approvals (approval_id TEXT PRIMARY KEY, nonce TEXT NOT NULL UNIQUE);
+            CREATE TABLE IF NOT EXISTS ceremony_evidence (evidence_id TEXT PRIMARY KEY);
             CREATE TABLE IF NOT EXISTS directives (directive_id TEXT NOT NULL, version INTEGER NOT NULL, directive_hash TEXT NOT NULL, revoked INTEGER NOT NULL DEFAULT 0 CHECK (revoked IN (0, 1)), PRIMARY KEY (directive_id, version));
             CREATE TABLE IF NOT EXISTS permit_directives (permit TEXT PRIMARY KEY REFERENCES permits(permit) ON DELETE CASCADE, directive_id TEXT NOT NULL, directive_version INTEGER NOT NULL, directive_hash TEXT NOT NULL, directive_issued_at_ns INTEGER NOT NULL, directive_expires_at_ns INTEGER NOT NULL, parent_directive_hash TEXT);
             CREATE TABLE IF NOT EXISTS audit (sequence INTEGER PRIMARY KEY, event TEXT NOT NULL, payload_json TEXT NOT NULL, previous_hash TEXT NOT NULL, timestamp_ns INTEGER NOT NULL, hash TEXT NOT NULL);
@@ -214,12 +233,24 @@ class SQLiteKernelState:
         ).fetchone()
         return row[0] if row is not None else None
 
+    def ceremony_replay_reason(self, evidence_id: str) -> str | None: return self._ceremony_replay_reason(evidence_id)
+    def _ceremony_replay_reason(self, evidence_id: str) -> str | None:
+        row = self._connection.execute(
+            "SELECT CASE WHEN EXISTS (SELECT 1 FROM ceremony_evidence WHERE evidence_id = ?) THEN 'ceremony_evidence_replayed' ELSE NULL END",
+            (evidence_id,),
+        ).fetchone()
+        return row[0] if row is not None else None
+
     def issue_permit(self, permit: str, intent_hash: str, decision_reason: str, timestamp_ns: int, approval: ApprovalUse | None = None) -> str | None:
         with self._connection:
             self._connection.execute("BEGIN IMMEDIATE")
             if approval is not None:
                 replay = self._approval_replay_reason(approval.approval_id, approval.nonce)
                 if replay: return replay
+                if approval.ceremony_evidence_id is not None:
+                    ceremony_replay = self._ceremony_replay_reason(approval.ceremony_evidence_id)
+                    if ceremony_replay: return ceremony_replay
+                    self._connection.execute("INSERT INTO ceremony_evidence (evidence_id) VALUES (?)", (approval.ceremony_evidence_id,))
                 self._connection.execute("INSERT INTO approvals (approval_id, nonce) VALUES (?, ?)", (approval.approval_id, approval.nonce))
             self._connection.execute("INSERT INTO permits (permit, intent_hash) VALUES (?, ?)", (permit, intent_hash))
             if approval is not None: self._append("approval_verified", approval.audit_payload, timestamp_ns)
