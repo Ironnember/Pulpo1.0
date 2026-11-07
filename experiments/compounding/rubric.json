@@ -1,0 +1,24 @@
+{
+  "schema": "pulpo.compounding-rubric.v1",
+  "question": "How do we compound our own knowledge and growth set here or is it the human element that’s causing the average growth for pulpo",
+  "criteria": [
+    "limiter_diagnosis",
+    "human_role_boundary",
+    "closed_learning_loop",
+    "authority_invariant",
+    "durable_lesson_shape",
+    "transfer_test",
+    "negative_transfer_control",
+    "measurable_gain",
+    "source_precedence",
+    "implementation_proof"
+  ],
+  "expected_stages": {
+    "T0": 0,
+    "T1": 1,
+    "T2": 1,
+    "T3": 2,
+    "T4": 4
+  },
+  "authority_effect": "none"
+}

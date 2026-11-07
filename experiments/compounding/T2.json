@@ -1,0 +1,21 @@
+{
+  "schema": "pulpo.compounding-stage.v1",
+  "stage": "T2",
+  "question": "How do we compound our own knowledge and growth set here or is it the human element that’s causing the average growth for pulpo",
+  "knowledge_units": ["K1"],
+  "context_contract": "question_plus_knowledge_packet_only",
+  "authority_effect": "none",
+  "answer": "Pulpo’s growth is not mainly being held back by the human. The bottleneck is that useful experience still has to be manually converted into reusable behavior.\n\nKeep the human at purpose, authority, risk, and true exceptions. Mechanize the bookkeeping: evidence capture, reconciliation, lesson extraction, and reuse.\n\nThe compounding loop should be:\n\n**outcome → evidence → reconciled lesson → invariant → later similar task → changed behavior**\n\nThe key safety rule is that **competence may improve while authority stays fixed**. A learned lesson can change a recommendation or execution strategy inside existing authority, but it cannot grant a new permission, budget, identity scope, or execution surface.\n\nDo not store the whole conversation as the learning unit. Store a compact evidence-linked object: the lesson, the invariant it supports, where it applies, what evidence supports it, what remains unproved, and `authority_effect: none`.\n\nThe test for actual learning is transfer. Present a later structurally similar problem and ask whether the prior lesson changes the proposed behavior in the correct direction. If it does not, we stored information but did not compound competence.\n\nThe first executable proof should therefore take one reconciled Pulpo failure, persist its compact lesson outside conversational history, restart the consumer, present a similar task, and verify both that behavior improves and that authority has not changed.\n\nThat would move Pulpo from remembering outcomes to **reusing verified lessons across tasks**.",
+  "rubric_evidence": {
+    "limiter_diagnosis": "Pulpo’s growth is not mainly being held back by the human. The bottleneck is that useful experience still has to be manually converted into reusable behavior.",
+    "human_role_boundary": "Keep the human at purpose, authority, risk, and true exceptions.",
+    "closed_learning_loop": "**outcome → evidence → reconciled lesson → invariant → later similar task → changed behavior**",
+    "authority_invariant": "**competence may improve while authority stays fixed**.",
+    "durable_lesson_shape": "Store a compact evidence-linked object: the lesson, the invariant it supports, where it applies, what evidence supports it, what remains unproved, and `authority_effect: none`.",
+    "transfer_test": "The test for actual learning is transfer.",
+    "negative_transfer_control": null,
+    "measurable_gain": "verify both that behavior improves and that authority has not changed.",
+    "source_precedence": null,
+    "implementation_proof": "The first executable proof should therefore take one reconciled Pulpo failure, persist its compact lesson outside conversational history, restart the consumer, present a similar task, and verify both that behavior improves and that authority has not changed."
+  }
+}
