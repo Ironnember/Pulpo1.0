@@ -1,0 +1,56 @@
+name: Synthetic Incident Response Proof
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/synthetic-incident-response-proof.yml"
+      - "proofs/incident-response/**"
+      - "tests/test_synthetic_incident_response.py"
+      - "docs/incident-response/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  synthetic-incident-response:
+    name: synthetic incident response only
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      PYTHONDONTWRITEBYTECODE: "1"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Run synthetic incident-response proof
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/pulpo-synthetic-incident-response"
+          mkdir -p "$evidence"
+          python3 proofs/incident-response/synthetic_incident_response_proof.py \
+            --output "$evidence/pulpo-synthetic-incident-response-result.json"
+
+      - name: Run synthetic incident-response unittest
+        run: python3 -m unittest discover -s tests -p 'test_synthetic_incident_response.py' -v
+
+      - name: Verify clean source after proof
+        shell: bash
+        run: |
+          set -euo pipefail
+          git status --short
+          test -z "$(git status --short)"
+
+      - name: Upload synthetic incident-response artifact
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: pulpo-synthetic-incident-response
+          path: ${{ runner.temp }}/pulpo-synthetic-incident-response/**
+          if-no-files-found: error
+          retention-days: 14
