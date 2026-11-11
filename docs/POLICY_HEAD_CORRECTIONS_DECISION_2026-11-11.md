@@ -6,6 +6,13 @@ Classification of this record: **Verified** where it cites source inspection and
 test/probe runs executed at the inspection point; **Recorded** where it relies
 on the Atomic Head packet verification record; **Inferred** where marked.
 
+Correction, 2026-11-11 (post-review): section 3's consume-time revalidation
+claim is narrowed to its proven sequential scope, and two in-memory
+concurrency boundaries are added as open items (see sections 3 and "What
+the corrections do not close"). This correction responds to a Codex P1
+review finding on this record, independently reproduced before acceptance.
+The operative gating ruling is unchanged.
+
 ## The question
 
 The v9.1 work produced two corrections against the Preview line's PR #117
@@ -80,17 +87,33 @@ from the packet fail at import against canonical at the inspection point:
 The tests do not fail on canonical; they are **inexpressible** on canonical,
 because the mechanism they discriminate does not exist here.
 
-### 3. Canonical's analogue already revalidates at consequence time — Verified
+### 3. Canonical's analogue revalidates at consequence time — Verified in sequential scope only (corrected 2026-11-11)
 
 Canonical's runtime authority-transition mechanism is the **directive**
 system (versioned, parent-chained, revocable). Probes executed at the
 inspection point, both backends:
 
 - A permit bound to a directive consumes while the directive is active and
-  is **denied after revocation** (`consume_permit` re-checks directive
-  status, parent status, and time window live at consume). The
+  is **denied when revocation has completed before consumption begins**
+  (`consume_permit` re-checks directive status, parent status, and time
+  window live at consume). That sequential denial holds on both backends:
+  revoke-completed-then-consume is denied in the sequential control. The
   stale-authority outcome the guard corrects on Preview does not occur on
-  this path.
+  this sequential path.
+- **Correction — concurrent revoke-vs-consume on the in-memory backend is
+  NOT covered by the claim above and does not hold. Verified as
+  reproduced, 2026-11-11:** `InMemoryKernelState.consume_permit`
+  (`pulpo/state.py:125-137` at `6120f1b`) holds no lock. In the reproduced
+  interleaving, `consume_permit` reads the directive status as `active`,
+  `revoke_directive` then marks the directive revoked and appends
+  `directive_revoked`, and consumption still succeeds and appends
+  `permit_consumed` with payload `directive_status="active"` — the audit
+  tail is `directive_revoked` then `permit_consumed`, with exactly one
+  consumption. The SQLite backend serializes this interleaving via
+  `BEGIN IMMEDIATE`, so the race is specific to the in-memory backend.
+  This boundary is recorded as an open item below; it does not refute the
+  activation-admission probes in the next bullet, which concern a
+  different operation.
 - Conflicting concurrent admission of the same `(directive_id, version)`
   with two different hashes: 300 barrier-synchronized rounds (in-memory),
   2,000 rounds under a forced 1µs thread-switch interval (in-memory), and
@@ -149,6 +172,37 @@ GOVERNED_CAPABILITY` and `NO_WRITE_ROUTE != NO_WRITE_CAPABILITY`
 invariants — remains an open, separate roadmap item. This decision must not
 be cited as closing it.
 
+### In-memory consume concurrency — open boundaries (added 2026-11-11)
+
+Two concurrency boundaries in `InMemoryKernelState` at `6120f1b` are open
+items, **Verified as reproduced** at the state layer on 2026-11-11:
+
+(a) **Revoke-vs-consume race.** As detailed in the section 3 correction:
+    `consume_permit` (`pulpo/state.py:125-137`) holds no lock, so a
+    revocation completing mid-consume still admits — the audit tail shows
+    `directive_revoked` then `permit_consumed` with payload
+    `directive_status="active"`, exactly one consumption. Denial holds
+    only when revocation completes before consume begins. The SQLite
+    backend is not affected (it serializes via `BEGIN IMMEDIATE`).
+
+(b) **Concurrent same-permit double consumption.** The same unlocked
+    body lets two concurrent consumes of the *same* permit both succeed
+    at the state layer — result `[True, True]` with two `permit_consumed`
+    audit entries for one permit. Exposure of this defect through the
+    kernel ceremony path is **not established**: this is an open boundary
+    at the state layer, not a refutation of this record's
+    activation-admission probes (a different operation).
+
+**Proposed** remedy, not part of this record's ruling: one lock
+serializing in-memory consume / revoke / bind / activate, plus a
+scheduler-forced regression covering both interleavings above, landed as
+a separate future code PR with its own change record. This record is
+documentation only and introduces no code change.
+
+The operative gating ruling in this record — any #115–#117 port must
+land together with the Atomic Head corrections, re-verified on the ported
+tree — is **unchanged** by these open boundaries.
+
 ## Adjacent candidate, not ruled on here
 
 A canonical-native candidate exists locally (unpushed) at
@@ -173,18 +227,31 @@ requires its own evaluation at the current canonical head.
    only.
 4. **Exact success and adversarial evidence:** sections 1–4 above (symbol
    absence enumeration 0/12; packet-test import failures at the inspection
-   point; consume-time revalidation and admission-atomicity probes, both
-   backends; full suite 463 OK, 1 skipped).
+   point; consume-time revalidation in sequential scope and
+   admission-atomicity probes, both backends; full suite 463 OK,
+   1 skipped). Correction evidence, 2026-11-11: the revoke-vs-consume
+   interleaving and the concurrent same-permit double consumption were
+   both reproduced on the in-memory backend at the inspection point,
+   with the sequential control (revoke completed before consume) denied
+   on both backends and SQLite serializing the race via
+   `BEGIN IMMEDIATE`.
 5. **Boundary the evidence does not prove:** behavior of any future ported
    tree; the fa9cfa1 candidate's claims (Recorded only); concurrent
    in-memory directive admission beyond the probed schedules; any
    deployment that shares one state backend across differently-configured
-   kernels.
+   kernels; **(open, added 2026-11-11)** concurrent revoke-vs-consume on
+   the in-memory backend — a revocation completing mid-consume still
+   admits (section 3 correction); **(open, added 2026-11-11)** concurrent
+   same-permit double consumption at the in-memory state layer, whose
+   kernel-ceremony-path exposure is not established.
 6. **Claim classification:** Verified (canonical source, probes, suite at
-   the inspection point); Recorded (packet verification on Preview;
-   candidate results); Inferred (unsupported deployment shape, marked
-   above); Proposed (the gating condition as policy going forward);
-   Unknown (none material left open by this ruling).
+   the inspection point; the two in-memory concurrency reproductions and
+   the sequential control, 2026-11-11); Recorded (packet verification on
+   Preview; candidate results); Inferred (unsupported deployment shape,
+   marked above); Proposed (the gating condition as policy going forward;
+   the one-lock serialization remedy as a separate future code PR);
+   Unknown (kernel-ceremony-path exposure of the same-permit double
+   consumption).
 7. **Legacy behavior source used without copying its control path:** the
    Preview Atomic Head packet was used as evidence input only; no Preview
    code or control path is copied by this record.
