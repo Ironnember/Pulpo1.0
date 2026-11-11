@@ -38,7 +38,9 @@ Feeds (see docs/incident-channel.md for the full table):
 Custody transitions never reach the canonical audit in production: the
 TrustedDomainExecutor takes an evidence_projector callback that is only
 wired in tests. The custody feed therefore reads the custody store
-directly (SQLiteGovernanceCustody.attempts), and the channel says so on
+directly (SQLiteGovernanceCustody.attempts_and_snapshot: the attempts
+and the store head read in one transaction, so a frozen report reflects
+one consistent store state), and the channel says so on
 every record via its source field.
 
 Integrity levels -- a record's anchor is only as strong as its source:
@@ -46,9 +48,31 @@ Integrity levels -- a record's anchor is only as strong as its source:
     canonical_audit -- anchored by the audit record hash and the hash chain
         (kernel.verify_audit); the report carries audit_valid and derives
         regardless, flagging a broken chain rather than hiding it.
-    custody_store  -- anchored by the attempt authorization_hash and the
-        HMAC-signed transition receipts; NOT hash-chained to the canonical
-        audit. Custody-derived records are never presented as audit-backed.
+    custody_store  -- the anchors identify the attempt's authorization:
+        the authorization hash, object hash, target hash, and permit hash,
+        all established when the attempt was authorized. A record's
+        resolution is Recorded from the trusted custody store: it is NOT
+        cryptographically anchored to the transition that produced it,
+        and it cannot be independently verified from the exported record
+        alone -- an unresolved record and its later reconciled_failure
+        carry the same anchors. Anchoring a resolution to its signed
+        transition requires per-attempt signed transition evidence in the
+        custody schema, which the store does not keep today; that is
+        future custody work, not a property this channel claims. Custody
+        records are also NOT hash-chained to the canonical audit, and
+        custody-derived records are never presented as audit-backed.
+
+Claim classification -- every record carries claim_classification for its
+operative claim (whether the incident occurred, and how it resolved):
+
+    Recorded -- stated directly by one source: an audit-event fact, or a
+        custody attempt's latest state read from the store.
+    Inferred -- a merged record's resolution, produced by joining an
+        audit unknown to the custody attempt's latest state.
+    Unknown  -- an audit-derived or merged record frozen while the audit
+        chain fails verification: the derivation ran and the broken chain
+        is flagged on the report, but the audit-backed claim cannot be
+        trusted.
 
 Custody time -- the custody store records NO per-attempt timestamp.
 created_epoch / updated_epoch are head-epoch counters (1, 2, 3, ...), not
@@ -61,25 +85,38 @@ the attempt's last transition, not the attempt's own time. A merged record
 first_seen_ns and takes last_seen_ns as the later of the audit timestamp
 and the custody head time.
 
-No cap on records: incidents are rare, and silently dropping one would be
-worse than a large report.
+Report size bound: a frozen report is capped at MAX_INCIDENT_REPORT_BYTES
+(1 MiB). Export refuses -- before publishing anything -- a report that
+would exceed the bound, so every exported report can be reloaded through
+the same protected reader. Records are never silently dropped to fit: an
+over-limit export fails loudly instead of truncating the incident set.
 """
 
-from dataclasses import dataclass, fields
+from dataclasses import asdict, dataclass, fields
 import hashlib
+import json
 import os
 import time
 
 from .custody import SQLiteGovernanceCustody
-from .mcp_boundary import _publish_snapshot
+from .mcp_boundary import MCPBoundaryError, _publish_snapshot
 from .orchestrator import PulpoOrchestrator
 from .state import SQLiteKernelState
 
 KINDS = frozenset({"incident", "near_miss"})
 SOURCES = frozenset({"canonical_audit", "custody_store"})
 RESOLUTIONS = frozenset({"unresolved", "resolved_cleanly", "confirmed_wrong", "not_applicable"})
-INCIDENT_SCHEMA = "pulpo.incident-record.v1"
+CLAIM_CLASSIFICATIONS = frozenset({"Verified", "Recorded", "Inferred", "Proposed", "Unknown"})
+INCIDENT_SCHEMA = "pulpo.incident-record.v2"
 REPORT_SCHEMA = "pulpo.incident-report.v1"
+
+# The incident report's own explicit size bound, enforced identically by
+# export (preflight, before publication) and load (through the hardened
+# snapshot reader). The MCP snapshot cap (16,384 bytes) belongs to a
+# different, much smaller format and is NOT raised for this; 1 MiB holds
+# roughly 1,700 records at the current record size while keeping a frozen
+# report a small, owner-private file.
+MAX_INCIDENT_REPORT_BYTES = 1_048_576
 
 # Audit events that are refusals: caught before any consequential effect.
 _AUDIT_NEAR_MISS_EVENTS = frozenset({"purchase_revalidation_failed", "permit_rejected", "approval_rejected"})
@@ -126,6 +163,7 @@ class IncidentRecord:
     reason: str
     resolution: str
     anchor_hash: str
+    claim_classification: str
     schema: str = INCIDENT_SCHEMA
 
     def __post_init__(self):
@@ -140,6 +178,7 @@ class IncidentRecord:
                        or not _is_hash(anchor[1]) for anchor in self.anchors)
                 or type(self.reason) is not str or not self.reason
                 or self.resolution not in RESOLUTIONS or not _is_hash(self.anchor_hash)
+                or self.claim_classification not in CLAIM_CLASSIFICATIONS
                 or self.anchor_hash not in {anchor[1] for anchor in self.anchors}
                 or (self.record_id.startswith("incident:") != (self.kind == "incident"))
                 or (self.record_id.startswith("near-miss:") != (self.kind == "near_miss"))):
@@ -194,13 +233,32 @@ def _custody_resolution(state):
     return _CUSTODY_OUTCOMES.get(state, ("incident", "unresolved"))
 
 
-def _derive_records(audit, custody):
+def _claim_classification(*, source, merged, audit_valid):
+    # Conservative classification of the record's operative claim. A merged
+    # resolution is a join across two sources, so it is Inferred while the
+    # audit chain holds and Unknown when it does not. A single-source audit
+    # fact is Recorded under a valid chain, Unknown under a broken one. A
+    # custody-store fact is stated directly by the store and does not rest
+    # on the audit chain, so it stays Recorded.
+    if merged:
+        return "Inferred" if audit_valid else "Unknown"
+    if source == "canonical_audit":
+        return "Recorded" if audit_valid else "Unknown"
+    return "Recorded"
+
+
+def _derive_records(audit, custody, audit_valid):
     attempts = {}
     custody_time_ns = None
     if custody is not None:
-        for snapshot in custody.attempts():
+        # One connection, one read transaction: the attempts and the head
+        # time describe the same store state. Reading them through separate
+        # calls could pair pre-transition attempt state with the
+        # post-transition head time.
+        attempt_rows, head = custody.attempts_and_snapshot()
+        for snapshot in attempt_rows:
             attempts[snapshot.attempt_id] = snapshot
-        custody_time_ns = custody.snapshot().custody_time_ns
+        custody_time_ns = head.custody_time_ns
     records = []
     consumed_attempts = set()
     for record in audit:
@@ -219,27 +277,36 @@ def _derive_records(audit, custody):
                 anchors = _audit_anchors(record_hash, payload) + (
                     ("custody_authorization", snapshot.authorization_hash),)
                 last_seen_ns = max(timestamp_ns, custody_time_ns)
+                classification = _claim_classification(
+                    source="canonical_audit", merged=True, audit_valid=audit_valid)
             else:
                 kind, resolution = "incident", "unresolved"
                 anchors = _audit_anchors(record_hash, payload)
                 last_seen_ns = timestamp_ns
+                classification = _claim_classification(
+                    source="canonical_audit", merged=False, audit_valid=audit_valid)
             reason = payload.get("reason") or "external_consequence_not_yet_verified"
             prefix = "incident" if kind == "incident" else "near-miss"
             records.append(IncidentRecord(
                 f"{prefix}:{record_hash}", kind, "canonical_audit", event,
-                timestamp_ns, last_seen_ns, anchors, reason, resolution, record_hash))
+                timestamp_ns, last_seen_ns, anchors, reason, resolution, record_hash,
+                classification))
         elif event in _AUDIT_NEAR_MISS_EVENTS:
             reason = payload.get("reason") or event
             records.append(IncidentRecord(
                 f"near-miss:{record_hash}", "near_miss", "canonical_audit", event,
                 timestamp_ns, timestamp_ns, _audit_anchors(record_hash, payload),
-                reason, "not_applicable", record_hash))
+                reason, "not_applicable", record_hash,
+                _claim_classification(
+                    source="canonical_audit", merged=False, audit_valid=audit_valid)))
         elif event == "decision" and payload.get("outcome") == "deny":
             reason = payload.get("reason") or "denied"
             records.append(IncidentRecord(
                 f"near-miss:{record_hash}", "near_miss", "canonical_audit", event,
                 timestamp_ns, timestamp_ns, _audit_anchors(record_hash, payload),
-                reason, "not_applicable", record_hash))
+                reason, "not_applicable", record_hash,
+                _claim_classification(
+                    source="canonical_audit", merged=False, audit_valid=audit_valid)))
     if custody is not None:
         for attempt_id, snapshot in attempts.items():
             if attempt_id in consumed_attempts:
@@ -258,7 +325,9 @@ def _derive_records(audit, custody):
                 f"incident:custody:{attempt_id}", kind, "custody_store", snapshot.state,
                 custody_time_ns, custody_time_ns, anchors,
                 f"custody_attempt_{snapshot.state}", resolution,
-                snapshot.authorization_hash))
+                snapshot.authorization_hash,
+                _claim_classification(
+                    source="custody_store", merged=False, audit_valid=audit_valid)))
     records.sort(key=lambda record: (record.first_seen_ns, record.record_id))
     return records
 
@@ -289,7 +358,7 @@ def freeze_incident_report(orchestrator, *, custody=None):
             source_id = activity_id
     audit = kernel.audit
     valid = kernel.verify_audit()
-    records = _derive_records(audit, custody)
+    records = _derive_records(audit, custody, valid)
     return IncidentReport(
         source_id, time.time_ns(), valid, len(audit),
         incidents=sum(1 for record in records if record.kind == "incident"),
@@ -302,8 +371,17 @@ def freeze_incident_report(orchestrator, *, custody=None):
 
 
 def export_incident_report(orchestrator, destination, *, custody=None):
-    """Explicit owner-side export; does not install a timer or alter authority."""
+    """Explicit owner-side export; does not install a timer or alter authority.
+
+    Size preflight: the report is serialized exactly as _publish_snapshot
+    will serialize it, and an over-limit report fails here -- before
+    anything is published -- so an export can never produce a file that
+    load_incident_report would reject.
+    """
     snapshot = freeze_incident_report(orchestrator, custody=custody)
+    payload = json.dumps(asdict(snapshot), sort_keys=True, separators=(",", ":")) + "\n"
+    if len(payload.encode("utf-8")) > MAX_INCIDENT_REPORT_BYTES:
+        raise MCPBoundaryError("incident_report_too_large")
     return _publish_snapshot(snapshot, destination)
 
 
@@ -331,7 +409,7 @@ def list_incidents(orchestrator, *, kind=None, resolution=None, since_ns=None, u
 
 def load_incident_report(path):
     from .mcp_plugin import read_snapshot_document
-    value = read_snapshot_document(path)
+    value = read_snapshot_document(path, max_bytes=MAX_INCIDENT_REPORT_BYTES)
     if set(value) != {field.name for field in fields(IncidentReport)}:
         raise ValueError("snapshot_fields_invalid")
     if (type(value["records"]) is not list

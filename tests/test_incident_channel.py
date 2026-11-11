@@ -11,9 +11,11 @@ query filters, and the read-only proof.
 import hashlib
 import tempfile
 import unittest
+import unittest.mock
 from pathlib import Path
 
 from pulpo import GovernanceKernel, Intent, Policy, PulpoOrchestrator, SQLiteKernelState
+from pulpo import incident_channel
 from pulpo.commerce import (
     BudgetAccount,
     CommerceViolation,
@@ -109,6 +111,7 @@ class IncidentRecordValidationTests(unittest.TestCase):
             "reason": "external_consequence_not_yet_verified",
             "resolution": "unresolved",
             "anchor_hash": "a" * 64,
+            "claim_classification": "Recorded",
         }
 
     def test_valid_record(self):
@@ -126,6 +129,14 @@ class IncidentRecordValidationTests(unittest.TestCase):
     def test_bad_resolution_rejected(self):
         with self.assertRaises(ValueError):
             IncidentRecord(**{**self.valid_kwargs(), "resolution": "ignored"})
+
+    def test_bad_claim_classification_rejected(self):
+        with self.assertRaises(ValueError):
+            IncidentRecord(**{**self.valid_kwargs(), "claim_classification": "rumoured"})
+
+    def test_record_schema_is_v2(self):
+        record = IncidentRecord(**self.valid_kwargs())
+        self.assertEqual("pulpo.incident-record.v2", record.schema)
 
     def test_non_hash_anchor_rejected(self):
         with self.assertRaises(ValueError):
@@ -839,6 +850,180 @@ class ExportAndQueryTests(unittest.TestCase):
             list_incidents(self.owner, since_ns=-1)
         with self.assertRaises(ValueError):
             list_incidents(self.owner, since_ns=300, until_ns=100)
+
+
+class OptionAFixesTests(unittest.TestCase):
+    """Regression coverage for the Option A fixes to the Codex findings on
+    PR #344: per-record claim classification (F2), the incident report's
+    own size bound (F3), and the atomic custody read (F4). F1 was a
+    language correction in the module docstring and docs; it has no code
+    behavior to pin here."""
+
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.db = Path(self.temp.name) / "state.sqlite"
+        self.backend = SQLiteKernelState(self.db)
+        self.addCleanup(self.backend.close)
+        self.kernel = GovernanceKernel(Policy(frozenset({"read"}), 0), secret=b"test-only", state=self.backend)
+        self.owner = PulpoOrchestrator(self.kernel)
+        self.report_path = Path(self.temp.name) / "incident-report.json"
+
+    def make_custody(self):
+        path = Path(self.temp.name) / "custody.sqlite3"
+        store = SQLiteGovernanceCustody(path, signing_secret=b"test-only-custody-secret",
+                                        clock=lambda: NOW)
+        return store, path
+
+    def authorize(self, store, *, object_hash="a" * 64):
+        head = store.snapshot()
+        authorization = store.authorize_attempt(
+            expected_epoch=head.epoch, expected_state_root=head.state_root,
+            object_hash=object_hash, target_hash="b" * 64,
+            permit_hash="c" * 64, authorization_hash="d" * 64)
+        return authorization.attempt_id
+
+    def drive(self, store, attempt_id, *states):
+        for state in states:
+            head = store.snapshot()
+            if state == "attempt_claimed":
+                store.claim_attempt(expected_epoch=head.epoch,
+                                    expected_state_root=head.state_root,
+                                    attempt_id=attempt_id, executor_id="executor:test")
+            elif state == "request_transmitted":
+                store.authorize_transmission(expected_epoch=head.epoch,
+                                             expected_state_root=head.state_root,
+                                             attempt_id=attempt_id)
+            elif state == "reconciliation_required":
+                store.require_reconciliation(expected_epoch=head.epoch,
+                                             expected_state_root=head.state_root,
+                                             attempt_id=attempt_id)
+            else:  # pragma: no cover - test helper guard
+                raise AssertionError(state)
+
+    def interleave_reconciliation(self, store, path, attempt_id):
+        """Arm the store so a reconciliation commits -- on a second
+        connection, at a later custody time -- in the middle of its next
+        head load: the interleaving from the F4 repro."""
+        original = store._load_head
+        fired = []
+
+        def hooked(connection):
+            if not fired:
+                fired.append(True)
+                other = SQLiteGovernanceCustody(
+                    path, signing_secret=b"test-only-custody-secret",
+                    clock=lambda: NOW + 1000)
+                head = other.snapshot()
+                other.reconcile_observed(
+                    expected_epoch=head.epoch, expected_state_root=head.state_root,
+                    attempt_id=attempt_id, outcome="success",
+                    observation_hash="e" * 64, observer_id="observer:test")
+            return original(connection)
+
+        store._load_head = hooked
+        return fired
+
+    # F2 -- claim classification.
+
+    def test_direct_audit_record_is_recorded(self):
+        self.backend.append("permit_rejected", {"reason": "permit_clock_invalid"}, 100)
+        (record,) = freeze_incident_report(self.owner).records
+        self.assertEqual("Recorded", record.claim_classification)
+
+    def test_direct_custody_record_is_recorded(self):
+        store, _ = self.make_custody()
+        self.authorize(store)
+        (record,) = freeze_incident_report(self.owner, custody=store).records
+        self.assertEqual("custody_store", record.source)
+        self.assertEqual("Recorded", record.claim_classification)
+
+    def test_merged_record_is_inferred(self):
+        store, _ = self.make_custody()
+        attempt_id = self.authorize(store)
+        self.backend.append("purchase_consequence_unknown",
+                            {"custody_attempt_id": attempt_id,
+                             "reason": "external_consequence_not_yet_verified"}, 100)
+        (record,) = freeze_incident_report(self.owner, custody=store).records
+        self.assertEqual("canonical_audit", record.source)
+        self.assertEqual("unresolved", record.resolution)
+        self.assertEqual("Inferred", record.claim_classification)
+
+    def test_broken_audit_chain_makes_audit_claims_unknown(self):
+        store, _ = self.make_custody()
+        self.authorize(store)
+        self.backend.append("permit_rejected", {"reason": "permit_clock_invalid"}, 100)
+        # Tamper with the stored payload: the stored hash no longer
+        # recomputes, so verify_audit fails and the derivation must not
+        # keep presenting the audit-backed claim as Recorded.
+        self.backend._connection.execute(
+            "UPDATE audit SET payload_json = ? WHERE event = 'permit_rejected'",
+            ('{"reason":"tampered"}',))
+        self.backend._connection.commit()
+        report = freeze_incident_report(self.owner, custody=store)
+        self.assertFalse(report.audit_valid)
+        by_source = {record.source: record for record in report.records}
+        self.assertEqual("Unknown", by_source["canonical_audit"].claim_classification)
+        # The custody store's own fact does not rest on the audit chain.
+        self.assertEqual("Recorded", by_source["custody_store"].claim_classification)
+
+    # F3 -- report size bound.
+
+    def test_report_larger_than_mcp_cap_round_trips(self):
+        for index in range(35):
+            self.backend.append("permit_rejected",
+                                {"reason": f"permit_clock_invalid_{index}"}, 100 + index)
+        snapshot = export_incident_report(self.owner, self.report_path)
+        # The finding's repro: this export is beyond the MCP snapshot cap
+        # of 16,384 bytes, which the loader used to inherit.
+        self.assertGreater(self.report_path.stat().st_size, 16_384)
+        reloaded = load_incident_report(self.report_path)
+        self.assertEqual(snapshot, reloaded)
+        self.assertEqual(35, len(reloaded.records))
+
+    def test_oversized_export_fails_before_publishing(self):
+        self.backend.append("purchase_consequence_unknown",
+                            {"reason": "external_consequence_not_yet_verified"}, 100)
+        with unittest.mock.patch.object(incident_channel, "MAX_INCIDENT_REPORT_BYTES", 256):
+            with self.assertRaises(MCPBoundaryError):
+                export_incident_report(self.owner, self.report_path)
+        self.assertFalse(self.report_path.exists())
+
+    # F4 -- atomic custody read.
+
+    def test_attempts_and_snapshot_read_one_consistent_state(self):
+        store, path = self.make_custody()
+        attempt_id = self.authorize(store)
+        self.drive(store, attempt_id, "attempt_claimed", "request_transmitted",
+                   "reconciliation_required")
+        before = store.snapshot()
+        store.attempts_and_snapshot()
+        self.assertEqual(before, store.snapshot())  # the pair read is read-only
+        fired = self.interleave_reconciliation(store, path, attempt_id)
+        attempts, head = store.attempts_and_snapshot()
+        self.assertEqual([True], fired)
+        # The reconciliation really did commit during the read...
+        self.assertEqual("reconciled_success", store.attempt(attempt_id).state)
+        # ...but the pair still describes the pre-transition state, whole.
+        self.assertEqual("reconciliation_required", attempts[0].state)
+        self.assertEqual(NOW, head.custody_time_ns)
+        attempts, head = store.attempts_and_snapshot()
+        self.assertEqual("reconciled_success", attempts[0].state)
+        self.assertEqual(NOW + 1000, head.custody_time_ns)
+
+    def test_freeze_reflects_a_single_consistent_custody_read(self):
+        store, path = self.make_custody()
+        attempt_id = self.authorize(store)
+        self.drive(store, attempt_id, "attempt_claimed", "request_transmitted",
+                   "reconciliation_required")
+        self.interleave_reconciliation(store, path, attempt_id)
+        (record,) = freeze_incident_report(self.owner, custody=store).records
+        self.assertEqual("unresolved", record.resolution)
+        # State and time come from the same read: the record does not pair
+        # the pre-reconciliation state with the post-reconciliation head
+        # time (NOW + 1000).
+        self.assertEqual(NOW, record.first_seen_ns)
+        self.assertEqual(NOW, record.last_seen_ns)
 
 
 if __name__ == "__main__":

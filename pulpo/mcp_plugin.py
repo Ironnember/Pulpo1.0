@@ -43,6 +43,8 @@ def _unique_json_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
 
 def read_snapshot_document(
     path: str | os.PathLike[str] = DEFAULT_SNAPSHOT_PATH,
+    *,
+    max_bytes: int = _MAX_SNAPSHOT_BYTES,
 ) -> dict:
     """Load an exact frozen snapshot document without write capability.
 
@@ -52,8 +54,17 @@ def read_snapshot_document(
     pulpo.incident_channel) read through this same protected reader.
     load_mcp_snapshot additionally pins the MCP field set and contract
     type below.
+
+    ``max_bytes`` defaults to the MCP snapshot cap, which stays 16,384:
+    the MCP snapshot format does not grow. A caller serving a different
+    frozen format passes its own explicit bound (the incident channel
+    passes MAX_INCIDENT_REPORT_BYTES); no caller may leave the bound
+    implicit, and raising the MCP default is not the way to serve a
+    larger format.
     """
 
+    if type(max_bytes) is not int or max_bytes <= 0:
+        raise MCPBoundaryError("mcp_plugin_snapshot_invalid")
     if not isinstance(path, (str, os.PathLike)) or isinstance(path, bytes):
         raise MCPBoundaryError("mcp_plugin_snapshot_path_invalid")
     target = Path(path).expanduser()
@@ -99,7 +110,7 @@ def read_snapshot_document(
             metadata = os.fstat(file_descriptor)
         except OSError as exc:
             raise MCPBoundaryError("mcp_plugin_snapshot_open_failed") from exc
-        if not stat.S_ISREG(metadata.st_mode) or metadata.st_size > _MAX_SNAPSHOT_BYTES:
+        if not stat.S_ISREG(metadata.st_mode) or metadata.st_size > max_bytes:
             raise MCPBoundaryError("mcp_plugin_snapshot_invalid")
         if os.name == "posix" and stat.S_IMODE(metadata.st_mode) & 0o077:
             raise MCPBoundaryError("mcp_plugin_snapshot_permissions_invalid")
@@ -107,7 +118,7 @@ def read_snapshot_document(
         try:
             with os.fdopen(file_descriptor, "r", encoding="utf-8") as handle:
                 file_descriptor = -1
-                raw = handle.read(_MAX_SNAPSHOT_BYTES + 1)
+                raw = handle.read(max_bytes + 1)
         except (OSError, UnicodeError) as exc:
             raise MCPBoundaryError("mcp_plugin_snapshot_invalid") from exc
     finally:
@@ -116,7 +127,7 @@ def read_snapshot_document(
         if directory_descriptor >= 0:
             os.close(directory_descriptor)
 
-    if len(raw) > _MAX_SNAPSHOT_BYTES:
+    if len(raw) > max_bytes:
         raise MCPBoundaryError("mcp_plugin_snapshot_invalid")
     try:
         document = json.loads(raw, object_pairs_hook=_unique_json_object)
