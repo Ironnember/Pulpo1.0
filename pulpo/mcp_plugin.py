@@ -41,10 +41,18 @@ def _unique_json_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
     return document
 
 
-def load_mcp_snapshot(
+def read_snapshot_document(
     path: str | os.PathLike[str] = DEFAULT_SNAPSHOT_PATH,
-) -> MCPReadSnapshot:
-    """Load one exact owner-private frozen snapshot without write capability."""
+) -> dict:
+    """Load an exact frozen snapshot document without write capability.
+
+    Factored out of load_mcp_snapshot unchanged -- same path validation,
+    descriptor-relative read, size and permission checks, strict JSON
+    parsing, and error surface -- so other frozen reports (e.g.
+    pulpo.incident_channel) read through this same protected reader.
+    load_mcp_snapshot additionally pins the MCP field set and contract
+    type below.
+    """
 
     if not isinstance(path, (str, os.PathLike)) or isinstance(path, bytes):
         raise MCPBoundaryError("mcp_plugin_snapshot_path_invalid")
@@ -114,7 +122,17 @@ def load_mcp_snapshot(
         document = json.loads(raw, object_pairs_hook=_unique_json_object)
     except (json.JSONDecodeError, ValueError) as exc:
         raise MCPBoundaryError("mcp_plugin_snapshot_invalid") from exc
-    if type(document) is not dict or set(document) != _SNAPSHOT_FIELDS:
+    if type(document) is not dict:
+        raise MCPBoundaryError("mcp_plugin_snapshot_invalid")
+    return document
+
+
+def load_mcp_snapshot(
+    path: str | os.PathLike[str] = DEFAULT_SNAPSHOT_PATH,
+) -> MCPReadSnapshot:
+    """Load one exact owner-private frozen snapshot without write capability."""
+    document = read_snapshot_document(path)
+    if set(document) != _SNAPSHOT_FIELDS:
         raise MCPBoundaryError("mcp_plugin_snapshot_invalid")
 
     try:
