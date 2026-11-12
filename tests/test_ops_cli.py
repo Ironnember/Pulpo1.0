@@ -297,23 +297,47 @@ class OpsCliTests(unittest.TestCase):
         self.assertTrue(verification["chain_valid"])
 
     def test_anchor_seam_reports_unavailable_in_this_build(self):
-        # pulpo.anchor (WS1) is absent from this tree, so the seam branch
-        # that runs is the ImportError branch: both surfaces must say so
-        # plainly instead of implying an anchored check happened.
+        # Arrange the pulpo.anchor (WS1) module's absence so the seam
+        # branch that runs is the ImportError branch, whatever tree this
+        # test executes in: both surfaces must say so plainly instead of
+        # implying an anchored check happened.
+        self.init_trusted()
+        with mock.patch.dict(sys.modules, {"pulpo.anchor": None}):
+            exit_code, status = self.run_cli(["status", self.deployment])
+            self.assertEqual(0, exit_code, status)
+            self.assertFalse(status["anchor"]["available"])
+            self.assertIn("not available in this build", status["anchor"]["note"])
+
+            exit_code, verification = self.run_cli(["verify", self.deployment])
+            self.assertEqual(0, exit_code, verification)
+            self.assertFalse(verification["anchored"]["available"])
+            self.assertFalse(verification["anchored"]["checked"])
+            self.assertIn(
+                "not available in this build", verification["anchored"]["note"]
+            )
+            # An unavailable optional witness does not fail the chain check.
+            self.assertTrue(verification["ok"])
+
+    def test_anchor_seam_reports_available_without_anchor_file(self):
+        # The companion posture once pulpo.anchor is present in the tree
+        # (PR #352): the seam is live, no deployment anchor file exists
+        # yet, and both surfaces say exactly that — available, unchecked,
+        # and the chain verdict is unaffected.
         self.init_trusted()
         exit_code, status = self.run_cli(["status", self.deployment])
         self.assertEqual(0, exit_code, status)
-        self.assertFalse(status["anchor"]["available"])
-        self.assertIn("not available in this build", status["anchor"]["note"])
+        self.assertTrue(status["anchor"]["available"])
+        self.assertFalse(status["anchor"]["present"])
+        self.assertIsNone(status["anchor"]["last_anchor"])
 
         exit_code, verification = self.run_cli(["verify", self.deployment])
         self.assertEqual(0, exit_code, verification)
-        self.assertFalse(verification["anchored"]["available"])
+        self.assertTrue(verification["anchored"]["available"])
         self.assertFalse(verification["anchored"]["checked"])
+        self.assertFalse(verification["anchored"]["present"])
         self.assertIn(
-            "not available in this build", verification["anchored"]["note"]
+            "no anchor file present", verification["anchored"]["note"]
         )
-        # An unavailable optional witness does not fail the chain check.
         self.assertTrue(verification["ok"])
 
     def test_authorize_fails_closed_when_test_secret_env_missing(self):
