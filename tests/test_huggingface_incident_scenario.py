@@ -20,13 +20,34 @@ evaluation action on one exact object (the sandbox workspace), issued through
 a verified approval envelope plus ceremony evidence, the kernel's stand-in
 for per-action accountable human authorization. Every incident action class
 is then attempted. The kernel must deny each one, the consequence ledger must
-stay empty for all of them, and the audit trail must account for every
-attempt.
+stay empty for all of them (no governed external consequence), and the audit
+trail must account for every attempt — each denial appends an audit record,
+which is a governed effect (evidence production), not an absence of state
+change.
 
 Boundary: this proves kernel behavior at this commit for these action
 classes (Verified, executable evidence). It proves nothing about any
 deployed system that does not route its consequences through this kernel —
 a control not on the execution path governs nothing.
+
+Adversarial transformation review: the full eight-pass review (Flip,
+Reverse, Invert, Inside-Out, Darken, Lighten, Amplify, Negate) for this
+incident is recorded in PR #346 per
+``docs/ADVERSARIAL_TRANSFORMATION_SOP.md``. Stop/continue decision:
+CONTINUE in the governed kernel path only — exactly one governed external
+consequence is permitted, and any non-kernel write path (the known
+direct-writer class) remains outside this evidence and open.
+
+Audit-growth classification (per AGENTS.md, ``NO_PERMIT !=
+NO_GOVERNED_EFFECT``): a denied attempt is not "no state changed." Each
+denied evaluate/consume appends exactly one audit record. That growth is
+itself a governed effect — evidence production — bounded at one record
+per attempt, append-only, and it does not alter authority
+(``authority_effect=none``) or accumulate capability. It is classified
+and assessed separately from governed external consequences throughout
+this module: "consequence" below means governed external consequence
+(the permitted consume recorded in the consequence ledger), never audit
+growth.
 """
 
 from __future__ import annotations
@@ -138,7 +159,9 @@ class ConsequenceLedger:
     This is the scenario's execution path: the harness executes an action
     (records its consequence) only when the kernel consumes a permit for
     that exact intent. A denial is therefore directly observable as the
-    absence of a consequence, not merely as a returned status.
+    absence of a governed external consequence, not merely as a returned
+    status. (The denial itself still appends an audit record — a governed
+    effect, classified separately in the module docstring.)
     """
 
     def __init__(self) -> None:
@@ -388,7 +411,8 @@ class HuggingFaceIncidentScenarioTests(unittest.TestCase):
             ("deny", "ceremony_evidence_missing"), (decision.outcome, decision.reason)
         )
         self.assertIsNone(decision.permit)
-        # Nothing verified, nothing executed.
+        # Nothing verified, no governed external consequence executed
+        # (the denials above still appended their audit records).
         self.assertEqual([], self.ledger.effects)
         self.assertEqual(0, len(_events(self.kernel, "approval_verified")))
         rejection_reasons = {
@@ -410,6 +434,12 @@ class HuggingFaceIncidentScenarioTests(unittest.TestCase):
         self.assertTrue(self.kernel.verify_audit())
 
     # -- volume: 17,000 unauthorized attempts, complete record --------------
+    #
+    # Classification: exactly one GOVERNED EXTERNAL consequence is expected
+    # (the permitted consume). The 17,000 denied attempts are NOT "no state
+    # changed": each appends exactly one audit record — a governed effect
+    # (evidence production), bounded at one record per attempt, append-only,
+    # with authority_effect=none and no capability accumulation.
 
     def test_volume_17000_unauthorized_attempts_complete_audit_no_consequence(self) -> None:
         permit = self._issue_eval_permit(self.kernel)
@@ -434,13 +464,25 @@ class HuggingFaceIncidentScenarioTests(unittest.TestCase):
                 # Replay the one genuine (now spent) permit.
                 self.assertFalse(self.kernel.consume(permit, intent))
                 consume_attempts += 1
-        # Exactly one consequence in the entire run: the permitted evaluation.
-        self.assertEqual([("run_evaluation", WORKSPACE)], self.ledger.effects)
-        self.assertEqual(1, len(_events(self.kernel, "permit_consumed")))
-        # Every attempt left exactly one audit record: the trail is complete
-        # at incident volume, not sampled.
+        # Exactly one GOVERNED EXTERNAL consequence in the entire run: the
+        # permitted evaluation. This is not a claim of "no state changed"
+        # for the denied attempts — see the audit-growth assertion below.
         self.assertEqual(
-            evaluate_attempts + consume_attempts, len(self.kernel.audit) - audit_before
+            [("run_evaluation", WORKSPACE)],
+            self.ledger.effects,
+            "expected exactly one governed external consequence (the permitted consume)",
+        )
+        self.assertEqual(1, len(_events(self.kernel, "permit_consumed")))
+        # Governed effect, assessed separately: every denied attempt appends
+        # exactly one audit record (evidence production). The growth is
+        # bounded at one record per attempt, append-only, and does not alter
+        # authority (authority_effect=none) or accumulate capability — the
+        # trail is complete at incident volume, not sampled.
+        self.assertEqual(
+            evaluate_attempts + consume_attempts,
+            len(self.kernel.audit) - audit_before,
+            "expected exactly one audit record per denied attempt "
+            "(bounded, append-only audit growth; authority_effect=none)",
         )
         self.assertEqual(consume_attempts, len(_events(self.kernel, "permit_rejected")))
         self.assertTrue(self.kernel.verify_audit())
