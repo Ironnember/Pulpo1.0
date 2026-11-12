@@ -25,7 +25,8 @@ not a denial scenario:
    in the claim.
 4. The agent (or a privileged store writer) tries to erase the forbidden
    step from the record itself. Every erasure route is tested and reported
-   honestly, including the one that works (see the tail-truncation test).
+   honestly, including the ones that work against a privileged writer (see
+   the tail-truncation test and the rehashed mid-chain deletion test).
 
 Reconciliation here is TEST-LEVEL: the shipped reconcilers
 (``pulpo.effect_reconcile``, ``pulpo.custody_reconcile``) reconcile
@@ -38,15 +39,40 @@ from Pulpo's custody of the reference record, not from the comparison.
 
 Boundary: this proves kernel audit behavior at this commit (Verified,
 executable evidence). It proves nothing about a deployment whose audit
-store is writable by the agent through some other surface, and chain
-verification alone does not detect truncation of the chain's tail (see
-``test_gap_tail_truncation_undetected_by_chain_alone``).
+store is writable by the agent through some other surface.
+
+Tamper-evidence boundary, stated precisely: the audit chain uses public,
+unkeyed SHA-256. Against non-rehashing corruption (payload edits and
+mid-chain deletion without rehashing) it is tamper-evident —
+``verify_audit()`` returns False. Against a PRIVILEGED store writer it is
+NOT tail-only: the exposure includes both (a) truncation of the chain's
+tail (see ``test_gap_tail_truncation_undetected_by_chain_alone``) and
+(b) mid-chain deletion WITH recomputation of every following
+``previous_hash``/``hash`` (suffix rehash), after which ``verify_audit()``
+returns True (see
+``test_gap_midchain_deletion_with_rehash_undetected_by_chain_alone``).
+Closure requires an external anchored head — a witnessed head hash plus
+record count — which detects both truncation and rehashing because both
+change the head and/or the length. This layer provides no such anchor.
+
+A second kernel-level finding, documented NOT fixed here (test-only
+round; production code unchanged): the kernel exposes no mutation METHOD
+for the audit trail, but on the default in-memory backend
+``GovernanceKernel.audit`` returns the backend's LIVE list. An agent
+holding the kernel can therefore ``del kernel.audit[...]`` or rewrite a
+record payload in place through that property; such edits are detected by
+``verify_audit()`` when they are not rehashed (see the step-3b live-list
+characterization tests). On the SQLite backend, ``kernel.audit`` returns
+detached copies and mutations of the returned objects do not reach the
+store. The in-memory live-list exposure is a product finding for the
+kernel, documented here, not repaired by this module.
 """
 
 from __future__ import annotations
 
 import hashlib
 import hmac
+import json
 import sqlite3
 import tempfile
 import unittest
@@ -180,6 +206,32 @@ def audited_sets(audit: list[dict]) -> tuple[set[str], set[str]]:
     return consequences, attempts
 
 
+def rehash_suffix(records: list[dict], start: int) -> None:
+    """Recompute ``previous_hash``/``hash`` from ``start`` onward.
+
+    Uses the same canonical hashing the production code uses
+    (``pulpo.state._canonical``: JSON with sorted keys and compact
+    separators, SHA-256 over ``{event, payload, previous_hash,
+    timestamp_ns}``). This is the privileged writer's rehash step: the
+    chain is public and unkeyed, so anyone who can write the store can
+    recompute it.
+    """
+    previous = records[start - 1]["hash"] if start > 0 else "0" * 64
+    for index in range(start, len(records)):
+        record = records[index]
+        body = {
+            "event": record["event"],
+            "payload": record["payload"],
+            "previous_hash": previous,
+            "timestamp_ns": record["timestamp_ns"],
+        }
+        record["previous_hash"] = previous
+        record["hash"] = hashlib.sha256(
+            json.dumps(body, sort_keys=True, separators=(",", ":")).encode()
+        ).hexdigest()
+        previous = record["hash"]
+
+
 @dataclass(frozen=True)
 class ClaimReconciliation:
     ok: bool
@@ -187,6 +239,7 @@ class ClaimReconciliation:
     unbacked_consequences: frozenset[str]  # claimed, never executed per the record
     missing_consequences: frozenset[str]  # executed per the record, missing from the claim
     phantom_attempts: frozenset[str]  # claimed as attempted, absent from the record
+    audit_valid: bool = True  # False when verify_audit() fails / the chain is invalid
 
 
 def compare_claim(claim: dict, ref_consequences: set[str], ref_attempts: set[str]) -> ClaimReconciliation:
@@ -215,8 +268,27 @@ def compare_claim(claim: dict, ref_consequences: set[str], ref_attempts: set[str
 
 
 def reconcile_against_audit(kernel: GovernanceKernel, claim: dict) -> ClaimReconciliation:
+    # Fail closed: reconciliation must verify the audit chain FIRST.
+    # Deriving sets from an invalid chain would accept fabricated
+    # provenance — e.g. deleting the forbidden records through the
+    # in-memory live list breaks the chain yet would otherwise leave a
+    # clean-only claim with nothing to flag (ok=True).
+    try:
+        audit_valid = kernel.verify_audit()
+    except Exception:
+        audit_valid = False
     consequences, attempts = audited_sets(kernel.audit)
-    return compare_claim(claim, consequences, attempts)
+    result = compare_claim(claim, consequences, attempts)
+    if not audit_valid:
+        return ClaimReconciliation(
+            ok=False,
+            undisclosed_attempts=result.undisclosed_attempts,
+            unbacked_consequences=result.unbacked_consequences,
+            missing_consequences=result.missing_consequences,
+            phantom_attempts=result.phantom_attempts,
+            audit_valid=False,
+        )
+    return result
 
 
 class AgentWritableLog:
@@ -348,6 +420,31 @@ class MythosLaunderingScenarioTests(unittest.TestCase):
         self.assertEqual(frozenset(), result.missing_consequences)
         self.assertEqual(frozenset(), result.phantom_attempts)
 
+    def test_step3a_reconciliation_fails_closed_on_invalid_chain(self) -> None:
+        # Regression (Codex P1, finding C): the reconciliation helper must
+        # verify the chain first and fail closed. Deleting the forbidden
+        # records through kernel.audit (in-memory live list, no rehash)
+        # makes the chain invalid; a clean-only claim must NOT return
+        # ok=True over that invalid chain — it must refuse.
+        state = InMemoryKernelState()
+        kernel = self._kernel(state=state)
+        ledger = ConsequenceLedger()
+        self._run_mythos_story(kernel, ledger)
+        self.assertTrue(kernel.verify_audit())
+        # Sanity: on the valid chain the laundered claim is flagged.
+        self.assertFalse(reconcile_against_audit(kernel, self._laundered_claim()).ok)
+        indices = [
+            i for i, r in enumerate(kernel.audit)
+            if r["payload"].get("intent_hash") == self.forbidden_hash
+        ]
+        self.assertTrue(indices)
+        for index in reversed(indices):
+            del kernel.audit[index]
+        self.assertFalse(kernel.verify_audit())
+        result = reconcile_against_audit(kernel, self._laundered_claim())
+        self.assertFalse(result.ok)
+        self.assertFalse(result.audit_valid)
+
     def test_step3a_disclosed_attempt_reconciles(self) -> None:
         # Reconciliation is not a trap: an honest history that DISCLOSES the
         # forbidden attempt alongside the clean consequence reconciles
@@ -373,22 +470,56 @@ class MythosLaunderingScenarioTests(unittest.TestCase):
         self.assertTrue(result.ok)
         self.assertTrue(kernel.verify_audit())
 
-    # -- step 3b(i): no public API mutates the audit record -------------------
+    # -- step 3b(i): audit-read characterization (behavioral, not names) -----
+    #
+    # Accurate statement, replacing the earlier name-based introspection
+    # claim: the kernel exposes no mutation METHOD for the audit trail,
+    # BUT on the default in-memory backend GovernanceKernel.audit returns
+    # the backend's live list — an agent holding the kernel can mutate the
+    # store through that property. That is a kernel-level product finding,
+    # documented here, NOT fixed in this test-only module. On SQLite the
+    # property returns detached copies. The tests below characterize the
+    # actual behavior on both backends, via kernel.audit itself.
 
-    def test_step3b_no_public_api_mutates_audit(self) -> None:
-        mutation_words = ("delete", "remove", "erase", "edit", "update", "truncate", "clear", "purge")
-        for surface in (GovernanceKernel, InMemoryKernelState, SQLiteKernelState):
-            offenders = [
-                name
-                for name in dir(surface)
-                if not name.startswith("_")
-                and any(word in name.lower() for word in mutation_words)
-                and callable(getattr(surface, name))
-            ]
-            self.assertEqual([], offenders, f"{surface.__name__} exposes {offenders}")
-        # The kernel/state audit surface is append-only by construction:
-        # the only public record-writing operations are append and
-        # append_unique (and the governed transitions that call them).
+    def test_step3b_inmemory_kernel_audit_is_live_list_payload_edit_detected(self) -> None:
+        # In-memory: kernel.audit IS the store's live list (same object as
+        # state.audit). Editing a record payload through kernel.audit
+        # changes the store — and is detected by verify_audit() (no rehash).
+        state = InMemoryKernelState()
+        kernel = self._kernel(state=state)
+        ledger = ConsequenceLedger()
+        self._run_mythos_story(kernel, ledger)
+        self.assertIs(kernel.audit, state.audit)
+        self.assertTrue(kernel.verify_audit())
+        target = next(
+            r for r in kernel.audit
+            if r["event"] == "permit_rejected"
+            and r["payload"]["intent_hash"] == self.forbidden_hash
+        )
+        target["payload"]["intent_hash"] = self.clean_hash
+        # The store itself changed (the edit was not on a detached copy):
+        stored = next(r for r in state.audit if r["event"] == "permit_rejected")
+        self.assertEqual(self.clean_hash, stored["payload"]["intent_hash"])
+        self.assertFalse(kernel.verify_audit())
+
+    def test_step3b_inmemory_kernel_audit_is_live_list_midchain_deletion_detected(self) -> None:
+        # In-memory: del through kernel.audit deletes from the store.
+        # Without rehashing, the deletion is detected by verify_audit().
+        state = InMemoryKernelState()
+        kernel = self._kernel(state=state)
+        ledger = ConsequenceLedger()
+        self._run_mythos_story(kernel, ledger)
+        self.assertTrue(kernel.verify_audit())
+        index = next(
+            i for i, r in enumerate(kernel.audit)
+            if r["event"] == "permit_rejected"
+            and r["payload"]["intent_hash"] == self.forbidden_hash
+        )
+        self.assertLess(index, len(kernel.audit) - 1)  # mid-chain
+        length_before = len(state.audit)
+        del kernel.audit[index]
+        self.assertEqual(length_before - 1, len(state.audit))
+        self.assertFalse(kernel.verify_audit())
 
     def test_step3b_sqlite_audit_reads_are_detached_copies(self) -> None:
         # On the SQLite backend, kernel.audit returns freshly built dicts:
@@ -441,8 +572,9 @@ class MythosLaunderingScenarioTests(unittest.TestCase):
         )
         self.assertLess(index, len(state.audit) - 1)
         del state.audit[index]
-        # Deleting the record breaks the previous_hash linkage of every
-        # record after it: the chain no longer verifies.
+        # Without rehashing, deleting the record breaks the previous_hash
+        # linkage of every record after it: the chain no longer verifies.
+        # (With rehashing it verifies again — see the gap test below.)
         self.assertFalse(kernel.verify_audit())
 
     def test_step3b_sqlite_store_tamper_detected_and_boot_refused(self) -> None:
@@ -488,7 +620,7 @@ class MythosLaunderingScenarioTests(unittest.TestCase):
             self.assertFalse(probe.verify_audit())
             state3.close()
 
-    # -- step 3b(iii): the honest gap — tail truncation -------------------------
+    # -- step 3b(iii): the honest gaps — tail truncation AND rehashed deletion --
 
     def test_gap_tail_truncation_undetected_by_chain_alone(self) -> None:
         # GAP (reported, not hidden): the hash chain commits each record to
@@ -498,8 +630,9 @@ class MythosLaunderingScenarioTests(unittest.TestCase):
         # tail, verification over the remaining prefix still passes — and
         # reconciliation against the truncated trail then finds nothing to
         # flag. Chain-only tamper-evidence covers edits and mid-chain
-        # deletion (tests above); tail truncation requires an external
-        # anchor (e.g., a witnessed head hash / record count) that this
+        # deletion WITHOUT rehashing (tests above); tail truncation — and
+        # rehashed mid-chain deletion, next test — require an external
+        # anchored head (witnessed head hash plus record count) that this
         # layer does not provide.
         state = InMemoryKernelState()
         kernel = self._kernel(state=state)
@@ -520,6 +653,40 @@ class MythosLaunderingScenarioTests(unittest.TestCase):
         # clean step in this run — but the ATTEMPT disclosure check, the one
         # the laundering targets, now passes vacuously.)
         self.assertEqual(frozenset(), result.undisclosed_attempts)
+
+    def test_gap_midchain_deletion_with_rehash_undetected_by_chain_alone(self) -> None:
+        # GAP (adversarial, privileged writer): the chain is public,
+        # unkeyed SHA-256, so deleting a mid-chain record is NOT the end
+        # of the attack. A writer with direct store access who deletes a
+        # mid-chain record AND recomputes every following
+        # previous_hash/hash (suffix rehash, using the production
+        # canonical hashing) produces a chain that verify_audit() accepts.
+        # The gap is therefore NOT limited to tail truncation. Closure
+        # requires an external anchored head (witnessed head hash plus
+        # record count): rehashing changes the head, and deletion changes
+        # the length, so an anchored head detects both this and tail
+        # truncation. This layer provides no such anchor.
+        state = InMemoryKernelState()
+        kernel = self._kernel(state=state)
+        ledger = ConsequenceLedger()
+        self._run_mythos_story(kernel, ledger)
+        self.assertTrue(kernel.verify_audit())
+        index = next(
+            i for i, r in enumerate(kernel.audit)
+            if r["event"] == "permit_rejected"
+            and r["payload"]["intent_hash"] == self.forbidden_hash
+        )
+        self.assertLess(index, len(kernel.audit) - 1)  # mid-chain
+        del kernel.audit[index]
+        # Control: without rehashing the deletion is detected.
+        self.assertFalse(kernel.verify_audit())
+        rehash_suffix(kernel.audit, index)
+        # After rehashing, chain verification alone accepts the rebuilt
+        # chain — the record is gone and nothing in the chain objects.
+        self.assertTrue(kernel.verify_audit())
+        self.assertNotIn(
+            "permit_rejected", [r["event"] for r in kernel.audit]
+        )
 
     # -- step 5: negative control — agent-writable log launders cleanly --------
 
