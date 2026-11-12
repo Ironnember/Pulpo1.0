@@ -1,0 +1,56 @@
+name: Synthetic Monitor Custody Proof
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/synthetic-monitor-custody-proof.yml"
+      - "proofs/monitor-custody/**"
+      - "tests/test_synthetic_monitor_custody.py"
+      - "docs/monitor-custody/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  synthetic-monitor-custody:
+    name: synthetic monitor custody only
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      PYTHONDONTWRITEBYTECODE: "1"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Run synthetic monitor-custody proof
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/pulpo-synthetic-monitor-custody"
+          mkdir -p "$evidence"
+          python3 proofs/monitor-custody/synthetic_monitor_custody_proof.py \
+            --output "$evidence/pulpo-synthetic-monitor-custody-result.json"
+
+      - name: Run synthetic monitor-custody unittest
+        run: python3 -m unittest discover -s tests -p 'test_synthetic_monitor_custody.py' -v
+
+      - name: Verify clean source after proof
+        shell: bash
+        run: |
+          set -euo pipefail
+          git status --short
+          test -z "$(git status --short)"
+
+      - name: Upload synthetic monitor-custody artifact
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: pulpo-synthetic-monitor-custody
+          path: ${{ runner.temp }}/pulpo-synthetic-monitor-custody/**
+          if-no-files-found: error
+          retention-days: 14
