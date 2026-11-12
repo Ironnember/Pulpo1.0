@@ -39,8 +39,14 @@ import hmac
 import json
 import os
 from pathlib import Path
+import threading
 import time
 from typing import Any, Callable, Protocol, Sequence
+
+try:
+    import fcntl
+except ImportError:  # Non-POSIX platform: per-path in-process fallback.
+    fcntl = None  # type: ignore[assignment]
 
 
 GENESIS_HASH = "0" * 64
@@ -156,17 +162,72 @@ def _check_extension(existing: Sequence[AuditAnchor], anchor: AuditAnchor) -> No
 
 
 class InMemoryAnchorStore:
-    """Append-only in-process anchor store; reads return detached copies."""
+    """Append-only in-process anchor store; reads return detached copies.
+
+    The extension check and the append are one locked step, so concurrent
+    in-process writers cannot both validate against the same history and
+    fork it; a writer whose anchor no longer extends the history fails
+    closed with ``ValueError`` instead.
+    """
 
     def __init__(self) -> None:
         self._anchors: list[AuditAnchor] = []
+        self._lock = threading.Lock()
 
     def append(self, anchor: AuditAnchor) -> None:
-        _check_extension(self._anchors, anchor)
-        self._anchors.append(anchor)
+        with self._lock:
+            _check_extension(self._anchors, anchor)
+            self._anchors.append(anchor)
 
     def anchors(self) -> list[AuditAnchor]:
         return list(self._anchors)
+
+
+_FALLBACK_LOCKS: dict[str, threading.Lock] = {}
+_FALLBACK_LOCKS_GUARD = threading.Lock()
+
+
+def _fallback_lock(path: Path) -> threading.Lock:
+    with _FALLBACK_LOCKS_GUARD:
+        return _FALLBACK_LOCKS.setdefault(str(path.resolve()), threading.Lock())
+
+
+class _FileAppendLock:
+    """Exclusive lock spanning one file-store history re-read and append.
+
+    On POSIX this is an ``flock`` on a sibling lockfile, opened per append
+    so independent open descriptions contend correctly even between
+    threads of one process; the guarantee therefore covers concurrent
+    anchoring jobs in separate processes targeting the same file.  Where
+    ``flock`` is unavailable, a per-path in-process lock is used instead
+    and the guarantee narrows to writers in this process.
+    """
+
+    def __init__(self, data_path: Path) -> None:
+        self._data_path = data_path
+        self._fd: int | None = None
+        self._fallback: threading.Lock | None = None
+
+    def __enter__(self) -> None:
+        if fcntl is not None:
+            lock_path = self._data_path.with_name(self._data_path.name + ".lock")
+            self._fd = os.open(lock_path, os.O_CREAT | os.O_RDWR, 0o644)
+            fcntl.flock(self._fd, fcntl.LOCK_EX)
+        else:
+            self._fallback = _fallback_lock(self._data_path)
+            self._fallback.acquire()
+
+    def __exit__(self, *exc_info: object) -> bool:
+        if self._fd is not None:
+            try:
+                fcntl.flock(self._fd, fcntl.LOCK_UN)
+            finally:
+                os.close(self._fd)
+                self._fd = None
+        if self._fallback is not None:
+            self._fallback.release()
+            self._fallback = None
+        return False
 
 
 class FileAnchorStore:
@@ -176,18 +237,28 @@ class FileAnchorStore:
     update, delete, or rewrite operation.  Reads re-parse the file and
     return detached copies.  Malformed content raises instead of being
     silently skipped, so a damaged witness fails closed downstream.
+
+    The history re-read, extension check, and append of one ``append``
+    call are a single locked step (see ``_FileAppendLock``): two
+    anchoring jobs validating against the same history can no longer
+    both append and fork the witness chain.  A writer whose anchor was
+    built from a snapshot another writer has since extended fails
+    closed with ``ValueError`` and must re-read and retry.  Reads are
+    deliberately not locked; they return a snapshot, and verification
+    over any snapshot fails closed on inconsistency.
     """
 
     def __init__(self, path: str | os.PathLike[str]) -> None:
         self._path = Path(path)
 
     def append(self, anchor: AuditAnchor) -> None:
-        _check_extension(self.anchors(), anchor)
-        line = _canonical(asdict(anchor)).decode()
-        with self._path.open("a", encoding="utf-8") as handle:
-            handle.write(line + "\n")
-            handle.flush()
-            os.fsync(handle.fileno())
+        with _FileAppendLock(self._path):
+            _check_extension(self.anchors(), anchor)
+            line = _canonical(asdict(anchor)).decode()
+            with self._path.open("a", encoding="utf-8") as handle:
+                handle.write(line + "\n")
+                handle.flush()
+                os.fsync(handle.fileno())
 
     def anchors(self) -> list[AuditAnchor]:
         if not self._path.exists():

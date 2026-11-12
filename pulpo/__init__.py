@@ -1,7 +1,9 @@
 """Pulpo governed-execution kernel."""
 
 from .anchor import (
+    AnchorSigner,
     AnchorStore,
+    AnchorVerifier,
     AnchorVerification,
     AuditAnchor,
     FileAnchorStore,
@@ -56,7 +58,9 @@ from .targets import evaluate_locked_target_with_approval
 
 __all__ = [
     "AgentGrant",
+    "AnchorSigner",
     "AnchorStore",
+    "AnchorVerifier",
     "AnchorVerification",
     "AuditAnchor",
     "ApprovalEnvelope",

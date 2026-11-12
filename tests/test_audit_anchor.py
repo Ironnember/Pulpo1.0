@@ -39,6 +39,7 @@ from __future__ import annotations
 import hashlib
 import json
 import sqlite3
+import threading
 import unittest
 
 from pulpo import (
@@ -385,6 +386,166 @@ class AuditAnchorTests(unittest.TestCase):
             store = FileAnchorStore(path)
             with self.assertRaises(ValueError):
                 store.anchors()
+
+    def test_facade_exports_anchor_signer_and_verifier_protocols(self) -> None:
+        import pulpo
+        from pulpo import AnchorSigner, AnchorVerifier
+        from pulpo.anchor import AnchorSigner as ModuleSigner
+        from pulpo.anchor import AnchorVerifier as ModuleVerifier
+
+        self.assertIs(AnchorSigner, ModuleSigner)
+        self.assertIs(AnchorVerifier, ModuleVerifier)
+        self.assertIn("AnchorSigner", pulpo.__all__)
+        self.assertIn("AnchorVerifier", pulpo.__all__)
+
+
+class _RendezvousAfterCheck:
+    """Wrap ``pulpo.anchor._check_extension`` so two racing writers both
+    complete their history read and extension check before either is
+    allowed to write — the exact interleave behind the PR #352 Codex P1.
+
+    The barrier waits with a timeout and disarms itself on the first
+    timeout: once a store serializes check+append, the second writer
+    cannot reach the check while the first holds the lock, so the first
+    writer's rendezvous simply expires and later checks pass through.
+    """
+
+    def __init__(self, original) -> None:
+        self._original = original
+        self._barrier = threading.Barrier(2)
+        self._armed = True
+
+    def __call__(self, existing, anchor) -> None:
+        self._original(existing, anchor)
+        if self._armed:
+            try:
+                self._barrier.wait(timeout=5)
+            except threading.BrokenBarrierError:
+                self._armed = False
+
+
+def _conflicting_genesis_anchors():
+    from pulpo import AuditAnchor
+
+    return [
+        AuditAnchor(
+            sequence=0,
+            record_count=2,
+            head_hash="c" * 64,
+            previous_anchor_hash="0" * 64,
+            timestamp_ns=NOW + 11,
+        ),
+        AuditAnchor(
+            sequence=0,
+            record_count=2,
+            head_hash="c" * 64,
+            previous_anchor_hash="0" * 64,
+            timestamp_ns=NOW + 22,
+        ),
+    ]
+
+
+class AnchorConcurrencyTests(unittest.TestCase):
+    def _race_two_appends(self, store) -> tuple[list, list]:
+        outcomes: list = []
+        failures: list = []
+
+        def append(anchor) -> None:
+            try:
+                store.append(anchor)
+                outcomes.append(anchor)
+            except ValueError as exc:
+                failures.append(exc)
+
+        first, second = _conflicting_genesis_anchors()
+        threads = [
+            threading.Thread(target=append, args=(first,)),
+            threading.Thread(target=append, args=(second,)),
+        ]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join(timeout=30)
+        self.assertFalse(any(thread.is_alive() for thread in threads))
+        return outcomes, failures
+
+    def test_file_store_concurrent_appends_never_fork(self) -> None:
+        import tempfile, os
+        from unittest import mock
+
+        import pulpo.anchor as anchor_module
+
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "anchors.jsonl")
+            store = FileAnchorStore(path)
+            rendezvous = _RendezvousAfterCheck(anchor_module._check_extension)
+            with mock.patch.object(anchor_module, "_check_extension", rendezvous):
+                outcomes, failures = self._race_two_appends(store)
+            # Exactly one writer lands; the other fails closed.  Before
+            # the fix both succeeded and the file held two sequence-0
+            # anchors — a witness history permanently failing with
+            # anchor_sequence_gap.
+            self.assertEqual(1, len(outcomes))
+            self.assertEqual(1, len(failures))
+            history = FileAnchorStore(path).anchors()
+            self.assertEqual([0], [anchor.sequence for anchor in history])
+
+    def test_inmemory_store_concurrent_appends_never_fork(self) -> None:
+        from unittest import mock
+
+        import pulpo.anchor as anchor_module
+
+        store = InMemoryAnchorStore()
+        rendezvous = _RendezvousAfterCheck(anchor_module._check_extension)
+        with mock.patch.object(anchor_module, "_check_extension", rendezvous):
+            outcomes, failures = self._race_two_appends(store)
+        self.assertEqual(1, len(outcomes))
+        self.assertEqual(1, len(failures))
+        self.assertEqual([0], [anchor.sequence for anchor in store.anchors()])
+
+    def test_file_store_concurrent_anchor_jobs_keep_history_valid(self) -> None:
+        import tempfile, os
+
+        with tempfile.TemporaryDirectory() as tmp:
+            state = InMemoryKernelState()
+            kernel = _governed_trail(state)
+            store = FileAnchorStore(os.path.join(tmp, "anchors.jsonl"))
+            landed: list = []
+            errors: list = []
+
+            def job() -> None:
+                clock = _Clock()
+                attempts = 0
+                done = 0
+                while done < 5 and attempts < 500:
+                    attempts += 1
+                    try:
+                        anchor_state(state, store, clock=clock)
+                        done += 1
+                    except ValueError:
+                        # Stale snapshot: another job extended the
+                        # history first.  Fail-closed, so re-read and
+                        # retry — the anchoring job's normal cadence.
+                        continue
+                    except Exception as exc:  # noqa: BLE001 - surfaced below
+                        errors.append(exc)
+                        return
+                landed.append(done)
+
+            threads = [threading.Thread(target=job) for _ in range(4)]
+            for thread in threads:
+                thread.start()
+            for thread in threads:
+                thread.join(timeout=60)
+            self.assertFalse(any(thread.is_alive() for thread in threads))
+            self.assertEqual([], [repr(exc) for exc in errors])
+            self.assertEqual([5, 5, 5, 5], sorted(landed))
+            history = store.anchors()
+            self.assertEqual(20, len(history))
+            self.assertEqual(list(range(20)), [anchor.sequence for anchor in history])
+            result = verify_anchored_audit(state.audit, history)
+            self.assertTrue(result.ok, result.reason)
+            self.assertTrue(kernel.verify_audit())
 
 
 if __name__ == "__main__":
