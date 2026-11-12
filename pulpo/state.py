@@ -7,6 +7,7 @@ not another router, policy engine, or evidence ledger.
 
 from __future__ import annotations
 
+from copy import deepcopy
 from dataclasses import dataclass
 from hashlib import sha256
 import json
@@ -82,7 +83,14 @@ class InMemoryKernelState:
 
     @property
     def audit(self) -> list[dict[str, Any]]:
-        return self._audit
+        # Return detached deep copies, copied under the audit lock, matching
+        # the SQLite backend (which rebuilds fresh records from rows on every
+        # read). Returning the live list let any holder of the kernel delete
+        # records, append forged ones, or rewrite a record's payload in the
+        # stored trail through the read path alone.
+        # Regression: tests/test_inmemory_audit_detached_copies.py.
+        with self._audit_lock:
+            return deepcopy(self._audit)
 
     def approval_replay_reason(self, approval_id: str, nonce: str) -> str | None:
         if approval_id in self._approval_ids: return "approval_id_replayed"
@@ -212,7 +220,10 @@ class InMemoryKernelState:
             if len(matches) > 1:
                 raise ValueError("unique audit identity ambiguous")
             if matches:
-                return matches[0]
+                # Detached copy, as on the SQLite backend (which returns a
+                # freshly decoded payload): the caller must not be able to
+                # rewrite the stored record through the returned payload.
+                return deepcopy(matches[0])
             previous = self._audit[-1]["hash"] if self._audit else "0" * 64
             self._audit.append(_audit_record(previous, event, payload, timestamp_ns))
             return None
