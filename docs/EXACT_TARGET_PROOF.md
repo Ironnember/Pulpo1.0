@@ -1,7 +1,7 @@
 # Exact Target Lock Proof
 
-Status: proposed; noncanonical until reviewed and merged
-Branch: `feature/target-lock-v0`
+Status: **canonical on protected `main`** via PR #55, merge commit `fc941266a608d7b654cc647532ac965f81582535`
+Original branch: `feature/target-lock-v0`
 
 ## Purpose
 
@@ -16,6 +16,8 @@ This proof implements the boundary behind phrases such as `lock target` and `fir
 `LOCKED_TARGET != AUTHORIZED_ACTION`
 
 `"FIRE" != PERMIT`
+
+`TARGET_MATCH != AUTHORITY`
 
 A locked target is an immutable proposal. It records an exact `Intent` plus target identity, version, lock timestamp, and target hash in the canonical kernel audit chain with `authority_effect: none`.
 
@@ -62,9 +64,9 @@ GovernanceKernel.evaluate_with_approval(exact_locked_intent, envelope)
 
 The target adapter never mints authority. It first resolves the exact durable target and then delegates the unchanged locked intent to the existing kernel approval verifier. The permit remains bound to the exact intent by the existing kernel. Execution must still consume that permit through the existing kernel state path.
 
-## Success evidence required
+## Canonical evidence
 
-The focused tests must prove:
+PR #55 was admitted to protected `main` after fresh reconciliation and protected CI. Its exact-target proof covers:
 
 1. locking records an exact target but creates no permit or authority;
 2. exact target hash resolves;
@@ -77,9 +79,29 @@ The focused tests must prove:
 9. an approval-gated exact target can proceed only through the existing approval verifier path;
 10. target mismatch occurs before an approval envelope is consumed, so correcting the target reference can still use the same otherwise-valid envelope;
 11. an approval envelope bound to a different intent cannot authorize the locked target;
-12. approval replay remains denied after one successful exact-target authorization.
+12. approval replay remains denied after one successful exact-target authorization;
+13. retrying an identical target after the clock advances remains idempotent rather than mutating the durable target;
+14. replay denial follows canonical deterministic precedence after the atomic replay-classification fix.
 
-The full dependency-free suite, asymmetric authority suite, and authority-service suite must continue passing at the same commit.
+The dependency-free suite, asymmetric authority suite, and authority-service suite passed on the reconciled PR head before admission.
+
+## Skill-pattern reconciliation
+
+The canonical target-lock design matches the reusable engineering pattern extracted from inspected plugin skills:
+
+`contract -> exact object -> trust evidence -> decision -> minimum permitted effect -> independent verification -> reconciliation -> lesson`
+
+For Target Lock:
+
+- **contract:** target ID/version/hash and exact `Intent`;
+- **exact object:** immutable `LockedTarget`;
+- **trust evidence:** target hash plus existing approval envelope when required;
+- **decision:** existing `GovernanceKernel` only;
+- **minimum permitted effect:** normal one-use kernel permit only;
+- **independent verification:** mismatch, replay, restart, approval-binding, and retry regressions;
+- **reconciliation:** existing audit chain, `authority_effect: none`.
+
+No plugin, skill, interface, or model becomes an authority source by using this pattern.
 
 ## Boundary
 
@@ -105,12 +127,8 @@ The target record and target adapter cannot issue a permit, change policy, appro
 
 ## Claim classification
 
-For an exact branch commit with passing CI:
-
-- target lock and exact resolution semantics exercised by tests: **Verified** for that commit;
-- approval-gated exact-target binding exercised by tests: **Verified** for that commit;
-- branch status as canonical Pulpo behavior: **Proposed** until reviewed and merged;
+- exact-target and approval-binding behavior admitted through PR #55: **Verified and canonical within repository/CI scope**;
 - independently deployed human authority: **Blocked**;
 - production voice workflow: **Proposed / not implemented**.
 
-Executable evidence outranks this document. If CI or focused tests fail, the runtime behavior returns to **Unknown/Failed** until reconciled.
+Executable evidence outranks this document. If canonical tests later fail or implementation changes invalidate these properties, the affected claim returns to **Unknown/Failed** until reconciled.
