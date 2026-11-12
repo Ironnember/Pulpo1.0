@@ -37,7 +37,10 @@ class FrozenEvidenceSource:
         audit_tip = snapshot.get("audit_tip")
         authority_effect = snapshot.get("authority_effect")
 
-        if schema != "pulpo.mcp-evidence.v0":
+        # Accept the evidence schema the canonical MCP projection currently
+        # emits (pulpo.mcp-evidence.v1 on main). The retired v0 schema is no
+        # longer produced anywhere upstream, so it is not accepted.
+        if schema != "pulpo.mcp-evidence.v1":
             raise ValueError("evidence_schema_invalid")
         if not isinstance(policy_hash, str) or not policy_hash:
             raise ValueError("evidence_policy_hash_invalid")

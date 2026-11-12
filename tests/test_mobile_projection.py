@@ -3,8 +3,8 @@ import unittest
 
 import mobile_demo.app as mobile_app
 from mobile_demo.app import FrozenEvidenceSource, create_app
-from pulpo.kernel import GovernanceKernel, Policy
-from pulpo.mcp_boundary import PulpoMCPProjection
+from pulpo.kernel import GovernanceKernel, Intent, Policy
+from pulpo.mcp_boundary import PulpoMCPProjection, freeze_mcp_snapshot
 from pulpo.orchestrator import PulpoOrchestrator
 
 
@@ -15,7 +15,12 @@ FLASK_AVAILABLE = importlib.util.find_spec("flask") is not None
 class MobileProjectionTests(unittest.TestCase):
     def setUp(self):
         self.kernel = GovernanceKernel(Policy(allowed_actions=frozenset({"read"}), max_cost=10))
-        self.projection = PulpoMCPProjection(PulpoOrchestrator(self.kernel))
+        self.orchestrator = PulpoOrchestrator(self.kernel)
+        # Current main's construction: the projection receives only a frozen
+        # MCPReadSnapshot frozen on the trusted side; it never retains the
+        # orchestrator or kernel (the pre-hardening constructor took the
+        # orchestrator directly and now raises TypeError).
+        self.projection = PulpoMCPProjection(freeze_mcp_snapshot(self.orchestrator))
         self.snapshot = self.projection.evidence_snapshot()
         self.source = FrozenEvidenceSource(self.snapshot)
         self.app = create_app(self.source, auth_token="test-token")
@@ -54,17 +59,19 @@ class MobileProjectionTests(unittest.TestCase):
         self.assertEqual("not_asserted", payload["freshness"])
         self.assertEqual("none", payload["authority_effect"])
         self.assertNotIn("permit", payload)
-        self.assertEqual("pulpo.mcp-evidence.v0", payload["source"]["schema"])
+        self.assertEqual("pulpo.mcp-evidence.v1", payload["source"]["schema"])
         self.assertEqual("none", payload["source"]["authority_effect"])
         self.assertNotIn("permit", payload["source"])
 
     def test_canonical_changes_do_not_create_hidden_live_or_write_path(self):
         frozen_records = self.source.read_evidence()["audit_records"]
-        self.projection.propose_intent(
-            "after-snapshot",
-            "agent:test",
-            "read",
-            "repo:docs",
+        # Advance canonical state on the trusted side, with the same intent
+        # this test previously proposed through the projection. On current
+        # main the projection is capability-free and cannot mutate canonical
+        # state (that is the boundary under test), so the canonical change is
+        # made through the kernel itself.
+        self.kernel.evaluate(
+            Intent(principal="agent:test", action="read", resource="repo:docs")
         )
         canonical_records = len(self.kernel.audit)
         self.assertGreater(canonical_records, frozen_records)
