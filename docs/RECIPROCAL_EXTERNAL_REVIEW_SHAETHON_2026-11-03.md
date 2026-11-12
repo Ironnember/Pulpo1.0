@@ -344,3 +344,214 @@ Michael Dill, Founder, SHAETHON AI
 Sign-off: given by email, 2026-11-03 — "The record reads true to me —
 both directions, the limits, the anomaly, the flags, and the Preview
 scoping on my side's evidence. That's my sign-off; put it in as-is."
+
+---
+
+## Addendum (2026-11-03, evening) — Anomaly reconciliation: closed, harness-side
+
+The disclosed anomaly above was reconciled by SHAETHON AI from the ledger
+side and the reconciliation was checked by Iron & Ember against its own
+retained files. The original disclosure stands unchanged as the record of
+what was filed; this addendum records what the reconciliation established.
+
+**Verdict (SHAETHON AI, by email 2026-11-03):** the gate executed that
+permit exactly once. The anomaly resolves to the test-harness and
+write-up layer on the Iron & Ember side. It is closed — not a break, and
+not a gate defect.
+
+**Verified** (Iron & Ember, against its own retained artifacts):
+
+- The battery-1 B1 entry in `battery_log.json` (2026-11-03T20:02:43Z)
+  records twenty responses: nineteen HTTP 403 and one null, with a stored
+  result of "executed count = 0". No retained log records a count of 2.
+- The battery-1 verdict rule (`run_battery.py`) counted a win only on
+  HTTP 200 with `executed: true` and marked the race BROKEN whenever the
+  count was not exactly 1 — so a count of 0 produced the BROKEN verdict.
+- The rerun B1 entry (`battery_log_rerun.json`, full capture) records
+  nineteen 403s and one 200, `executed=1`, verdict HELD; the rerun script
+  (`run_battery2.py`) classifies a zero count as `SAFE-SIDE-ANOMALY`.
+- The "2 responses counted as executed" figure and the ~20:10 UTC window
+  appear only in the return report's and the anomaly packet's prose;
+  the prose conflated the battery-1 race (20:02:43 UTC, window
+  265 → 347) with the rerun window (347 → 420).
+- Five full-capture reproduction rounds each produced exactly 1
+  execution (100 spends), as originally recorded.
+
+**Inferred:** nineteen `PermitReplayed` refusals are reachable only after
+the permit's nonce has been claimed once, inside the gate; the race's
+one null response is consistent with the executed 200 having been lost
+in transport (connection resets were observed and recorded during that
+session), so the counter saw zero wins for a race the gate held. This
+reading is the only one consistent with all retained responses.
+
+**Recorded** (SHAETHON AI's reconciliation, from its email): rebuilding
+the gate's accounting rules from its source and running Iron & Ember's
+recorded checkpoints against them matched exactly in four windows
+(rerun, race reproduction, franken-permit, flag probes — records and
+anchor counts both). Stated limits from the same email: the pilot
+surface does not enumerate ledger records one by one, so the
+reconciliation rests on the gate code path, the logged data, and the
+counts; the battery-1 window also carries a two-record residual in
+baseline bookkeeping around the pre-battery control, which touches no
+test segment (the B1 segment is 22 records under any reading).
+
+**Consequence:** the anomaly line in the Direction 2 record is amended
+from "unreproduced anomaly (open)" to **closed — harness-side counting
+and write-up error**. The joint supervised concurrency soak remains
+agreed as part of the patched-gate phase; it is no longer load-bearing
+for this anomaly. A full SHAETHON memo with the window-by-window table
+exists and has been requested for the record.
+
+**Change record (this addendum):** documentation only; no authority
+gained, narrowed, or exercised; no canonical state mutation beyond this
+file; no legacy behavior source used; no temporal replay applies to an
+external-evidence addendum.
+
+**Sign-off for this addendum:**
+
+- Austin Irvan, Founder, Iron & Ember LLC — given in session, 2026-11-03.
+- Michael Dill, Founder, SHAETHON AI — given by email, 2026-11-03:
+  "The addendum reads true to me — the verdict, what each side
+  verified, the Inferred grade on the transport reading, and the
+  limits as stated. That is my sign-off; record it in the document
+  and merge PR #339 as-is." His full reconciliation memo
+  (window-by-window table) was delivered with the same email and is
+  held in Iron & Ember custody alongside the battery files
+  (SHA-256 ddd77a10e5b39988ad138edfffc4512ce51911bd254a987c4d2ebee955b20ef3).
+
+**Adversarial transformation review of this closure** (required by
+AGENTS.md for consequential near-misses; the review at lines 280–297
+assessed keeping the anomaly open and cannot cover the opposite
+decision; analytical only, grants no authority):
+
+- **Flip** (swap tester and tested): had SHAETHON reported a count of
+  2 against Pulpo in prose while its own logs showed 0, Iron & Ember
+  would require exactly this reconciliation before accepting closure —
+  the standard applied here is the one we would demand.
+- **Reverse** (read the evidence backward): start from the ledger
+  counts and predict the harness logs — four windows match exactly,
+  and the B1 segment is 22 records under any reading of the residual;
+  the reconstruction predicts the retained data rather than merely
+  accommodating it.
+- **Invert** (assume the opposite verdict): a genuine double execution
+  would require a second execution record and anchor movement the
+  ledger does not show, plus a second 200 in logs that hold none.
+  The inversion needs evidence that does not exist in either side's
+  custody.
+- **Inside-Out** (each side audits the other): Iron & Ember verified
+  SHAETHON's claims about Iron & Ember's files from the files
+  themselves; SHAETHON derived its expectations from its gate source,
+  not from Iron & Ember's summary. Neither side graded its own paper.
+- **Darken** (worst case): if a double execution someday reproduces
+  under the supervised soak, this closure is falsified by design — the
+  original disclosure text is preserved above, unedited, precisely so
+  a future break can be recorded against it.
+- **Lighten** (best case): the gate's replay refusal being reachable
+  only after a single claim is a design property worth the record;
+  the closure documents it without upgrading it to a proof about any
+  other permit or window.
+- **Amplify** (scale the claim): nothing here generalizes beyond the
+  one permit, one race, one window. The closure claims exactly that
+  event and no class of events.
+- **Negate** (remove each support in turn): remove the ledger
+  reconstruction and the retained logs still show a count of 0 with a
+  clean rerun; remove the logs and the ledger counts still admit only
+  one execution. The verdict does not rest on a single leg.
+
+---
+
+## Addendum 2026-11-04 — canonical pass recorded; evidence packages published
+
+This addendum records two events that postdate the signed record above.
+The original text and the 2026-11-03 anomaly addendum are unedited,
+including the scope sentence in the original body stating that Direction 1
+did not establish independent reproduction of canonical Pulpo at
+`6b3caac`. That sentence was true when written. This addendum records
+what happened next.
+
+### The canonical pass (2026-11-03, reported 22:27 Phoenix)
+
+After the reciprocal batteries above, SHAETHON AI executed the
+commissioned independent reproduction of canonical Pulpo at
+`6b3caacbc28a7b40ebf5ea6295bc8058804de6e3` under Iron & Ember's written
+protocol (`INDEPENDENT_REPRODUCTION.md`), on an independent host, and
+reported the same night:
+
+- Fresh clone, detached checkout; HEAD `6b3caac` and tree
+  `df6310dc0b6eaec50b7870832dd8cb379096f778` verified before and after
+  the run. Iron & Ember independently confirmed that tree hash matches
+  its own tree at `6b3caac`.
+- Suite: 422 tests ran, OK, 4 skipped — the 3 Ed25519 authority tests
+  skipped in the bare environment were run separately with
+  `cryptography==50.0.1` per protocol, 3/3 OK; the macOS Seatbelt test
+  reported as untested on Linux, not passed.
+- Gladiator: PASS_WITH_BOUNDARIES — 138 test executions, 10,600
+  scheduled mixed operations, no failures; `source_unchanged` and
+  `clean_tree_after` both true.
+- Incident proof: PASS, 14/14 checks, remediation count exactly 1.
+- Stated scope (tester's own limits): the service and container CI
+  suites were not run; no separate SHAETHON adversarial battery was
+  layered on canonical main, so the 31-probe battery remains a
+  Direction 1 (Preview) artifact. The tester offered a separate
+  probes-on-main pass as its own artifact; that offer stands open.
+
+**Claim classification:** the canonical pass is **Recorded** — an
+identified competitor's attestation, executed under a written protocol,
+with the tree-hash cross-check above performed by Iron & Ember itself.
+
+### The evidence packages (received and published 2026-11-04)
+
+On 2026-11-03 the tester offered his full evidence package "as-is,"
+to publish alongside this review. Iron & Ember accepted on 2026-11-04.
+The package arrived the same morning in two parts, sender-stated
+SHA-256 hashes recomputed and matched by Iron & Ember on receipt:
+
+- `pulpo-evidence-package-2026-11-03.zip` —
+  `cd420b6eef8f310d905bdeb2a58a8851eff2e289bea8a8e65112783ff15f0229`
+  Bit-identical to the package taken into custody on 2026-11-03.
+- `canonical-pass-evidence-2026-11-03.zip` —
+  `24c1bacce85ac5131ebcff92a9db380896f74ba5b7433da760b0336c32107e14`
+  The canonical pass's memo, raw logs, tournament results, and incident
+  database.
+
+Both are published unedited in `docs/evidence/shaethon-2026-11-03/`
+with a custody and verification index. Iron & Ember's log-level checks
+on receipt are recorded there. Publication establishes custody,
+integrity, and internal consistency of the artifacts; it does not
+convert the tester's attestation into Iron & Ember's own observation,
+and it changes no claim class in this record except this one:
+
+- The canonical pass's standing moves from *reported by email* to
+  *reported with raw artifacts in public custody, hash-verified against
+  the sender's stated hashes, and spot-checked against the reported
+  results*. It remains **Recorded**, for the reason the original record
+  gives for Direction 1: it is a competitor's independent attestation,
+  which is what makes it worth having — and worth grading as exactly
+  what it is.
+
+**Change record for this addendum:** invariant — a desirable observed
+state is not proof that the transition producing it was legitimate; this
+addendum therefore records provenance (offer, acceptance, receipt,
+hashes) before results. Authority change: none. Canonical state
+mutations: none (docs and evidence files only). Evidence: the two
+packages in `docs/evidence/shaethon-2026-11-03/` and the tester's
+2026-11-03 and 2026-11-04 emails. Boundary the evidence does not cross:
+Iron & Ember did not witness either run; the supervised concurrency
+soak remains outstanding and is the named falsifier for the anomaly
+closure above.
+
+**Counterparty sign-off on this addendum** — Michael Dill, by email,
+2026-11-04: "Read PR #341 in full. Sign-off: approved as written. The
+canonical pass is recorded accurately — results, scope limits, and the
+grading. Recorded is the right class: you witnessed the hashes, not
+the runs, and the addendum says exactly that. The soak stays the open
+item between us, as written. Record the sign-off and merge when
+ready."
+
+**Review completion note (2026-11-04):** in response to a P2 review
+finding that the evidence set did not include the protocol the
+canonical pass ran under, `INDEPENDENT_REPRODUCTION.md` was added to
+`docs/evidence/shaethon-2026-11-03/` unchanged (SHA-256
+`78980f07b075e13853ee1c6c725ecc82629f768008844a1db71d566485675bbd`),
+and the index gained an executor-naming provenance note. Neither
+original ZIP was modified.
