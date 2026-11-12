@@ -44,7 +44,12 @@ class GovernanceKernelTests(unittest.TestCase):
     def test_audit_chain_detects_tampering(self):
         self.kernel.evaluate(Intent("agent", "read", "repo"))
         self.assertTrue(self.kernel.verify_audit())
-        self.kernel.audit[0]["payload"]["reason"] = "changed"
+        # Audit reads are detached copies (see
+        # tests/test_inmemory_audit_detached_copies.py), so tampering with a
+        # returned record no longer reaches the store. Tamper-evidence is
+        # therefore exercised at the store itself — the privileged-writer
+        # position the hash chain exists to detect.
+        self.kernel._state._audit[0]["payload"]["reason"] = "changed"
         self.assertFalse(self.kernel.verify_audit())
 
     def test_agent_grants_fail_closed_for_unknown_principal(self):
