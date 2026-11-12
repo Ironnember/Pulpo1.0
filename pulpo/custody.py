@@ -618,6 +618,35 @@ class SQLiteGovernanceCustody:
             },
         )
 
+    @staticmethod
+    def _row_to_attempt(row: tuple[Any, ...]) -> AttemptSnapshot:
+        return AttemptSnapshot(
+            attempt_id=str(row[0]),
+            object_hash=str(row[1]),
+            target_hash=str(row[2]),
+            permit_hash=str(row[3]),
+            authorization_hash=str(row[4]),
+            state=str(row[5]),
+            executor_id=str(row[6]) if row[6] is not None else None,
+            provider_request_id=str(row[7]) if row[7] is not None else None,
+            observation_hash=str(row[8]) if row[8] is not None else None,
+            reconciliation_outcome=str(row[9]) if row[9] is not None else None,
+            created_epoch=int(row[10]),
+            updated_epoch=int(row[11]),
+        )
+
+    def _attempt_rows(self, connection: sqlite3.Connection) -> tuple[AttemptSnapshot, ...]:
+        rows = connection.execute(
+            """
+            SELECT attempt_id, object_hash, target_hash, permit_hash,
+                   authorization_hash, state, executor_id, provider_request_id,
+                   observation_hash, reconciliation_outcome,
+                   created_epoch, updated_epoch
+            FROM custody_attempts ORDER BY created_epoch, attempt_id
+            """,
+        ).fetchall()
+        return tuple(self._row_to_attempt(row) for row in rows)
+
     def attempt(self, attempt_id: str) -> AttemptSnapshot | None:
         if not attempt_id:
             return None
@@ -635,20 +664,54 @@ class SQLiteGovernanceCustody:
             ).fetchone()
             if row is None:
                 return None
-            return AttemptSnapshot(
-                attempt_id=str(row[0]),
-                object_hash=str(row[1]),
-                target_hash=str(row[2]),
-                permit_hash=str(row[3]),
-                authorization_hash=str(row[4]),
-                state=str(row[5]),
-                executor_id=str(row[6]) if row[6] is not None else None,
-                provider_request_id=str(row[7]) if row[7] is not None else None,
-                observation_hash=str(row[8]) if row[8] is not None else None,
-                reconciliation_outcome=str(row[9]) if row[9] is not None else None,
-                created_epoch=int(row[10]),
-                updated_epoch=int(row[11]),
-            )
+            return self._row_to_attempt(row)
+        except (OSError, sqlite3.Error) as exc:
+            raise CustodyViolation("custody_store_unavailable") from exc
+        finally:
+            connection.close()
+
+    def attempts(self) -> tuple[AttemptSnapshot, ...]:
+        """Read-only enumeration of every custody attempt, oldest first.
+
+        SELECT-only: no row is written, no head is advanced, no receipt is
+        minted. Ordering is (created_epoch, attempt_id); created_epoch is the
+        head-epoch counter at authorization time, so this is authorization
+        order. The store records no per-attempt timestamp -- see
+        pulpo/incident_channel.py for what that means for derived records.
+        """
+        connection = self._connect()
+        try:
+            return self._attempt_rows(connection)
+        except (OSError, sqlite3.Error) as exc:
+            raise CustodyViolation("custody_store_unavailable") from exc
+        finally:
+            connection.close()
+
+    def attempts_and_snapshot(self) -> tuple[tuple[AttemptSnapshot, ...], GovernanceHead]:
+        """Attempts and head read atomically, as one consistent pair.
+
+        Both reads run on one connection inside one SQLite read
+        transaction (BEGIN ... ROLLBACK -- nothing is written), so the
+        returned attempts and the returned head describe the same store
+        state. Reading them through separate calls (attempts() then
+        snapshot()) can interleave with a committing transition and pair
+        pre-transition attempt state with the post-transition head;
+        consumers that derive facts from the pair (the incident channel)
+        must use this method instead.
+        """
+        connection = self._connect()
+        try:
+            connection.execute("BEGIN")
+            try:
+                attempts = self._attempt_rows(connection)
+                head = self._load_head(connection)
+            except BaseException:
+                connection.rollback()
+                raise
+            connection.rollback()
+            return attempts, head
+        except CustodyViolation:
+            raise
         except (OSError, sqlite3.Error) as exc:
             raise CustodyViolation("custody_store_unavailable") from exc
         finally:
