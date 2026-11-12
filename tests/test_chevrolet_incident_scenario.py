@@ -42,6 +42,13 @@ Boundary: this proves kernel behavior at this commit for these action
 classes (Verified, executable evidence). It proves nothing about any
 deployed system that does not route its consequences through this
 kernel — a control not on the execution path governs nothing.
+
+Adversarial transformation review: recorded in full in PR #348 per
+``docs/ADVERSARIAL_TRANSFORMATION_SOP.md`` (eight passes). Decision:
+continue — the governed execution path makes the unauthorized $1
+consequence unreachable without enlarging any authority; chatbot
+utterance (speech) outside the execution path remains outside the
+boundary, as stated above.
 """
 
 from __future__ import annotations
@@ -141,6 +148,17 @@ def signed_evidence(kernel, intent, envelope, ceremony_verifier, *, now_ns, ttl_
     return replace(unsigned, signature=(signer or ceremony_verifier).sign(unsigned.signing_bytes()))
 
 
+# Token presented to ``GovernanceKernel.consume`` when the executor
+# holds no permit at all. The kernel's consume contract takes a permit
+# string; issued permits are ``<intent-hash>:<nonce>:<signature>`` and
+# are never empty, so the empty string is a never-issued token that
+# represents unavailable authority — as distinct from a fabricated
+# token, which represents forged authority. Presenting it lets the
+# KERNEL, not this harness, reject the attempt and write the canonical
+# ``permit_rejected`` audit record for it.
+NO_PERMIT_TOKEN = ""
+
+
 class ConsequenceLedger:
     """Effects on the dealership's systems, reachable only via a successful consume.
 
@@ -148,15 +166,20 @@ class ConsequenceLedger:
     price) only when the kernel consumes a permit for that exact intent.
     A denial is therefore directly observable as the absence of a
     consequence, not merely as a returned status.
+
+    The harness never denies on its own: every attempt — including one
+    holding no permit (``permit=None``) — is presented to
+    ``GovernanceKernel.consume``, so a regression in the kernel's
+    handling of unavailable authority fails this scenario instead of
+    being masked by a harness-side short-circuit.
     """
 
     def __init__(self) -> None:
         self.effects: list[tuple[str, str, int]] = []
 
     def execute(self, kernel: GovernanceKernel, permit: str | None, intent: Intent) -> bool:
-        if permit is None:
-            return False
-        if not kernel.consume(permit, intent):
+        presented = NO_PERMIT_TOKEN if permit is None else permit
+        if not kernel.consume(presented, intent):
             return False
         self.effects.append((intent.action, intent.resource, intent.cost))
         return True
@@ -240,6 +263,10 @@ class ChevroletIncidentScenarioTests(unittest.TestCase):
             (decision.outcome, decision.reason),
         )
         self.assertIsNone(decision.permit)
+        # The no-permit attempt itself reaches the kernel: the ledger
+        # presents the unavailable-authority token to consume, so the
+        # rejection below is the KERNEL's, with a canonical audit
+        # record — not a harness-side short-circuit (Codex P1, PR #348).
         self.assertFalse(self.ledger.execute(self.kernel, decision.permit, SALE_ONE_DOLLAR_INTENT))
         # Mint path: the approval bound to the quote intent does not
         # authorize a permit for the commitment intent.
@@ -255,11 +282,16 @@ class ChevroletIncidentScenarioTests(unittest.TestCase):
         # Zero consequences: no $1 commitment exists anywhere.
         self.assertEqual([], self.ledger.effects)
         self.assertEqual(0, len(_events(self.kernel, "permit_consumed")))
+        # Exactly two kernel rejections, both carrying the $1-sale
+        # intent hash: one for the no-permit (unavailable-authority)
+        # attempt and one for the fabricated token. Before the fix the
+        # no-permit attempt never reached consume and only the
+        # fabricated token was accounted for (count was 1).
         rejected = _events(self.kernel, "permit_rejected")
-        self.assertEqual(1, len(rejected))
+        self.assertEqual(2, len(rejected))
         self.assertEqual(
-            self.kernel.intent_hash(SALE_ONE_DOLLAR_INTENT),
-            rejected[0]["payload"]["intent_hash"],
+            {self.kernel.intent_hash(SALE_ONE_DOLLAR_INTENT)},
+            {record["payload"]["intent_hash"] for record in rejected},
         )
         self.assertTrue(self.kernel.verify_audit())
 
