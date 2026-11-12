@@ -9,12 +9,12 @@ consequential MCP tool remain **Proposed**, not verified.
 MCP is a transport and capability-discovery surface. It is not a Pulpo
 authority, policy, permit, directive, execution, memory, or evidence source.
 
-The initial adapter intentionally exposes only:
+The capability-stripped adapter intentionally exposes only:
 
-- `pulpo_propose_intent`: validate and lock one exact target through the
-  canonical `PulpoOrchestrator`; and
+- `pulpo_propose_intent`: validate and copy one exact intent into an ephemeral,
+  capability-free proposal; and
 - `pulpo_get_evidence`: read integrity metadata projected from the canonical
-  kernel audit chain.
+  kernel audit chain into a frozen primitive snapshot.
 
 Neither tool accepts an approval flag, authority claim, directive, policy,
 clock, state backend, permit, executor, retrieval score, or model summary.
@@ -23,15 +23,15 @@ reconcile a consequential action.
 
 ## Proven invariant
 
-An MCP client can propose an exact intent and observe canonical evidence, but
-MCP metadata or client assertions cannot raise that intent's authority. An
-unknown action remains denied by the normal kernel even after it has been
-locked as an MCP proposal. Reusing a target version with substituted intent
-content is rejected as an immutable-target violation.
+An MCP client can prepare an exact intent and observe frozen evidence, but MCP
+metadata or client assertions cannot raise that intent's authority. A proposal
+does not lock a canonical target, issue a permit, consult authority, or create a
+governed state transition. Its policy hash is informational until canonical
+Pulpo independently re-resolves and evaluates the intent.
 
-The adapter owns no state and no clock. Proposal evidence is appended to the
-existing kernel audit chain with `authority_effect: none`; the evidence tool is
-a read-only projection and creates no second ledger.
+The adapter owns no state and no clock. Repeated, changed, malformed, or
+substituted proposal calls leave the canonical audit unchanged. The evidence
+tool is a read-only projection and creates no second ledger.
 
 ## Trusted frozen-snapshot export
 
@@ -62,6 +62,37 @@ Export does not mutate canonical Pulpo state or append a second audit event.
 The resulting file is a frozen derivative: it cannot follow later canonical
 mutations, and its presence does not prove live-current freshness, production
 authentication, independent deployment, or external consequence containment.
+
+## Observed frozen-snapshot reconciliation
+
+**Verified**, 2026-09-08, against canonical main
+`b44dcd40a1ad2bd5413756bd413807f54f9283da`: the operator-host durable SQLite
+database passed `PRAGMA quick_check`. The canonical kernel bootstrapped against
+a disposable database copy using a disposable verification-only secret and
+reproduced the configured snapshot's policy hash, valid 2,589-record audit
+chain, and audit tip. Export through the canonical
+`PulpoOrchestrator -> export_mcp_snapshot` path produced a mode-`0600` file
+byte-identical to the configured frozen object, SHA-256
+`21b8a36425e63b921145dbbb15d07147fb6fbdc4fcb913cdf06045a54f26b397`.
+
+The original durable database, configured snapshot, and runtime secrets were
+not modified or read during that reconciliation. The newest stored audit event
+was `2026-09-01T18:34:26.584436Z`, and no Pulpo process was running. This proves
+compatibility and provenance for that exact frozen object at the observation
+point. It does not prove present freshness, runtime admission, production
+deployment, or external consequence.
+
+Durable record:
+<https://github.com/Ironnember/Pulpo1.0/pull/200#issuecomment-5582109586>
+
+## Remaining trusted-runtime handoff
+
+The export primitive intentionally does not define or expose runtime bootstrap.
+The next proof must call `export_mcp_snapshot()` from an already admitted,
+trusted process that owns the canonical `PulpoOrchestrator`. It must not rebuild
+policy, reopen canonical state, or retain a kernel inside the MCP adapter merely
+to make the export callable. Until that same-process handoff is admitted and
+observed, plugin retrieval remains frozen evidence rather than live Pulpo state.
 
 ## Consequential-tool admission gate
 
