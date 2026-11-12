@@ -94,7 +94,10 @@ class ContextCustodyGladiatorTests(unittest.TestCase):
         store, policy, kernel, service = self.service()
         request = candidate("pub1")
         decision = service.prepare(request)
-        kernel.audit[0]["hash"] = "f" * 64
+        # Tamper at the store layer: kernel.audit returns detached copies
+        # since #351, so mutating the accessor's result never reaches the
+        # stored trail. A genuinely tampered stored record must deny.
+        kernel._state._audit[0]["hash"] = "f" * 64
         self.assert_denied_without_content(service.release(decision, request))
 
     def test_reservation_storage_failure_never_releases_content(self):
