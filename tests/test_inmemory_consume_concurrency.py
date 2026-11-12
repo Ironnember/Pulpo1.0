@@ -113,30 +113,37 @@ class RevokeMidConsumeTests(unittest.TestCase):
         state.armed = True
 
         outcome: dict[str, bool] = {}
-        consume_done = threading.Event()
 
         def consumer() -> None:
             outcome["result"] = state.consume_permit(PERMIT, INTENT_HASH, NOW)
-            consume_done.set()
 
         thread = threading.Thread(target=consumer)
         thread.start()
         # The consumer is now inside its status read, paused at the gate.
         self.assertTrue(state.gate_entered.wait(timeout=10))
         state.revoke_directive(directive.directive_id, directive.version, {"test": True}, NOW)
-        revoke_returned_mid_consume = not consume_done.is_set()
         thread.join(timeout=30)
 
         events = _events(state)
         consumed = [r for r in state.audit if r["event"] == "permit_consumed"]
         rejected = [r for r in state.audit if r["event"] == "permit_rejected"]
         self.assertEqual(1, len(consumed) + len(rejected), "exactly one consumption outcome")
-        # The revocation may not complete while the consume it races is
-        # still in flight: the two transitions are serialized.
-        self.assertFalse(
-            revoke_returned_mid_consume,
-            "revoke_directive completed inside an in-flight consume_permit",
-        )
+        # Completion ordering is determined from the audit record order,
+        # not from a thread event set outside the state lock: the audit
+        # append is the locked boundary of each transition, whereas a
+        # post-return event can be delayed by descheduling after the
+        # lock is released and would misreport a correctly serialized
+        # revocation as having landed mid-consume. The invariant is
+        # that a revocation never precedes an admitted consumption: if
+        # the consume admitted, its permit_consumed record precedes
+        # directive_revoked; if directive_revoked precedes the consume
+        # outcome, the consume must have been denied.
+        if "permit_consumed" in events and "directive_revoked" in events:
+            self.assertFalse(
+                events.index("directive_revoked") < events.index("permit_consumed")
+                and outcome["result"],
+                "revocation audited before an admitted consumption",
+            )
         if outcome["result"]:
             self.assertEqual(1, len(consumed))
             self.assertEqual("active", consumed[0]["payload"]["directive_status"])
