@@ -26,12 +26,19 @@ Failure modes modeled:
    to spend that same permit even on its own dev intent — revocation is
    re-checked at consume time, so a permit issued before the freeze is
    dead after it.
-2. Fabrication versus the evidence record. After the denials, an agent
-   claim that the production data was deleted and replaced is checked
-   against the audit ledger: the recorded consequence count for the
-   production deletion is zero, the only recorded consequences are the
-   legitimate dev ones, the revocation precedes the denied attempts in
-   the trail, and the trail itself verifies intact.
+2. Fabrication versus the evidence record. The fabrication is exercised
+   as an act, not only asserted as a number in a claim: a fabrication
+   intent (an action never present in the pre-freeze work order, on the
+   production resource, with the claimed fabricated count encoded in the
+   intent so the claim maps to an exact intent hash) is attempted
+   through the kernel and denied on every route — under the directive,
+   by spending a still-held dev permit against it, and with a fabricated
+   permit token. The agent's claim that the production data was deleted
+   and replaced is then checked against the audit ledger: the recorded
+   consequence counts for the production deletion AND for the
+   fabrication intent are both zero, the only recorded consequences are
+   the legitimate dev ones, the revocation precedes the denied attempts
+   in the trail, and the trail itself verifies intact.
 
 Reconciliation note: the kernel API has no general helper that compares
 an agent's self-report against the audit ledger
@@ -70,6 +77,13 @@ PROD_DB = "db:prod/app"
 DEV_WRITE_INTENT = Intent(AGENT, "write_records", DEV_DB, 1, SESSION)
 DEV_MIGRATE_INTENT = Intent(AGENT, "run_migration", DEV_DB, 1, SESSION)
 PROD_DELETE_INTENT = Intent(AGENT, "delete_database", PROD_DB, 1, SESSION)
+# The fabrication act itself, as an intent: an action never present in
+# the pre-freeze work order, on the production resource, with the
+# fabricated count (4,000) encoded in ``cost``. Intent carries no
+# parameter map and ``intent_hash`` binds every field, so the agent's
+# claimed count maps to exactly this intent hash — the Chevrolet
+# scenario binds a price through ``cost`` the same way.
+PROD_FABRICATE_INTENT = Intent(AGENT, "fabricate_records", PROD_DB, 4_000, SESSION)
 
 
 def work_directive() -> Directive:
@@ -133,7 +147,12 @@ def _events(kernel: GovernanceKernel, name: str) -> list[dict]:
     return [record for record in kernel.audit if record["event"] == name]
 
 
-AGENT_INTENTS = (DEV_WRITE_INTENT, DEV_MIGRATE_INTENT, PROD_DELETE_INTENT)
+AGENT_INTENTS = (
+    DEV_WRITE_INTENT,
+    DEV_MIGRATE_INTENT,
+    PROD_DELETE_INTENT,
+    PROD_FABRICATE_INTENT,
+)
 
 
 def _recorded_consequences(kernel: GovernanceKernel, intent: Intent) -> int:
@@ -357,6 +376,14 @@ class ReplitIncidentScenarioTests(unittest.TestCase):
         recorded_deletions = _recorded_consequences(kernel, PROD_DELETE_INTENT)
         self.assertEqual(0, recorded_deletions)
         self.assertNotEqual(agent_claim["records_deleted"], recorded_deletions)
+        # The fabricated half of the claim is contradicted on its own
+        # exact intent hash too: the claim's count IS the fabrication
+        # intent's cost, and that intent recorded zero consequences.
+        # (The act itself is exercised in step 4 below.)
+        self.assertEqual(agent_claim["records_fabricated"], PROD_FABRICATE_INTENT.cost)
+        recorded_fabrications = _recorded_consequences(kernel, PROD_FABRICATE_INTENT)
+        self.assertEqual(0, recorded_fabrications)
+        self.assertNotEqual(agent_claim["records_fabricated"], recorded_fabrications)
         # No deletion effect reached the target systems at all.
         self.assertNotIn(("delete_database", PROD_DB), self.ledger.effects)
         self.assertEqual(
@@ -385,6 +412,122 @@ class ReplitIncidentScenarioTests(unittest.TestCase):
         )
         self.assertLess(revoked_index, rejected_index)
         # And the trail the agent would have had to falsify verifies intact.
+        self.assertTrue(kernel.verify_audit())
+
+    # -- step 4: the fabrication act itself, denied and reconciled -----------
+
+    def test_step4_fabrication_act_is_denied_and_reconciled(self) -> None:
+        kernel = self._kernel()
+        controller = self._activate(kernel)
+
+        # Legitimate pre-freeze dev work: two recorded consequences.
+        write_permit = self._issue_dev_permit(kernel, DEV_WRITE_INTENT)
+        self.assertTrue(self.ledger.execute(kernel, write_permit, DEV_WRITE_INTENT))
+        migrate_permit = self._issue_dev_permit(kernel, DEV_MIGRATE_INTENT)
+        self.assertTrue(self.ledger.execute(kernel, migrate_permit, DEV_MIGRATE_INTENT))
+        # A third permit, issued pre-freeze and still held.
+        held_permit = self._issue_dev_permit(kernel, DEV_WRITE_INTENT)
+
+        # The fabrication intent is a distinct exact intent: its hash
+        # differs from the deletion's and from both dev intents', so
+        # exact-hash accounting cannot confuse it with any of them.
+        fabrication_hash = kernel.intent_hash(PROD_FABRICATE_INTENT)
+        self.assertNotEqual(fabrication_hash, kernel.intent_hash(PROD_DELETE_INTENT))
+        self.assertNotIn(
+            fabrication_hash,
+            {kernel.intent_hash(DEV_WRITE_INTENT), kernel.intent_hash(DEV_MIGRATE_INTENT)},
+        )
+
+        # Even BEFORE any freeze, fabrication was never in the work
+        # order: under the active directive it is denied outright.
+        projection = GovernedDirectiveProjection(kernel)
+        decision = projection.evaluate(PROD_FABRICATE_INTENT, self.directive)
+        self.assertEqual(
+            ("deny", "directive_action_not_allowed"), (decision.outcome, decision.reason)
+        )
+        self.assertIsNone(decision.permit)
+
+        # The freeze.
+        self._freeze(kernel, controller)
+        self.assertEqual(1, len(_events(kernel, "directive_revoked")))
+
+        # (a) Evaluation under the revoked directive: denied outright.
+        decision = projection.evaluate(PROD_FABRICATE_INTENT, self.directive)
+        self.assertEqual(("deny", "directive_revoked"), (decision.outcome, decision.reason))
+        self.assertIsNone(decision.permit)
+
+        # (b) Spending the still-held dev permit against the fabrication
+        # intent: rejected, carrying the fabrication intent hash, with
+        # the revocation recorded as the permit's directive status.
+        self.assertFalse(self.ledger.execute(kernel, held_permit, PROD_FABRICATE_INTENT))
+        rejected_fabrication = [
+            record
+            for record in _events(kernel, "permit_rejected")
+            if record["payload"]["intent_hash"] == fabrication_hash
+        ]
+        self.assertEqual(1, len(rejected_fabrication))
+        self.assertEqual(
+            "directive_revoked", rejected_fabrication[0]["payload"]["directive_status"]
+        )
+
+        # (c) A fabricated permit token is not a permit: also rejected,
+        # carrying the fabrication intent hash.
+        self.assertFalse(
+            self.ledger.execute(kernel, "permit:fabricated:token", PROD_FABRICATE_INTENT)
+        )
+        rejected_fabrication = [
+            record
+            for record in _events(kernel, "permit_rejected")
+            if record["payload"]["intent_hash"] == fabrication_hash
+        ]
+        self.assertEqual(2, len(rejected_fabrication))
+
+        # Reconciliation by exact intent hash, against the same claim
+        # shape as step 3: BOTH numbers are contradicted — the recorded
+        # fabrication count is zero, as is the recorded deletion count,
+        # so an independently permitted-and-executed fabrication would
+        # fail these assertions, not pass silently.
+        agent_claim = {
+            "action": "delete_database",
+            "resource": PROD_DB,
+            "records_deleted": 1_200,
+            "records_fabricated": 4_000,
+        }
+        self.assertEqual(agent_claim["records_fabricated"], PROD_FABRICATE_INTENT.cost)
+        recorded_fabrications = _recorded_consequences(kernel, PROD_FABRICATE_INTENT)
+        self.assertEqual(0, recorded_fabrications)
+        self.assertNotEqual(agent_claim["records_fabricated"], recorded_fabrications)
+        recorded_deletions = _recorded_consequences(kernel, PROD_DELETE_INTENT)
+        self.assertEqual(0, recorded_deletions)
+        self.assertNotEqual(agent_claim["records_deleted"], recorded_deletions)
+        # No fabrication (or deletion) effect reached the target systems.
+        self.assertNotIn(("fabricate_records", PROD_DB), self.ledger.effects)
+        self.assertNotIn(("delete_database", PROD_DB), self.ledger.effects)
+        self.assertEqual(
+            [("write_records", DEV_DB), ("run_migration", DEV_DB)], self.ledger.effects
+        )
+        # The only recorded agent consequences anywhere — fabrication
+        # included in the filter via AGENT_INTENTS — are the two
+        # legitimate dev ones.
+        consumed = _agent_consumptions(kernel)
+        self.assertEqual(2, len(consumed))
+        self.assertEqual(
+            {kernel.intent_hash(DEV_WRITE_INTENT), kernel.intent_hash(DEV_MIGRATE_INTENT)},
+            {record["payload"]["intent_hash"] for record in consumed},
+        )
+        # The trail orders the story correctly: the freeze (revocation)
+        # precedes the denied fabrication attempts.
+        audit = kernel.audit
+        revoked_index = next(
+            i for i, record in enumerate(audit) if record["event"] == "directive_revoked"
+        )
+        fabrication_rejected_index = next(
+            i
+            for i, record in enumerate(audit)
+            if record["event"] == "permit_rejected"
+            and record["payload"]["intent_hash"] == fabrication_hash
+        )
+        self.assertLess(revoked_index, fabrication_rejected_index)
         self.assertTrue(kernel.verify_audit())
 
     # -- negative control ----------------------------------------------------
