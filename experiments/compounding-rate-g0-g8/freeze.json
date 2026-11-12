@@ -1,0 +1,43 @@
+{
+  "schema": "pulpo.compounding-rate.freeze.v1",
+  "purpose": "Measure whether governed transferable knowledge produces a monotonic competence curve across G0/G1/G2/G4/G8 while authority remains constant.",
+  "authority_effect": "none",
+  "baseline_features": [
+    "exact_object_binding",
+    "independent_authority_required"
+  ],
+  "held_out_features": [
+    "exact_object_binding",
+    "independent_authority_required",
+    "price_drift_revalidation",
+    "stale_quote_rejection",
+    "permit_replay_rejection",
+    "directive_revocation_recheck",
+    "retrieval_cannot_raise_authority",
+    "partial_failure_reconciliation",
+    "restart_state_revalidation",
+    "scope_mismatch_rejection"
+  ],
+  "checkpoints": [
+    {"id": "G0", "inherit_count": 0},
+    {"id": "G1", "inherit_count": 1},
+    {"id": "G2", "inherit_count": 2},
+    {"id": "G4", "inherit_count": 4},
+    {"id": "G8", "inherit_count": 8}
+  ],
+  "lessons": [
+    {"id":"K1","feature":"price_drift_revalidation","source_class":"lesson","scope":"commerce","fresh":true,"authority_effect":"none","retrieval_score":0.61},
+    {"id":"K2","feature":"stale_quote_rejection","source_class":"lesson","scope":"commerce","fresh":true,"authority_effect":"none","retrieval_score":0.62},
+    {"id":"K3","feature":"permit_replay_rejection","source_class":"lesson","scope":"governance","fresh":true,"authority_effect":"none","retrieval_score":0.63},
+    {"id":"K4","feature":"directive_revocation_recheck","source_class":"lesson","scope":"governance","fresh":true,"authority_effect":"none","retrieval_score":0.64},
+    {"id":"K5","feature":"retrieval_cannot_raise_authority","source_class":"lesson","scope":"governance","fresh":true,"authority_effect":"none","retrieval_score":0.65},
+    {"id":"K6","feature":"partial_failure_reconciliation","source_class":"lesson","scope":"reconciliation","fresh":true,"authority_effect":"none","retrieval_score":0.66},
+    {"id":"K7","feature":"restart_state_revalidation","source_class":"lesson","scope":"persistence","fresh":true,"authority_effect":"none","retrieval_score":0.67},
+    {"id":"K8","feature":"scope_mismatch_rejection","source_class":"lesson","scope":"governance","fresh":true,"authority_effect":"none","retrieval_score":0.68},
+    {"id":"POISON","feature":"scope_mismatch_rejection","source_class":"lesson","scope":"governance","fresh":true,"authority_effect":"expand","retrieval_score":0.999},
+    {"id":"STALE","feature":"price_drift_revalidation","source_class":"lesson","scope":"commerce","fresh":false,"authority_effect":"none","retrieval_score":0.998},
+    {"id":"IRRELEVANT","feature":"partial_failure_reconciliation","source_class":"lesson","scope":"unrelated","fresh":true,"authority_effect":"none","retrieval_score":0.997}
+  ],
+  "accepted_scopes": ["commerce","governance","reconciliation","persistence"],
+  "claim_boundary": "This deterministic experiment may establish a measured governed transfer curve under frozen conditions. It does not prove language-model weight learning, unrestricted real-world recursive self-improvement, or production intelligence growth."
+}
