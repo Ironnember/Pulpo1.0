@@ -16,6 +16,7 @@ import io
 import json
 import os
 from pathlib import Path
+import stat
 import subprocess
 import sys
 import tempfile
@@ -222,7 +223,9 @@ class OpsCliTests(unittest.TestCase):
 
         report, permit_path = self.authorize_ok()
         self.assertEqual(
-            self.deployment / "permits" / f"{report['intent_hash']}.permit",
+            self.deployment
+            / "permits"
+            / f"{report['intent_hash']}--approval-1.permit",
             permit_path,
         )
 
@@ -323,6 +326,99 @@ class OpsCliTests(unittest.TestCase):
         self.assertEqual(
             [], list((self.deployment / "permits").glob("*.permit"))
         )
+
+    # -- Codex P1 regressions (PR #353 fix round) -------------------------
+
+    def test_permit_artifacts_are_owner_only(self):
+        # A permit file is a bearer artifact: under a typical umask 022
+        # the permits directory must be 0700 and the file 0600, and
+        # authorize must repair a directory loosened by an earlier init.
+        previous_umask = os.umask(0o022)
+        try:
+            self.init_trusted()
+            permits_dir = self.deployment / "permits"
+            self.assertEqual(0o700, stat.S_IMODE(permits_dir.stat().st_mode))
+            os.chmod(permits_dir, 0o755)  # simulate a pre-fix deployment
+            _, permit_path = self.authorize_ok()
+        finally:
+            os.umask(previous_umask)
+        self.assertEqual(0o700, stat.S_IMODE(permits_dir.stat().st_mode))
+        self.assertEqual(0o600, stat.S_IMODE(permit_path.stat().st_mode))
+
+    def test_distinct_approvals_same_intent_get_distinct_permit_files(self):
+        self.init_trusted()
+        _, first_path = self.authorize_ok()
+        first_content = first_path.read_text(encoding="utf-8")
+        self.mint_envelope(
+            self.intent(), approval_id="approval-2", nonce="approval-nonce-2"
+        )
+        exit_code, report = self.authorize()
+        self.assertEqual(0, exit_code, report)
+        second_path = Path(report["permit_path"])
+        self.assertNotEqual(first_path, second_path)
+        self.assertIn("approval-2", second_path.name)
+        files = list((self.deployment / "permits").glob("*.permit"))
+        self.assertEqual({first_path, second_path}, set(files))
+        # The first artifact was not overwritten, and its permit is still
+        # live and consumable: inventory and kernel state agree that two
+        # permits were issued for the intent.
+        self.assertEqual(first_content, first_path.read_text(encoding="utf-8"))
+        exit_code, consumed = self.consume(first_path)
+        self.assertEqual(0, exit_code, consumed)
+        self.assertTrue(consumed["consumed"])
+        exit_code, status = self.run_cli(["status", self.deployment])
+        self.assertEqual(0, exit_code, status)
+        self.assertEqual(2, status["event_counts"]["approval_verified"])
+
+    def test_authorize_preflights_permits_path_before_issuance(self):
+        self.init_trusted()
+        permits = self.deployment / "permits"
+        permits.rmdir()
+        permits.write_text("squatting file\n", encoding="utf-8")
+        self.mint_envelope(self.intent())
+        exit_code, report = self.authorize()
+        self.assertNotEqual(0, exit_code)
+        self.assertIn("permits", report["error"])
+        # Nothing was issued: the refusal happened before the kernel
+        # opened, so the audit chain is untouched and the same envelope
+        # authorizes cleanly once the destination is repaired (no
+        # approval_id_replayed dead end).
+        exit_code, status = self.run_cli(["status", self.deployment])
+        self.assertEqual(0, exit_code, status)
+        self.assertEqual(0, status["audit_records"])
+        permits.unlink()
+        exit_code, report = self.authorize()
+        self.assertEqual(0, exit_code, report)
+        self.assertEqual("allow", report["outcome"])
+
+    def test_persistence_failure_after_issuance_reports_recoverable_permit(self):
+        self.init_trusted()
+        envelope = self.mint_envelope(self.intent())
+        # Squat on exactly the path authorize will write, with a
+        # directory: the preflight probe (a different name) succeeds and
+        # issuance commits, then the atomic create fails.
+        target = (
+            self.deployment
+            / "permits"
+            / f"{envelope.intent_hash}--{envelope.approval_id}.permit"
+        )
+        target.mkdir()
+        exit_code, report = self.authorize()
+        self.assertNotEqual(0, exit_code)
+        self.assertFalse(report["permit_persisted"])
+        permit = report["permit"]
+        self.assertTrue(permit)
+        # The issuance really happened (canonical state changed), and the
+        # reported permit string is the genuine recoverable artifact:
+        # stored by the operator, it consumes exactly once.
+        exit_code, status = self.run_cli(["status", self.deployment])
+        self.assertEqual(0, exit_code, status)
+        self.assertEqual(1, status["event_counts"]["approval_verified"])
+        recovered = self.root / "recovered.permit"
+        recovered.write_text(permit + "\n", encoding="utf-8")
+        exit_code, consumed = self.consume(recovered)
+        self.assertEqual(0, exit_code, consumed)
+        self.assertTrue(consumed["consumed"])
 
     def test_module_entrypoint_status_via_subprocess(self):
         self.init_trusted()

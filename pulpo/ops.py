@@ -9,9 +9,13 @@ operator artifacts plus the canonical kernel state:
   cost ceiling, the default session/deployment ids, the pinned authority
   trust (when configured), and the public verifier configuration.
 - ``state.db`` — the canonical SQLite kernel state, owned by the kernel.
-- ``permits/<intent_hash>.permit`` — one file per kernel-issued permit,
-  written by ``authorize``; the file content is the permit string exactly as
-  the kernel issued it.
+- ``permits/<intent_hash>--<approval_id>.permit`` — one file per
+  kernel-issued permit, written by ``authorize``; the file content is the
+  permit string exactly as the kernel issued it. Permit files are bearer
+  artifacts, so the directory and each file are owner-only (``0700`` /
+  ``0600``), each file is created atomically without overwriting, and the
+  filename carries the approval id because distinct approvals for one
+  intent share an intent hash but never an approval id.
 
 Transport-surface invariant, addressed head-on: this CLI is an operator
 transport, and every operation it declares IS a governed kernel transition
@@ -27,6 +31,13 @@ canonical state directly — the only files it writes are its own
 both outside the audit chain. It is not a second router, executor, ledger,
 memory system, or authority plane: approval envelopes are produced by the
 external authority, and this tool only presents them to the kernel.
+``authorize`` preflights the permits directory (owner-only, provably
+writable) before the kernel is opened, so a known-unusable destination
+refuses before anything is issued; if the permit write still fails after
+issuance, the command fails closed and its report carries the issued
+permit string as the recoverable artifact, reconcilable against the audit
+chain — the write probe used by the preflight is transient and removed
+before issuance.
 
 Anchoring seam: when the sibling ``pulpo.anchor`` module is importable,
 ``verify`` additionally checks ``anchors.jsonl`` in the deployment
@@ -53,6 +64,7 @@ import hmac
 import json
 import os
 from pathlib import Path
+import stat
 from typing import Any, Sequence
 
 from .authority import (
@@ -70,6 +82,12 @@ REPORT_SCHEMA = "pulpo.ops.v1"
 STATE_FILENAME = "state.db"
 POLICY_FILENAME = "policy.json"
 PERMITS_DIRNAME = "permits"
+# Permit files are bearer artifacts: whoever holds the file can consume the
+# permit. They and their directory are therefore owner-only, created
+# atomically, and never overwritten (see _write_permit_file).
+PERMITS_DIR_MODE = 0o700
+PERMIT_FILE_MODE = 0o600
+_PROBE_PREFIX = ".write-probe-"
 ANCHORS_FILENAME = "anchors.jsonl"
 TEST_SECRET_ENV = "PULPO_OPS_TEST_AUTHORITY_SECRET"
 ANCHOR_UNAVAILABLE_NOTE = "anchoring is not available in this build"
@@ -168,6 +186,104 @@ def _load_config(directory: Path) -> dict[str, Any]:
     if not isinstance(config, dict) or config.get("schema") != POLICY_SCHEMA:
         raise OpsError(f"deployment policy at {policy_path} has an unsupported schema")
     return config
+
+
+def _ensure_permits_dir(directory: Path) -> Path:
+    """Create the permits directory owner-only and repair its permissions.
+
+    ``mkdir``'s mode is ignored when the directory already exists (for
+    example one created ``0755`` by an earlier ``init`` under a typical
+    umask), so an existing directory is tightened explicitly: bearer
+    permit files must never sit inside a world-traversable directory.
+    """
+
+    permits_dir = directory / PERMITS_DIRNAME
+    try:
+        permits_dir.mkdir(mode=PERMITS_DIR_MODE, exist_ok=True)
+        if not permits_dir.is_dir():
+            raise OpsError(f"permits path at {permits_dir} is not a directory")
+        if stat.S_IMODE(permits_dir.stat().st_mode) != PERMITS_DIR_MODE:
+            os.chmod(permits_dir, PERMITS_DIR_MODE)
+    except OpsError:
+        raise
+    except OSError as error:
+        raise OpsError(
+            f"permits directory at {permits_dir} is unavailable: {error}"
+        ) from error
+    return permits_dir
+
+
+def _preflight_permits_writable(permits_dir: Path) -> None:
+    """Prove the permits directory accepts a new file, before issuance.
+
+    ``authorize`` runs this before opening the kernel, so the filesystem
+    failures that can be known in advance (permits path replaced by a
+    file, directory unwritable) refuse the command before
+    ``evaluate_with_approval`` commits anything — issuance and
+    persistence must not diverge silently. The probe file is removed
+    immediately; it is never a permit artifact.
+    """
+
+    probe_path = permits_dir / f"{_PROBE_PREFIX}{os.getpid()}"
+    try:
+        fd = os.open(probe_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, PERMIT_FILE_MODE)
+    except OSError as error:
+        raise OpsError(
+            f"permits directory at {permits_dir} is not writable: {error}"
+        ) from error
+    os.close(fd)
+    try:
+        probe_path.unlink()
+    except OSError:
+        pass  # A leftover empty probe file is inert; writability is proven.
+
+
+def _permit_filename(intent_hash: str, approval_id: str) -> str:
+    """One unique file per issued permit: intent hash + approval id.
+
+    Two distinct approvals for the same intent share an intent hash but
+    never an approval id, so the approval id disambiguates the artifact.
+    An approval id carrying path-unsafe characters is replaced by its
+    SHA-256 so an envelope can never influence the path shape.
+    """
+
+    safe = (
+        bool(approval_id)
+        and approval_id not in (".", "..")
+        and all(char.isalnum() or char in "._-" for char in approval_id)
+        and ".." not in approval_id
+    )
+    suffix = approval_id if safe else sha256(approval_id.encode("utf-8")).hexdigest()
+    return f"{intent_hash}--{suffix}.permit"
+
+
+def _write_permit_file(permit_path: Path, permit: str) -> None:
+    """Write a bearer permit atomically, owner-only, never overwriting.
+
+    ``O_EXCL`` makes a name collision fail loudly instead of silently
+    replacing another issued permit's only artifact. The mode is pinned
+    with ``fchmod`` so the file is owner-only regardless of the process
+    umask. A failed write removes the partial file; the caller reports
+    the issued permit string as the recoverable artifact.
+    """
+
+    fd = os.open(
+        permit_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, PERMIT_FILE_MODE
+    )
+    try:
+        os.fchmod(fd, PERMIT_FILE_MODE)
+        view = memoryview((permit + "\n").encode("utf-8"))
+        while view:
+            view = view[os.write(fd, view) :]
+        os.fsync(fd)
+    except BaseException:
+        try:
+            permit_path.unlink()
+        except OSError:
+            pass
+        raise
+    finally:
+        os.close(fd)
 
 
 def _trust_from_config(config: dict[str, Any]) -> AuthorityTrust | None:
@@ -474,7 +590,7 @@ def _cmd_init(args: argparse.Namespace) -> int:
     }
 
     directory.mkdir(parents=True, exist_ok=True)
-    (directory / PERMITS_DIRNAME).mkdir(exist_ok=True)
+    _ensure_permits_dir(directory)
     state = SQLiteKernelState(state_path)
     try:
         # Boot the kernel once so the deployment starts from a verified,
@@ -551,6 +667,13 @@ def _cmd_authorize(args: argparse.Namespace) -> int:
         cost=args.cost,
         session_id=_resolve_session(config, args.session_id),
     )
+    # Preflight the permit destination before the kernel is opened, so a
+    # destination that is already known to be unusable refuses the
+    # command before evaluate_with_approval commits the approval and a
+    # live permit (a retry would then be rejected as replayed with no
+    # artifact to show for the issuance).
+    permits_dir = _ensure_permits_dir(directory)
+    _preflight_permits_writable(permits_dir)
     kernel, state = _open_kernel(directory, config, verifier=verifier)
     try:
         decision = kernel.evaluate_with_approval(intent, envelope)
@@ -570,10 +693,39 @@ def _cmd_authorize(args: argparse.Namespace) -> int:
             }
         )
         return 1
-    permits_dir = directory / PERMITS_DIRNAME
-    permits_dir.mkdir(exist_ok=True)
-    permit_path = permits_dir / f"{decision.intent_hash}.permit"
-    permit_path.write_text(decision.permit + "\n", encoding="utf-8")
+    permit_path = permits_dir / _permit_filename(
+        decision.intent_hash, envelope.approval_id
+    )
+    try:
+        _write_permit_file(permit_path, decision.permit)
+    except OSError as error:
+        # The preflight passed but the write still failed (for example
+        # the disk filled in between). The kernel has already consumed
+        # the approval and issued a live permit: canonical state changed
+        # and the same envelope cannot be retried. Fail closed, but do
+        # not strand the permit — this report carries the exact permit
+        # string as the recoverable artifact, and the issuance is
+        # reconcilable against the audit chain via status/verify.
+        _emit(
+            {
+                "schema": REPORT_SCHEMA,
+                "command": "authorize",
+                "ok": False,
+                "outcome": decision.outcome,
+                "reason": decision.reason,
+                "intent_hash": decision.intent_hash,
+                "policy_hash": policy_hash,
+                "permit_persisted": False,
+                "permit": decision.permit,
+                "error": (
+                    f"permit was issued but could not be persisted to "
+                    f"{permit_path}: {error}; the permit string in this "
+                    "report is the recoverable artifact — store it "
+                    "owner-only and pass it to consume via --permit-file"
+                ),
+            }
+        )
+        return 1
     _emit(
         {
             "schema": REPORT_SCHEMA,

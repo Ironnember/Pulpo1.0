@@ -74,18 +74,29 @@ python -m pulpo.ops authorize ./deployment --envelope ./envelope.json --principa
 
 On allow, the command prints the decision JSON (outcome, reason,
 intent hash, policy hash, permit path) and writes the kernel-issued
-permit to `./deployment/permits/<intent_hash>.permit`. On deny it prints
-the kernel's reason and exits non-zero **without** writing a permit. If
-the `PULPO_OPS_TEST_AUTHORITY_SECRET` variable is unset in the hmac-test
-flow, the command fails closed before any state is opened.
+permit to `./deployment/permits/<intent_hash>--<approval_id>.permit` —
+one file per issued permit, since distinct approvals for one intent
+share an intent hash but never an approval id. Permit files are bearer
+artifacts: the `permits/` directory is owner-only (`0700`) and each
+file is created atomically at `0600`, never overwriting an existing
+artifact. On deny it prints the kernel's reason and exits non-zero
+**without** writing a permit. If the `PULPO_OPS_TEST_AUTHORITY_SECRET`
+variable is unset in the hmac-test flow, the command fails closed before
+any state is opened. The command also preflights the permits directory
+before the kernel is opened, so an unusable destination (for example the
+path replaced by a file) refuses before anything is issued; if the write
+still fails after issuance, the report fails closed with
+`permit_persisted: false` and carries the issued permit string as the
+recoverable artifact.
 
 ## 4. Consume the permit (exactly once, for the exact intent)
 
 ```sh
-python -m pulpo.ops consume ./deployment --permit-file ./deployment/permits/<intent_hash>.permit --principal alice --action deploy.release --resource service:api --cost 100 --session-id default
+python -m pulpo.ops consume ./deployment --permit-file ./deployment/permits/<intent_hash>--approval-1.permit --principal alice --action deploy.release --resource service:api --cost 100 --session-id default
 ```
 
-Replace `<intent_hash>` with the hash printed by `authorize`. The permit
+Replace the permit filename with the permit path printed by
+`authorize`. The permit
 is single-use and bound to the exact intent: consuming it a second time,
 or consuming it with any field changed (for example `--cost 999`), exits
 non-zero and the kernel records a `permit_rejected` audit event.
