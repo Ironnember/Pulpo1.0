@@ -43,6 +43,21 @@ this example's evidence — the scenario tests state that boundary and
 the checker exists to reconcile the artifacts such writers would leave
 inconsistent.
 
+Two boundary rules keep the produced artifacts reconcilable:
+
+- **One settlement per intent hash.** The transfer id and the
+  checker's correspondence both key on the intent hash, so a second,
+  independently approved execution of the identical intent is refused
+  by ``_settle`` (reason ``intent_already_settled``) after evaluation
+  and *before* its permit is consumed. A genuinely repeated wire is a
+  new intent — in this example's shape, a new session — not a second
+  settlement of the same intent hash.
+- **Wire fields are validated before evaluation.** A directly
+  constructed intent whose payee is empty or whose cost is not an
+  exact positive integer is refused at the service boundary (reason
+  ``wire_fields_malformed``) before any permit exists to spend — never
+  discovered by the rail after the one-use permit is already gone.
+
 Anchor seam (WS1, sibling PR #352): when ``pulpo.anchor`` is importable
 and an ``anchor_store`` is configured, a settled transfer is followed by
 ``anchor_state(state, store, signer=...)`` and the result records
@@ -188,17 +203,26 @@ class WireAuthorizationService:
         return self._settle(intent, permit, success_reason="permit_consumed")
 
     def _non_wire_refusal(self, intent: Intent) -> WireResult | None:
-        """Refuse non-wire intents at the service boundary.
+        """Refuse non-wire and malformed-wire intents at the boundary.
 
         Input shaping only: this service settles wires, and a permit for
         any other action must never be spent as a wire transfer here.
         The kernel remains the authority for wire intents themselves.
+
+        ``propose`` already validates what it builds, but an intent can
+        also be constructed directly. The wire fields are therefore
+        validated here — extracted payee non-empty, cost an exact
+        positive integer (booleans and non-integers rejected) — BEFORE
+        evaluation and consumption, so a malformed wire is refused
+        while no permit has been spent on it, instead of surfacing as
+        a rail validation error after the one-use permit is gone (a
+        phantom ``permit_consumed`` with no transfer, unretryable).
         """
         digest = self._kernel.intent_hash(intent)
         if (
             intent.action != WIRE_ACTION
+            or not isinstance(intent.resource, str)
             or not intent.resource.startswith(WIRE_RESOURCE_PREFIX)
-            or intent.cost <= 0
         ):
             return WireResult(
                 outcome="deny",
@@ -207,10 +231,45 @@ class WireAuthorizationService:
                 transfer=None,
                 anchoring="not_attempted",
             )
+        payee = intent.resource[len(WIRE_RESOURCE_PREFIX):]
+        if (
+            not payee
+            or isinstance(intent.cost, bool)
+            or not isinstance(intent.cost, int)
+            or intent.cost <= 0
+        ):
+            return WireResult(
+                outcome="deny",
+                reason="wire_fields_malformed",
+                intent_hash=digest,
+                transfer=None,
+                anchoring="not_attempted",
+            )
         return None
 
     def _settle(self, intent: Intent, permit: str, *, success_reason: str) -> WireResult:
         digest = self._kernel.intent_hash(intent)
+        # One settlement per intent hash (see the module docstring):
+        # the transfer id and the evidence checker's correspondence key
+        # on the intent hash, so settling the same intent twice — each
+        # time under its own valid approval — would produce two effects
+        # with one identity and records no checker can reconcile 1:1:1.
+        # Refuse here, after evaluation and before consumption, so the
+        # second permit is never spent on an ambiguous effect. The scan
+        # is a read of the canonical audit; it appends and grants
+        # nothing.
+        if any(
+            record.get("event") == "permit_consumed"
+            and (record.get("payload") or {}).get("intent_hash") == digest
+            for record in self._kernel.audit
+        ):
+            return WireResult(
+                outcome="deny",
+                reason="intent_already_settled",
+                intent_hash=digest,
+                transfer=None,
+                anchoring="not_attempted",
+            )
         if not self._kernel.consume(permit, intent):
             return WireResult(
                 outcome="deny",

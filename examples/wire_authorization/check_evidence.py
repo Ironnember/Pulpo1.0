@@ -21,19 +21,34 @@ What it proves, and how:
    ``initiate_wire`` allowed, a budget no artifact can exceed) purely as
    a chain verifier. Construction reads and verifies the audit trail and
    issues nothing; the checker makes no ``evaluate``/``consume`` call,
-   so the policy's contents cannot mint, deny, or mutate anything, and
-   the state file is unchanged by a check. (Recomputing the SHA-256
-   chain locally instead would duplicate the kernel's canonicalization
-   in a second implementation — exactly the kind of parallel evidence
-   logic this repository avoids.)
+   so the policy's contents cannot mint, deny, or mutate anything.
+   (Recomputing the SHA-256 chain locally instead would duplicate the
+   kernel's canonicalization in a second implementation — exactly the
+   kind of parallel evidence logic this repository avoids.) The state
+   file itself is never opened writable: the checker first probes it
+   through a read-only SQLite connection and fails files that are not
+   kernel state databases at all — an empty file fails as malformed
+   rather than being initialized into an empty database whose empty
+   trail would vacuously pass — and then verifies a snapshot copy, so
+   the artifact under examination is byte-identical after the check.
 2. **Every mock transfer was governed.** For each ledger record the
    checker reconstructs the exact intent — action ``initiate_wire``,
    resource ``wire:<payee>`` and ``cost`` from the record, principal and
    session from ``--principal``/``--session-id`` — and requires: the
    record's ``transfer_id`` is the deterministic derivation of the
    reconstructed intent hash; the record is marked as a mock; exactly
-   one ``permit_consumed`` audit record carries that intent hash; and at
-   least one ``approval_verified`` record carries it.
+   one ``permit_consumed`` audit record carries that intent hash; and
+   the intent carries authorization evidence — at least one
+   ``approval_verified`` record, OR a complete directive authorization
+   chain: a ``directive_activated`` record, a ``permit_bound_to_directive``
+   record binding a permit for this intent to that exact directive
+   (id, version, hash), and the ``permit_consumed`` record itself
+   carrying the same binding with ``directive_status`` ``"active"`` —
+   the kernel's consume-time re-check of the live directive. The
+   directive path is the service's documented second entry point
+   (standing directive, no per-wire approval envelope), so its chain is
+   first-class evidence, held to the same exactness: any missing or
+   mismatched link fails the transfer.
 3. **No phantom effects.** Every ``permit_consumed`` record that is not
    a directive-authority consumption must correspond to exactly one
    ledger transfer. Directive-authority consumptions (activation /
@@ -78,13 +93,90 @@ from __future__ import annotations
 import argparse
 import json
 from pathlib import Path
+import shutil
+import sqlite3
 import sys
+import tempfile
 from typing import Any
 
 from pulpo.kernel import GovernanceKernel, Intent, Policy
 from pulpo.state import SQLiteKernelState
 
 from .service import EXAMPLE_PRINCIPAL, WIRE_ACTION, WIRE_RESOURCE_PREFIX, transfer_id_for
+
+
+def _state_schema_failure(state_file: Path) -> str | None:
+    """Probe the state file through a READ-ONLY connection.
+
+    Returns ``None`` when the file is a SQLite database carrying the
+    kernel's audit table, else a failure description. The connection
+    uses SQLite's ``mode=ro`` URI, so probing cannot create schema,
+    run migrations, or otherwise mutate the evidence — the mutation
+    this guards against is ``SQLiteKernelState`` construction, whose
+    ``CREATE TABLE IF NOT EXISTS`` would silently turn an empty or
+    legacy file into a populated database before verification.
+    """
+    try:
+        connection = sqlite3.connect(f"{state_file.resolve().as_uri()}?mode=ro", uri=True)
+    except sqlite3.Error as exc:
+        return f"state_unreadable: {exc}"
+    try:
+        tables = {
+            row[0]
+            for row in connection.execute(
+                "SELECT name FROM sqlite_master WHERE type = 'table'"
+            )
+        }
+    except sqlite3.Error as exc:
+        return f"state_malformed: {exc}"
+    finally:
+        connection.close()
+    if "audit" not in tables:
+        return "state_malformed: no audit table (not a kernel state file)"
+    return None
+
+
+def _directive_authorization_chain(audit: list[dict[str, Any]], digest: str) -> bool:
+    """Whether the audit carries a complete directive chain for a digest.
+
+    The chain, in audit order: a ``directive_activated`` record; a
+    ``permit_bound_to_directive`` record binding a permit for this
+    intent to that exact directive (id, version, hash); and a
+    ``permit_consumed`` record for this intent carrying the same
+    binding fields with ``directive_status`` ``"active"`` — the
+    kernel's record of its consume-time re-check that the directive
+    was live when the permit was spent. Every link must match exactly;
+    a partial or mismatched chain is not evidence.
+    """
+    binding_fields = ("directive_id", "directive_version", "directive_hash")
+    for consumed_index, record in enumerate(audit):
+        payload = record.get("payload") or {}
+        if record.get("event") != "permit_consumed" or payload.get("intent_hash") != digest:
+            continue
+        if payload.get("directive_status") != "active":
+            continue
+        if any(payload.get(field) is None for field in binding_fields):
+            continue
+        for bound_index in range(consumed_index):
+            bound = audit[bound_index]
+            bound_payload = bound.get("payload") or {}
+            if bound.get("event") != "permit_bound_to_directive":
+                continue
+            if bound_payload.get("intent_hash") != digest:
+                continue
+            if any(bound_payload.get(field) != payload.get(field) for field in binding_fields):
+                continue
+            for activated in audit[:bound_index]:
+                activated_payload = activated.get("payload") or {}
+                if activated.get("event") != "directive_activated":
+                    continue
+                if (
+                    activated_payload.get("directive_id") == payload.get("directive_id")
+                    and activated_payload.get("version") == payload.get("directive_version")
+                    and activated_payload.get("directive_hash") == payload.get("directive_hash")
+                ):
+                    return True
+    return False
 
 
 def _load_ledger(path: Path) -> list[dict[str, Any]]:
@@ -139,23 +231,40 @@ def check(
     if not state_file.exists():
         failures.append(f"state_not_found: {state_file}")
     else:
-        state = SQLiteKernelState(state_file)
-        try:
-            audit = state.audit
-            try:
-                verifier_kernel = GovernanceKernel(
-                    Policy(
-                        allowed_actions=frozenset({WIRE_ACTION}),
-                        max_cost=10**18,
-                    ),
-                    state=state,
-                )
-                if not verifier_kernel.verify_audit():
-                    failures.append("audit_chain_invalid")
-            except Exception as exc:  # kernel construction itself verifies the chain
-                failures.append(f"audit_chain_invalid: {exc}")
-        finally:
-            state.close()
+        schema_failure = _state_schema_failure(state_file)
+        if schema_failure is not None:
+            failures.append(schema_failure)
+        else:
+            # Verify a snapshot copy: SQLiteKernelState construction
+            # runs CREATE TABLE IF NOT EXISTS and migrations, which is
+            # initialization the artifact under examination must never
+            # receive. The copy absorbs it; the original is only ever
+            # read (probe above, copy here).
+            with tempfile.TemporaryDirectory() as snapshot_dir:
+                snapshot = Path(snapshot_dir) / state_file.name
+                shutil.copyfile(state_file, snapshot)
+                wal_sidecar = state_file.with_name(state_file.name + "-wal")
+                if wal_sidecar.exists():
+                    shutil.copyfile(
+                        wal_sidecar, Path(snapshot_dir) / (state_file.name + "-wal")
+                    )
+                state = SQLiteKernelState(snapshot)
+                try:
+                    try:
+                        audit = state.audit
+                        verifier_kernel = GovernanceKernel(
+                            Policy(
+                                allowed_actions=frozenset({WIRE_ACTION}),
+                                max_cost=10**18,
+                            ),
+                            state=state,
+                        )
+                        if not verifier_kernel.verify_audit():
+                            failures.append("audit_chain_invalid")
+                    except Exception as exc:  # kernel construction itself verifies the chain
+                        failures.append(f"audit_chain_invalid: {exc}")
+                finally:
+                    state.close()
 
     def payloads(event: str) -> list[dict[str, Any]]:
         return [record["payload"] for record in audit if record.get("event") == event]
@@ -191,9 +300,10 @@ def check(
                 f"found {consumed_count}"
             )
         verified_count = sum(1 for payload in verified if payload.get("intent_hash") == digest)
-        if verified_count < 1:
+        if verified_count < 1 and not _directive_authorization_chain(audit, digest):
             failures.append(
-                f"{label}: no approval_verified record for its intent hash"
+                f"{label}: no approval_verified record and no complete "
+                f"directive authorization chain for its intent hash"
             )
 
     for payload in consumed:

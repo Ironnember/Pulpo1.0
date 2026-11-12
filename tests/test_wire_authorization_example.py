@@ -34,7 +34,22 @@ Failure modes modeled, one per test:
   from a harness that denies by construction;
 - checker reconciliation: a ledger entry with no governed consumption
   behind it fails the checker (no unaccounted effects in either
-  direction).
+  direction);
+- directive-authorized settlement: a wire settled through the standing
+  directive (no per-wire approval envelope) produces artifacts the
+  checker accepts on the directive authorization chain — activation,
+  binding, and a consumption recording the directive live — while a
+  fabricated ledger entry still fails;
+- duplicate settlement: two distinct valid approvals for the identical
+  intent settle it once; the second execution is refused before its
+  permit is consumed, so no ambiguous duplicate effect is produced;
+- malformed wire fields: directly constructed intents with an empty
+  payee or a non-integer cost are refused at the service boundary
+  before evaluation, so no permit is spent on an effect the rail
+  would reject after consumption;
+- checker evidence handling: the checker fails empty and garbage
+  state files instead of initializing or crashing on them, and leaves
+  every state file byte-identical.
 
 Boundary: this proves the example's behavior at this commit, against
 the kernel API at this commit (Verified, executable evidence). It
@@ -56,6 +71,7 @@ transfer), never audit growth.
 from __future__ import annotations
 
 from contextlib import redirect_stdout
+import hashlib
 import io
 import json
 from pathlib import Path
@@ -162,6 +178,59 @@ class WireAuthorizationExampleTests(unittest.TestCase):
         with redirect_stdout(stream):
             code = checker_main(["--state", str(state_path), "--ledger", str(ledger_path)])
         return code, json.loads(stream.getvalue())
+
+    def _directive_deployment(self, label: str):
+        """A standing-directive deployment instance (revocation test shape).
+
+        Returns (kernel, state, service, rail, directive, controller,
+        approve) with the directive NOT yet activated; ``approve`` mints
+        the authority envelope for an activate/revoke operation.
+        """
+        root = Path(self._tmp.name)
+        state = SQLiteKernelState(root / f"state-{label}.db")
+        self.addCleanup(state.close)
+        directive_policy = Policy(
+            frozenset({"initiate_wire", "activate_directive", "revoke_directive"}),
+            MAX_COST,
+            frozenset({"activate_directive", "revoke_directive"}),
+            authority_trust=trust_for(self.verifier),
+        )
+        kernel = GovernanceKernel(
+            directive_policy,
+            secret=b"unit-test-secret",
+            approval_verifier=self.verifier,
+            clock=lambda: NOW,
+            state=state,
+        )
+        rail = MockPaymentRail(root / f"ledger-{label}.jsonl")
+        service = WireAuthorizationService(kernel, rail)
+        directive = Directive(
+            directive_id="wire-standing-order",
+            version=1,
+            issuer_authority_id="authority:test-owner",
+            principal=PRINCIPAL,
+            allowed_actions=frozenset({"initiate_wire"}),
+            resource_prefixes=("wire:",),
+            max_cost=MAX_COST,
+            issued_at_ns=900_000,
+            expires_at_ns=2_000_000,
+        )
+        controller = DirectiveAuthorityController(kernel)
+
+        def approve(operation: str, approval_id: str, nonce: str):
+            authority_intent = controller.authority_intent(
+                operation, directive, operator_principal=OPERATOR
+            )
+            return signed_envelope(
+                kernel,
+                authority_intent,
+                self.verifier,
+                now_ns=NOW,
+                approval_id=approval_id,
+                nonce=nonce,
+            )
+
+        return kernel, state, service, rail, directive, controller, approve
 
     # -- happy path -----------------------------------------------------
 
@@ -427,6 +496,212 @@ class WireAuthorizationExampleTests(unittest.TestCase):
         self.assertFalse(verdict["ok"])
         self.assertEqual(2, verdict["transfers_checked"])
         self.assertTrue(verdict["failures"])
+
+    # -- directive-authorized settlement (Codex P1 regression) ------------
+
+    def test_directive_authorized_wire_settles_and_checker_agrees(self) -> None:
+        kernel, state, service, rail, directive, controller, approve = (
+            self._directive_deployment("directive-ok")
+        )
+        activated = controller.activate(
+            directive,
+            approve(controller.ACTIVATE, "approval-activate-1", "nonce-activate-1"),
+            operator_principal=OPERATOR,
+        )
+        self.assertEqual("allow", activated.outcome)
+
+        intent = service.propose(principal=PRINCIPAL, payee=ACME, amount_cents=500_00)
+        decision = GovernedDirectiveProjection(kernel).evaluate(intent, directive)
+        self.assertEqual("allow", decision.outcome)
+        result = service.execute_with_permit(intent, decision.permit)
+        self.assertEqual(("allow", "permit_consumed"), (result.outcome, result.reason))
+        self.assertEqual(1, len(rail.records()))
+
+        # The directive path mints NO approval_verified for the wire
+        # intent: its authorization evidence is the directive chain —
+        # activation, an immutable binding for this intent, and a
+        # consumption recording the directive live at consume time.
+        digest = kernel.intent_hash(intent)
+        self.assertEqual(
+            0,
+            len(
+                [
+                    record
+                    for record in _events(kernel, "approval_verified")
+                    if record["payload"].get("intent_hash") == digest
+                ]
+            ),
+        )
+        self.assertEqual(1, len(_events(kernel, "permit_bound_to_directive")))
+        consumed = [
+            record
+            for record in _events(kernel, "permit_consumed")
+            if record["payload"].get("intent_hash") == digest
+        ]
+        self.assertEqual(1, len(consumed))
+        self.assertEqual("active", consumed[0]["payload"]["directive_status"])
+        self.assertEqual("wire-standing-order", consumed[0]["payload"]["directive_id"])
+
+        # The checker accepts the artifacts on that chain...
+        state_path = Path(self._tmp.name) / "state-directive-ok.db"
+        ledger_path = Path(self._tmp.name) / "ledger-directive-ok.jsonl"
+        code, verdict = self._run_checker(state_path, ledger_path)
+        self.assertEqual(0, code)
+        self.assertTrue(verdict["ok"], verdict)
+        self.assertEqual(1, verdict["transfers_checked"])
+
+        # ...without opening a hole: a fabricated ledger entry still
+        # fails (it has neither an approval nor a directive chain).
+        fabricated = {
+            "transfer_id": "wire-" + "0" * 64,
+            "payee": "mallory",
+            "amount_cents": 100,
+            "rail": "MOCK-NO-REAL-FUNDS",
+            "mock": True,
+        }
+        with ledger_path.open("a", encoding="utf-8") as handle:
+            handle.write(json.dumps(fabricated, sort_keys=True) + "\n")
+        code, verdict = self._run_checker(state_path, ledger_path)
+        self.assertEqual(1, code)
+        self.assertFalse(verdict["ok"])
+
+    # -- duplicate settlement (Codex P2 regression) ------------------------
+
+    def test_second_settlement_of_same_intent_refused_before_consume(self) -> None:
+        intent = self.service.propose(principal=PRINCIPAL, payee=ACME, amount_cents=250_00)
+        first_envelope = self._envelope(self.kernel, intent, "approval-wire-1", "nonce-wire-1")
+        second_envelope = self._envelope(self.kernel, intent, "approval-wire-2", "nonce-wire-2")
+
+        first = self.service.execute(intent, first_envelope)
+        self.assertEqual("allow", first.outcome)
+        second = self.service.execute(intent, second_envelope)
+
+        # The second approval is genuine and distinct — it verifies and
+        # mints its own permit — but the intent hash has already
+        # settled, so the service refuses BEFORE consuming that permit:
+        # no second effect, no duplicate transfer identity, and the
+        # artifacts remain reconcilable 1:1:1.
+        self.assertEqual(("deny", "intent_already_settled"), (second.outcome, second.reason))
+        self.assertIsNone(second.transfer)
+        self.assertEqual(1, len(self.rail.records()))
+        digest = self.kernel.intent_hash(intent)
+        self.assertEqual(
+            2,
+            len(
+                [
+                    record
+                    for record in _events(self.kernel, "approval_verified")
+                    if record["payload"].get("intent_hash") == digest
+                ]
+            ),
+        )
+        self.assertEqual(
+            1,
+            len(
+                [
+                    record
+                    for record in _events(self.kernel, "permit_consumed")
+                    if record["payload"].get("intent_hash") == digest
+                ]
+            ),
+        )
+        code, verdict = self._run_checker(self.state_path, self.ledger_path)
+        self.assertEqual(0, code)
+        self.assertTrue(verdict["ok"], verdict)
+
+    # -- malformed wire fields (Codex P2 regression) -----------------------
+
+    def test_malformed_wire_fields_refused_before_evaluation_or_consume(self) -> None:
+        # Intents constructed directly, bypassing propose()'s
+        # validation, each with a genuinely valid approval envelope for
+        # that exact intent. The service must refuse at its boundary —
+        # a returned denial, not a rail exception after the one-use
+        # permit has been consumed (the phantom-consumption failure).
+        cases = [
+            ("empty payee", Intent(PRINCIPAL, "initiate_wire", "wire:", 100_00, "default")),
+            ("boolean cost", Intent(PRINCIPAL, "initiate_wire", f"wire:{ACME}", True, "default")),
+            ("float cost", Intent(PRINCIPAL, "initiate_wire", f"wire:{ACME}", 100.5, "default")),
+        ]
+        for index, (label, intent) in enumerate(cases):
+            with self.subTest(case=label):
+                envelope = self._envelope(
+                    self.kernel,
+                    intent,
+                    f"approval-malformed-{index}",
+                    f"nonce-malformed-{index}",
+                )
+                result = self.service.execute(intent, envelope)
+                self.assertEqual(
+                    ("deny", "wire_fields_malformed"), (result.outcome, result.reason)
+                )
+                self.assertIsNone(result.transfer)
+                digest = self.kernel.intent_hash(intent)
+                for event in ("approval_verified", "permit_consumed"):
+                    self.assertEqual(
+                        0,
+                        len(
+                            [
+                                record
+                                for record in _events(self.kernel, event)
+                                if record["payload"].get("intent_hash") == digest
+                            ]
+                        ),
+                        f"{event} recorded for a malformed intent",
+                    )
+        self.assertEqual([], self.rail.records())
+        self.assertTrue(self.kernel.verify_audit())
+
+    # -- checker evidence handling (Codex P2 regressions) ------------------
+
+    def test_checker_rejects_empty_state_file_without_mutating_it(self) -> None:
+        root = Path(self._tmp.name)
+        state_path = root / "state-empty.db"
+        state_path.write_bytes(b"")
+        ledger_path = root / "ledger-empty.jsonl"
+        ledger_path.write_text("")
+
+        code, verdict = self._run_checker(state_path, ledger_path)
+
+        # An empty file is not a kernel state database: the checker
+        # fails it as malformed instead of initializing it into an
+        # empty database whose empty trail would vacuously pass, and
+        # the artifact stays exactly as found.
+        self.assertEqual(1, code)
+        self.assertFalse(verdict["ok"])
+        self.assertTrue(
+            any(failure.startswith("state_malformed") for failure in verdict["failures"]),
+            verdict,
+        )
+        self.assertEqual(b"", state_path.read_bytes())
+
+    def test_checker_rejects_garbage_state_file_without_mutating_it(self) -> None:
+        root = Path(self._tmp.name)
+        state_path = root / "state-garbage.db"
+        payload = b"this is not a sqlite database at all" * 8
+        state_path.write_bytes(payload)
+        ledger_path = root / "ledger-garbage.jsonl"
+        ledger_path.write_text("")
+
+        code, verdict = self._run_checker(state_path, ledger_path)
+
+        self.assertEqual(1, code)
+        self.assertFalse(verdict["ok"])
+        self.assertTrue(verdict["failures"])
+        self.assertEqual(payload, state_path.read_bytes())
+
+    def test_checker_leaves_valid_state_file_byte_identical(self) -> None:
+        intent = self.service.propose(principal=PRINCIPAL, payee=ACME, amount_cents=250_00)
+        envelope = self._envelope(self.kernel, intent, "approval-wire-1", "nonce-wire-1")
+        self.assertEqual("allow", self.service.execute(intent, envelope).outcome)
+        self.state.close()
+
+        before = hashlib.sha256(self.state_path.read_bytes()).hexdigest()
+        code, verdict = self._run_checker(self.state_path, self.ledger_path)
+        after = hashlib.sha256(self.state_path.read_bytes()).hexdigest()
+
+        self.assertEqual(0, code)
+        self.assertTrue(verdict["ok"], verdict)
+        self.assertEqual(before, after)
 
 
 if __name__ == "__main__":

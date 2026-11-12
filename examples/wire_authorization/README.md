@@ -130,9 +130,15 @@ reusing `GovernanceKernel.verify_audit`, reconstructs each transfer's
 exact intent (payee and amount from the ledger; principal and session
 from the flags above, which default to this example's values), and
 requires an exact 1:1:1 correspondence between ledger transfers,
-`permit_consumed` records, and `approval_verified` records — in both
-directions, so a transfer with no governed consumption *and* a governed
-consumption with no transfer (a phantom effect) both fail. It prints a
+`permit_consumed` records, and authorization evidence — an
+`approval_verified` record for approval-minted permits, or the complete
+directive authorization chain (activation, permit binding, and a
+consumption recording the directive live) for directive-issued ones —
+in both directions, so a transfer with no governed consumption *and* a
+governed consumption with no transfer (a phantom effect) both fail.
+The checker never opens the state file writable: it probes it
+read-only, fails files that are not kernel state databases at all, and
+verifies a snapshot copy, leaving the artifact byte-identical. It prints a
 JSON verdict — `{ok, failures, transfers_checked, anchored}` — and
 exits 0 iff `ok`. See the module docstring in `check_evidence.py` for
 the full method, the closed-world classification it uses, and its
