@@ -100,16 +100,37 @@ bound to the approval id, envelope hash, intent, policy, principal,
 session, and nonce, verified with expiry and clock-rollback re-checked
 when verification completes, and consumed single-use: in the
 persistent SQLite backend the check-and-record transition runs inside
-the same `BEGIN IMMEDIATE` transaction that issues the permit. The
-in-memory backend records evidence ids without serializing that
-transition, so the single-use guarantee under concurrent callers is
-established for the SQLite backend; the in-memory state store is a
-test and demonstration backend and does not carry the guarantee. Shipped ceremony verifiers derive their key fingerprint
+the same `BEGIN IMMEDIATE` transaction that issues the permit, and in
+the in-memory backend the same transition is serialized under the
+state store's lock, with a scheduler-forced concurrency regression
+(two callers, different approval ids, the same ceremony evidence:
+exactly one issuance, the rest denied as replays). The single-use
+guarantee under concurrent callers is therefore established for both
+shipped backends; before this change the in-memory backend recorded
+evidence ids without serializing the transition and did not carry the
+guarantee — that qualification stood in this document until the
+regression and fix landed. Shipped ceremony verifiers derive their key fingerprint
 from the pinned public key (the same derivation as the approval
 adapters), and policy construction rejects a ceremony fingerprint
 equal to the approval fingerprint, so the envelope signer cannot
 self-attest. Policies that do not opt in are unchanged, including
 byte-identical policy hashes.
+
+Permit consumption on the in-memory backend is serialized under the
+same state lock: `consume_permit`, and the directive transitions that
+race it (bind, activate, revoke), are atomic against each other, so a
+permit is consumed single-use under concurrent callers and a
+revocation either fully precedes a consumption (the consume is
+denied, `directive_revoked`) or fully follows it. Before this change
+the in-memory consume transition was unserialized: two concurrent
+consumptions of one permit could both succeed -- reproduced at the
+state layer and through the kernel ceremony path, whose
+`GovernanceKernel.consume` adds no lock and no independent spent
+guard above the state layer -- and a revocation completing
+mid-consume still admitted against the pre-revocation status. The
+SQLite backend already serialized this transition with
+`BEGIN IMMEDIATE`. Scheduler-forced regressions cover both
+interleavings at the state layer and through the ceremony path.
 
 Scoped limits, stated plainly: this is a technology-neutral contract
 (the kernel parses no WebAuthn or authenticator payloads) and does
