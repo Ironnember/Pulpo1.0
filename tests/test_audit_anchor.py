@@ -171,8 +171,12 @@ class AuditAnchorTests(unittest.TestCase):
         kernel = _governed_trail(state)
         store = InMemoryAnchorStore()
         anchor_state(state, store, clock=_Clock())
-        # Privileged writer erases the trail's tail through the live list.
-        del state.audit[-2:]
+        # Privileged writer erases the trail's tail at the store layer
+        # (state._audit): state.audit READS return detached copies since
+        # PR #351, so the read path can no longer perform this erase —
+        # the same store-level position the SQLite variant below reaches
+        # by deleting rows directly.
+        del state._audit[-2:]
         # Chain-only verification still accepts the remaining prefix...
         self.assertTrue(kernel.verify_audit())
         # ...anchored verification does not.
@@ -206,7 +210,10 @@ class AuditAnchorTests(unittest.TestCase):
         kernel = _governed_trail(state)
         store = InMemoryAnchorStore()
         anchor_state(state, store, clock=_Clock())
-        records = state.audit
+        # Tamper at the store layer (state._audit), the privileged-writer
+        # position: state.audit reads return detached copies (PR #351)
+        # and cannot reach the stored trail.
+        records = state._audit
         index = next(i for i, r in enumerate(records) if r["event"] == "permit_consumed")
         del records[index]
         rehash_suffix(records, index)
@@ -231,7 +238,8 @@ class AuditAnchorTests(unittest.TestCase):
         kernel = _governed_trail(state)
         store = InMemoryAnchorStore()
         anchor_state(state, store, clock=_Clock())
-        records = state.audit
+        # Store-layer tamper (state._audit), as in the rehash case above.
+        records = state._audit
         index = next(i for i, r in enumerate(records) if r["event"] == "approval_verified")
         del records[index]
         self.assertFalse(kernel.verify_audit())
@@ -284,7 +292,9 @@ class AuditAnchorTests(unittest.TestCase):
         self.assertEqual(first.record_count, result.anchored_records)
         self.assertLess(result.anchored_records, result.total_records)
         # Tamper inside the surviving witnessed prefix: still detected.
-        records = state.audit
+        # Store-layer write (state._audit); audit reads are detached
+        # copies since PR #351 and cannot perform it.
+        records = state._audit
         del records[0]
         rehash_suffix(records, 0)
         self.assertTrue(kernel.verify_audit())
