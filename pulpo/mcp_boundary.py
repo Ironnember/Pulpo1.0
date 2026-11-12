@@ -113,6 +113,22 @@ def export_mcp_snapshot(
     the same fail-closed boundary without relying on unsupported directory FDs.
     """
 
+    return _publish_snapshot(freeze_mcp_snapshot(orchestrator), destination)
+
+
+def _publish_snapshot(snapshot, destination):
+    """Existing atomic publication primitive; trusted exporters supply public data.
+
+    Factored out of export_mcp_snapshot unchanged -- same destination
+    validation, payload serialization, descriptor-relative publication,
+    and error surface -- so other frozen, capability-free reports (e.g.
+    pulpo.incident_channel) publish through this same boundary instead of
+    growing a second publication path. export_mcp_snapshot now freezes
+    its snapshot before destination validation runs; freezing is a pure
+    read, so the only observable change is which error surfaces first
+    when both the orchestrator and the destination are invalid.
+    """
+
     if not isinstance(destination, (str, os.PathLike)) or isinstance(destination, bytes):
         raise MCPBoundaryError("mcp_snapshot_destination_invalid")
     target = Path(destination).expanduser()
@@ -132,8 +148,6 @@ def export_mcp_snapshot(
         or not stat.S_ISDIR(parent_metadata.st_mode)
     ):
         raise MCPBoundaryError("mcp_snapshot_parent_invalid")
-
-    snapshot = freeze_mcp_snapshot(orchestrator)
     payload = json.dumps(asdict(snapshot), sort_keys=True, separators=(",", ":")) + "\n"
 
     if os.name == "nt":
