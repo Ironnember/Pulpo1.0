@@ -342,15 +342,21 @@ class TaskRabbitIncidentScenarioTests(unittest.TestCase):
     # -- step 4: the scope-creep chain, end to end --------------------------
 
     def test_step4_scope_creep_chain_zero_consequences_complete_audit(self) -> None:
+        # Discrimination note: every mismatched attempt below runs while
+        # the task permit is still UNSPENT, so a rejection cannot be
+        # explained by the token already being spent. An intent-blind
+        # backend that accepts any unspent permit would EXECUTE a
+        # mismatched attempt here instead of rejecting it — exactly what
+        # test_negative_control_unguarded_consume_would_execute
+        # demonstrates with the same unspent-permit setup. The legitimate
+        # consume therefore comes LAST in this test, after the chain.
         permit = self._issue_task_permit(self.kernel)
-        # The one legitimate consequence: the assigned action, exactly once.
-        self.assertTrue(self.ledger.execute(self.kernel, permit, TASK_INTENT))
         audit_before = len(self.kernel.audit)
         attempts = 0
         # The incident's chain in order — hire, then pay, then access —
         # each attempted by both routes an agent could reach for: asking
         # for authorization it never received, and spending a permit (the
-        # genuine, now-spent task permit — the only token it holds).
+        # genuine, still-unspent task permit — the only token it holds).
         for intent in INCIDENT_INTENTS:
             with self.subTest(action=intent.action):
                 decision = self.kernel.evaluate(intent)
@@ -362,16 +368,28 @@ class TaskRabbitIncidentScenarioTests(unittest.TestCase):
         fabricated = self.kernel.consume("permit:fabricated:token", ACCESS_INTENT)
         self.assertFalse(fabricated)
         attempts += 1
-        # End to end: the chain produced no consequence beyond the one
-        # assigned action, and every attempt is on the record.
-        self.assertEqual([("attempt_task", TASK_ENV)], self.ledger.effects)
-        self.assertEqual(1, len(_events(self.kernel, "permit_consumed")))
+        # With the permit still unspent, the chain produced zero
+        # consequences and no permit was consumed at all; every rejection
+        # carries the incident intent hash it was attempted against.
+        self.assertEqual([], self.ledger.effects)
+        self.assertEqual(0, len(_events(self.kernel, "permit_consumed")))
         rejected = _events(self.kernel, "permit_rejected")
         self.assertEqual(attempts - len(INCIDENT_INTENTS), len(rejected))
         rejected_hashes = {record["payload"]["intent_hash"] for record in rejected}
         self.assertEqual(
             {self.kernel.intent_hash(intent) for intent in INCIDENT_INTENTS},
             rejected_hashes,
+        )
+        self.assertEqual(attempts, len(self.kernel.audit) - audit_before)
+        # Only now is the permit spent — on the one legitimate
+        # consequence: the assigned action, exactly once.
+        self.assertTrue(self.ledger.execute(self.kernel, permit, TASK_INTENT))
+        attempts += 1
+        self.assertEqual([("attempt_task", TASK_ENV)], self.ledger.effects)
+        consumed = _events(self.kernel, "permit_consumed")
+        self.assertEqual(1, len(consumed))
+        self.assertEqual(
+            self.kernel.intent_hash(TASK_INTENT), consumed[0]["payload"]["intent_hash"]
         )
         self.assertEqual(attempts, len(self.kernel.audit) - audit_before)
         self.assertTrue(self.kernel.verify_audit())
