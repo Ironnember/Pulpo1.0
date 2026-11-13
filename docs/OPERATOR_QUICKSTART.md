@@ -110,13 +110,46 @@ python -m pulpo.ops status ./deployment
 
 `verify` checks the audit hash chain (and, in builds where the
 `pulpo.anchor` module is present, the `anchors.jsonl` witness when one
-exists) and exits 0 only if every performed check passes. In a build
+exists — verified against the deployment's `anchor-secret`, so a
+present witness that is unsigned or signed under another key fails)
+and exits 0 only if every performed check passes. In a build
 without `pulpo.anchor`, the output states plainly that anchoring is not
 available in this build rather than implying the check ran.
 
 `status` prints the audit record count, whether the chain is valid, the
 policy hash, event counts (including `permit_consumed`, `permit_rejected`,
-and `approval_verified`), and the last anchor or the same anchoring note.
+and `approval_verified`), and the last anchor — including whether it is
+signed — or the same anchoring note.
+
+## 6. Anchor the audit head
+
+```sh
+python -m pulpo.ops anchor ./deployment
+```
+
+`anchor` appends a signed witness of the current audit head to
+`anchors.jsonl`, signed under the deployment's `anchor-secret`
+(created by `init`, owner-only, and distinct from `kernel-secret`).
+Run it on whatever cadence should be witnessed; each run extends the
+witness history. Truncating or rewriting the audit tail after an
+anchor is taken fails `verify` — and so does rewriting the anchor file
+itself, because the witness only ratifies history signed under the
+deployment's own anchor key.
+
+A deployment whose `anchors.jsonl` predates signed anchoring (an
+unsigned witness file, and no `anchor-secret` yet) is migrated by the
+first `anchor` run: the unsigned file is preserved byte-for-byte as
+`anchors.jsonl.legacy-unsigned`, the anchor secret is provisioned, and
+the signed history starts at the current head. Signatures attest from
+that anchor forward, never retroactively — the preserved unsigned file
+remains unverified state.
+
+Scope, stated plainly (it is `pulpo.anchor`'s own): anchoring detects
+tampering with the audit store relative to the anchor history the
+verifier holds. It does not protect against a writer who can also
+rewrite the anchor store and, for signed anchors, holds the anchor key;
+that writer is outside this layer's scope, and the tail after the
+latest anchor is witnessed only when the next anchor is taken.
 
 ## Not yet built
 
@@ -130,6 +163,9 @@ and `approval_verified`), and the last anchor or the same anchoring note.
   evidence that a consequence was authorized, not the execution itself.
   Wiring permit consumption to a real executor is a separate, separately
   governed step.
-- **Anchoring operations [not yet built] in this build:** creating
-  anchors is the anchor layer's job; this CLI only verifies them when
-  the `pulpo.anchor` module ships in the same build.
+- **Separate-custody anchoring [operator's arrangement]:** the anchor
+  secret ships in the deployment directory for operability. The
+  witness's trust separation is fully realized only when the anchoring
+  job runs under separate process/OS custody from the state writer;
+  on a single host, a writer who holds both the state file and the
+  anchor key remains outside the anchor layer's scope (see §6).
