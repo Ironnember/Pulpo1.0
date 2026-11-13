@@ -24,6 +24,20 @@ operator artifacts plus the canonical kernel state:
   authenticates a token — a legacy deployment, or one on a read-only
   mount, can be verified and inspected before anything provisions its
   secret.
+- ``audit-secret`` — the deployment's audit-record signing key (the
+  HMAC key for audit-record signatures), created by ``init`` as an
+  owner-only (``0600``) file and deliberately distinct from both
+  ``kernel-secret`` and ``anchor-secret``: one key must not carry both
+  permit authentication and history attestation, so a single theft
+  cannot yield both minting and undetectable history forgery. Every
+  record appended after signing is enabled carries an HMAC over its
+  hash under this key; ``verify`` loads the key read-only — never
+  creating or repairing it — to verify those signatures. Signing is
+  enabled from ``init`` for new deployments; a deployment that predates
+  it enables signing with the ``enable-audit-signing`` command, which
+  records the enablement (and the length of the unsigned legacy prefix)
+  in ``policy.json``, outside the state file. A record past the legacy
+  prefix whose signature is missing or wrong fails ``verify`` closed.
 - ``anchor-secret`` — the deployment's anchor witness key (the HMAC key
   for audit anchors), created by ``init`` as an owner-only (``0600``)
   file and deliberately distinct from ``kernel-secret``: the anchor
@@ -42,6 +56,10 @@ operator artifacts plus the canonical kernel state:
   second ledger. Absent until the first anchor is taken, and ``verify``
   treats its absence as "not checked", never as a failure.
 - ``state.db`` — the canonical SQLite kernel state, owned by the kernel.
+- ``ops.lock`` — the deployment lock file (see "Serializing enablement"
+  below). Created owner-only (``0600``) by the first mutating command
+  that takes it; it holds no secret and no state, only the lock. The
+  read-only projections (``verify`` / ``status``) never create it.
 - ``permits/<intent_hash>--<approval_id>.permit`` — one file per
   kernel-issued permit, written by ``authorize``; the file content is the
   permit string exactly as the kernel issued it. Permit files are bearer
@@ -66,10 +84,13 @@ approval signing key; it holds the deployment's kernel secret (above),
 never opens ``state.db`` except through
 ``SQLiteKernelState`` handed to a ``GovernanceKernel``, and never writes
 canonical state directly — the only files it writes are its own
-``policy.json``, ``kernel-secret``, and ``anchor-secret`` at ``init``
-time (plus a secret's first provisioning by a mutating command on a
-legacy deployment), permit files at ``authorize`` time, and the anchor
-witness at ``anchor`` time, all outside the audit chain.
+``policy.json``, ``kernel-secret``, ``audit-secret``, and
+``anchor-secret`` at ``init`` time (plus a secret's first provisioning
+by a mutating command on a legacy deployment, and the
+``enable-audit-signing`` command's one-time ``policy.json`` update on a
+legacy deployment), permit files at ``authorize`` time, the anchor
+witness at ``anchor`` time, and the ``ops.lock`` lock file (below), all
+outside the audit chain.
 ``verify`` and ``status`` write nothing at all. It is not a second router, executor, ledger,
 memory system, or authority plane: approval envelopes are produced by the
 external authority, and this tool only presents them to the kernel.
@@ -80,6 +101,51 @@ issuance, the command fails closed and its report carries the issued
 permit string as the recoverable artifact, reconcilable against the audit
 chain — the write probe used by the preflight is transient and removed
 before issuance.
+
+Audit signing: every record the state layer appends after signing is
+enabled carries an HMAC over its own hash under the deployment's
+``audit-secret`` (see above). The signature is a sibling of the record
+hash, excluded from the hashed body, so the unkeyed chain math is
+unchanged. ``verify`` verifies those signatures and reports the
+coverage — how many records are signed, how many are the unsigned
+legacy prefix — separately from the chain verdict; a record past the
+legacy prefix whose signature is missing or wrong fails ``verify``
+closed. Signing proves the deployment's state layer wrote the record;
+it does not prove the kernel governed the write (any caller who can
+make the state append gets a valid signature — Item 3's handles), and
+it does not bind the chain's length, so tail truncation still needs
+the anchor (§6). The legacy prefix is the records that predate
+enablement: they verify by hash alone and are reported as unsigned,
+with a count, and the operator is told to witness them with ``anchor``
+at enablement time — the pair (signed records + signed anchors) is
+the unit of coverage against a state-file writer. Enablement itself is
+recorded in ``policy.json`` (outside the state file) so a writer who
+strips signatures cannot re-label the whole chain as legacy: where
+the config requires signing, an unsigned record fails. A writer who
+can also rewrite ``policy.json`` and delete the audit secret is the
+whole-directory writer this layer's scope already places out of scope,
+exactly as for the anchor-secret gate.
+
+Serializing enablement: the legacy-prefix cutoff (``legacy_records``)
+and the config transition that enables signing must be one atomic step
+with respect to every audit writer, or a concurrent ``authorize`` /
+``consume`` can append an unsigned record after the cutoff is read but
+before it is saved — and every later boot then rejects that record as
+``audit_signature_missing``, bricking the deployment (Codex P1 on PR
+#357). The mutating commands (``authorize`` / ``consume``) therefore
+hold the deployment lock (``ops.lock``, an exclusive ``flock`` on a
+sibling lock file, mirroring ``pulpo.anchor._FileAppendLock``'s
+POSIX/fallback shape) across config-read through kernel-append, and
+``enable-audit-signing`` holds it across cutoff-read through
+config-save, so a concurrent authorize either completes fully before
+enablement starts (its records counted in the prefix) or starts after
+enablement finishes (reads the new config and signs). The lock is
+single-host: ``flock`` does not serialize across hosts, so NFS /
+cross-host deployments are out of scope for this deployment form, as
+they already are for the anchor store's lock. Projections never take
+the lock — they read a snapshot and need no serialization with
+writers — and ``init`` does not take it either, because a deployment
+under construction is not yet a usable deployment.
 
 Anchoring: when the sibling ``pulpo.anchor`` module is importable, the
 ``anchor`` command appends a signed witness of the current audit head to
@@ -137,7 +203,13 @@ import os
 from pathlib import Path
 import secrets
 import stat
+import threading
 from typing import Any, Sequence
+
+try:
+    import fcntl
+except ImportError:  # Non-POSIX platform: per-path in-process fallback.
+    fcntl = None  # type: ignore[assignment]
 
 from .authority import (
     ApprovalEnvelope,
@@ -146,7 +218,7 @@ from .authority import (
     P256ApprovalVerifier,
 )
 from .kernel import GovernanceKernel, Intent, Policy
-from .state import SQLiteKernelState
+from .state import AuditSigner, SQLiteKernelState
 
 
 POLICY_SCHEMA = "pulpo.ops-policy.v1"
@@ -155,6 +227,8 @@ STATE_FILENAME = "state.db"
 POLICY_FILENAME = "policy.json"
 KERNEL_SECRET_FILENAME = "kernel-secret"
 KERNEL_SECRET_BYTES = 32
+AUDIT_SECRET_FILENAME = "audit-secret"
+AUDIT_SECRET_BYTES = 32
 ANCHOR_SECRET_FILENAME = "anchor-secret"
 ANCHOR_SECRET_BYTES = 32
 PERMITS_DIRNAME = "permits"
@@ -166,6 +240,11 @@ PERMIT_FILE_MODE = 0o600
 _PROBE_PREFIX = ".write-probe-"
 ANCHORS_FILENAME = "anchors.jsonl"
 LEGACY_UNSIGNED_ANCHORS_FILENAME = ANCHORS_FILENAME + ".legacy-unsigned"
+# Deployment lock file (see "Serializing enablement" in the module
+# docstring): the file the mutating commands flock to serialize audit
+# writers with enable-audit-signing. It holds no secret and no state.
+OPS_LOCK_FILENAME = "ops.lock"
+OPS_LOCK_MODE = 0o600
 TEST_SECRET_ENV = "PULPO_OPS_TEST_AUTHORITY_SECRET"
 ANCHOR_UNAVAILABLE_NOTE = "anchoring is not available in this build"
 DEFAULT_DEPLOYMENT_ID = "deployment:ops"
@@ -250,6 +329,73 @@ def _save_config(directory: Path, config: dict[str, Any]) -> Path:
         json.dumps(config, indent=2, sort_keys=True) + "\n", encoding="utf-8"
     )
     return policy_path
+
+
+_FALLBACK_LOCKS: dict[str, threading.Lock] = {}
+_FALLBACK_LOCKS_GUARD = threading.Lock()
+
+
+def _fallback_lock(path: Path) -> threading.Lock:
+    with _FALLBACK_LOCKS_GUARD:
+        return _FALLBACK_LOCKS.setdefault(str(path.resolve()), threading.Lock())
+
+
+class _DeploymentLock:
+    """Exclusive deployment lock serializing audit writers with enablement.
+
+    Mirrors ``pulpo.anchor._FileAppendLock``'s POSIX/fallback shape
+    rather than importing the anchor module into this path: on POSIX
+    this is an ``flock`` on the deployment's ``ops.lock`` file, opened
+    per acquisition (with ``O_CLOEXEC``, so a child process spawned
+    while the lock is held does not inherit the locked description and
+    then deadlock against its own parent), so independent processes
+    contend correctly; where ``flock`` is unavailable, a per-path
+    in-process lock is used instead and the guarantee narrows to
+    writers in this process. The file holds no secret and no state —
+    only the lock — and is created owner-only on first use. The
+    read-only projections never take it; the mutating commands
+    (``authorize`` / ``consume``) hold it across config-read through
+    kernel-append, and ``enable-audit-signing`` across cutoff-read
+    through config-save, so the enablement race (Codex P1 on PR #357)
+    cannot interleave an unsigned append between the cutoff and the
+    save. The lock is single-host: ``flock`` does not serialize across
+    hosts, so NFS / cross-host deployments are out of scope here.
+    """
+
+    def __init__(self, directory: Path) -> None:
+        self._lock_path = directory / OPS_LOCK_FILENAME
+        self._fd: int | None = None
+        self._fallback: threading.Lock | None = None
+
+    def __enter__(self) -> "_DeploymentLock":
+        if fcntl is not None:
+            try:
+                self._fd = os.open(
+                    self._lock_path,
+                    os.O_CREAT | os.O_RDWR | os.O_CLOEXEC,
+                    OPS_LOCK_MODE,
+                )
+            except OSError as error:
+                raise OpsError(
+                    f"deployment lock at {self._lock_path} is unavailable: {error}"
+                ) from error
+            fcntl.flock(self._fd, fcntl.LOCK_EX)
+        else:
+            self._fallback = _fallback_lock(self._lock_path)
+            self._fallback.acquire()
+        return self
+
+    def __exit__(self, *exc_info: object) -> bool:
+        if self._fd is not None:
+            try:
+                fcntl.flock(self._fd, fcntl.LOCK_UN)
+            finally:
+                os.close(self._fd)
+                self._fd = None
+        if self._fallback is not None:
+            self._fallback.release()
+            self._fallback = None
+        return False
 
 
 def _load_config(directory: Path) -> dict[str, Any]:
@@ -601,6 +747,94 @@ def _deployment_anchor_secret(directory: Path) -> bytes:
     )
 
 
+def _load_audit_secret(directory: Path) -> bytes | None:
+    """Load the deployment's audit secret without provisioning anything.
+
+    The load-only half of the audit-secret custody split, mirroring
+    :func:`_load_kernel_secret`: ``verify`` / ``status`` / ``anchor``
+    build their signature verifier from this and never create or
+    repair the file. Returns ``None`` when the deployment has no audit
+    secret yet.
+    """
+
+    return _read_secret_file(
+        directory / AUDIT_SECRET_FILENAME, "audit secret", AUDIT_SECRET_BYTES
+    )
+
+
+def _deployment_audit_secret(directory: Path) -> bytes:
+    """Load the deployment's audit secret, creating it on first use.
+
+    The provisioning path for the record-signing key, taken by ``init``
+    and by ``enable-audit-signing`` on a legacy deployment that
+    predates the file. The key signs audit records at append and
+    verifies them at boot/verify, and is deliberately not the kernel
+    secret and not the anchor secret: one key must not carry both
+    permit authentication and history attestation, and the witness key
+    must stay apart from both. It lives in an owner-only file beside
+    the state it attests.
+    """
+
+    return _provision_secret_file(
+        directory / AUDIT_SECRET_FILENAME, "audit secret", AUDIT_SECRET_BYTES
+    )
+
+
+def _audit_signing_settings(config: dict[str, Any]) -> tuple[bool, int]:
+    """Read the audit-signing enablement from deployment config.
+
+    Returns ``(enabled, legacy_records)``. The enablement lives in
+    ``policy.json`` — outside the state file — so a state-file writer
+    who strips signatures cannot re-label the chain as legacy: where
+    this config requires signing, an unsigned record past the legacy
+    prefix fails verification. A malformed entry fails closed here,
+    before any state is opened.
+    """
+
+    raw = config.get("audit_signing")
+    if raw is None:
+        return False, 0
+    if not isinstance(raw, dict):
+        raise OpsError("deployment audit_signing configuration is malformed")
+    enabled = raw.get("enabled")
+    legacy_records = raw.get("legacy_records")
+    if (
+        not isinstance(enabled, bool)
+        or isinstance(legacy_records, bool)
+        or not isinstance(legacy_records, int)
+        or legacy_records < 0
+    ):
+        raise OpsError("deployment audit_signing configuration is malformed")
+    return enabled, legacy_records
+
+
+def _audit_signer_for(
+    directory: Path, config: dict[str, Any], *, projection: bool
+) -> tuple[AuditSigner | None, int]:
+    """Resolve the audit signer for a kernel open, if signing is enabled.
+
+    Projections take the load-only half: a configured signer whose key
+    is unavailable fails closed (the signatures cannot be verified, so
+    the chain cannot be trusted), rather than opening unsigned. Mutating
+    commands take the provisioning half. Deployments that never enabled
+    signing open unsigned, exactly as before.
+    """
+
+    enabled, legacy_records = _audit_signing_settings(config)
+    if not enabled:
+        return None, 0
+    if projection:
+        secret = _load_audit_secret(directory)
+        if secret is None:
+            raise OpsError(
+                "audit signing is enabled but the audit secret is "
+                "unavailable; failing closed"
+            )
+    else:
+        secret = _deployment_audit_secret(directory)
+    return AuditSigner(secret), legacy_records
+
+
 def _open_kernel(
     directory: Path,
     config: dict[str, Any],
@@ -609,7 +843,24 @@ def _open_kernel(
     projection: bool = False,
 ) -> tuple[GovernanceKernel, SQLiteKernelState]:
     state_path, _ = _deployment_paths(directory)
-    state = SQLiteKernelState(state_path)
+    # The audit signer is resolved before the state is constructed: it
+    # signs at append and verifies at boot, so the state must hold it
+    # from its first open. A projection whose signing is enabled but
+    # whose audit secret is unavailable fails closed here, before the
+    # chain is read (see _audit_signer_for).
+    audit_signer, legacy_audit_records = _audit_signer_for(
+        directory, config, projection=projection
+    )
+    # Projections open without schema migration: a read-only projection
+    # must neither rewrite a legacy database merely by inspecting it
+    # nor fail outright on a read-only mount (Codex P1 on PR #357).
+    # Mutating opens migrate, as before.
+    state = SQLiteKernelState(
+        state_path,
+        audit_signer=audit_signer,
+        legacy_audit_records=legacy_audit_records,
+        migrate_schema=not projection,
+    )
     try:
         if projection:
             # Read-only projection (verify / status): load the secret
@@ -880,11 +1131,22 @@ def _cmd_init(args: argparse.Namespace) -> int:
         "deployment_id": deployment_id,
         "authority_trust": asdict(trust) if trust is not None else None,
         "verifier": verifier_config,
+        # Audit signing is enabled from birth for a new deployment:
+        # there is no legacy prefix, so every record the deployment
+        # ever appends carries a signature under its audit secret.
+        "audit_signing": {"enabled": True, "legacy_records": 0},
     }
 
     directory.mkdir(parents=True, exist_ok=True)
     _ensure_permits_dir(directory)
-    state = SQLiteKernelState(state_path)
+    # The audit secret is provisioned before the state is constructed,
+    # so the deployment's first kernel boots over a signed state.
+    audit_secret = _deployment_audit_secret(directory)
+    state = SQLiteKernelState(
+        state_path,
+        audit_signer=AuditSigner(audit_secret),
+        legacy_audit_records=0,
+    )
     try:
         # Boot the kernel once so the deployment starts from a verified,
         # empty audit chain. The boot appends nothing; the kernel validates
@@ -918,6 +1180,79 @@ def _cmd_init(args: argparse.Namespace) -> int:
             "policy_hash": policy_hash,
             "audit_records": record_count,
             "authority_configured": trust is not None,
+            "audit_signing": {"enabled": True, "legacy_records": 0},
+        }
+    )
+    return 0
+
+
+def _cmd_enable_audit_signing(args: argparse.Namespace) -> int:
+    """Enable audit-record signing (serialized: see _DeploymentLock)."""
+    with _DeploymentLock(args.directory):
+        return _cmd_enable_audit_signing_locked(args)
+
+
+def _cmd_enable_audit_signing_locked(args: argparse.Namespace) -> int:
+    """Enable audit-record signing on a deployment that predates it.
+
+    The enablement is recorded in ``policy.json`` — outside the state
+    file — together with the length of the unsigned legacy prefix
+    (every record present at enablement time). Records appended after
+    this command are signed under the deployment's audit secret;
+    records before it verify legacy-style and are reported as an
+    unsigned prefix with a count. The command first opens the kernel
+    in projection mode, which boots over the existing chain: a chain
+    that already fails hash verification refuses enablement rather
+    than being blessed as a legacy prefix. The operator is told to
+    witness the prefix with ``anchor`` at enablement time — the pair
+    (signed records + signed anchors) is the unit of coverage against
+    a state-file writer. Re-running the command on an enabled
+    deployment is a no-op that reports the current settings.
+    """
+
+    directory: Path = args.directory
+    config = _load_config(directory)
+    enabled, legacy_records = _audit_signing_settings(config)
+    if enabled:
+        _emit(
+            {
+                "schema": REPORT_SCHEMA,
+                "command": "enable-audit-signing",
+                "ok": True,
+                "deployment": str(directory),
+                "audit_signing": {"enabled": True, "legacy_records": legacy_records},
+                "already_enabled": True,
+            }
+        )
+        return 0
+    # Boot over the existing chain in legacy mode first: enablement
+    # must not bless a chain that already fails hash verification.
+    kernel, state = _open_kernel(directory, config, projection=True)
+    try:
+        record_count = len(kernel.audit)
+        if not kernel.verify_audit():
+            raise OpsError(
+                "audit chain is invalid; refusing to enable signing "
+                "over a chain that does not verify"
+            )
+    finally:
+        state.close()
+    _deployment_audit_secret(directory)
+    config["audit_signing"] = {"enabled": True, "legacy_records": record_count}
+    _save_config(directory, config)
+    _emit(
+        {
+            "schema": REPORT_SCHEMA,
+            "command": "enable-audit-signing",
+            "ok": True,
+            "deployment": str(directory),
+            "audit_signing": {"enabled": True, "legacy_records": record_count},
+            "audit_records": record_count,
+            "note": (
+                "signing is enabled from this record on; the "
+                f"{record_count} pre-enablement records are the unsigned "
+                "legacy prefix — run `anchor` now to witness them"
+            ),
         }
     )
     return 0
@@ -938,6 +1273,12 @@ def _load_envelope(path: Path) -> ApprovalEnvelope:
 
 
 def _cmd_authorize(args: argparse.Namespace) -> int:
+    """Authorize a permit (serialized: see _DeploymentLock)."""
+    with _DeploymentLock(args.directory):
+        return _cmd_authorize_locked(args)
+
+
+def _cmd_authorize_locked(args: argparse.Namespace) -> int:
     directory: Path = args.directory
     config = _load_config(directory)
     if config.get("authority_trust") is None or config.get("verifier") is None:
@@ -1044,6 +1385,12 @@ def _cmd_authorize(args: argparse.Namespace) -> int:
 
 
 def _cmd_consume(args: argparse.Namespace) -> int:
+    """Consume a permit (serialized: see _DeploymentLock)."""
+    with _DeploymentLock(args.directory):
+        return _cmd_consume_locked(args)
+
+
+def _cmd_consume_locked(args: argparse.Namespace) -> int:
     directory: Path = args.directory
     config = _load_config(directory)
     try:
@@ -1209,7 +1556,13 @@ def _cmd_verify(args: argparse.Namespace) -> int:
         return 1
     try:
         records = list(kernel.audit)
-        chain_valid = bool(kernel.verify_audit())
+        # The report carries the signing verdict and its coverage in
+        # one pass: chain_valid is the report's ok, and the counts say
+        # how much of the chain is signed versus legacy-unsigned. A
+        # record past the legacy prefix whose signature is missing or
+        # wrong makes chain_valid False with the named reason.
+        audit_report = kernel.verify_audit_report()
+        chain_valid = bool(audit_report["ok"])
         policy_hash = kernel.policy_hash
     finally:
         state.close()
@@ -1224,6 +1577,13 @@ def _cmd_verify(args: argparse.Namespace) -> int:
             "chain_valid": chain_valid,
             "audit_records": len(records),
             "policy_hash": policy_hash,
+            "audit_signing": {
+                "enabled": audit_report["signing_enabled"],
+                "signed_records": audit_report["signed_records"],
+                "unsigned_records": audit_report["unsigned_records"],
+                "legacy_records": audit_report["legacy_records"],
+                "reason": audit_report["reason"],
+            },
             "anchored": anchored,
         }
     )
@@ -1250,7 +1610,8 @@ def _cmd_status(args: argparse.Namespace) -> int:
         return 1
     try:
         records = list(kernel.audit)
-        chain_valid = bool(kernel.verify_audit())
+        audit_report = kernel.verify_audit_report()
+        chain_valid = bool(audit_report["ok"])
         policy_hash = kernel.policy_hash
     finally:
         state.close()
@@ -1260,6 +1621,19 @@ def _cmd_status(args: argparse.Namespace) -> int:
     event_counts = dict(sorted(counts.items()))
     for required in ("permit_consumed", "permit_rejected", "approval_verified"):
         event_counts.setdefault(required, 0)
+    # ``status`` reports; ``verify`` enforces. A deployment that never
+    # enabled signing carries a named warning here, exactly as the
+    # unsigned-anchor posture does for the witness — the chain verifies
+    # by hash alone and every record is unprovenanced.
+    audit_signing: dict[str, Any] = {
+        "enabled": audit_report["signing_enabled"],
+        "signed_records": audit_report["signed_records"],
+        "unsigned_records": audit_report["unsigned_records"],
+        "legacy_records": audit_report["legacy_records"],
+        "reason": audit_report["reason"],
+    }
+    if not audit_report["signing_enabled"]:
+        audit_signing["warning"] = "audit_signing_not_enabled"
     _emit(
         {
             "schema": REPORT_SCHEMA,
@@ -1271,6 +1645,7 @@ def _cmd_status(args: argparse.Namespace) -> int:
             "policy_hash": policy_hash,
             "event_counts": event_counts,
             "authority_configured": config.get("authority_trust") is not None,
+            "audit_signing": audit_signing,
             "anchor": _last_anchor_info(directory),
         }
     )
@@ -1337,6 +1712,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     anchor_parser.add_argument("directory", type=Path)
 
+    enable_signing_parser = subparsers.add_parser(
+        "enable-audit-signing",
+        help="enable audit-record signing on a deployment that predates it",
+    )
+    enable_signing_parser.add_argument("directory", type=Path)
+
     args = parser.parse_args(argv)
     handlers = {
         "init": _cmd_init,
@@ -1345,6 +1726,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         "verify": _cmd_verify,
         "status": _cmd_status,
         "anchor": _cmd_anchor,
+        "enable-audit-signing": _cmd_enable_audit_signing,
     }
     try:
         return handlers[args.command](args)

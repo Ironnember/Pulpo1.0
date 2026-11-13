@@ -12,7 +12,7 @@ from typing import Any, Callable
 
 from .authority import ApprovalEnvelope, ApprovalVerifier, AuthorityTrust
 from .ceremony import CeremonyEvidence, CeremonyTrust, CeremonyVerifier
-from .state import ApprovalUse, InMemoryKernelState, KernelState
+from .state import ApprovalUse, AuditSigner, InMemoryKernelState, KernelState
 
 
 # Reuse the unchanged encoder configuration; per-call state stays in encode().
@@ -164,6 +164,8 @@ class GovernanceKernel:
         state: KernelState | None = None,
         *,
         ceremony_verifier: CeremonyVerifier | None = None,
+        audit_signer: AuditSigner | None = None,
+        legacy_audit_records: int = 0,
     ) -> None:
         self.policy = policy
         # Pin the exact policy this kernel was constructed under. Every
@@ -178,7 +180,14 @@ class GovernanceKernel:
         self._approval_verifier = approval_verifier
         self._ceremony_verifier = ceremony_verifier
         self._clock = clock or time.time_ns
-        self._state = state if state is not None else InMemoryKernelState()
+        if state is not None and (audit_signer is not None or legacy_audit_records):
+            # The signer lives in the state layer (it signs at append);
+            # a caller that hands in a state must have constructed that
+            # state with its signer. Supplying both would leave two
+            # sources of truth for which records must be signed, so
+            # refuse rather than guess.
+            raise ValueError("audit_signer/legacy_audit_records must be given on the state, not the kernel, when a state is supplied")
+        self._state = state if state is not None else InMemoryKernelState(audit_signer=audit_signer, legacy_audit_records=legacy_audit_records)
         if self._approval_verifier is not None and not self._verifier_matches_trust(self._approval_verifier):
             raise AuthorityTrustError("approval verifier does not match pinned authority trust")
         if self._ceremony_verifier is not None and not self._ceremony_verifier_matches_trust(self._ceremony_verifier):
@@ -821,17 +830,81 @@ class GovernanceKernel:
             return False
         return self._state.consume_permit(permit, digest, self._clock())
 
-    def verify_audit(self) -> bool:
+    def verify_audit_report(self) -> dict[str, Any]:
+        """Verify the audit chain and report its signing coverage.
+
+        Returns ``ok`` plus, for every record, whether it was accepted
+        as signed or as legacy. The signature field is excluded from
+        the hashed body (it is a sibling of ``hash``, not part of it),
+        so the unkeyed chain math is identical to before signing
+        existed. When the state carries no signer, every record
+        verifies legacy-style and ``signing_enabled`` is False — the
+        exact pre-signing behavior. When a signer is configured,
+        every record at or after the legacy prefix must carry a valid
+        signature: a missing one fails as ``audit_signature_missing``,
+        a present-but-wrong one as ``audit_signature_invalid``. A
+        signature that is present anywhere must verify, including on
+        legacy-prefix records — a record carries no signature it cannot
+        prove. Malformed records fail as ``audit_record_malformed``
+        instead of raising, so callers that treat verification as a
+        boolean (boot included) fail closed the same way.
+        """
+
+        signer = getattr(self._state, "audit_signer", None)
+        try:
+            legacy_records = int(getattr(self._state, "legacy_audit_records", 0) or 0)
+        except (TypeError, ValueError):
+            legacy_records = 0
+        report: dict[str, Any] = {
+            "ok": True,
+            "reason": None,
+            "total_records": 0,
+            "signed_records": 0,
+            "unsigned_records": 0,
+            "legacy_records": legacy_records,
+            "signing_enabled": signer is not None,
+            "failed_record": None,
+        }
         previous = "0" * 64
-        for record in self.audit:
-            body = {key: value for key, value in record.items() if key != "hash"}
-            if body["previous_hash"] != previous:
-                return False
-            expected = sha256(_canonical(body)).hexdigest()
-            if not hmac.compare_digest(record["hash"], expected):
-                return False
+        try:
+            records = self.audit
+        except Exception:
+            report.update({"ok": False, "reason": "audit_record_malformed"})
+            return report
+        for index, record in enumerate(records):
+            report["total_records"] = index + 1
+            try:
+                body = {key: value for key, value in record.items() if key not in ("hash", "signature")}
+                if body["previous_hash"] != previous:
+                    report.update({"ok": False, "reason": "audit_previous_hash_mismatch", "failed_record": index})
+                    return report
+                expected = sha256(_canonical(body)).hexdigest()
+                if not hmac.compare_digest(str(record["hash"]), expected):
+                    report.update({"ok": False, "reason": "audit_hash_mismatch", "failed_record": index})
+                    return report
+            except (AttributeError, KeyError, TypeError, ValueError):
+                report.update({"ok": False, "reason": "audit_record_malformed", "failed_record": index})
+                return report
+            signature = record.get("signature") if isinstance(record, dict) else None
+            if signature is not None:
+                if signer is None or not signer.verify(record["hash"], signature):
+                    # With no signer configured there is nothing a
+                    # signature could be verified against, so a present
+                    # signature on an unsigned chain is itself a
+                    # forgery-shaped anomaly: fail rather than ignore.
+                    report.update({"ok": False, "reason": "audit_signature_invalid", "failed_record": index})
+                    return report
+                report["signed_records"] += 1
+            elif signer is not None and index >= legacy_records:
+                report.update({"ok": False, "reason": "audit_signature_missing", "failed_record": index})
+                return report
+            else:
+                report["unsigned_records"] += 1
             previous = record["hash"]
-        return True
+        return report
+
+    def verify_audit(self) -> bool:
+        return bool(self.verify_audit_report()["ok"])
 
     def _decide(self, outcome: str, reason: str, digest: str, permit: str | None = None) -> Decision:
         decision = Decision(outcome, reason, digest, permit)
