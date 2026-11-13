@@ -16,6 +16,7 @@ import io
 import json
 import os
 from pathlib import Path
+import sqlite3
 import stat
 import subprocess
 import sys
@@ -31,7 +32,15 @@ from pulpo import (
     Intent,
     Policy,
 )
+from pulpo.anchor import (
+    ANCHOR_SCHEMA,
+    GENESIS_HASH,
+    FileAnchorStore,
+    HmacAnchorSigner,
+    anchor_records,
+)
 from pulpo.ops import TEST_SECRET_ENV, main
+from pulpo.state import SQLiteKernelState
 from tests.authority_support import HmacTestVerifier, signed_envelope
 
 
@@ -547,6 +556,274 @@ class OpsCliTests(unittest.TestCase):
         status = json.loads(completed.stdout)
         self.assertEqual("status", status["command"])
         self.assertTrue(status["chain_valid"])
+
+    # -- signed anchors (Phase 2 item 2) ----------------------------------
+
+    def anchor(self):
+        return self.run_cli(["anchor", self.deployment])
+
+    def deployment_records(self):
+        state = SQLiteKernelState(self.deployment / "state.db")
+        try:
+            return list(state.audit)
+        finally:
+            state.close()
+
+    def test_init_provisions_anchor_secret_owner_only(self):
+        self.init_trusted()
+        anchor_secret = self.deployment / "anchor-secret"
+        self.assertTrue(anchor_secret.is_file())
+        self.assertEqual(0o600, stat.S_IMODE(anchor_secret.stat().st_mode))
+        # Distinct custody from the kernel secret: a separate file with
+        # separate bytes, so the permit secret never doubles as the
+        # witness key that ratifies anchor history.
+        kernel_secret = self.deployment / "kernel-secret"
+        self.assertNotEqual(
+            kernel_secret.read_bytes(), anchor_secret.read_bytes()
+        )
+
+    def test_anchor_command_signs_and_verify_reports_coverage(self):
+        self.init_trusted()
+        _, permit_path = self.authorize_ok()
+        exit_code, consumed = self.consume(permit_path)
+        self.assertEqual(0, exit_code, consumed)
+        records = self.deployment_records()
+        self.assertGreater(len(records), 0)
+
+        exit_code, report = self.anchor()
+        self.assertEqual(0, exit_code, report)
+        self.assertTrue(report["signed"])
+        self.assertEqual(len(records), report["record_count"])
+        self.assertNotIn("migration", report)
+
+        anchors = FileAnchorStore(self.deployment / "anchors.jsonl").anchors()
+        self.assertEqual(1, len(anchors))
+        self.assertTrue(all(anchor.signature for anchor in anchors))
+
+        exit_code, verification = self.run_cli(["verify", self.deployment])
+        self.assertEqual(0, exit_code, verification)
+        self.assertTrue(verification["ok"])
+        self.assertTrue(verification["anchored"]["checked"])
+        self.assertTrue(verification["anchored"]["ok"])
+        self.assertEqual(
+            "anchored_prefix_verified", verification["anchored"]["reason"]
+        )
+        self.assertEqual(
+            len(records), verification["anchored"]["anchored_records"]
+        )
+
+        exit_code, status = self.run_cli(["status", self.deployment])
+        self.assertEqual(0, exit_code, status)
+        self.assertTrue(status["anchor"]["present"])
+        self.assertTrue(status["anchor"]["last_anchor"]["signed"])
+        self.assertNotIn("warning", status["anchor"])
+
+    def test_rewritten_anchor_file_fails_verification(self):
+        # The Phase 2 item 2 attack: truncate the audit tail, then
+        # rewrite anchors.jsonl wholesale with a fabricated history
+        # matching the shortened chain. The fabricated file is unsigned,
+        # and the deployment's anchor verifier now refuses it — where
+        # the pre-wiring check (verifier=None) ratified exactly this.
+        self.init_trusted()
+        _, permit_path = self.authorize_ok()
+        exit_code, consumed = self.consume(permit_path)
+        self.assertEqual(0, exit_code, consumed)
+        exit_code, report = self.anchor()
+        self.assertEqual(0, exit_code, report)
+
+        connection = sqlite3.connect(self.deployment / "state.db")
+        try:
+            sequences = [
+                row[0]
+                for row in connection.execute(
+                    "SELECT sequence FROM audit ORDER BY sequence"
+                )
+            ]
+            keep = sequences[:2]
+            placeholders = ",".join("?" * len(keep))
+            connection.execute(
+                f"DELETE FROM audit WHERE sequence NOT IN ({placeholders})",
+                keep,
+            )
+            connection.commit()
+        finally:
+            connection.close()
+        truncated = self.deployment_records()
+        self.assertEqual(2, len(truncated))
+
+        fabricated = {
+            "sequence": 0,
+            "record_count": len(truncated),
+            "head_hash": truncated[-1]["hash"],
+            "previous_anchor_hash": GENESIS_HASH,
+            "timestamp_ns": time.time_ns(),
+            "signature": "",
+            "schema": ANCHOR_SCHEMA,
+        }
+        (self.deployment / "anchors.jsonl").write_text(
+            json.dumps(fabricated) + "\n", encoding="utf-8"
+        )
+
+        exit_code, verification = self.run_cli(["verify", self.deployment])
+        self.assertNotEqual(0, exit_code)
+        # The chain itself still verifies; the refusal is the witness
+        # layer's and is reported as such, not as a chain verdict.
+        self.assertTrue(verification["chain_valid"])
+        self.assertTrue(verification["anchored"]["checked"])
+        self.assertFalse(verification["anchored"]["ok"])
+        self.assertEqual(
+            "anchor_signature_missing", verification["anchored"]["reason"]
+        )
+
+    def test_unsigned_anchor_file_fails_closed(self):
+        self.init_trusted()
+        self.authorize_ok()
+        records = self.deployment_records()
+        # An anchor file written the pre-wiring way: the library
+        # default, no signer. The deployment holds an anchor secret, so
+        # verify demands the signature the file does not carry.
+        anchor_records(records, FileAnchorStore(self.deployment / "anchors.jsonl"))
+
+        exit_code, verification = self.run_cli(["verify", self.deployment])
+        self.assertNotEqual(0, exit_code)
+        self.assertTrue(verification["chain_valid"])
+        self.assertTrue(verification["anchored"]["checked"])
+        self.assertFalse(verification["anchored"]["ok"])
+        self.assertEqual(
+            "anchor_signature_missing", verification["anchored"]["reason"]
+        )
+
+        exit_code, status = self.run_cli(["status", self.deployment])
+        self.assertEqual(0, exit_code, status)
+        self.assertEqual("anchor_unsigned", status["anchor"]["warning"])
+        self.assertFalse(status["anchor"]["last_anchor"]["signed"])
+
+    def test_anchor_signed_under_another_key_fails_verification(self):
+        # Anchors signed under a key this deployment does not hold must
+        # not verify: holding some witness key is not holding this
+        # deployment's witness.
+        self.init_trusted()
+        self.authorize_ok()
+        records = self.deployment_records()
+        foreign = HmacAnchorSigner(b"some-other-deployments-witness-key")
+        anchor_records(
+            records,
+            FileAnchorStore(self.deployment / "anchors.jsonl"),
+            signer=foreign,
+        )
+
+        exit_code, verification = self.run_cli(["verify", self.deployment])
+        self.assertNotEqual(0, exit_code)
+        self.assertTrue(verification["chain_valid"])
+        self.assertFalse(verification["anchored"]["ok"])
+        self.assertEqual(
+            "anchor_signature_invalid", verification["anchored"]["reason"]
+        )
+
+    def test_legacy_deployment_without_anchor_file_behaves_as_before(self):
+        # Pre-anchoring deployment shape: governed history, an anchors
+        # file that was never created, and neither secret file present.
+        # verify/status leave the anchored check unperformed and create
+        # nothing at all — the load-only rule for both secrets.
+        secret_path = self.make_legacy()
+        anchor_secret = self.deployment / "anchor-secret"
+        anchor_secret.unlink()
+        before = sorted(path.name for path in self.deployment.rglob("*"))
+
+        exit_code, verification = self.run_cli(["verify", self.deployment])
+        self.assertEqual(0, exit_code, verification)
+        self.assertTrue(verification["ok"])
+        self.assertFalse(verification["anchored"]["checked"])
+        self.assertFalse(verification["anchored"]["present"])
+
+        exit_code, status = self.run_cli(["status", self.deployment])
+        self.assertEqual(0, exit_code, status)
+        self.assertFalse(status["anchor"]["present"])
+        self.assertIsNone(status["anchor"]["last_anchor"])
+
+        self.assertEqual(
+            before, sorted(path.name for path in self.deployment.rglob("*"))
+        )
+        self.assertFalse(anchor_secret.exists())
+        self.assertFalse(secret_path.exists())
+
+    def test_anchors_without_anchor_secret_fail_closed_and_create_nothing(self):
+        # Signed anchors exist but the witness key is gone: verify
+        # cannot build a verifier and fails closed with the anchor
+        # reason (not a chain verdict), and neither projection
+        # re-provisions the missing secret behind the operator's back.
+        self.init_trusted()
+        self.authorize_ok()
+        exit_code, report = self.anchor()
+        self.assertEqual(0, exit_code, report)
+        anchor_secret = self.deployment / "anchor-secret"
+        anchor_secret.unlink()
+        before = sorted(path.name for path in self.deployment.rglob("*"))
+
+        exit_code, verification = self.run_cli(["verify", self.deployment])
+        self.assertNotEqual(0, exit_code)
+        self.assertTrue(verification["chain_valid"])
+        self.assertTrue(verification["anchored"]["checked"])
+        self.assertFalse(verification["anchored"]["ok"])
+        self.assertEqual(
+            "anchor_verifier_unavailable", verification["anchored"]["reason"]
+        )
+
+        exit_code, status = self.run_cli(["status", self.deployment])
+        self.assertEqual(0, exit_code, status)
+        self.assertEqual(
+            "anchor_verifier_unavailable", status["anchor"]["warning"]
+        )
+
+        self.assertFalse(anchor_secret.exists())
+        self.assertEqual(
+            before, sorted(path.name for path in self.deployment.rglob("*"))
+        )
+
+    def test_anchor_command_rotates_legacy_unsigned_history(self):
+        # Migration: a pre-wiring deployment carries an unsigned
+        # anchors.jsonl and no anchor-secret. The first anchor run
+        # preserves the unsigned file byte-for-byte, provisions the
+        # witness key, and starts the signed history at the current
+        # head — signatures attest forward from there, never backward.
+        self.init_trusted()
+        self.authorize_ok()
+        records = self.deployment_records()
+        anchors_path = self.deployment / "anchors.jsonl"
+        anchor_records(records, FileAnchorStore(anchors_path))
+        legacy_bytes = anchors_path.read_bytes()
+        (self.deployment / "anchor-secret").unlink()
+
+        exit_code, report = self.anchor()
+        self.assertEqual(0, exit_code, report)
+        self.assertTrue(report["signed"])
+        migration = report["migration"]
+        self.assertEqual("legacy_unsigned_history_rotated", migration["kind"])
+        self.assertEqual(1, migration["rotated_anchors"])
+        preserved = self.deployment / "anchors.jsonl.legacy-unsigned"
+        self.assertEqual(legacy_bytes, preserved.read_bytes())
+        self.assertEqual(
+            0o600,
+            stat.S_IMODE((self.deployment / "anchor-secret").stat().st_mode),
+        )
+
+        anchors = FileAnchorStore(anchors_path).anchors()
+        self.assertEqual(1, len(anchors))
+        self.assertTrue(anchors[0].signature)
+        self.assertEqual(len(records), anchors[0].record_count)
+
+        exit_code, verification = self.run_cli(["verify", self.deployment])
+        self.assertEqual(0, exit_code, verification)
+        self.assertTrue(verification["anchored"]["ok"])
+
+        # A second anchor run extends the signed history normally.
+        exit_code, report = self.anchor()
+        self.assertEqual(0, exit_code, report)
+        self.assertNotIn("migration", report)
+        self.assertEqual(1, report["sequence"])
+        anchors = FileAnchorStore(anchors_path).anchors()
+        self.assertEqual(2, len(anchors))
+        self.assertTrue(all(anchor.signature for anchor in anchors))
 
 
 if __name__ == "__main__":
