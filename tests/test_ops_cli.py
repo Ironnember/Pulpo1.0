@@ -444,6 +444,96 @@ class OpsCliTests(unittest.TestCase):
         self.assertEqual(0, exit_code, consumed)
         self.assertTrue(consumed["consumed"])
 
+    # -- read-only projections never provision the kernel secret ----------
+
+    def make_legacy(self):
+        """A pre-kernel-secret deployment: governed history, no secret file.
+
+        Deployments written before the secret file existed hold exactly
+        policy.json, state.db, and permits/. Removing the file that init
+        created reproduces that shape over real governed state.
+        """
+        self.init_trusted()
+        _, permit_path = self.authorize_ok()
+        exit_code, consumed = self.consume(permit_path)
+        self.assertEqual(0, exit_code, consumed)
+        self.assertTrue(consumed["consumed"])
+        secret_path = self.deployment / "kernel-secret"
+        secret_path.unlink()
+        self.assertFalse(secret_path.exists())
+        return secret_path
+
+    def test_verify_status_on_legacy_deployment_create_no_secret(self):
+        secret_path = self.make_legacy()
+        before = sorted(path.name for path in self.deployment.rglob("*"))
+
+        exit_code, verification = self.run_cli(["verify", self.deployment])
+        self.assertEqual(0, exit_code, verification)
+        self.assertTrue(verification["chain_valid"])
+        self.assertTrue(verification["ok"])
+
+        exit_code, status = self.run_cli(["status", self.deployment])
+        self.assertEqual(0, exit_code, status)
+        self.assertTrue(status["chain_valid"])
+        self.assertEqual(1, status["event_counts"]["permit_consumed"])
+
+        # Neither projection created the secret -- or anything else.
+        self.assertFalse(secret_path.exists())
+        self.assertEqual(
+            before, sorted(path.name for path in self.deployment.rglob("*"))
+        )
+
+    def test_verify_status_succeed_on_readonly_legacy_deployment(self):
+        # The read-only-mount case from Codex's P1 on PR #355: verify
+        # used to fail here and report the (valid) chain as invalid,
+        # because opening the kernel tried to create the secret file.
+        secret_path = self.make_legacy()
+        os.chmod(self.deployment, 0o500)
+        try:
+            exit_code, verification = self.run_cli(["verify", self.deployment])
+            self.assertEqual(0, exit_code, verification)
+            self.assertTrue(verification["chain_valid"])
+            self.assertTrue(verification["ok"])
+            exit_code, status = self.run_cli(["status", self.deployment])
+            self.assertEqual(0, exit_code, status)
+            self.assertTrue(status["chain_valid"])
+        finally:
+            os.chmod(self.deployment, 0o700)
+        self.assertFalse(secret_path.exists())
+
+    def test_verify_status_do_not_repair_loose_secret_permissions(self):
+        self.init_trusted()
+        secret_path = self.deployment / "kernel-secret"
+        original = secret_path.read_bytes()
+        os.chmod(secret_path, 0o644)
+
+        exit_code, verification = self.run_cli(["verify", self.deployment])
+        self.assertEqual(0, exit_code, verification)
+        self.assertTrue(verification["ok"])
+        exit_code, status = self.run_cli(["status", self.deployment])
+        self.assertEqual(0, exit_code, status)
+        self.assertTrue(status["chain_valid"])
+
+        # Unrepaired and untouched: the projections are read-only.
+        self.assertEqual(0o644, stat.S_IMODE(secret_path.stat().st_mode))
+        self.assertEqual(original, secret_path.read_bytes())
+
+    def test_authorize_provisions_secret_on_legacy_deployment(self):
+        # The mutating path is unchanged: a legacy deployment gains its
+        # secret at the first mutating command, owner-only, and permits
+        # minted under it consume normally.
+        self.init_trusted()
+        secret_path = self.deployment / "kernel-secret"
+        secret_path.unlink()
+
+        _, permit_path = self.authorize_ok()
+        self.assertTrue(secret_path.is_file())
+        self.assertEqual(0o600, stat.S_IMODE(secret_path.stat().st_mode))
+
+        exit_code, consumed = self.consume(permit_path)
+        self.assertEqual(0, exit_code, consumed)
+        self.assertTrue(consumed["consumed"])
+
     def test_module_entrypoint_status_via_subprocess(self):
         self.init_trusted()
         completed = subprocess.run(

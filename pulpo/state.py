@@ -201,7 +201,13 @@ class InMemoryKernelState:
     def append(self, event: str, payload: dict[str, Any], timestamp_ns: int) -> None:
         with self._audit_lock:
             previous = self._audit[-1]["hash"] if self._audit else "0" * 64
-            self._audit.append(_audit_record(previous, event, payload, timestamp_ns))
+            # Detach the payload at write, matching the SQLite backend,
+            # which serializes at write: embedding the caller's dict by
+            # reference let a caller rewrite the stored record afterwards
+            # by mutating its own dict, with no state call at all
+            # (writer-custody Phase 1; diagnosis Repro C).
+            # Regression: tests/test_writer_custody.py.
+            self._audit.append(_audit_record(previous, event, deepcopy(payload), timestamp_ns))
 
     def append_unique(
         self,
@@ -229,7 +235,8 @@ class InMemoryKernelState:
                 # rewrite the stored record through the returned payload.
                 return deepcopy(matches[0])
             previous = self._audit[-1]["hash"] if self._audit else "0" * 64
-            self._audit.append(_audit_record(previous, event, payload, timestamp_ns))
+            # Detached at write, as in append() above (diagnosis Repro C).
+            self._audit.append(_audit_record(previous, event, deepcopy(payload), timestamp_ns))
             return None
 
 
