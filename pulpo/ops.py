@@ -1,13 +1,23 @@
 """Operator packaging for a single-action Pulpo deployment.
 
 ``pulpo-ops`` (also ``python -m pulpo.ops``) is the deployability surface for
-one governed deployment directory. A deployment directory holds exactly two
+one governed deployment directory. A deployment directory holds exactly three
 operator artifacts plus the canonical kernel state:
 
 - ``policy.json`` — the deployment configuration written by ``init``
   (schema ``pulpo.ops-policy.v1``): the single allowed/approval action, the
   cost ceiling, the default session/deployment ids, the pinned authority
   trust (when configured), and the public verifier configuration.
+- ``kernel-secret`` — the deployment's kernel secret (the permit-token
+  HMAC key), created by ``init`` as an owner-only (``0600``) file and
+  loaded by every command that opens the kernel. Permit tokens are
+  authenticated against this secret at consume time, so the secret is the
+  deployment's writer-custody root: whoever holds it can mint tokens the
+  kernel will honor, and it is protected exactly like the state it keys.
+  A deployment directory written before this file existed gains one the
+  first time any command opens the kernel; permit tokens issued before
+  that point were minted under ephemeral secrets and can no longer be
+  consumed (fail closed, by design).
 - ``state.db`` — the canonical SQLite kernel state, owned by the kernel.
 - ``permits/<intent_hash>--<approval_id>.permit`` — one file per
   kernel-issued permit, written by ``authorize``; the file content is the
@@ -24,11 +34,12 @@ or a read-only projection of one. ``authorize`` delegates to
 permit; ``consume`` delegates to ``GovernanceKernel.consume``; ``verify``
 and ``status`` only read ``kernel.audit`` / ``kernel.verify_audit()`` (plus
 the optional external anchor witness described below). The CLI holds no
-signing key and no permit secret, never opens ``state.db`` except through
+approval signing key; it holds the deployment's kernel secret (above),
+never opens ``state.db`` except through
 ``SQLiteKernelState`` handed to a ``GovernanceKernel``, and never writes
 canonical state directly — the only files it writes are its own
-``policy.json`` at ``init`` time and permit files at ``authorize`` time,
-both outside the audit chain. It is not a second router, executor, ledger,
+``policy.json`` and ``kernel-secret`` at ``init`` time and permit files at
+``authorize`` time, both outside the audit chain. It is not a second router, executor, ledger,
 memory system, or authority plane: approval envelopes are produced by the
 external authority, and this tool only presents them to the kernel.
 ``authorize`` preflights the permits directory (owner-only, provably
@@ -46,9 +57,11 @@ reports the last anchor. When it is not importable, those outputs state
 plainly that anchoring is not available in this build. This module never
 copies or reimplements the anchor code.
 
-What this tool does not do: it does not sign approvals, hold private keys,
-execute the permitted consequence, manage multi-action policies, or
-provide production key custody. The ``hmac-test`` verifier kind is a
+What this tool does not do: it does not sign approvals, hold approval
+private keys, execute the permitted consequence, manage multi-action
+policies, or provide production-grade key custody: the kernel secret's
+custody is the deployment directory's filesystem permissions, the same
+custody the permit files and the state file already rely on. The ``hmac-test`` verifier kind is a
 test-only development flow: its secret is read from the
 ``PULPO_OPS_TEST_AUTHORITY_SECRET`` environment variable at authorize time
 and is never written to ``policy.json``.
@@ -64,6 +77,7 @@ import hmac
 import json
 import os
 from pathlib import Path
+import secrets
 import stat
 from typing import Any, Sequence
 
@@ -81,6 +95,8 @@ POLICY_SCHEMA = "pulpo.ops-policy.v1"
 REPORT_SCHEMA = "pulpo.ops.v1"
 STATE_FILENAME = "state.db"
 POLICY_FILENAME = "policy.json"
+KERNEL_SECRET_FILENAME = "kernel-secret"
+KERNEL_SECRET_BYTES = 32
 PERMITS_DIRNAME = "permits"
 # Permit files are bearer artifacts: whoever holds the file can consume the
 # permit. They and their directory are therefore owner-only, created
@@ -383,12 +399,70 @@ def _verifier_attributes(verifier: Any) -> tuple[str, str, str, str, str]:
     )
 
 
+def _deployment_kernel_secret(directory: Path) -> bytes:
+    """Load the deployment's kernel secret, creating it on first use.
+
+    The secret keys the permit tokens this deployment's kernel mints and
+    authenticates, so every process that opens the kernel for the
+    deployment must present the same one (authorize and consume are
+    separate invocations). It lives in an owner-only file beside the
+    state it keys, written atomically with ``O_EXCL`` and never
+    overwritten: a collision means another process created it first, and
+    the winner's secret is the one to load. A malformed or short secret
+    fails closed. Deployments created before this file existed gain one
+    here; tokens minted earlier were keyed by ephemeral secrets and can
+    no longer be consumed.
+    """
+
+    secret_path = directory / KERNEL_SECRET_FILENAME
+    if not secret_path.exists():
+        encoded = secrets.token_bytes(KERNEL_SECRET_BYTES).hex()
+        try:
+            fd = os.open(
+                secret_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, PERMIT_FILE_MODE
+            )
+        except FileExistsError:
+            pass  # Another process created it first; load the winner below.
+        except OSError as error:
+            raise OpsError(
+                f"kernel secret at {secret_path} could not be created: {error}"
+            ) from error
+        else:
+            try:
+                os.fchmod(fd, PERMIT_FILE_MODE)
+                view = memoryview((encoded + "\n").encode("utf-8"))
+                while view:
+                    view = view[os.write(fd, view) :]
+                os.fsync(fd)
+            except BaseException:
+                try:
+                    secret_path.unlink()
+                except OSError:
+                    pass
+                raise
+            finally:
+                os.close(fd)
+    try:
+        if stat.S_IMODE(secret_path.stat().st_mode) != PERMIT_FILE_MODE:
+            os.chmod(secret_path, PERMIT_FILE_MODE)
+        encoded = secret_path.read_text(encoding="utf-8").strip()
+        secret = bytes.fromhex(encoded)
+    except (OSError, UnicodeError, ValueError) as error:
+        raise OpsError(
+            f"kernel secret at {secret_path} is unreadable or malformed"
+        ) from error
+    if len(secret) != KERNEL_SECRET_BYTES:
+        raise OpsError(f"kernel secret at {secret_path} has an invalid length")
+    return secret
+
+
 def _open_kernel(directory: Path, config: dict[str, Any], *, verifier: Any = None) -> tuple[GovernanceKernel, SQLiteKernelState]:
     state_path, _ = _deployment_paths(directory)
     state = SQLiteKernelState(state_path)
     try:
         kernel = GovernanceKernel(
             _effective_policy(config),
+            secret=_deployment_kernel_secret(directory),
             approval_verifier=verifier,
             state=state,
         )
@@ -598,7 +672,11 @@ def _cmd_init(args: argparse.Namespace) -> int:
         # the fresh state and, when a verifier is pinned, its trust match
         # is re-checked by the attribute comparison above and on every
         # later authorize call by the kernel itself.
-        kernel = GovernanceKernel(_effective_policy(config), state=state)
+        kernel = GovernanceKernel(
+            _effective_policy(config),
+            secret=_deployment_kernel_secret(directory),
+            state=state,
+        )
         policy_hash = kernel.policy_hash
         record_count = len(kernel.audit)
     finally:
@@ -757,9 +835,10 @@ def _cmd_consume(args: argparse.Namespace) -> int:
         cost=args.cost,
         session_id=_resolve_session(config, args.session_id),
     )
-    # Consume is a state-level one-use check by the kernel; it needs no
-    # approval verifier, so the kernel is booted without one. The permit
-    # itself was issued and stored by the kernel at authorize time.
+    # Consume authenticates the permit token against the deployment
+    # kernel secret and then makes the state-level one-use check; it needs
+    # no approval verifier, so the kernel is booted without one. The
+    # permit itself was issued and stored by the kernel at authorize time.
     kernel, state = _open_kernel(directory, config)
     try:
         consumed = kernel.consume(permit, intent)
