@@ -166,6 +166,14 @@ class GovernanceKernel:
         ceremony_verifier: CeremonyVerifier | None = None,
     ) -> None:
         self.policy = policy
+        # Pin the exact policy this kernel was constructed under. Every
+        # authority decision point re-verifies the live policy against this
+        # hash and fails closed on drift, so reassigning kernel.policy can
+        # no longer silently change decisions (writer-custody Phase 1;
+        # diagnosis Repro D). The policy_hash property itself stays a live
+        # computation: callers legitimately compare it against hashes they
+        # captured earlier to detect exactly this drift.
+        self._pinned_policy_hash = self.policy_hash
         self._secret = secret or secrets.token_bytes(32)
         self._approval_verifier = approval_verifier
         self._ceremony_verifier = ceremony_verifier
@@ -333,6 +341,7 @@ class GovernanceKernel:
         return resolution, self.evaluate(resolution.target.intent)
 
     def evaluate(self, intent: Intent) -> Decision:
+        self._require_pinned_policy()
         digest = self.intent_hash(intent)
         failure = self._policy_failure(intent)
         if failure:
@@ -360,6 +369,7 @@ class GovernanceKernel:
         parameter entirely and behave exactly as before.
         """
 
+        self._require_pinned_policy()
         digest = self.intent_hash(intent)
         failure = self._policy_failure(intent)
         if failure:
@@ -671,6 +681,9 @@ class GovernanceKernel:
         envelope: ApprovalEnvelope | None = None,
         timestamp_ns: int | None = None,
     ) -> Decision:
+        # The issuance funnel re-checks the pin itself: no permit is minted
+        # under a drifted policy regardless of which entry path reached here.
+        self._require_pinned_policy()
         nonce = secrets.token_hex(16)
         payload = f"{digest}:{nonce}"
         signature = hmac.new(self._secret, payload.encode(), sha256).hexdigest()
@@ -721,8 +734,67 @@ class GovernanceKernel:
         )
         return decision
 
+    def _require_pinned_policy(self) -> None:
+        """Fail closed if the live policy has drifted from the pinned one.
+
+        Policy is set once, at construction. Reassigning ``kernel.policy``
+        afterwards (diagnosis Repro D) previously swapped the evaluation
+        policy silently, with no audit record; now every authority decision
+        point refuses to decide under a policy other than the pinned one.
+        """
+
+        if not hmac.compare_digest(self.policy_hash, self._pinned_policy_hash):
+            raise StateIntegrityError(
+                "kernel policy does not match the policy pinned at construction"
+            )
+
+    def _permit_token_valid(self, permit: object) -> bool:
+        """Authenticate a permit token against the kernel secret.
+
+        Tokens are minted in ``_issue_permit`` as ``digest:nonce:signature``
+        with the signature an HMAC of ``digest:nonce`` under the kernel
+        secret. Verification recomputes that HMAC over the token's own
+        embedded digest and compares in constant time: it proves the token
+        was minted under this kernel's secret and is unaltered. A malformed
+        token or a token minted under any other secret fails closed.
+
+        This authenticates provenance only. Binding the token to the
+        presented intent -- and single-use and directive-revocation
+        checks -- remain the store's ``consume_permit`` checks, exactly as
+        before, so a genuine token presented against a substituted intent
+        is rejected (and evidenced) by the store's binding, unchanged.
+        """
+
+        if not isinstance(permit, str):
+            return False
+        parts = permit.split(":")
+        if len(parts) != 3:
+            return False
+        token_digest, nonce, signature = parts
+        expected = hmac.new(
+            self._secret, f"{token_digest}:{nonce}".encode(), sha256
+        ).hexdigest()
+        return hmac.compare_digest(signature.encode(), expected.encode())
+
     def consume(self, permit: str, intent: Intent) -> bool:
+        self._require_pinned_policy()
         digest = self.intent_hash(intent)
+        if not self._permit_token_valid(permit):
+            # A permit the kernel cannot authenticate is refused before the
+            # store is consulted. Rows written directly into the store --
+            # state.issue_permit with approval=None (diagnosis Repro A) or
+            # raw state-file inserts (Repro B) -- carry no valid token
+            # signature and can no longer be spent through the kernel. The
+            # refusal is recorded under the same event the store uses for
+            # its own rejections, with the reason, so the attempt itself
+            # stays in evidence. Single-use and directive-revocation checks
+            # for authentic tokens remain the store's, unchanged.
+            self._state.append(
+                "permit_rejected",
+                {"intent_hash": digest, "reason": "permit_signature_invalid"},
+                self._clock(),
+            )
+            return False
         return self._state.consume_permit(permit, digest, self._clock())
 
     def verify_audit(self) -> bool:
