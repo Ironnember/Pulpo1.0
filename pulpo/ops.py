@@ -1,7 +1,7 @@
 """Operator packaging for a single-action Pulpo deployment.
 
 ``pulpo-ops`` (also ``python -m pulpo.ops``) is the deployability surface for
-one governed deployment directory. A deployment directory holds exactly three
+one governed deployment directory. A deployment directory holds exactly these
 operator artifacts plus the canonical kernel state:
 
 - ``policy.json`` — the deployment configuration written by ``init``
@@ -24,6 +24,23 @@ operator artifacts plus the canonical kernel state:
   authenticates a token — a legacy deployment, or one on a read-only
   mount, can be verified and inspected before anything provisions its
   secret.
+- ``anchor-secret`` — the deployment's anchor witness key (the HMAC key
+  for audit anchors), created by ``init`` as an owner-only (``0600``)
+  file and deliberately distinct from ``kernel-secret``: the anchor
+  layer's trust separation requires the witness key never be the
+  kernel's permit secret, so the writer who can rewrite the state file
+  does not thereby hold the key that ratifies the rewrite. The
+  ``anchor`` command loads it (provisioning it first on a legacy
+  deployment that predates it); ``verify`` loads it read-only — never
+  creating or repairing it — to build the verifier its anchored check
+  passes to ``verify_anchored_audit``. A deployment whose
+  ``anchors.jsonl`` is present but unsigned, or signed under a key this
+  deployment does not hold, fails ``verify`` closed with an
+  anchor-specific reason (see Anchoring below).
+- ``anchors.jsonl`` — the external anchor witness log, appended only by
+  the ``anchor`` command; a witness log for the audit trail, not a
+  second ledger. Absent until the first anchor is taken, and ``verify``
+  treats its absence as "not checked", never as a failure.
 - ``state.db`` — the canonical SQLite kernel state, owned by the kernel.
 - ``permits/<intent_hash>--<approval_id>.permit`` — one file per
   kernel-issued permit, written by ``authorize``; the file content is the
@@ -39,14 +56,20 @@ or a read-only projection of one. ``authorize`` delegates to
 ``GovernanceKernel.evaluate_with_approval`` and nothing else can issue a
 permit; ``consume`` delegates to ``GovernanceKernel.consume``; ``verify``
 and ``status`` only read ``kernel.audit`` / ``kernel.verify_audit()`` (plus
-the optional external anchor witness described below). The CLI holds no
+the optional external anchor witness described below); ``anchor``
+delegates to ``pulpo.anchor.anchor_records`` over a read-only kernel
+projection and writes only the witness file (plus, once, on a legacy
+deployment, the rotation of an unsigned witness file and the first
+provisioning of ``anchor-secret`` described below) — it appends nothing
+to the audit chain. The CLI holds no
 approval signing key; it holds the deployment's kernel secret (above),
 never opens ``state.db`` except through
 ``SQLiteKernelState`` handed to a ``GovernanceKernel``, and never writes
 canonical state directly — the only files it writes are its own
-``policy.json`` and ``kernel-secret`` at ``init`` time (plus the secret's
-first provisioning by a mutating command on a legacy deployment) and
-permit files at ``authorize`` time, all outside the audit chain.
+``policy.json``, ``kernel-secret``, and ``anchor-secret`` at ``init``
+time (plus a secret's first provisioning by a mutating command on a
+legacy deployment), permit files at ``authorize`` time, and the anchor
+witness at ``anchor`` time, all outside the audit chain.
 ``verify`` and ``status`` write nothing at all. It is not a second router, executor, ledger,
 memory system, or authority plane: approval envelopes are produced by the
 external authority, and this tool only presents them to the kernel.
@@ -58,16 +81,35 @@ permit string as the recoverable artifact, reconcilable against the audit
 chain — the write probe used by the preflight is transient and removed
 before issuance.
 
-Anchoring seam: when the sibling ``pulpo.anchor`` module is importable,
-``verify`` additionally checks ``anchors.jsonl`` in the deployment
-directory (when present) with ``verify_anchored_audit`` and ``status``
-reports the last anchor. When it is not importable, those outputs state
-plainly that anchoring is not available in this build. This module never
-copies or reimplements the anchor code.
+Anchoring: when the sibling ``pulpo.anchor`` module is importable, the
+``anchor`` command appends a signed witness of the current audit head to
+``anchors.jsonl``, signed with ``HmacAnchorSigner`` under the
+deployment's ``anchor-secret``; ``verify`` additionally checks that file
+(when present) with ``verify_anchored_audit`` and a real verifier built
+from the same secret, and ``status`` reports the last anchor, whether it
+is signed, and a named warning when the witness cannot be verified. An
+anchor file that is present but unsigned, signed under a key this
+deployment does not hold, or unverifiable for want of the secret fails
+``verify`` closed with an anchor-specific reason — it is never silently
+accepted, and the anchored verdict is reported separately from the audit
+chain verdict, never as one. A legacy unsigned ``anchors.jsonl`` is
+rotated byte-for-byte to ``anchors.jsonl.legacy-unsigned`` by the first
+``anchor`` run and the signed history starts at the current head; the
+rotation is reported as a migration, because signatures attest from the
+anchor that carries them forward, never retroactively. The witness
+scope is ``pulpo.anchor``'s own, unchanged: anchoring detects tampering
+with the audit store relative to the anchor history the verifier holds;
+it does not protect against a writer who can also rewrite the anchor
+store and, for signed anchors, holds the anchor key; that writer is
+outside this layer's scope, and the tail after the latest anchor is
+witnessed only when the next anchor is taken. When ``pulpo.anchor`` is
+not importable, those outputs state plainly that anchoring is not
+available in this build. This module never copies or reimplements the
+anchor code.
 
 What this tool does not do: it does not sign approvals, hold approval
 private keys, execute the permitted consequence, manage multi-action
-policies, or provide production-grade key custody: the kernel secret's
+policies, or provide production-grade key custody: the deployment secrets'
 custody is the deployment directory's filesystem permissions, the same
 custody the permit files and the state file already rely on. The ``hmac-test`` verifier kind is a
 test-only development flow: its secret is read from the
@@ -105,6 +147,8 @@ STATE_FILENAME = "state.db"
 POLICY_FILENAME = "policy.json"
 KERNEL_SECRET_FILENAME = "kernel-secret"
 KERNEL_SECRET_BYTES = 32
+ANCHOR_SECRET_FILENAME = "anchor-secret"
+ANCHOR_SECRET_BYTES = 32
 PERMITS_DIRNAME = "permits"
 # Permit files are bearer artifacts: whoever holds the file can consume the
 # permit. They and their directory are therefore owner-only, created
@@ -113,6 +157,7 @@ PERMITS_DIR_MODE = 0o700
 PERMIT_FILE_MODE = 0o600
 _PROBE_PREFIX = ".write-probe-"
 ANCHORS_FILENAME = "anchors.jsonl"
+LEGACY_UNSIGNED_ANCHORS_FILENAME = ANCHORS_FILENAME + ".legacy-unsigned"
 TEST_SECRET_ENV = "PULPO_OPS_TEST_AUTHORITY_SECRET"
 ANCHOR_UNAVAILABLE_NOTE = "anchoring is not available in this build"
 DEFAULT_DEPLOYMENT_ID = "deployment:ops"
@@ -407,19 +452,18 @@ def _verifier_attributes(verifier: Any) -> tuple[str, str, str, str, str]:
     )
 
 
-def _load_kernel_secret(directory: Path) -> bytes | None:
-    """Load the deployment's kernel secret without provisioning anything.
+def _read_secret_file(secret_path: Path, label: str, size: int) -> bytes | None:
+    """Load a deployment secret file without provisioning anything.
 
-    Returns ``None`` when the deployment has no secret file yet. An
-    existing file is read and validated exactly as on the provisioning
-    path — a malformed or short secret fails closed — but this function
+    Returns ``None`` when the file does not exist yet. An existing file
+    is read and validated exactly as on the provisioning path — a
+    malformed or wrong-length secret fails closed — but this function
     never writes: no creation, and no permission repair. It is the only
     secret path the read-only projections (``verify`` / ``status``) may
     take, so those commands stay non-mutating on any deployment,
     including legacy ones and ones on read-only mounts.
     """
 
-    secret_path = directory / KERNEL_SECRET_FILENAME
     if not secret_path.exists():
         return None
     try:
@@ -427,33 +471,53 @@ def _load_kernel_secret(directory: Path) -> bytes | None:
         secret = bytes.fromhex(encoded)
     except (OSError, UnicodeError, ValueError) as error:
         raise OpsError(
-            f"kernel secret at {secret_path} is unreadable or malformed"
+            f"{label} at {secret_path} is unreadable or malformed"
         ) from error
-    if len(secret) != KERNEL_SECRET_BYTES:
-        raise OpsError(f"kernel secret at {secret_path} has an invalid length")
+    if len(secret) != size:
+        raise OpsError(f"{label} at {secret_path} has an invalid length")
     return secret
 
 
-def _deployment_kernel_secret(directory: Path) -> bytes:
-    """Load the deployment's kernel secret, creating it on first use.
+def _load_kernel_secret(directory: Path) -> bytes | None:
+    """Load the deployment's kernel secret without provisioning anything.
 
-    This is the provisioning path, taken only by commands that may
-    mutate the deployment (``init``, ``authorize``, ``consume``). The
-    secret keys the permit tokens this deployment's kernel mints and
-    authenticates, so every process that opens the kernel for the
-    deployment must present the same one (authorize and consume are
-    separate invocations). It lives in an owner-only file beside the
-    state it keys, written atomically with ``O_EXCL`` and never
-    overwritten: a collision means another process created it first, and
-    the winner's secret is the one to load. A malformed or short secret
-    fails closed. Deployments created before this file existed gain one
-    here; tokens minted earlier were keyed by ephemeral secrets and can
-    no longer be consumed.
+    Returns ``None`` when the deployment has no secret file yet; see
+    :func:`_read_secret_file` for the load-only contract the read-only
+    projections rely on.
     """
 
-    secret_path = directory / KERNEL_SECRET_FILENAME
+    return _read_secret_file(
+        directory / KERNEL_SECRET_FILENAME, "kernel secret", KERNEL_SECRET_BYTES
+    )
+
+
+def _load_anchor_secret(directory: Path) -> bytes | None:
+    """Load the deployment's anchor secret without provisioning anything.
+
+    The load-only half of the anchor-secret custody split, mirroring
+    :func:`_load_kernel_secret`: ``verify`` / ``status`` build their
+    anchor verifier from this and never create or repair the file.
+    Returns ``None`` when the deployment has no anchor secret yet.
+    """
+
+    return _read_secret_file(
+        directory / ANCHOR_SECRET_FILENAME, "anchor secret", ANCHOR_SECRET_BYTES
+    )
+
+
+def _provision_secret_file(secret_path: Path, label: str, size: int) -> bytes:
+    """Load a deployment secret file, creating it owner-only on first use.
+
+    This is the provisioning path, taken only by commands that may
+    mutate the deployment. The file is written atomically with
+    ``O_EXCL`` and never overwritten: a collision means another process
+    created it first, and the winner's secret is the one to load. An
+    existing file's permissions are repaired to owner-only. A malformed
+    or wrong-length secret fails closed.
+    """
+
     if not secret_path.exists():
-        encoded = secrets.token_bytes(KERNEL_SECRET_BYTES).hex()
+        encoded = secrets.token_bytes(size).hex()
         try:
             fd = os.open(
                 secret_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, PERMIT_FILE_MODE
@@ -462,7 +526,7 @@ def _deployment_kernel_secret(directory: Path) -> bytes:
             pass  # Another process created it first; load the winner below.
         except OSError as error:
             raise OpsError(
-                f"kernel secret at {secret_path} could not be created: {error}"
+                f"{label} at {secret_path} could not be created: {error}"
             ) from error
         else:
             try:
@@ -484,12 +548,49 @@ def _deployment_kernel_secret(directory: Path) -> bytes:
             os.chmod(secret_path, PERMIT_FILE_MODE)
     except OSError as error:
         raise OpsError(
-            f"kernel secret at {secret_path} is unreadable or malformed"
+            f"{label} at {secret_path} is unreadable or malformed"
         ) from error
-    secret = _load_kernel_secret(directory)
+    secret = _read_secret_file(secret_path, label, size)
     if secret is None:  # The file existed or was just created above.
-        raise OpsError(f"kernel secret at {secret_path} is unreadable or malformed")
+        raise OpsError(f"{label} at {secret_path} is unreadable or malformed")
     return secret
+
+
+def _deployment_kernel_secret(directory: Path) -> bytes:
+    """Load the deployment's kernel secret, creating it on first use.
+
+    This is the provisioning path, taken only by commands that may
+    mutate the deployment (``init``, ``authorize``, ``consume``). The
+    secret keys the permit tokens this deployment's kernel mints and
+    authenticates, so every process that opens the kernel for the
+    deployment must present the same one (authorize and consume are
+    separate invocations). It lives in an owner-only file beside the
+    state it keys. Deployments created before this file existed gain
+    one here; tokens minted earlier were keyed by ephemeral secrets and
+    can no longer be consumed.
+    """
+
+    return _provision_secret_file(
+        directory / KERNEL_SECRET_FILENAME, "kernel secret", KERNEL_SECRET_BYTES
+    )
+
+
+def _deployment_anchor_secret(directory: Path) -> bytes:
+    """Load the deployment's anchor secret, creating it on first use.
+
+    The provisioning path for the witness key, taken by ``init`` and by
+    the ``anchor`` command on a legacy deployment that predates the
+    file. The key signs and verifies this deployment's audit anchors
+    and is deliberately not the kernel secret: anchor.py's trust
+    separation requires the witness key be held apart from the permit
+    secret, so a writer holding the state file (or the kernel secret)
+    cannot ratify a rewritten anchor history. It lives in an
+    owner-only file beside the state it witnesses.
+    """
+
+    return _provision_secret_file(
+        directory / ANCHOR_SECRET_FILENAME, "anchor secret", ANCHOR_SECRET_BYTES
+    )
 
 
 def _open_kernel(
@@ -555,7 +656,47 @@ def _anchored_check(directory: Path, records: list[dict[str, Any]]) -> dict[str,
         }
     try:
         anchors = anchor_module.FileAnchorStore(anchors_path).anchors()
-        result = anchor_module.verify_anchored_audit(records, anchors, verifier=None)
+        # Load-only: this check runs inside the read-only projections,
+        # so it never provisions. An anchor secret that cannot be read
+        # fails the check closed, exactly like a damaged witness.
+        anchor_secret = _load_anchor_secret(directory)
+    except Exception as error:  # A damaged witness fails closed, never open.
+        return {
+            "available": True,
+            "checked": True,
+            "present": True,
+            "ok": False,
+            "reason": f"anchor_check_failed: {error}",
+        }
+    signed = any(anchor.signature for anchor in anchors)
+    if anchors and not signed and anchor_secret is None:
+        # No witness key is configured and nothing in the file is
+        # signed: there is no provenance to check against, and an
+        # unsigned witness is state, not provenance. Fail closed under
+        # the named posture instead of letting the library call below
+        # ratify the file (a ``None`` verifier accepts unsigned
+        # anchors). When a secret IS configured, the same file fails
+        # below as ``anchor_signature_missing``.
+        return {
+            "available": True,
+            "checked": True,
+            "present": True,
+            "ok": False,
+            "reason": "anchor_unsigned",
+            "signed": False,
+            "anchored_records": 0,
+            "total_records": len(records),
+            "anchors_checked": 0,
+        }
+    verifier = (
+        anchor_module.HmacAnchorSigner(anchor_secret)
+        if anchor_secret is not None
+        else None
+    )
+    try:
+        result = anchor_module.verify_anchored_audit(
+            records, anchors, verifier=verifier
+        )
     except Exception as error:  # A damaged witness fails closed, never open.
         return {
             "available": True,
@@ -570,6 +711,7 @@ def _anchored_check(directory: Path, records: list[dict[str, Any]]) -> dict[str,
         "present": True,
         "ok": bool(result.ok),
         "reason": result.reason,
+        "signed": signed,
         "anchored_records": result.anchored_records,
         "total_records": result.total_records,
         "anchors_checked": result.anchors_checked,
@@ -590,7 +732,7 @@ def _last_anchor_info(directory: Path) -> dict[str, Any]:
     if not anchors:
         return {"available": True, "present": True, "last_anchor": None}
     last = anchors[-1]
-    return {
+    info: dict[str, Any] = {
         "available": True,
         "present": True,
         "last_anchor": {
@@ -599,8 +741,23 @@ def _last_anchor_info(directory: Path) -> dict[str, Any]:
             "head_hash": last.head_hash,
             "timestamp_ns": last.timestamp_ns,
             "anchor_hash": last.anchor_hash,
+            "signed": bool(last.signature),
         },
     }
+    # ``status`` reports; ``verify`` enforces. The two postures a reader
+    # must not mistake for a verified witness get a named warning here:
+    # the file is unsigned, or it is signed under a key this deployment
+    # cannot load (absent or unreadable), so no verifier can be built.
+    if not any(anchor.signature for anchor in anchors):
+        info["warning"] = "anchor_unsigned"
+    else:
+        try:
+            secret_available = _load_anchor_secret(directory) is not None
+        except Exception:
+            secret_available = False
+        if not secret_available:
+            info["warning"] = "anchor_verifier_unavailable"
+    return info
 
 
 def _cmd_init(args: argparse.Namespace) -> int:
@@ -731,6 +888,11 @@ def _cmd_init(args: argparse.Namespace) -> int:
             secret=_deployment_kernel_secret(directory),
             state=state,
         )
+        # The anchor witness key is provisioned at init, beside — and
+        # never interchangeable with — the kernel secret: the witness
+        # must be holdable apart from the permit secret for the anchor
+        # layer's trust separation to mean anything.
+        _deployment_anchor_secret(directory)
         policy_hash = kernel.policy_hash
         record_count = len(kernel.audit)
     finally:
@@ -911,6 +1073,76 @@ def _cmd_consume(args: argparse.Namespace) -> int:
     return 0 if consumed else 1
 
 
+def _cmd_anchor(args: argparse.Namespace) -> int:
+    directory: Path = args.directory
+    config = _load_config(directory)
+    anchor_module = _anchor_module()
+    if anchor_module is None:
+        raise OpsError(ANCHOR_UNAVAILABLE_NOTE)
+    anchors_path = directory / ANCHORS_FILENAME
+    store = anchor_module.FileAnchorStore(anchors_path)
+    try:
+        existing = store.anchors()
+    except Exception as error:  # A damaged witness fails closed, never open.
+        raise OpsError(
+            f"anchor store at {anchors_path} is unreadable: {error}"
+        ) from error
+    migration: dict[str, Any] | None = None
+    if existing and not any(anchor.signature for anchor in existing):
+        # Legacy unsigned witness history. Signatures cannot reach
+        # backward, so the unsigned file is preserved byte-for-byte
+        # under a new name and the signed history starts at the current
+        # head: the operator running this command attests the rotation,
+        # and the report names it a migration — never a verification of
+        # the unsigned past. A second rotation refuses rather than
+        # overwriting the preserved file.
+        legacy_path = directory / LEGACY_UNSIGNED_ANCHORS_FILENAME
+        if legacy_path.exists():
+            raise OpsError(
+                f"unsigned anchor history already preserved at {legacy_path}; "
+                "refusing to rotate a second legacy file"
+            )
+        migration = {
+            "kind": "legacy_unsigned_history_rotated",
+            "legacy_path": str(legacy_path),
+            "rotated_anchors": len(existing),
+            "note": (
+                "signatures attest from the new anchor forward, never "
+                "retroactively; the preserved unsigned file is unverified state"
+            ),
+        }
+    # Anchoring reads the audit trail through a read-only projection:
+    # it needs no token authentication (it mints and consumes nothing)
+    # and so must not provision the kernel secret on a legacy
+    # deployment either. The anchor secret is the only provisioning
+    # this command performs, and only on a deployment that predates it.
+    kernel, state = _open_kernel(directory, config, projection=True)
+    try:
+        records = list(kernel.audit)
+    finally:
+        state.close()
+    signer = anchor_module.HmacAnchorSigner(_deployment_anchor_secret(directory))
+    if migration is not None:
+        os.replace(anchors_path, legacy_path)
+    anchor = anchor_module.anchor_records(records, store, signer=signer)
+    report: dict[str, Any] = {
+        "schema": REPORT_SCHEMA,
+        "command": "anchor",
+        "ok": True,
+        "deployment": str(directory),
+        "anchors_path": str(anchors_path),
+        "sequence": anchor.sequence,
+        "record_count": anchor.record_count,
+        "head_hash": anchor.head_hash,
+        "anchor_hash": anchor.anchor_hash,
+        "signed": True,
+    }
+    if migration is not None:
+        report["migration"] = migration
+    _emit(report)
+    return 0
+
+
 def _cmd_verify(args: argparse.Namespace) -> int:
     directory: Path = args.directory
     config = _load_config(directory)
@@ -1056,6 +1288,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     status_parser.add_argument("directory", type=Path)
 
+    anchor_parser = subparsers.add_parser(
+        "anchor", help="append a signed anchor witnessing the current audit head"
+    )
+    anchor_parser.add_argument("directory", type=Path)
+
     args = parser.parse_args(argv)
     handlers = {
         "init": _cmd_init,
@@ -1063,6 +1300,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         "consume": _cmd_consume,
         "verify": _cmd_verify,
         "status": _cmd_status,
+        "anchor": _cmd_anchor,
     }
     try:
         return handlers[args.command](args)
