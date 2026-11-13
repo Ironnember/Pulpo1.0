@@ -101,6 +101,14 @@ is single-use and bound to the exact intent: consuming it a second time,
 or consuming it with any field changed (for example `--cost 999`), exits
 non-zero and the kernel records a `permit_rejected` audit event.
 
+Permits also expire. Each permit carries a signed expiry, stamped at
+issuance from the policy's TTL cap (`max_permit_ttl_ns` in the policy,
+default 4 hours, never more than 24 hours). Consuming a permit after
+its expiry exits non-zero with a `permit_rejected` audit event whose
+reason is `permit_expired` — a permit file left on disk past its TTL
+cannot be used later, by anyone. Do not stockpile permit files:
+authorize when you are ready to consume.
+
 ## 5. Verify and inspect
 
 ```sh
