@@ -141,6 +141,17 @@ Deployment-directory file effects, all outside the audit chain:
   signed deployments (record signatures also close the mid-chain
   rehash case) and is noted here rather than edited into the
   scenario file, so the scenario's own record stays intact.
+- Constitutional-survival proof
+  (`scripts/run_constitutional_mutations.py`): refactoring
+  `verify_audit()` into `verify_audit_report()` moved the hash check
+  the `audit_record_hash_check_removed` mutation anchors on, so the
+  mutation went `invalid` on the first CI run of this PR. The anchor
+  was updated to the new code, and two mutations were added for the
+  new controls — `audit_record_signature_check_removed` (killed by
+  the garbage-signature test) and
+  `audit_record_signature_required_check_removed` (killed by the
+  stripped-signature test). Local run of the script at the fixed
+  tree: **16/16 killed, 0 survived, 0 invalid** (result `pass`).
 
 ## 5. Boundary the evidence does not prove
 

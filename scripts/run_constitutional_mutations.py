@@ -131,9 +131,29 @@ MUTATIONS: tuple[Mutation, ...] = (
     Mutation(
         "audit_record_hash_check_removed",
         "pulpo/kernel.py",
-        'if not hmac.compare_digest(record["hash"], expected):\n                return False',
-        'if False and not hmac.compare_digest(record["hash"], expected):\n                return False',
+        'if not hmac.compare_digest(str(record["hash"]), expected):\n                    report.update({"ok": False, "reason": "audit_hash_mismatch", "failed_record": index})',
+        'if False and not hmac.compare_digest(str(record["hash"]), expected):\n                    report.update({"ok": False, "reason": "audit_hash_mismatch", "failed_record": index})',
         ("tests.test_kernel.GovernanceKernelTests.test_audit_chain_detects_tampering",),
+    ),
+    Mutation(
+        # Phase 2, Item 1: the signature check is the control that makes
+        # a consistently rehashed history refuse in a signed deployment.
+        # Weakening it must be detected by the signed-mode tests.
+        "audit_record_signature_check_removed",
+        "pulpo/kernel.py",
+        'if signer is None or not signer.verify(record["hash"], signature):',
+        'if False and (signer is None or not signer.verify(record["hash"], signature)):',
+        ("tests.test_audit_signing.SignedAuditLibraryTests.test_single_signature_replaced_with_garbage_refused",),
+    ),
+    Mutation(
+        # Phase 2, Item 1: the missing-signature requirement is the
+        # control that makes a stripped signature refuse past the legacy
+        # prefix. Weakening it must be detected by the signed-mode tests.
+        "audit_record_signature_required_check_removed",
+        "pulpo/kernel.py",
+        'elif signer is not None and index >= legacy_records:',
+        'elif False and signer is not None and index >= legacy_records:',
+        ("tests.test_audit_signing.SignedAuditLibraryTests.test_single_signature_stripped_refused",),
     ),
 )
 
