@@ -758,11 +758,12 @@ class GovernanceKernel:
         was minted under this kernel's secret and is unaltered. A malformed
         token or a token minted under any other secret fails closed.
 
-        This authenticates provenance only. Binding the token to the
-        presented intent -- and single-use and directive-revocation
-        checks -- remain the store's ``consume_permit`` checks, exactly as
-        before, so a genuine token presented against a substituted intent
-        is rejected (and evidenced) by the store's binding, unchanged.
+        On its own this authenticates provenance only, but ``consume``
+        no longer stops there: since the 2026-11-13 layering change it
+        also binds the authenticated token to the presented intent at
+        this layer (see ``consume``). Single-use and
+        directive-revocation checks remain the store's
+        ``consume_permit`` checks, exactly as before.
         """
 
         if not isinstance(permit, str):
@@ -792,6 +793,29 @@ class GovernanceKernel:
             self._state.append(
                 "permit_rejected",
                 {"intent_hash": digest, "reason": "permit_signature_invalid"},
+                self._clock(),
+            )
+            return False
+        # Layering change (2026-11-13, superseding Phase 1's
+        # provenance-only layering): the authenticated token is also
+        # bound to the presented intent HERE, before the store is
+        # consulted. Phase 1 left that binding to the store's check
+        # against the permit row's stored intent hash -- a column the
+        # state-file writer controls, outside the audit chain. A writer
+        # holding any genuine token could therefore rewrite its row's
+        # intent hash (and reset spent) and spend the token for an
+        # intent the kernel never authorized, with the chain still
+        # verifying (Codex P1 on PR #355, independently reproduced).
+        # The token's own authenticated digest is the one statement of
+        # the authorized intent the writer cannot alter, so it is the
+        # one the presented intent is compared against. The store's
+        # binding check remains in place as the second layer, and
+        # single-use and directive-revocation checks remain the store's.
+        embedded_digest = permit.split(":")[0]
+        if not hmac.compare_digest(embedded_digest.encode(), digest.encode()):
+            self._state.append(
+                "permit_rejected",
+                {"intent_hash": digest, "reason": "permit_intent_mismatch"},
                 self._clock(),
             )
             return False
