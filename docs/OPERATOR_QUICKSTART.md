@@ -114,12 +114,20 @@ exists — verified against the deployment's `anchor-secret`, so a
 present witness that is unsigned or signed under another key fails)
 and exits 0 only if every performed check passes. In a build
 without `pulpo.anchor`, the output states plainly that anchoring is not
-available in this build rather than implying the check ran.
+available in this build rather than implying the check ran. Since
+audit-record signing, `verify` also verifies every record's signature
+against the deployment's `audit-secret` (see §7) and reports the
+coverage: how many records are signed, how many are the unsigned
+legacy prefix. A record past the legacy prefix whose signature is
+missing or wrong fails `verify` closed — the kernel refuses to boot
+over it at all, so `verify` reports the open failure rather than a
+chain verdict.
 
 `status` prints the audit record count, whether the chain is valid, the
 policy hash, event counts (including `permit_consumed`, `permit_rejected`,
-and `approval_verified`), and the last anchor — including whether it is
-signed — or the same anchoring note.
+and `approval_verified`), the audit-signing coverage (with a named
+warning when signing was never enabled), and the last anchor —
+including whether it is signed — or the same anchoring note.
 
 ## 6. Anchor the audit head
 
@@ -150,6 +158,46 @@ verifier holds. It does not protect against a writer who can also
 rewrite the anchor store and, for signed anchors, holds the anchor key;
 that writer is outside this layer's scope, and the tail after the
 latest anchor is witnessed only when the next anchor is taken.
+
+## 7. Audit-record signing
+
+Every record the state layer appends carries an HMAC over its own hash
+under the deployment's `audit-secret` — a dedicated key, created by
+`init` as an owner-only file, deliberately distinct from both
+`kernel-secret` and `anchor-secret`, so no single theft yields both
+permit minting and undetectable history forgery. The signature is a
+sibling of the record hash, excluded from the hashed body, so the
+unkeyed chain math is unchanged. A state-file writer who deletes a
+record mid-chain and recomputes every following hash — the attack the
+unkeyed chain could not see — now fails: the recomputed hashes carry
+no valid signature, and `verify` refuses (the kernel will not boot
+over the rewritten store).
+
+Signing is enabled from birth for a deployment created by `init`.
+A deployment that predates it enables signing explicitly:
+
+```sh
+python -m pulpo.ops enable-audit-signing ./deployment
+```
+
+The command first verifies the existing chain, then records the
+enablement in `policy.json` — outside the state file — together with
+the length of the unsigned legacy prefix (every record present at
+enablement). Those records keep verifying by hash alone and are
+reported as unsigned, with a count; records appended after enablement
+must be signed. Run `anchor` at enablement time to witness the legacy
+prefix: the pair (signed records + signed anchors) is the unit of
+coverage against a state-file writer. Re-running the command on an
+enabled deployment is a no-op.
+
+Scope, stated plainly: signing proves the deployment's state layer
+wrote the record. It does not prove the kernel governed the write —
+any caller who can make the state append gets a valid signature — and
+it does not bind the chain's length, so tail truncation still needs
+the anchor (§6). A writer who can also rewrite `policy.json` and
+delete the audit secret is the whole-directory writer this layer's
+scope already places out of scope, exactly as for the anchor-secret
+gate (§6).
 
 ## Not yet built
 
