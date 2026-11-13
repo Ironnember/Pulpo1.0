@@ -175,3 +175,89 @@ every checkpoint (repro control), and no claim is made for
 deployments that never run the ops form. No future authority,
 approval, or credential was carried into any historical state; the
 replay changed no consequential authority.
+
+## Addendum — 2026-11-13: the migration gate (review finding on PR #356)
+
+### Finding (Verified by independent reproduction at head `9b24f6e`)
+
+The one-time migration in §3 rotated **any** all-unsigned
+`anchors.jsonl`, keyed on nothing but the file's own unsignedness. In
+a deployment that already held an `anchor-secret` and a signed
+witness history, that made the `anchor` command itself the laundering
+step of the §1 attack: truncate the audit tail, replace the signed
+anchor file with a fabricated unsigned one covering the truncated
+head, run `ops anchor` — the fabricated file was rotated to
+`anchors.jsonl.legacy-unsigned` as "legacy", a signed anchor over the
+truncated head was appended under the deployment's real key, and
+`ops verify` returned `ok` / `anchored_prefix_verified`. Reproduced
+end-to-end through the real ops lifecycle (script and output held
+with the PR's working papers): pre-attack verify
+`anchored_prefix_verified`; truncated-with-honest-anchors refused
+(`anchor_beyond_trail`); truncated-with-fabricated-anchors refused by
+`verify` (`anchor_signature_missing`) — then ratified after the
+`anchor` run. Verdict: **Verified**, the claim reproduced exactly as
+filed.
+
+### Fix
+
+The rotation is a migration *into* a signed deployment, so it is now
+reachable only in the state that defines a legacy deployment: the
+deployment holds **no** `anchor-secret`. `_cmd_anchor` decides with
+the load-only helper (`_load_anchor_secret`) — the gate itself
+creates and repairs nothing, and a malformed secret fails closed at
+the gate. The adjacent shapes are decided, not left to drift:
+
+- **Secret present + all-unsigned anchor file** → the `anchor`
+  command fails closed (`anchor_unsigned`), leaving both files
+  byte-identical. An unsigned file inside a signed deployment is a
+  replaced witness, not a pre-wiring artifact.
+- **No secret + signed anchor file** (case b) → the command fails
+  closed (`anchor_verifier_unavailable`): it cannot verify the
+  history it would extend, and provisioning a fresh key there would
+  silently re-key the witness. Nothing is provisioned, nothing is
+  rotated; the operator restores the key.
+- **Partially signed (mixed) file** (case c) → never rotated:
+  rotation requires the *whole* file unsigned **and** no secret. A
+  mixed file with no secret takes the case-(b) refusal; with the
+  secret present it is ordinary (possibly foreign or damaged)
+  history, which `verify` adjudicates.
+- **Secret present + no anchor file** (case a) → unchanged: the
+  command starts the signed history normally; this is not a
+  rotation.
+- **No secret + all-unsigned file** → the genuine migration is
+  unchanged: byte-for-byte rotation, provisioning, signed history
+  from the current head (pinned by the pre-existing migration test,
+  unmodified).
+
+### Evidence
+
+- The reproduction above re-executed at the fixed tree: the `anchor`
+  run now exits non-zero with the `anchor_unsigned` refusal; no
+  legacy file is created; the fabricated file and the anchor secret
+  are byte-identical after the run; `verify` still fails closed
+  (`anchor_signature_missing`). Verdict: attack **Refuted** at the
+  fixed tree.
+- Three new tests in `tests/test_ops_cli.py` pin the exact attack
+  (refusal, files untouched, verify still closed), the
+  signed-without-secret refusal (no provisioning, no rotation), and
+  the mixed-file rule. The pre-existing migration test passes
+  unmodified — the genuine legacy path is a tested behavior, not a
+  casualty of the gate.
+- Full suite at the fixed tree: **726 tests OK, 13 skipped** (723 +
+  3 new; zero existing tests deleted, weakened, or modified).
+
+### Boundary this addendum does not prove
+
+The gate reads witness-key *presence* from the deployment directory.
+A writer with whole-directory write access can delete `anchor-secret`
+and thereby re-enter the legacy shape — but that writer already
+holds the custody this layer's scope statement (§5) places out of
+scope, and the maneuver is neither silent nor free: the "migration"
+is reported in the command output, and the fabricated file is
+preserved byte-for-byte as `anchors.jsonl.legacy-unsigned` rather
+than destroyed, so the substitution leaves its own evidence behind.
+What the gate closes is the demonstrated single-purpose abuse: a
+*replaced anchor file alone*, in an intact signed deployment, can no
+longer be ratified by the deployment's own anchor command. Claim
+classification: finding and fix **Verified** at the stated trees;
+the review finding itself is **Recorded** as filed by the reviewer.
