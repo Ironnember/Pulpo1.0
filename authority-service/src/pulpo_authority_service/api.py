@@ -11,6 +11,7 @@ from pydantic import BaseModel, ConfigDict, Field, StrictInt
 
 from .core import ApprovalRequest, AuthorityService
 from .human_ui import APPROVAL_JAVASCRIPT, SECURITY_HEADERS, render_approval_page
+from .request_limits import RequestBodyLimitMiddleware
 
 
 class WorkerAuthenticator(Protocol):
@@ -69,6 +70,7 @@ def create_app(
         redoc_url=None,
         openapi_url=None,
     )
+    app.add_middleware(RequestBodyLimitMiddleware)
 
     def require_worker(request: FastAPIRequest) -> str:
         try:

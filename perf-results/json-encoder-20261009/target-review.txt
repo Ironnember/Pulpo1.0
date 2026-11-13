@@ -1,0 +1,14 @@
+PR target adaptation review (analytical; grants no authority)
+Purpose: reduce canonical JSON encoder setup overhead while preserving audit bytes.
+Authority boundary: existing serialization helpers only; no new canonical mutation, policy, permit, executor or ledger path. Benchmark fixtures are in-memory and read-only at verification.
+Flip: hostile values keep original sorting, circular checks and rejection behavior; differential tests compare bytes/errors.
+Reverse: a hash mismatch originates at changed bytes; independent legacy JSON differential checks cover the earliest boundary.
+Invert: performance is not accepted as correctness; selected governance tests and canonical compatibility tests required.
+Inside-Out: no new authority source; private encoder configuration is never mutated during calls, with per-call recursion state and concurrency checks.
+Darken: threat case is leaked encoder state after malformed/circular calls or across threads; recovery and concurrency tests pass for the tested corpus.
+Lighten: removed encoder construction is the inferred performance mechanism; original machine figures remain Recorded observations, not proof of target performance.
+Amplify: original 10k/50k/100k five-repeat measurements, concurrent byte compatibility, and target governance replay/tamper/restart/rollback checks. No multiworker performance claim.
+Negate: reuse the existing standard library with identical settings; avoid importing unrelated accelerator, checkpoint or state-control implementations into targets that lack them.
+Verified: target compatibility and WSL selected test results. Recorded: original checkout performance. Inferred: saved construction overhead. Unknown: production and historical performance transfer.
+Decision: continue with source-scoped PR publication authorized by the user; no merging or default-branch mutation. Original local dirty checkout remains untouched by PR preparation.
+Temporal boundary: no reusable organizational lesson or historical authority proof is claimed. Exact current target base SHAs are recorded; Windows original-helper comparison confirms baseline failure equivalence. No general historical transfer claim is made.
