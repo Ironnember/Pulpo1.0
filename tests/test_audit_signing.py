@@ -25,6 +25,9 @@ import io
 import json
 import os
 import sqlite3
+import stat
+import subprocess
+import sys
 import tempfile
 import time
 import unittest
@@ -32,6 +35,7 @@ from dataclasses import asdict
 from pathlib import Path
 from unittest import mock
 
+import pulpo.ops as ops_module
 from pulpo import GovernanceKernel, Intent, Policy
 from pulpo.custody import SQLiteGovernanceCustody
 from pulpo.custody_evidence import (
@@ -39,9 +43,75 @@ from pulpo.custody_evidence import (
     SQLiteCustodyEvidenceConvergence,
 )
 from pulpo.kernel import StateIntegrityError
-from pulpo.ops import TEST_SECRET_ENV, main
-from pulpo.state import AuditSigner, InMemoryKernelState, SQLiteKernelState
+from pulpo.ops import OPS_LOCK_FILENAME, TEST_SECRET_ENV, _DeploymentLock, main
+from pulpo.state import (
+    AuditSigner,
+    InMemoryKernelState,
+    SQLiteKernelState,
+    _audit_record,
+)
 from tests.authority_support import HmacTestVerifier, signed_envelope
+
+# Repo root (the tests/ directory's parent): the working directory for
+# subprocess invocations of `python -m pulpo.ops` in the serialization
+# tests below.
+REPO_ROOT = Path(__file__).resolve().parents[1]
+
+# A TRUE pre-signing database schema: the audit table has no signature
+# column and permit_directives has no parent_directive_hash column —
+# the shape a deployment created before PR #355 / #357 would carry.
+# (The downgrade helper above only strips config/secret; the state
+# file it leaves behind already has both columns.)
+_LEGACY_SCHEMA = """
+CREATE TABLE permits (permit TEXT PRIMARY KEY, intent_hash TEXT NOT NULL, spent INTEGER NOT NULL DEFAULT 0 CHECK (spent IN (0, 1)));
+CREATE TABLE approvals (approval_id TEXT PRIMARY KEY, nonce TEXT NOT NULL UNIQUE);
+CREATE TABLE ceremony_evidence (evidence_id TEXT PRIMARY KEY);
+CREATE TABLE directives (directive_id TEXT NOT NULL, version INTEGER NOT NULL, directive_hash TEXT NOT NULL, revoked INTEGER NOT NULL DEFAULT 0 CHECK (revoked IN (0, 1)), PRIMARY KEY (directive_id, version));
+CREATE TABLE permit_directives (permit TEXT PRIMARY KEY REFERENCES permits(permit) ON DELETE CASCADE, directive_id TEXT NOT NULL, directive_version INTEGER NOT NULL, directive_hash TEXT NOT NULL, directive_issued_at_ns INTEGER NOT NULL, directive_expires_at_ns INTEGER NOT NULL);
+CREATE TABLE audit (sequence INTEGER PRIMARY KEY, event TEXT NOT NULL, payload_json TEXT NOT NULL, previous_hash TEXT NOT NULL, timestamp_ns INTEGER NOT NULL, hash TEXT NOT NULL);
+"""
+
+
+def _build_true_legacy_db(path: Path, count: int = 3) -> None:
+    """Write a pre-signing state file: ``count`` unsigned hash-chained
+    records under the old schema (no signature column)."""
+    if path.exists():
+        path.unlink()
+    connection = sqlite3.connect(path)
+    try:
+        connection.executescript(_LEGACY_SCHEMA)
+        previous = "0" * 64
+        for index in range(1, count + 1):
+            record = _audit_record(
+                previous,
+                "decision",
+                {"outcome": "allow", "reason": "policy_satisfied",
+                 "intent_hash": f"{index:064x}"},
+                NOW,
+                signer=None,
+            )
+            connection.execute(
+                "INSERT INTO audit (event, payload_json, previous_hash,"
+                " timestamp_ns, hash) VALUES (?, ?, ?, ?, ?)",
+                (record["event"],
+                 json.dumps(record["payload"], sort_keys=True,
+                            separators=(",", ":")),
+                 record["previous_hash"], record["timestamp_ns"],
+                 record["hash"]),
+            )
+            previous = record["hash"]
+        connection.commit()
+    finally:
+        connection.close()
+
+
+def _table_columns(path: Path, table: str) -> list[str]:
+    connection = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
+    try:
+        return [row[1] for row in connection.execute(
+            f"PRAGMA table_info({table})").fetchall()]
+    finally:
+        connection.close()
 
 AUDIT_SECRET = b"item1-test-audit-secret"
 KERNEL_SECRET = b"item1-test-kernel-secret"
@@ -612,6 +682,14 @@ class AuditSigningOpsTests(unittest.TestCase):
             )
         state.close()
 
+    def _replace_state_with_true_legacy_db(self, count=3):
+        """Replace the deployment's state file with a TRUE pre-signing
+        one (old schema, no signature column) holding ``count`` unsigned
+        records. The deployment keeps its policy and kernel secret, so
+        it stays usable — this is the shape a deployment created before
+        PR #355 / #357 would carry into a projection."""
+        _build_true_legacy_db(self.deployment / "state.db", count)
+
     def _secret_mode(self, name):
         return oct(os.stat(self.deployment / name).st_mode & 0o777)
 
@@ -815,6 +893,240 @@ class AuditSigningOpsTests(unittest.TestCase):
         self.assertEqual(0, exit_code, verify_report)
         self.assertEqual("anchored_prefix_verified", verify_report["anchored"]["reason"])
         self.assertGreater(verify_report["audit_signing"]["signed_records"], 0)
+
+    # -- Codex P1 fixes on PR #357 -------------------------------------
+    #
+    # P1 #1 (state.py): projection opens migrated legacy databases —
+    # verify/status executed the ALTER TABLEs merely by inspecting a
+    # deployment, and failed outright ("attempt to write a readonly
+    # database") on a read-only mount. Projections now open without
+    # migration and read a missing signature column as unsigned.
+    # P1 #2 (ops.py): enable-audit-signing raced with audit writers —
+    # an authorize landing between the cutoff read and the config save
+    # appended unsigned records past a too-small legacy prefix and
+    # bricked the deployment at the next boot. The mutating commands
+    # and enablement now hold the deployment lock across the whole
+    # transition.
+
+    def test_verify_status_do_not_migrate_true_legacy_database(self):
+        self.init_trusted()
+        self._downgrade_to_legacy()
+        self._replace_state_with_true_legacy_db(3)
+        state_path = self.deployment / "state.db"
+        self.assertNotIn("signature", _table_columns(state_path, "audit"))
+        self.assertNotIn(
+            "parent_directive_hash",
+            _table_columns(state_path, "permit_directives"),
+        )
+        digest_before = hashlib.sha256(state_path.read_bytes()).hexdigest()
+
+        exit_code, verify_report = self.verify()
+        self.assertEqual(0, exit_code, verify_report)
+        self.assertTrue(verify_report["chain_valid"])
+        self.assertEqual(3, verify_report["audit_records"])
+        self.assertEqual(3, verify_report["audit_signing"]["unsigned_records"])
+        exit_code, status_report = self.status()
+        self.assertEqual(0, exit_code, status_report)
+        self.assertTrue(status_report["chain_valid"])
+
+        # Inspection changed nothing: same bytes, still no columns.
+        self.assertEqual(
+            digest_before, hashlib.sha256(state_path.read_bytes()).hexdigest()
+        )
+        self.assertNotIn("signature", _table_columns(state_path, "audit"))
+        self.assertNotIn(
+            "parent_directive_hash",
+            _table_columns(state_path, "permit_directives"),
+        )
+
+    def test_authorize_before_enablement_is_counted_in_legacy_prefix(self):
+        # The "lands before the cutoff" order: an authorize that
+        # completes fully before enablement starts is counted in the
+        # prefix, so its records verify legacy-style afterwards.
+        # (3 seeded + 2 from authorize + 1 from consume = 6.)
+        self.init_trusted()
+        self._downgrade_to_legacy()
+        self._append_unsigned_records(3)
+        _, permit_path = self.authorize_ok()
+        self.consume(permit_path)
+        exit_code, report = self.enable_signing()
+        self.assertEqual(0, exit_code, report)
+        self.assertEqual(6, report["audit_signing"]["legacy_records"])
+        exit_code, verify_report = self.verify()
+        self.assertEqual(0, exit_code, verify_report)
+        self.assertTrue(verify_report["chain_valid"])
+        self.assertEqual(6, verify_report["audit_signing"]["unsigned_records"])
+        self.assertEqual(0, verify_report["audit_signing"]["signed_records"])
+
+    def test_enable_signing_serialized_against_concurrent_authorize(self):
+        # Deterministic interleaving for the P1 #2 race: a real
+        # authorize in a separate process starts between enablement's
+        # cutoff read and its config save. With the deployment lock it
+        # cannot land unsigned past the cutoff — it waits for
+        # enablement, reads the new config, and signs its records.
+        self.init_trusted()
+        self._downgrade_to_legacy()
+        self._append_unsigned_records(3)
+        self.mint_envelope(self.intent(cost=100))
+        race_out = self.root / "race-authorize.json"
+        real_save = ops_module._save_config
+        spawned: dict[str, object] = {}
+
+        def save_with_race(directory, config):
+            if "proc" not in spawned:
+                handle = race_out.open("w", encoding="utf-8")
+                spawned["proc"] = subprocess.Popen(
+                    [sys.executable, "-m", "pulpo.ops", "authorize",
+                     str(self.deployment), "--envelope",
+                     str(self.envelope_path),
+                     "--principal", PRINCIPAL, "--action", ACTION,
+                     "--resource", RESOURCE, "--cost", "100",
+                     "--session-id", SESSION_ID],
+                    cwd=str(REPO_ROOT), env=dict(os.environ),
+                    stdout=handle, stderr=subprocess.STDOUT,
+                )
+                spawned["handle"] = handle
+            return real_save(directory, config)
+
+        with mock.patch.object(
+            ops_module, "_save_config", side_effect=save_with_race
+        ):
+            exit_code, enable_report = self.enable_signing()
+        self.assertEqual(0, exit_code, enable_report)
+        self.assertEqual(3, enable_report["audit_signing"]["legacy_records"])
+        proc = spawned["proc"]
+        self.assertEqual(0, proc.wait(timeout=60))
+        spawned["handle"].close()
+        race_report = json.loads(race_out.read_text(encoding="utf-8"))
+        self.assertTrue(race_report["ok"], race_report)
+        # The racing authorize's two records are signed, not stranded
+        # unsigned past the prefix — verify passes afterwards.
+        exit_code, verify_report = self.verify()
+        self.assertEqual(0, exit_code, verify_report)
+        self.assertTrue(verify_report["chain_valid"])
+        self.assertEqual(3, verify_report["audit_signing"]["legacy_records"])
+        self.assertEqual(2, verify_report["audit_signing"]["signed_records"])
+        self.assertEqual(3, verify_report["audit_signing"]["unsigned_records"])
+
+    def test_deployment_lock_blocks_concurrent_authorize(self):
+        # Holding the lock externally blocks a separate process's
+        # authorize until the lock is released — the cross-process
+        # guarantee the enablement serialization rests on.
+        self.init_trusted()
+        self.mint_envelope(self.intent(cost=100))
+        race_out = self.root / "blocked-authorize.json"
+        with _DeploymentLock(self.deployment):
+            with race_out.open("w", encoding="utf-8") as handle:
+                proc = subprocess.Popen(
+                    [sys.executable, "-m", "pulpo.ops", "authorize",
+                     str(self.deployment), "--envelope",
+                     str(self.envelope_path),
+                     "--principal", PRINCIPAL, "--action", ACTION,
+                     "--resource", RESOURCE, "--cost", "100",
+                     "--session-id", SESSION_ID],
+                    cwd=str(REPO_ROOT), env=dict(os.environ),
+                    stdout=handle, stderr=subprocess.STDOUT,
+                )
+            time.sleep(1.5)
+            self.assertIsNone(proc.poll(), "authorize completed while the lock was held")
+        self.assertEqual(0, proc.wait(timeout=60))
+        race_report = json.loads(race_out.read_text(encoding="utf-8"))
+        self.assertTrue(race_report["ok"], race_report)
+
+    def test_projections_do_not_create_lock_file(self):
+        self.init_trusted()
+        self._downgrade_to_legacy()
+        self._append_unsigned_records(2)
+        exit_code, _ = self.verify()
+        self.assertEqual(0, exit_code)
+        exit_code, _ = self.status()
+        self.assertEqual(0, exit_code)
+        self.assertFalse((self.deployment / OPS_LOCK_FILENAME).exists())
+
+    def test_mutating_commands_create_owner_only_lock_file(self):
+        self.init_trusted()
+        _, _ = self.authorize_ok()
+        lock_path = self.deployment / OPS_LOCK_FILENAME
+        self.assertTrue(lock_path.is_file())
+        self.assertEqual(0o600, stat.S_IMODE(lock_path.stat().st_mode))
+
+
+class ProjectionMigrationStateTests(unittest.TestCase):
+    """State-level pins for the P1 #1 migration gate."""
+
+    def setUp(self):
+        handle = tempfile.NamedTemporaryFile(suffix=".sqlite3")
+        self.path = Path(handle.name)
+        handle.close()
+        self.addCleanup(lambda: self.path.unlink(missing_ok=True))
+        self.addCleanup(lambda: Path(str(self.path) + "-wal").unlink(missing_ok=True))
+        self.addCleanup(lambda: Path(str(self.path) + "-shm").unlink(missing_ok=True))
+
+    def test_read_only_open_does_not_migrate_and_reads_legacy_records(self):
+        _build_true_legacy_db(self.path, 3)
+        digest_before = hashlib.sha256(self.path.read_bytes()).hexdigest()
+        state = SQLiteKernelState(self.path, migrate_schema=False)
+        try:
+            self.assertNotIn("signature", _table_columns(self.path, "audit"))
+            self.assertEqual(3, len(state.audit))
+            self.assertTrue(kernel_for(state).verify_audit())
+        finally:
+            state.close()
+        self.assertEqual(
+            digest_before, hashlib.sha256(self.path.read_bytes()).hexdigest()
+        )
+
+    def test_default_open_migrates_legacy_database(self):
+        _build_true_legacy_db(self.path, 3)
+        state = SQLiteKernelState(self.path)
+        try:
+            self.assertIn("signature", _table_columns(self.path, "audit"))
+            self.assertEqual(3, len(state.audit))
+            self.assertTrue(kernel_for(state).verify_audit())
+        finally:
+            state.close()
+
+    def test_read_only_open_of_missing_state_fails_closed_without_creating_it(self):
+        missing = self.path.with_name(self.path.name + "-absent.sqlite3")
+        self.addCleanup(lambda: missing.unlink(missing_ok=True))
+        with self.assertRaises(sqlite3.OperationalError):
+            SQLiteKernelState(missing, migrate_schema=False)
+        self.assertFalse(missing.exists())
+
+    def test_append_with_signer_without_signature_column_fails_loudly(self):
+        _build_true_legacy_db(self.path, 3)
+        state = SQLiteKernelState(
+            self.path, audit_signer=AuditSigner(AUDIT_SECRET),
+            migrate_schema=False,
+        )
+        try:
+            with self.assertRaises(RuntimeError):
+                state.append(
+                    "decision",
+                    {"outcome": "allow", "reason": "policy_satisfied",
+                     "intent_hash": "f" * 64},
+                    NOW,
+                )
+            self.assertEqual(3, len(state.audit))
+        finally:
+            state.close()
+
+    def test_unsigned_append_through_read_only_open_fails_loudly(self):
+        # A read-only open cannot write at all: an unsigned append
+        # fails loudly instead of landing anywhere, and adds nothing.
+        _build_true_legacy_db(self.path, 3)
+        state = SQLiteKernelState(self.path, migrate_schema=False)
+        try:
+            with self.assertRaises(sqlite3.OperationalError):
+                state.append(
+                    "decision",
+                    {"outcome": "allow", "reason": "policy_satisfied",
+                     "intent_hash": "f" * 64},
+                    NOW,
+                )
+            self.assertEqual(3, len(state.audit))
+        finally:
+            state.close()
 
 
 if __name__ == "__main__":

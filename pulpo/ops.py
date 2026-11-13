@@ -56,6 +56,10 @@ operator artifacts plus the canonical kernel state:
   second ledger. Absent until the first anchor is taken, and ``verify``
   treats its absence as "not checked", never as a failure.
 - ``state.db`` — the canonical SQLite kernel state, owned by the kernel.
+- ``ops.lock`` — the deployment lock file (see "Serializing enablement"
+  below). Created owner-only (``0600``) by the first mutating command
+  that takes it; it holds no secret and no state, only the lock. The
+  read-only projections (``verify`` / ``status``) never create it.
 - ``permits/<intent_hash>--<approval_id>.permit`` — one file per
   kernel-issued permit, written by ``authorize``; the file content is the
   permit string exactly as the kernel issued it. Permit files are bearer
@@ -84,8 +88,9 @@ canonical state directly — the only files it writes are its own
 ``anchor-secret`` at ``init`` time (plus a secret's first provisioning
 by a mutating command on a legacy deployment, and the
 ``enable-audit-signing`` command's one-time ``policy.json`` update on a
-legacy deployment), permit files at ``authorize`` time, and the anchor
-witness at ``anchor`` time, all outside the audit chain.
+legacy deployment), permit files at ``authorize`` time, the anchor
+witness at ``anchor`` time, and the ``ops.lock`` lock file (below), all
+outside the audit chain.
 ``verify`` and ``status`` write nothing at all. It is not a second router, executor, ledger,
 memory system, or authority plane: approval envelopes are produced by the
 external authority, and this tool only presents them to the kernel.
@@ -120,6 +125,27 @@ the config requires signing, an unsigned record fails. A writer who
 can also rewrite ``policy.json`` and delete the audit secret is the
 whole-directory writer this layer's scope already places out of scope,
 exactly as for the anchor-secret gate.
+
+Serializing enablement: the legacy-prefix cutoff (``legacy_records``)
+and the config transition that enables signing must be one atomic step
+with respect to every audit writer, or a concurrent ``authorize`` /
+``consume`` can append an unsigned record after the cutoff is read but
+before it is saved — and every later boot then rejects that record as
+``audit_signature_missing``, bricking the deployment (Codex P1 on PR
+#357). The mutating commands (``authorize`` / ``consume``) therefore
+hold the deployment lock (``ops.lock``, an exclusive ``flock`` on a
+sibling lock file, mirroring ``pulpo.anchor._FileAppendLock``'s
+POSIX/fallback shape) across config-read through kernel-append, and
+``enable-audit-signing`` holds it across cutoff-read through
+config-save, so a concurrent authorize either completes fully before
+enablement starts (its records counted in the prefix) or starts after
+enablement finishes (reads the new config and signs). The lock is
+single-host: ``flock`` does not serialize across hosts, so NFS /
+cross-host deployments are out of scope for this deployment form, as
+they already are for the anchor store's lock. Projections never take
+the lock — they read a snapshot and need no serialization with
+writers — and ``init`` does not take it either, because a deployment
+under construction is not yet a usable deployment.
 
 Anchoring: when the sibling ``pulpo.anchor`` module is importable, the
 ``anchor`` command appends a signed witness of the current audit head to
@@ -177,7 +203,13 @@ import os
 from pathlib import Path
 import secrets
 import stat
+import threading
 from typing import Any, Sequence
+
+try:
+    import fcntl
+except ImportError:  # Non-POSIX platform: per-path in-process fallback.
+    fcntl = None  # type: ignore[assignment]
 
 from .authority import (
     ApprovalEnvelope,
@@ -208,6 +240,11 @@ PERMIT_FILE_MODE = 0o600
 _PROBE_PREFIX = ".write-probe-"
 ANCHORS_FILENAME = "anchors.jsonl"
 LEGACY_UNSIGNED_ANCHORS_FILENAME = ANCHORS_FILENAME + ".legacy-unsigned"
+# Deployment lock file (see "Serializing enablement" in the module
+# docstring): the file the mutating commands flock to serialize audit
+# writers with enable-audit-signing. It holds no secret and no state.
+OPS_LOCK_FILENAME = "ops.lock"
+OPS_LOCK_MODE = 0o600
 TEST_SECRET_ENV = "PULPO_OPS_TEST_AUTHORITY_SECRET"
 ANCHOR_UNAVAILABLE_NOTE = "anchoring is not available in this build"
 DEFAULT_DEPLOYMENT_ID = "deployment:ops"
@@ -292,6 +329,73 @@ def _save_config(directory: Path, config: dict[str, Any]) -> Path:
         json.dumps(config, indent=2, sort_keys=True) + "\n", encoding="utf-8"
     )
     return policy_path
+
+
+_FALLBACK_LOCKS: dict[str, threading.Lock] = {}
+_FALLBACK_LOCKS_GUARD = threading.Lock()
+
+
+def _fallback_lock(path: Path) -> threading.Lock:
+    with _FALLBACK_LOCKS_GUARD:
+        return _FALLBACK_LOCKS.setdefault(str(path.resolve()), threading.Lock())
+
+
+class _DeploymentLock:
+    """Exclusive deployment lock serializing audit writers with enablement.
+
+    Mirrors ``pulpo.anchor._FileAppendLock``'s POSIX/fallback shape
+    rather than importing the anchor module into this path: on POSIX
+    this is an ``flock`` on the deployment's ``ops.lock`` file, opened
+    per acquisition (with ``O_CLOEXEC``, so a child process spawned
+    while the lock is held does not inherit the locked description and
+    then deadlock against its own parent), so independent processes
+    contend correctly; where ``flock`` is unavailable, a per-path
+    in-process lock is used instead and the guarantee narrows to
+    writers in this process. The file holds no secret and no state —
+    only the lock — and is created owner-only on first use. The
+    read-only projections never take it; the mutating commands
+    (``authorize`` / ``consume``) hold it across config-read through
+    kernel-append, and ``enable-audit-signing`` across cutoff-read
+    through config-save, so the enablement race (Codex P1 on PR #357)
+    cannot interleave an unsigned append between the cutoff and the
+    save. The lock is single-host: ``flock`` does not serialize across
+    hosts, so NFS / cross-host deployments are out of scope here.
+    """
+
+    def __init__(self, directory: Path) -> None:
+        self._lock_path = directory / OPS_LOCK_FILENAME
+        self._fd: int | None = None
+        self._fallback: threading.Lock | None = None
+
+    def __enter__(self) -> "_DeploymentLock":
+        if fcntl is not None:
+            try:
+                self._fd = os.open(
+                    self._lock_path,
+                    os.O_CREAT | os.O_RDWR | os.O_CLOEXEC,
+                    OPS_LOCK_MODE,
+                )
+            except OSError as error:
+                raise OpsError(
+                    f"deployment lock at {self._lock_path} is unavailable: {error}"
+                ) from error
+            fcntl.flock(self._fd, fcntl.LOCK_EX)
+        else:
+            self._fallback = _fallback_lock(self._lock_path)
+            self._fallback.acquire()
+        return self
+
+    def __exit__(self, *exc_info: object) -> bool:
+        if self._fd is not None:
+            try:
+                fcntl.flock(self._fd, fcntl.LOCK_UN)
+            finally:
+                os.close(self._fd)
+                self._fd = None
+        if self._fallback is not None:
+            self._fallback.release()
+            self._fallback = None
+        return False
 
 
 def _load_config(directory: Path) -> dict[str, Any]:
@@ -747,10 +851,15 @@ def _open_kernel(
     audit_signer, legacy_audit_records = _audit_signer_for(
         directory, config, projection=projection
     )
+    # Projections open without schema migration: a read-only projection
+    # must neither rewrite a legacy database merely by inspecting it
+    # nor fail outright on a read-only mount (Codex P1 on PR #357).
+    # Mutating opens migrate, as before.
     state = SQLiteKernelState(
         state_path,
         audit_signer=audit_signer,
         legacy_audit_records=legacy_audit_records,
+        migrate_schema=not projection,
     )
     try:
         if projection:
@@ -1078,6 +1187,12 @@ def _cmd_init(args: argparse.Namespace) -> int:
 
 
 def _cmd_enable_audit_signing(args: argparse.Namespace) -> int:
+    """Enable audit-record signing (serialized: see _DeploymentLock)."""
+    with _DeploymentLock(args.directory):
+        return _cmd_enable_audit_signing_locked(args)
+
+
+def _cmd_enable_audit_signing_locked(args: argparse.Namespace) -> int:
     """Enable audit-record signing on a deployment that predates it.
 
     The enablement is recorded in ``policy.json`` — outside the state
@@ -1158,6 +1273,12 @@ def _load_envelope(path: Path) -> ApprovalEnvelope:
 
 
 def _cmd_authorize(args: argparse.Namespace) -> int:
+    """Authorize a permit (serialized: see _DeploymentLock)."""
+    with _DeploymentLock(args.directory):
+        return _cmd_authorize_locked(args)
+
+
+def _cmd_authorize_locked(args: argparse.Namespace) -> int:
     directory: Path = args.directory
     config = _load_config(directory)
     if config.get("authority_trust") is None or config.get("verifier") is None:
@@ -1264,6 +1385,12 @@ def _cmd_authorize(args: argparse.Namespace) -> int:
 
 
 def _cmd_consume(args: argparse.Namespace) -> int:
+    """Consume a permit (serialized: see _DeploymentLock)."""
+    with _DeploymentLock(args.directory):
+        return _cmd_consume_locked(args)
+
+
+def _cmd_consume_locked(args: argparse.Namespace) -> int:
     directory: Path = args.directory
     config = _load_config(directory)
     try:

@@ -311,3 +311,132 @@ gate's own re-verification of the suite on the merged main.
 Remaining unknowns: none introduced by this change; the open Phase 2
 items (Item 4 token TTL, Item 3A capability facade) are named in the
 memo and unaffected by this PR.
+
+---
+
+## Addendum A — Codex P1 #1: projection opens migrated legacy databases (2026-11-13)
+
+**Thread:** PRRT_kwDOUBywws63Fyo3 (state.py). **Verdict: REPRODUCED, FIXED.**
+
+**Repro (at head a5446ad, before fix).** A true pre-signing deployment
+was built (state.db with the old schema — audit table with no
+`signature` column, permit_directives with no `parent_directive_hash`
+column — 3 unsigned hash-chained records, policy.json with no
+`audit_signing` entry, no audit-secret; builder:
+`~/workspace/pr-builds/phase2-item1-p1-repro.py`):
+- Writable copy: `verify` exited 0 with `chain_valid: true` — and
+  silently rewrote the canonical state: state.db SHA-256 changed
+  `df5c4697…` → `b20994b7…`, both the `signature` and the
+  `parent_directive_hash` columns added by the act of inspecting it.
+- Read-only bind mount: `verify` and `status` both failed with
+  `kernel state could not be opened: attempt to write a readonly
+  database`, exit 1, on a chain that verifies cleanly.
+
+**Fix.** `SQLiteKernelState.__init__` takes `migrate_schema: bool =
+True` (default = current behavior for mutating opens). Projections
+pass False through `_open_kernel` (`migrate_schema=not projection`):
+the state opens through a read-only (`mode=ro`) URI connection and no
+DDL runs at all; the audit read path tolerates a missing `signature`
+column (records read as unsigned); `append`/`append_unique`/`_append`
+fail loudly (`RuntimeError`, precise message) rather than silently
+appending unsigned when a signer is configured but the column is
+absent. The gate covers BOTH migrations, not just the new one: the
+`permit_directives` ALTER is the identical shape, and a pre-#355
+deployment would fail verification on a read-only mount through that
+ALTER alone. Projections never read `permit_directives`, and mutating
+opens always migrate before any read of it, so no read-path tolerance
+was needed there.
+
+**Evidence (fixed tree).** Same repro: `verify`/`status` exit 0,
+`chain_valid: true`, state.db SHA-256 unchanged (`df5c4697…`, no
+columns added); on the read-only bind mount both exit 0 with the same
+true verdict, source database untouched. Regression tests:
+`test_verify_status_do_not_migrate_true_legacy_database` (ops-level,
+byte-identical state after verify+status),
+`ProjectionMigrationStateTests` (read-only open reads legacy records
+without migrating; default open migrates; missing-file read-only open
+fails closed without creating the file; signed append without the
+column fails loudly; unsigned append through a read-only open fails
+loudly with no record added).
+
+**Residual.** A projection over a deployment whose state file is
+missing fails closed (`unable to open database file`) instead of
+reporting an empty chain — a deliberate tightening: projections create
+nothing. `migrate_schema=False` opens are projection-only by
+construction (mode=ro cannot write); direct state-layer writers are
+unaffected.
+
+## Addendum B — Codex P1 #2: enablement raced with audit writers (2026-11-13)
+
+**Thread:** PRRT_kwDOUBywws63Fyo8 (ops.py). **Verdict: REPRODUCED, FIXED.**
+
+**Repro (at head a5446ad, before fix, deterministic).** Trusted legacy
+deployment, 3 unsigned records; the real `enable-audit-signing`
+command run with `ops._save_config` intercepted so a real `authorize`
+(reading the still-old unsigned config) lands between the cutoff read
+and the config save (harness:
+`~/workspace/pr-builds/phase2-item1-p2-repro.py`, pre-fix output
+`~/workspace/pr-builds/phase2-item1-p2-repro-output.txt`): enablement
+recorded `legacy_records: 3` while the interleaved authorize appended
+2 unsigned records (sequences 4–5: `approval_verified`, `decision`);
+every later `verify`/`status` failed with `kernel state could not be
+opened: kernel state audit chain is invalid` (boot refuses the first
+unsigned record past the prefix — `audit_signature_missing`, failed
+record index 3) — the deployment bricked.
+
+**Fix.** A deployment-level exclusive lock, `_DeploymentLock` in
+`pulpo/ops.py`, mirroring `pulpo.anchor._FileAppendLock`'s
+POSIX/fallback shape (exclusive `flock` on `ops.lock`, opened
+`O_CLOEXEC` so a child spawned while the lock is held cannot inherit
+the locked description and deadlock against its parent; per-path
+in-process lock where `flock` is unavailable). `authorize` and
+`consume` hold it across config-read through kernel-append;
+`enable-audit-signing` holds it across cutoff-read through config-save.
+A concurrent authorize therefore either completes fully before
+enablement starts (its records counted in the prefix) or starts after
+enablement finishes (reads the new config and signs). `ops.lock` is a
+documented deployment artifact (module docstring), owner-only (0600),
+holding no secret and no state; projections never take it (they read a
+snapshot), and `init` does not take it (a deployment under
+construction is not yet usable). Exact-directory-listing tests were
+checked: they assert listings only after `verify`/`status`, which
+never create the file, so no existing assertion changed.
+
+**Evidence (fixed tree).** Same deterministic harness, interleaved
+authorize now in a separate process (in-process interleaving cannot
+complete once the lock holds — the authorize blocks until enablement
+finishes, which is the serialization being demonstrated):
+`legacy_records: 3`, the racing authorize's records are SIGNED
+(sequences 4–5 carry signatures), `verify`/`status` exit 0,
+`chain_valid: true`, `signed_records: 2, unsigned_records: 3`
+(`~/workspace/pr-builds/phase2-item1-p2-fixed-output.txt`).
+Regression tests:
+`test_enable_signing_serialized_against_concurrent_authorize` (the
+harness, pinned),
+`test_authorize_before_enablement_is_counted_in_legacy_prefix`
+(3 seeded + 2 authorize + 1 consume = 6 counted),
+`test_deployment_lock_blocks_concurrent_authorize` (an externally held
+lock blocks a separate process's authorize until release),
+`test_projections_do_not_create_lock_file`,
+`test_mutating_commands_create_owner_only_lock_file`.
+
+**Residual.** `flock` is single-host: NFS / cross-host deployments are
+out of scope for this deployment form (same scope as the anchor
+store's lock). The lock serializes ops-level writers only; direct
+state-layer writers (e.g. the custody-evidence projection, which
+bypasses ops) are not serialized against enablement — that path is
+governed by its own signer guard, and a cross-surface lock is Item 3
+work, not this PR. `init` on a half-constructed deployment racing a
+mutating command is likewise out of scope: init is a one-time
+operator action on a not-yet-usable deployment.
+
+## Addendum evidence (both findings)
+
+- Full suite at the fixed tree: **769 OK, skipped=25** (758 baseline
+  + 11 new tests; zero existing tests modified, weakened, or deleted).
+- `scripts/run_constitutional_mutations.py`: **16/16 killed, 0
+  survived, result pass, survival_score 1.0.**
+- Claim classification for this addendum: the two verdicts are
+  **Verified** (reproduced at a5446ad with the exact errors above,
+  re-executed green at the fixed tree); the residuals are **Recorded**
+  scope statements, not claims.
