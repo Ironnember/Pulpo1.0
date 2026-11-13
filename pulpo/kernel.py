@@ -30,6 +30,24 @@ DEFAULT_MAX_PERMIT_TTL_NS = 4 * 3600 * 1_000_000_000  # 4 hours
 PERMIT_TTL_CEILING_NS = 24 * 3600 * 1_000_000_000  # 24 hours
 
 
+def _token_time_ns(raw: str) -> int | None:
+    """Parse a token time field, or None when it is not well-formed.
+
+    Well-formed means ASCII digits only, at most 20 of them: nanosecond
+    timestamps fit in 19 digits for any plausible date, and the bound
+    keeps ``int()`` far below Python's integer-conversion limit.
+    Unicode digit characters pass ``str.isdigit()`` but ``int()``
+    rejects some of them — and an over-long field trips the conversion
+    limit — so without this guard a malformed bearer token made
+    ``consume`` raise instead of failing closed through the recorded
+    rejection path (Codex P2 on PR #358, reproduced before the fix).
+    """
+
+    if not raw or len(raw) > 20 or not raw.isascii() or not raw.isdigit():
+        return None
+    return int(raw)
+
+
 def _canonical(value: Any) -> bytes:
     return _CANONICAL_ENCODER.encode(value).encode()
 
@@ -822,10 +840,10 @@ class GovernanceKernel:
         if len(parts) != 5:
             return None
         token_digest, nonce, issued_raw, expires_raw, signature = parts
-        if not (issued_raw.isdigit() and expires_raw.isdigit()):
+        issued_at_ns = _token_time_ns(issued_raw)
+        expires_at_ns = _token_time_ns(expires_raw)
+        if issued_at_ns is None or expires_at_ns is None:
             return None
-        issued_at_ns = int(issued_raw)
-        expires_at_ns = int(expires_raw)
         if expires_at_ns <= issued_at_ns:
             return None
         expected = hmac.new(

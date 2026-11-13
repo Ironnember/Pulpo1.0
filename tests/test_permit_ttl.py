@@ -163,6 +163,40 @@ class ExpiryEnforcementTests(unittest.TestCase):
         self.assertIn("permit_signature_invalid", rejection_reasons(kernel))
 
 
+class MalformedTokenTests(unittest.TestCase):
+    """Malformed bearer input fails closed through the recorded
+    rejection path — it never raises out of consume (Codex P2 on
+    PR #358, reproduced before the fix: Unicode digit fields pass
+    str.isdigit() but int() rejects them, and over-long fields trip
+    Python's integer-conversion limit)."""
+
+    def malformed_variants(self, kernel):
+        token = kernel.evaluate(INTENT).permit
+        digest, nonce, issued, expiry, signature = token.split(":")
+        return {
+            "unicode_digit_issued": ":".join([digest, nonce, "²", expiry, signature]),
+            "unicode_digit_expiry": ":".join([digest, nonce, issued, "²", signature]),
+            "overlong_expiry": ":".join([digest, nonce, issued, "9" * 5000, signature]),
+            "empty_issued": ":".join([digest, nonce, "", expiry, signature]),
+            "negative_expiry": ":".join([digest, nonce, issued, "-1", signature]),
+            "decimal_issued": ":".join([digest, nonce, "1.5", expiry, signature]),
+            "expiry_not_after_issued": ":".join(
+                [digest, nonce, expiry, issued, signature]
+            ),
+        }
+
+    def test_malformed_time_fields_refused_without_raising(self):
+        kernel = make_kernel(T0)
+        for name, forged in self.malformed_variants(kernel).items():
+            with self.subTest(variant=name):
+                self.assertFalse(kernel.consume(forged, INTENT))
+        reasons = rejection_reasons(kernel)
+        self.assertEqual(
+            len(self.malformed_variants(kernel)),
+            reasons.count("permit_signature_invalid"),
+        )
+
+
 class V1CutoverTests(unittest.TestCase):
     """A v1 token (digest:nonce:signature over digest:nonce) with a real
     store row — an outstanding pre-cutover permit — is refused."""

@@ -129,6 +129,16 @@ forever. Failure addressed: **permit authority had no temporal bound.**
   `permit_store_expiry_check_removed_inmemory`,
   `permit_store_expiry_check_removed_sqlite` — each killed by its
   pinning test. Full run: **19/19 killed, 0 survived, 0 invalid.**
+- **Review fix (Codex P2 on PR #358, reproduced before fixing):**
+  the first head parsed time fields with `str.isdigit()` + `int()`;
+  Unicode digit characters (`²` passes `isdigit()`, `int()` rejects
+  it) and fields beyond Python's integer-conversion limit made
+  `consume` **raise** `ValueError` instead of failing closed through
+  the recorded rejection path (AGENTS.md: malformed authority fails
+  closed through the canonical kernel). Reproduced on all three
+  shapes pre-fix; post-fix all return False with `permit_rejected`
+  recorded. The parse is now a strict guard (`_token_time_ns`: ASCII
+  digits only, at most 20), pinned by `MalformedTokenTests`.
 
 ## 5. Boundary the evidence does not prove
 
