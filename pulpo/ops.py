@@ -96,7 +96,15 @@ chain verdict, never as one. A legacy unsigned ``anchors.jsonl`` is
 rotated byte-for-byte to ``anchors.jsonl.legacy-unsigned`` by the first
 ``anchor`` run and the signed history starts at the current head; the
 rotation is reported as a migration, because signatures attest from the
-anchor that carries them forward, never retroactively. The witness
+anchor that carries them forward, never retroactively. The rotation is
+a migration *into* a signed deployment, so it is reachable only while
+the deployment holds no ``anchor-secret``: once a witness key exists,
+an all-unsigned anchor file fails the ``anchor`` command closed
+(``anchor_unsigned``) instead of being rotated — inside a signed
+deployment that file is a replaced witness, not a legacy artifact —
+and a signed file whose key the deployment does not hold fails the
+command closed as well (``anchor_verifier_unavailable``) rather than
+being extended under a freshly provisioned key. The witness
 scope is ``pulpo.anchor``'s own, unchanged: anchoring detects tampering
 with the audit store relative to the anchor history the verifier holds;
 it does not protect against a writer who can also rewrite the anchor
@@ -1087,8 +1095,31 @@ def _cmd_anchor(args: argparse.Namespace) -> int:
         raise OpsError(
             f"anchor store at {anchors_path} is unreadable: {error}"
         ) from error
+    # Load-only: whether this deployment already holds a witness key
+    # decides which of the branches below is even reachable, and the
+    # decision itself must not create or repair the key file. A
+    # malformed key fails closed here, like any damaged witness.
+    anchor_secret_present = _load_anchor_secret(directory) is not None
     migration: dict[str, Any] | None = None
     if existing and not any(anchor.signature for anchor in existing):
+        if anchor_secret_present:
+            # Not a legacy file: a deployment holding a witness key has
+            # a signed witness history by construction, so an
+            # all-unsigned anchors file inside it is a replaced witness,
+            # not a pre-wiring artifact. Rotating it would let this
+            # command launder a fabricated file into a freshly signed
+            # attestation of whatever trail currently sits in the state
+            # store — the rewrite attack this wiring exists to refuse —
+            # so fail closed and touch nothing. The migration below is
+            # reserved for deployments that predate anchor provisioning,
+            # where no key has ever existed.
+            raise OpsError(
+                f"anchor file at {anchors_path} is unsigned but this "
+                "deployment already holds an anchor secret; refusing to "
+                "rotate unsigned anchor history in a signed deployment "
+                "(anchor_unsigned): restore the signed anchor file or "
+                "investigate the replacement"
+            )
         # Legacy unsigned witness history. Signatures cannot reach
         # backward, so the unsigned file is preserved byte-for-byte
         # under a new name and the signed history starts at the current
@@ -1111,6 +1142,19 @@ def _cmd_anchor(args: argparse.Namespace) -> int:
                 "retroactively; the preserved unsigned file is unverified state"
             ),
         }
+    elif existing and not anchor_secret_present:
+        # Signed witness history, but the deployment does not hold the
+        # key that signed it: this command cannot verify the history it
+        # would extend, and provisioning a fresh key here would
+        # silently re-key the witness. Fail closed, exactly as verify
+        # does in this shape (anchor_verifier_unavailable), and touch
+        # nothing — the operator restores the anchor secret.
+        raise OpsError(
+            f"anchor file at {anchors_path} is signed but this "
+            "deployment holds no anchor secret to verify it "
+            "(anchor_verifier_unavailable); refusing to extend a "
+            "witness history whose key is absent"
+        )
     # Anchoring reads the audit trail through a read-only projection:
     # it needs no token authentication (it mints and consumes nothing)
     # and so must not provision the kernel secret on a legacy
