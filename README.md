@@ -1,6 +1,6 @@
 # Pulpo
 
-Pulpo is the governance and evidence plane between AI intelligence and consequential execution. It turns explicit intent into deterministic governance, binds allowed work to narrowly scoped one-use permits, and preserves durable evidence for verification and reconciliation.
+Pulpo is an AI governance and evidence plane for systems that propose or perform consequential work. It turns explicit intent into deterministic governance, binds allowed work to narrowly scoped one-use permits, and preserves durable evidence for verification and reconciliation. Pulpo does not provide autonomous execution or production authority.
 
 This repository is the clean canonical Pulpo project. The older `Iron-Ember/pulpo` repository remains historical reference material; its accumulated plans, generated evidence, machine-specific scripts, and CI workarounds are intentionally not imported here.
 
@@ -36,6 +36,10 @@ checkouts without inferring tests or authority. See the
 ```bash
 python -m unittest discover -s tests -v
 ```
+
+## Learning library
+
+[Source-linked learning library](docs/learning/README.md): 18 annotated book sources, Python and financial-literacy curriculum, and a runnable **offline synthetic** input-verification lab. This material is educational and does not grant a permit, spending authority, access to production systems, or independent runtime custody. Books not available as authorized full text are linked by publisher excerpt or table of contents, not mirrored.
 
 ## Minimal example
 
