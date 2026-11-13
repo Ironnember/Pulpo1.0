@@ -15,9 +15,15 @@ operator artifacts plus the canonical kernel state:
   deployment's writer-custody root: whoever holds it can mint tokens the
   kernel will honor, and it is protected exactly like the state it keys.
   A deployment directory written before this file existed gains one the
-  first time any command opens the kernel; permit tokens issued before
-  that point were minted under ephemeral secrets and can no longer be
-  consumed (fail closed, by design).
+  first time a *mutating* command (``authorize`` / ``consume``) opens the
+  kernel; permit tokens issued before that point were minted under
+  ephemeral secrets and can no longer be consumed (fail closed, by
+  design). The read-only projections (``verify`` / ``status``) never
+  create or repair the file: they load it when present and otherwise
+  open the kernel with an ephemeral secret, because nothing they report
+  authenticates a token — a legacy deployment, or one on a read-only
+  mount, can be verified and inspected before anything provisions its
+  secret.
 - ``state.db`` — the canonical SQLite kernel state, owned by the kernel.
 - ``permits/<intent_hash>--<approval_id>.permit`` — one file per
   kernel-issued permit, written by ``authorize``; the file content is the
@@ -38,8 +44,10 @@ approval signing key; it holds the deployment's kernel secret (above),
 never opens ``state.db`` except through
 ``SQLiteKernelState`` handed to a ``GovernanceKernel``, and never writes
 canonical state directly — the only files it writes are its own
-``policy.json`` and ``kernel-secret`` at ``init`` time and permit files at
-``authorize`` time, both outside the audit chain. It is not a second router, executor, ledger,
+``policy.json`` and ``kernel-secret`` at ``init`` time (plus the secret's
+first provisioning by a mutating command on a legacy deployment) and
+permit files at ``authorize`` time, all outside the audit chain.
+``verify`` and ``status`` write nothing at all. It is not a second router, executor, ledger,
 memory system, or authority plane: approval envelopes are produced by the
 external authority, and this tool only presents them to the kernel.
 ``authorize`` preflights the permits directory (owner-only, provably
@@ -399,10 +407,39 @@ def _verifier_attributes(verifier: Any) -> tuple[str, str, str, str, str]:
     )
 
 
+def _load_kernel_secret(directory: Path) -> bytes | None:
+    """Load the deployment's kernel secret without provisioning anything.
+
+    Returns ``None`` when the deployment has no secret file yet. An
+    existing file is read and validated exactly as on the provisioning
+    path — a malformed or short secret fails closed — but this function
+    never writes: no creation, and no permission repair. It is the only
+    secret path the read-only projections (``verify`` / ``status``) may
+    take, so those commands stay non-mutating on any deployment,
+    including legacy ones and ones on read-only mounts.
+    """
+
+    secret_path = directory / KERNEL_SECRET_FILENAME
+    if not secret_path.exists():
+        return None
+    try:
+        encoded = secret_path.read_text(encoding="utf-8").strip()
+        secret = bytes.fromhex(encoded)
+    except (OSError, UnicodeError, ValueError) as error:
+        raise OpsError(
+            f"kernel secret at {secret_path} is unreadable or malformed"
+        ) from error
+    if len(secret) != KERNEL_SECRET_BYTES:
+        raise OpsError(f"kernel secret at {secret_path} has an invalid length")
+    return secret
+
+
 def _deployment_kernel_secret(directory: Path) -> bytes:
     """Load the deployment's kernel secret, creating it on first use.
 
-    The secret keys the permit tokens this deployment's kernel mints and
+    This is the provisioning path, taken only by commands that may
+    mutate the deployment (``init``, ``authorize``, ``consume``). The
+    secret keys the permit tokens this deployment's kernel mints and
     authenticates, so every process that opens the kernel for the
     deployment must present the same one (authorize and consume are
     separate invocations). It lives in an owner-only file beside the
@@ -445,24 +482,41 @@ def _deployment_kernel_secret(directory: Path) -> bytes:
     try:
         if stat.S_IMODE(secret_path.stat().st_mode) != PERMIT_FILE_MODE:
             os.chmod(secret_path, PERMIT_FILE_MODE)
-        encoded = secret_path.read_text(encoding="utf-8").strip()
-        secret = bytes.fromhex(encoded)
-    except (OSError, UnicodeError, ValueError) as error:
+    except OSError as error:
         raise OpsError(
             f"kernel secret at {secret_path} is unreadable or malformed"
         ) from error
-    if len(secret) != KERNEL_SECRET_BYTES:
-        raise OpsError(f"kernel secret at {secret_path} has an invalid length")
+    secret = _load_kernel_secret(directory)
+    if secret is None:  # The file existed or was just created above.
+        raise OpsError(f"kernel secret at {secret_path} is unreadable or malformed")
     return secret
 
 
-def _open_kernel(directory: Path, config: dict[str, Any], *, verifier: Any = None) -> tuple[GovernanceKernel, SQLiteKernelState]:
+def _open_kernel(
+    directory: Path,
+    config: dict[str, Any],
+    *,
+    verifier: Any = None,
+    projection: bool = False,
+) -> tuple[GovernanceKernel, SQLiteKernelState]:
     state_path, _ = _deployment_paths(directory)
     state = SQLiteKernelState(state_path)
     try:
+        if projection:
+            # Read-only projection (verify / status): load the secret
+            # when one exists, but never create or repair it. Nothing a
+            # projection reports authenticates a token -- it reads the
+            # audit trail, the (unkeyed) chain verification, and the
+            # policy hash -- so a deployment without a secret file yet
+            # is opened with an ephemeral one and left untouched.
+            secret = _load_kernel_secret(directory)
+            if secret is None:
+                secret = secrets.token_bytes(KERNEL_SECRET_BYTES)
+        else:
+            secret = _deployment_kernel_secret(directory)
         kernel = GovernanceKernel(
             _effective_policy(config),
-            secret=_deployment_kernel_secret(directory),
+            secret=secret,
             approval_verifier=verifier,
             state=state,
         )
@@ -861,15 +915,18 @@ def _cmd_verify(args: argparse.Namespace) -> int:
     directory: Path = args.directory
     config = _load_config(directory)
     try:
-        kernel, state = _open_kernel(directory, config)
+        kernel, state = _open_kernel(directory, config, projection=True)
     except Exception as error:
+        # An open failure is not a chain verdict: the chain was never
+        # read, so its validity is unknown (null), and the error is
+        # reported as what it is -- the deployment could not be opened.
         _emit(
             {
                 "schema": REPORT_SCHEMA,
                 "command": "verify",
                 "ok": False,
-                "chain_valid": False,
-                "error": f"kernel state audit chain is invalid: {error}",
+                "chain_valid": None,
+                "error": f"kernel state could not be opened: {error}",
                 "anchored": _anchored_check(directory, []),
             }
         )
@@ -901,15 +958,17 @@ def _cmd_status(args: argparse.Namespace) -> int:
     directory: Path = args.directory
     config = _load_config(directory)
     try:
-        kernel, state = _open_kernel(directory, config)
+        kernel, state = _open_kernel(directory, config, projection=True)
     except Exception as error:
+        # As in verify: an open failure is reported as an open failure,
+        # with chain validity unknown (null) -- never as a chain verdict.
         _emit(
             {
                 "schema": REPORT_SCHEMA,
                 "command": "status",
                 "ok": False,
-                "chain_valid": False,
-                "error": f"kernel state audit chain is invalid: {error}",
+                "chain_valid": None,
+                "error": f"kernel state could not be opened: {error}",
             }
         )
         return 1
