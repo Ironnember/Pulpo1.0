@@ -18,6 +18,17 @@ from .state import ApprovalUse, AuditSigner, InMemoryKernelState, KernelState
 # Reuse the unchanged encoder configuration; per-call state stays in encode().
 _CANONICAL_ENCODER = json.JSONEncoder(sort_keys=True, separators=(",", ":"))
 
+# Permit lifetime bounds (Phase 2, Item 4 — token v2). Every permit is
+# issued with a signed expiry; the policy's ``max_permit_ttl_ns`` is both
+# the lifetime stamped at issuance and the cap no issuance may exceed,
+# and policy construction refuses a cap above the absolute ceiling, so
+# no configuration of this library mints a longer-lived permit. The
+# defaults are on the order of hours: a leaked or dormant permit file is
+# worthless after its TTL instead of being spendable forever (the
+# bearer-token repro: a bare copied token consumed ten years later).
+DEFAULT_MAX_PERMIT_TTL_NS = 4 * 3600 * 1_000_000_000  # 4 hours
+PERMIT_TTL_CEILING_NS = 24 * 3600 * 1_000_000_000  # 24 hours
+
 
 def _canonical(value: Any) -> bytes:
     return _CANONICAL_ENCODER.encode(value).encode()
@@ -111,8 +122,21 @@ class Policy:
     authority_trust: AuthorityTrust | None = None
     ceremony_actions: frozenset[str] = frozenset()
     ceremony_trust: CeremonyTrust | None = None
+    # Token v2 (Phase 2, Item 4): the maximum lifetime of an issued
+    # permit, in nanoseconds. The kernel stamps every permit with
+    # ``issued_at + max_permit_ttl_ns`` as its signed expiry and refuses
+    # consumption at or after it; no issuance path may exceed this cap.
+    max_permit_ttl_ns: int = DEFAULT_MAX_PERMIT_TTL_NS
 
     def __post_init__(self) -> None:
+        if (
+            isinstance(self.max_permit_ttl_ns, bool)
+            or not isinstance(self.max_permit_ttl_ns, int)
+            or self.max_permit_ttl_ns <= 0
+        ):
+            raise ValueError("max_permit_ttl_ns must be positive")
+        if self.max_permit_ttl_ns > PERMIT_TTL_CEILING_NS:
+            raise ValueError("max_permit_ttl_ns exceeds the permit TTL ceiling")
         principals = [grant.principal for grant in self.agent_grants]
         if len(principals) != len(set(principals)):
             raise ValueError("agent principals must be unique")
@@ -232,6 +256,12 @@ class GovernanceKernel:
             # pre-ceremony hash, so their envelopes and behavior are unchanged.
             payload["ceremony_actions"] = sorted(self.policy.ceremony_actions)
             payload["ceremony_trust"] = asdict(self.policy.ceremony_trust) if self.policy.ceremony_trust else None
+        if self.policy.max_permit_ttl_ns != DEFAULT_MAX_PERMIT_TTL_NS:
+            # A non-default permit TTL is an authority-relevant policy
+            # choice (it widens or narrows the bearer window), so it binds
+            # into the policy hash. Policies at the default keep the exact
+            # pre-Item-4 hash, so their envelopes and behavior are unchanged.
+            payload["max_permit_ttl_ns"] = self.policy.max_permit_ttl_ns
         return sha256(_canonical(payload)).hexdigest()
 
     def lock_target(self, target_id: str, intent: Intent, *, version: int = 1) -> LockedTarget:
@@ -693,12 +723,20 @@ class GovernanceKernel:
         # The issuance funnel re-checks the pin itself: no permit is minted
         # under a drifted policy regardless of which entry path reached here.
         self._require_pinned_policy()
+        issued_at_ns = self._clock() if timestamp_ns is None else timestamp_ns
+        # Token v2 (Phase 2, Item 4): the expiry is inside the signed
+        # payload, so it cannot be extended without the kernel secret.
+        # The lifetime is the policy's TTL cap itself — no issuance path
+        # stamps a longer one, and policy construction refuses a cap
+        # above the absolute ceiling (see Policy.__post_init__).
+        expires_at_ns = issued_at_ns + self.policy.max_permit_ttl_ns
         nonce = secrets.token_hex(16)
-        payload = f"{digest}:{nonce}"
+        payload = f"{digest}:{nonce}:{issued_at_ns}:{expires_at_ns}"
         signature = hmac.new(self._secret, payload.encode(), sha256).hexdigest()
         permit = f"{payload}:{signature}"
-        issued_at_ns = self._clock() if timestamp_ns is None else timestamp_ns
-        replay = self._state.issue_permit(permit, digest, reason, issued_at_ns, approval)
+        replay = self._state.issue_permit(
+            permit, digest, reason, issued_at_ns, approval, expires_at_ns=expires_at_ns
+        )
         if replay:
             if envelope is None:
                 raise RuntimeError("state rejected an approval-free permit")
@@ -757,39 +795,67 @@ class GovernanceKernel:
                 "kernel policy does not match the policy pinned at construction"
             )
 
-    def _permit_token_valid(self, permit: object) -> bool:
-        """Authenticate a permit token against the kernel secret.
+    def _permit_token_claims(self, permit: object) -> tuple[str, int, int] | None:
+        """Authenticate a v2 permit token and return its signed claims.
 
-        Tokens are minted in ``_issue_permit`` as ``digest:nonce:signature``
-        with the signature an HMAC of ``digest:nonce`` under the kernel
+        Tokens are minted in ``_issue_permit`` as
+        ``digest:nonce:issued_at_ns:expires_at_ns:signature`` with the
+        signature an HMAC of the first four fields under the kernel
         secret. Verification recomputes that HMAC over the token's own
-        embedded digest and compares in constant time: it proves the token
-        was minted under this kernel's secret and is unaltered. A malformed
-        token or a token minted under any other secret fails closed.
+        presented fields and compares in constant time: it proves the
+        token was minted under this kernel's secret and is unaltered —
+        including its expiry, which therefore cannot be extended by a
+        holder. Returns ``(intent_digest, issued_at_ns, expires_at_ns)``
+        for an authentic v2 token, else None.
+
+        v1 tokens (``digest:nonce:signature``, minted before token v2)
+        fail closed here: this is the cutover. An outstanding v1 permit
+        is refused at consume, never silently accepted — the Phase 1
+        (#355) precedent for outstanding tokens at a format change.
+        Malformed tokens and tokens minted under any other secret fail
+        closed the same way.
+        """
+
+        if not isinstance(permit, str):
+            return None
+        parts = permit.split(":")
+        if len(parts) != 5:
+            return None
+        token_digest, nonce, issued_raw, expires_raw, signature = parts
+        if not (issued_raw.isdigit() and expires_raw.isdigit()):
+            return None
+        issued_at_ns = int(issued_raw)
+        expires_at_ns = int(expires_raw)
+        if expires_at_ns <= issued_at_ns:
+            return None
+        expected = hmac.new(
+            self._secret,
+            f"{token_digest}:{nonce}:{issued_raw}:{expires_raw}".encode(),
+            sha256,
+        ).hexdigest()
+        if not hmac.compare_digest(signature.encode(), expected.encode()):
+            return None
+        return token_digest, issued_at_ns, expires_at_ns
+
+    def _permit_token_valid(self, permit: object) -> bool:
+        """Whether ``permit`` is an authentic v2 token (see _permit_token_claims).
 
         On its own this authenticates provenance only, but ``consume``
         no longer stops there: since the 2026-11-13 layering change it
         also binds the authenticated token to the presented intent at
-        this layer (see ``consume``). Single-use and
-        directive-revocation checks remain the store's
+        this layer, and since token v2 it enforces the signed expiry
+        at this layer too (see ``consume``). Single-use, store-side
+        expiry, and directive-revocation checks remain the store's
         ``consume_permit`` checks, exactly as before.
         """
 
-        if not isinstance(permit, str):
-            return False
-        parts = permit.split(":")
-        if len(parts) != 3:
-            return False
-        token_digest, nonce, signature = parts
-        expected = hmac.new(
-            self._secret, f"{token_digest}:{nonce}".encode(), sha256
-        ).hexdigest()
-        return hmac.compare_digest(signature.encode(), expected.encode())
+        return self._permit_token_claims(permit) is not None
 
     def consume(self, permit: str, intent: Intent) -> bool:
         self._require_pinned_policy()
         digest = self.intent_hash(intent)
-        if not self._permit_token_valid(permit):
+        claims = self._permit_token_claims(permit)
+        if claims is None:
             # A permit the kernel cannot authenticate is refused before the
             # store is consulted. Rows written directly into the store --
             # state.issue_permit with approval=None (diagnosis Repro A) or
@@ -798,11 +864,29 @@ class GovernanceKernel:
             # refusal is recorded under the same event the store uses for
             # its own rejections, with the reason, so the attempt itself
             # stays in evidence. Single-use and directive-revocation checks
-            # for authentic tokens remain the store's, unchanged.
+            # for authentic tokens remain the store's, unchanged. v1
+            # tokens land here too: the cutover refuses them with the
+            # same recorded reason rather than accepting an
+            # unsigned-expiry format.
             self._state.append(
                 "permit_rejected",
                 {"intent_hash": digest, "reason": "permit_signature_invalid"},
                 self._clock(),
+            )
+            return False
+        _token_digest, _issued_at_ns, expires_at_ns = claims
+        now_ns = self._clock()
+        if now_ns >= expires_at_ns:
+            # Token v2 (Phase 2, Item 4): the signed expiry is enforced
+            # HERE, at consume time, before the store is consulted — an
+            # expired permit fails closed exactly as a revoked one does.
+            # The expiry was authenticated with the token, so no store
+            # row and no holder edit can extend it. The store re-checks
+            # the expiry recorded at issuance as the second layer.
+            self._state.append(
+                "permit_rejected",
+                {"intent_hash": digest, "reason": "permit_expired"},
+                now_ns,
             )
             return False
         # Layering change (2026-11-13, superseding Phase 1's
@@ -820,7 +904,7 @@ class GovernanceKernel:
         # one the presented intent is compared against. The store's
         # binding check remains in place as the second layer, and
         # single-use and directive-revocation checks remain the store's.
-        embedded_digest = permit.split(":")[0]
+        embedded_digest = claims[0]
         if not hmac.compare_digest(embedded_digest.encode(), digest.encode()):
             self._state.append(
                 "permit_rejected",
@@ -828,7 +912,7 @@ class GovernanceKernel:
                 self._clock(),
             )
             return False
-        return self._state.consume_permit(permit, digest, self._clock())
+        return self._state.consume_permit(permit, digest, now_ns)
 
     def verify_audit_report(self) -> dict[str, Any]:
         """Verify the audit chain and report its signing coverage.

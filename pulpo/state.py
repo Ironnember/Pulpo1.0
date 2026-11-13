@@ -113,7 +113,7 @@ class KernelState(Protocol):
     def audit(self) -> list[dict[str, Any]]: ...
     def approval_replay_reason(self, approval_id: str, nonce: str) -> str | None: ...
     def ceremony_replay_reason(self, evidence_id: str) -> str | None: ...
-    def issue_permit(self, permit: str, intent_hash: str, decision_reason: str, timestamp_ns: int, approval: ApprovalUse | None = None) -> str | None: ...
+    def issue_permit(self, permit: str, intent_hash: str, decision_reason: str, timestamp_ns: int, approval: ApprovalUse | None = None, expires_at_ns: int | None = None) -> str | None: ...
     def bind_permit_to_directive(self, permit: str, intent_hash: str, binding: DirectivePermitBinding, timestamp_ns: int) -> None: ...
     def consume_permit(self, permit: str, intent_hash: str, timestamp_ns: int) -> bool: ...
     def directive_hash_status(self, directive_hash: str) -> str: ...
@@ -135,6 +135,14 @@ class InMemoryKernelState:
         self.audit_signer = audit_signer
         self.legacy_audit_records = legacy_audit_records
         self._issued: dict[str, str] = {}
+        # Token v2 (Phase 2, Item 4): the expiry recorded at issuance,
+        # re-checked at consume as the second layer behind the kernel's
+        # signed-expiry check. Permits the kernel issues always record
+        # one; the store enforces what was recorded. (The v1 cutover
+        # itself is the kernel's format check — the store cannot
+        # distinguish a v1-era row from a direct store issuance, and
+        # store rows are writer-controlled in any case.)
+        self._permit_expiry: dict[str, int] = {}
         self._spent: set[str] = set()
         self._approval_ids: set[str] = set()
         self._approval_nonces: set[str] = set()
@@ -164,7 +172,7 @@ class InMemoryKernelState:
         if evidence_id in self._ceremony_evidence_ids: return "ceremony_evidence_replayed"
         return None
 
-    def issue_permit(self, permit: str, intent_hash: str, decision_reason: str, timestamp_ns: int, approval: ApprovalUse | None = None) -> str | None:
+    def issue_permit(self, permit: str, intent_hash: str, decision_reason: str, timestamp_ns: int, approval: ApprovalUse | None = None, expires_at_ns: int | None = None) -> str | None:
         # Serialize the whole check-and-record transition under the audit
         # lock (an RLock; append() re-enters it). The SQLite backend gets
         # the same atomicity from its BEGIN IMMEDIATE transaction: without
@@ -182,6 +190,8 @@ class InMemoryKernelState:
                 self._approval_ids.add(approval.approval_id); self._approval_nonces.add(approval.nonce)
                 self.append("approval_verified", approval.audit_payload, timestamp_ns)
             self._issued[permit] = intent_hash
+            if expires_at_ns is not None:
+                self._permit_expiry[permit] = expires_at_ns
             self.append("decision", {"outcome": "allow", "reason": decision_reason, "intent_hash": intent_hash}, timestamp_ns)
             return None
 
@@ -217,6 +227,15 @@ class InMemoryKernelState:
                 if status == "active" and not (binding.issued_at_ns <= timestamp_ns < binding.expires_at_ns): status = "directive_inactive"
                 valid = valid and status == "active"
                 payload.update(binding.audit_payload()); payload["directive_status"] = status
+            if valid:
+                # Token v2 second layer (Phase 2, Item 4): a recorded
+                # expiry is re-checked here, so a caller holding the
+                # state handle alone faces the same bound the kernel
+                # enforces from the signed token.
+                stored_expiry = self._permit_expiry.get(permit)
+                if stored_expiry is not None and timestamp_ns >= stored_expiry:
+                    valid = False
+                    payload["permit_status"] = "permit_expired"
             if valid: self._spent.add(permit)
             self.append("permit_consumed" if valid else "permit_rejected", payload, timestamp_ns)
             return valid
@@ -340,7 +359,7 @@ class SQLiteKernelState:
         self._connection.execute("PRAGMA synchronous = FULL")
         if migrate_schema:
             self._connection.executescript("""
-                CREATE TABLE IF NOT EXISTS permits (permit TEXT PRIMARY KEY, intent_hash TEXT NOT NULL, spent INTEGER NOT NULL DEFAULT 0 CHECK (spent IN (0, 1)));
+                CREATE TABLE IF NOT EXISTS permits (permit TEXT PRIMARY KEY, intent_hash TEXT NOT NULL, spent INTEGER NOT NULL DEFAULT 0 CHECK (spent IN (0, 1)), expires_at_ns INTEGER);
                 CREATE TABLE IF NOT EXISTS approvals (approval_id TEXT PRIMARY KEY, nonce TEXT NOT NULL UNIQUE);
                 CREATE TABLE IF NOT EXISTS ceremony_evidence (evidence_id TEXT PRIMARY KEY);
                 CREATE TABLE IF NOT EXISTS directives (directive_id TEXT NOT NULL, version INTEGER NOT NULL, directive_hash TEXT NOT NULL, revoked INTEGER NOT NULL DEFAULT 0 CHECK (revoked IN (0, 1)), PRIMARY KEY (directive_id, version));
@@ -359,12 +378,26 @@ class SQLiteKernelState:
             audit_columns = {row[1] for row in self._connection.execute("PRAGMA table_info(audit)").fetchall()}
             if "signature" not in audit_columns:
                 self._connection.execute("ALTER TABLE audit ADD COLUMN signature TEXT")
+            # The permits expiry column (Phase 2, Item 4): same migration
+            # pattern. Existing permit rows keep a NULL expiry — they
+            # are v1-era permits, refused at consume by the kernel's
+            # format check (the cutover); the store enforces the expiry
+            # recorded for v2 rows.
+            permit_columns = {row[1] for row in self._connection.execute("PRAGMA table_info(permits)").fetchall()}
+            if "expires_at_ns" not in permit_columns:
+                self._connection.execute("ALTER TABLE permits ADD COLUMN expires_at_ns INTEGER")
         # Whether the audit table carries a signature column, read once
         # at open: with migration it is always present; without it, a
         # legacy database reports False and the read/append paths below
         # adapt instead of assuming the column exists.
         audit_columns = {row[1] for row in self._connection.execute("PRAGMA table_info(audit)").fetchall()}
         self._audit_has_signature = "signature" in audit_columns
+        # Same treatment for the permits expiry column: a legacy database
+        # opened without migration reports False, and the consume path
+        # then treats every permit as expiry-less — refused, never
+        # admitted on a missing column.
+        permit_columns = {row[1] for row in self._connection.execute("PRAGMA table_info(permits)").fetchall()}
+        self._permits_has_expiry = "expires_at_ns" in permit_columns
 
     @property
     def audit(self) -> list[dict[str, Any]]:
@@ -406,7 +439,7 @@ class SQLiteKernelState:
         ).fetchone()
         return row[0] if row is not None else None
 
-    def issue_permit(self, permit: str, intent_hash: str, decision_reason: str, timestamp_ns: int, approval: ApprovalUse | None = None) -> str | None:
+    def issue_permit(self, permit: str, intent_hash: str, decision_reason: str, timestamp_ns: int, approval: ApprovalUse | None = None, expires_at_ns: int | None = None) -> str | None:
         with self._connection:
             self._connection.execute("BEGIN IMMEDIATE")
             if approval is not None:
@@ -417,7 +450,17 @@ class SQLiteKernelState:
                     if ceremony_replay: return ceremony_replay
                     self._connection.execute("INSERT INTO ceremony_evidence (evidence_id) VALUES (?)", (approval.ceremony_evidence_id,))
                 self._connection.execute("INSERT INTO approvals (approval_id, nonce) VALUES (?, ?)", (approval.approval_id, approval.nonce))
-            self._connection.execute("INSERT INTO permits (permit, intent_hash) VALUES (?, ?)", (permit, intent_hash))
+            if expires_at_ns is not None and not self._permits_has_expiry:
+                # Fail loudly rather than record a permit whose expiry
+                # this schema cannot store (the Item 1 posture for a
+                # signed append without the signature column). Mutating
+                # opens always migrate, so this is reachable only on a
+                # read-only open misused for issuance.
+                raise RuntimeError("permits table has no expires_at_ns column; open with schema migration to issue permits")
+            if self._permits_has_expiry:
+                self._connection.execute("INSERT INTO permits (permit, intent_hash, expires_at_ns) VALUES (?, ?, ?)", (permit, intent_hash, expires_at_ns))
+            else:
+                self._connection.execute("INSERT INTO permits (permit, intent_hash) VALUES (?, ?)", (permit, intent_hash))
             if approval is not None: self._append("approval_verified", approval.audit_payload, timestamp_ns)
             self._append("decision", {"outcome": "allow", "reason": decision_reason, "intent_hash": intent_hash}, timestamp_ns)
         return None
@@ -437,7 +480,14 @@ class SQLiteKernelState:
     def consume_permit(self, permit: str, intent_hash: str, timestamp_ns: int) -> bool:
         with self._connection:
             self._connection.execute("BEGIN IMMEDIATE")
-            permit_row = self._connection.execute("SELECT intent_hash, spent FROM permits WHERE permit = ?", (permit,)).fetchone()
+            if self._permits_has_expiry:
+                permit_row = self._connection.execute("SELECT intent_hash, spent, expires_at_ns FROM permits WHERE permit = ?", (permit,)).fetchone()
+            else:
+                # Unmigrated legacy schema: no expiry column exists, so
+                # every row reads as carrying no recorded expiry.
+                permit_row = self._connection.execute("SELECT intent_hash, spent FROM permits WHERE permit = ?", (permit,)).fetchone()
+                if permit_row is not None:
+                    permit_row = (permit_row[0], permit_row[1], None)
             valid = permit_row is not None and permit_row[0] == intent_hash and permit_row[1] == 0
             payload: dict[str, Any] = {"intent_hash": intent_hash}
             row = self._connection.execute("SELECT directive_id, directive_version, directive_hash, directive_issued_at_ns, directive_expires_at_ns, parent_directive_hash FROM permit_directives WHERE permit = ?", (permit,)).fetchone()
@@ -452,6 +502,14 @@ class SQLiteKernelState:
                 if status == "active" and not (binding.issued_at_ns <= timestamp_ns < binding.expires_at_ns): status = "directive_inactive"
                 valid = valid and status == "active"
                 payload.update(binding.audit_payload()); payload["directive_status"] = status
+            if valid:
+                # Token v2 second layer (Phase 2, Item 4): a recorded
+                # expiry is re-checked here, mirroring the in-memory
+                # backend.
+                row_expiry = permit_row[2] if permit_row is not None else None
+                if row_expiry is not None and timestamp_ns >= row_expiry:
+                    valid = False
+                    payload["permit_status"] = "permit_expired"
             if valid:
                 cursor = self._connection.execute("UPDATE permits SET spent = 1 WHERE permit = ? AND intent_hash = ? AND spent = 0", (permit, intent_hash))
                 valid = cursor.rowcount == 1
