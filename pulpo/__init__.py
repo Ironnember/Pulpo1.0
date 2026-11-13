@@ -1,5 +1,18 @@
 """Pulpo governed-execution kernel."""
 
+from .anchor import (
+    AnchorSigner,
+    AnchorStore,
+    AnchorVerifier,
+    AnchorVerification,
+    AuditAnchor,
+    FileAnchorStore,
+    HmacAnchorSigner,
+    InMemoryAnchorStore,
+    anchor_records,
+    anchor_state,
+    verify_anchored_audit,
+)
 from .authority import (
     ApprovalEnvelope,
     ApprovalVerifier,
@@ -8,6 +21,13 @@ from .authority import (
     P256ApprovalVerifier,
 )
 from .authority_client import AuthorityApprovalRequest, AuthorityClient, AuthorityPoll
+from .ceremony import (
+    CeremonyEvidence,
+    CeremonyTrust,
+    CeremonyVerifier,
+    Ed25519CeremonyVerifier,
+    P256CeremonyVerifier,
+)
 from .commerce import SQLiteBudgetAccount
 from .kernel import (
     AgentGrant,
@@ -38,6 +58,11 @@ from .targets import evaluate_locked_target_with_approval
 
 __all__ = [
     "AgentGrant",
+    "AnchorSigner",
+    "AnchorStore",
+    "AnchorVerifier",
+    "AnchorVerification",
+    "AuditAnchor",
     "ApprovalEnvelope",
     "ApprovalHandle",
     "ArtifactCompletionEvidence",
@@ -51,8 +76,15 @@ __all__ = [
     "Decision",
     "Ed25519ApprovalVerifier",
     "EvidenceSnapshot",
+    "FileAnchorStore",
     "GovernanceKernel",
     "GovernedTargetReconciliation",
+    "HmacAnchorSigner",
+    "CeremonyEvidence",
+    "CeremonyTrust",
+    "CeremonyVerifier",
+    "Ed25519CeremonyVerifier",
+    "InMemoryAnchorStore",
     "InMemoryKernelState",
     "Intent",
     "KernelState",
@@ -60,6 +92,7 @@ __all__ = [
     "NameComCoreAdapter",
     "OrchestrationError",
     "P256ApprovalVerifier",
+    "P256CeremonyVerifier",
     "Policy",
     "PulpoOrchestrator",
     "SQLiteBudgetAccount",
@@ -67,5 +100,8 @@ __all__ = [
     "StateIntegrityError",
     "TargetObligationStatus",
     "TargetResolution",
+    "anchor_records",
+    "anchor_state",
     "evaluate_locked_target_with_approval",
+    "verify_anchored_audit",
 ]
