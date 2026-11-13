@@ -1,0 +1,331 @@
+{
+  "target": "iron",
+  "base_commit": "d674dbb7a00b471d69bcca84d2f034cf74705e1a",
+  "selected_suite": [
+    "test_kernel",
+    "test_persistence",
+    "test_audit_checkpoint",
+    "test_parallel_performance",
+    "test_constitutional_sequences",
+    "test_authority",
+    "test_custody",
+    "test_custody_domain",
+    "test_custody_evidence",
+    "test_sqlite_cleanup",
+    "test_canonical_json"
+  ],
+  "selection": "Only modules existing on each target are run.",
+  "windows_candidate": {
+    "cases": 73,
+    "problems": [
+      {
+        "class": "tests.test_persistence.RestartSafeStateTests",
+        "test": "test_failed_audit_write_rolls_back_approval_and_permit",
+        "kind": "failure",
+        "type": null
+      },
+      {
+        "class": "tests.test_persistence.RestartSafeStateTests",
+        "test": "test_failed_consumption_audit_rolls_back_spent_permit",
+        "kind": "failure",
+        "type": null
+      },
+      {
+        "class": "tests.test_persistence.RestartSafeStateTests",
+        "test": "test_malformed_persisted_audit_raises_integrity_error_at_restart",
+        "kind": "failure",
+        "type": null
+      },
+      {
+        "class": "tests.test_persistence.RestartSafeStateTests",
+        "test": "test_tampered_persisted_audit_fails_closed_at_restart",
+        "kind": "failure",
+        "type": null
+      },
+      {
+        "class": "tests.test_custody_domain.CustodyDomainIntegrationTests",
+        "test": "test_concurrent_reservations_cannot_oversubscribe_protected_budget",
+        "kind": "failure",
+        "type": null
+      },
+      {
+        "class": "tests.test_custody_domain.CustodyDomainIntegrationTests",
+        "test": "test_concurrent_reservations_cannot_oversubscribe_protected_budget",
+        "kind": "error",
+        "type": null
+      },
+      {
+        "class": "tests.test_custody_domain.CustodyDomainIntegrationTests",
+        "test": "test_exact_locked_domain_permit_and_budget_are_consumed_before_custody_attempt",
+        "kind": "failure",
+        "type": null
+      },
+      {
+        "class": "tests.test_custody_domain.CustodyDomainIntegrationTests",
+        "test": "test_exact_locked_domain_permit_and_budget_are_consumed_before_custody_attempt",
+        "kind": "error",
+        "type": null
+      },
+      {
+        "class": "tests.test_custody_domain.CustodyDomainIntegrationTests",
+        "test": "test_revoked_directive_is_revalidated_before_budget_attempt_and_custody_attempt",
+        "kind": "failure",
+        "type": null
+      },
+      {
+        "class": "tests.test_custody_domain.CustodyDomainIntegrationTests",
+        "test": "test_revoked_directive_is_revalidated_before_budget_attempt_and_custody_attempt",
+        "kind": "error",
+        "type": null
+      },
+      {
+        "class": "tests.test_custody_domain.CustodyDomainIntegrationTests",
+        "test": "test_substituted_domain_order_fails_before_budget_or_permit_consumption",
+        "kind": "failure",
+        "type": null
+      },
+      {
+        "class": "tests.test_custody_domain.CustodyDomainIntegrationTests",
+        "test": "test_substituted_domain_order_fails_before_budget_or_permit_consumption",
+        "kind": "error",
+        "type": null
+      },
+      {
+        "class": "tests.test_custody_domain.CustodyDomainIntegrationTests",
+        "test": "test_worker_rollback_after_restart_cannot_restore_budget_or_domain_permit",
+        "kind": "failure",
+        "type": null
+      },
+      {
+        "class": "tests.test_custody_domain.CustodyDomainIntegrationTests",
+        "test": "test_worker_rollback_after_restart_cannot_restore_budget_or_domain_permit",
+        "kind": "error",
+        "type": null
+      },
+      {
+        "class": "tests.test_custody_evidence.CustodyEvidenceConvergenceTests",
+        "test": "test_abort_before_custody_commit_creates_neither_mutation_nor_obligation",
+        "kind": "failure",
+        "type": null
+      },
+      {
+        "class": "tests.test_custody_evidence.CustodyEvidenceConvergenceTests",
+        "test": "test_abort_before_custody_commit_creates_neither_mutation_nor_obligation",
+        "kind": "error",
+        "type": null
+      },
+      {
+        "class": "tests.test_custody_evidence.CustodyEvidenceConvergenceTests",
+        "test": "test_committed_obligation_blocks_next_transition_until_projection",
+        "kind": "failure",
+        "type": null
+      },
+      {
+        "class": "tests.test_custody_evidence.CustodyEvidenceConvergenceTests",
+        "test": "test_committed_obligation_blocks_next_transition_until_projection",
+        "kind": "error",
+        "type": null
+      },
+      {
+        "class": "tests.test_custody_evidence.CustodyEvidenceConvergenceTests",
+        "test": "test_crash_during_projection_restarts_without_duplicate_canonical_event",
+        "kind": "failure",
+        "type": null
+      },
+      {
+        "class": "tests.test_custody_evidence.CustodyEvidenceConvergenceTests",
+        "test": "test_crash_during_projection_restarts_without_duplicate_canonical_event",
+        "kind": "error",
+        "type": null
+      },
+      {
+        "class": "tests.test_custody_evidence.CustodyEvidenceConvergenceTests",
+        "test": "test_duplicate_projection_is_idempotent_by_transition_hash",
+        "kind": "failure",
+        "type": null
+      },
+      {
+        "class": "tests.test_custody_evidence.CustodyEvidenceConvergenceTests",
+        "test": "test_duplicate_projection_is_idempotent_by_transition_hash",
+        "kind": "error",
+        "type": null
+      },
+      {
+        "class": "tests.test_custody_evidence.CustodyEvidenceConvergenceTests",
+        "test": "test_tampered_obligation_is_denied_and_blocks_custody",
+        "kind": "failure",
+        "type": null
+      },
+      {
+        "class": "tests.test_custody_evidence.CustodyEvidenceConvergenceTests",
+        "test": "test_tampered_obligation_is_denied_and_blocks_custody",
+        "kind": "error",
+        "type": null
+      }
+    ]
+  },
+  "windows_original_helpers_in_process": {
+    "cases": 73,
+    "problems": [
+      {
+        "class": "tests.test_persistence.RestartSafeStateTests",
+        "test": "test_failed_audit_write_rolls_back_approval_and_permit",
+        "kind": "failure",
+        "type": null
+      },
+      {
+        "class": "tests.test_persistence.RestartSafeStateTests",
+        "test": "test_failed_consumption_audit_rolls_back_spent_permit",
+        "kind": "failure",
+        "type": null
+      },
+      {
+        "class": "tests.test_persistence.RestartSafeStateTests",
+        "test": "test_malformed_persisted_audit_raises_integrity_error_at_restart",
+        "kind": "failure",
+        "type": null
+      },
+      {
+        "class": "tests.test_persistence.RestartSafeStateTests",
+        "test": "test_tampered_persisted_audit_fails_closed_at_restart",
+        "kind": "failure",
+        "type": null
+      },
+      {
+        "class": "tests.test_custody_domain.CustodyDomainIntegrationTests",
+        "test": "test_concurrent_reservations_cannot_oversubscribe_protected_budget",
+        "kind": "failure",
+        "type": null
+      },
+      {
+        "class": "tests.test_custody_domain.CustodyDomainIntegrationTests",
+        "test": "test_concurrent_reservations_cannot_oversubscribe_protected_budget",
+        "kind": "error",
+        "type": null
+      },
+      {
+        "class": "tests.test_custody_domain.CustodyDomainIntegrationTests",
+        "test": "test_exact_locked_domain_permit_and_budget_are_consumed_before_custody_attempt",
+        "kind": "failure",
+        "type": null
+      },
+      {
+        "class": "tests.test_custody_domain.CustodyDomainIntegrationTests",
+        "test": "test_exact_locked_domain_permit_and_budget_are_consumed_before_custody_attempt",
+        "kind": "error",
+        "type": null
+      },
+      {
+        "class": "tests.test_custody_domain.CustodyDomainIntegrationTests",
+        "test": "test_revoked_directive_is_revalidated_before_budget_attempt_and_custody_attempt",
+        "kind": "failure",
+        "type": null
+      },
+      {
+        "class": "tests.test_custody_domain.CustodyDomainIntegrationTests",
+        "test": "test_revoked_directive_is_revalidated_before_budget_attempt_and_custody_attempt",
+        "kind": "error",
+        "type": null
+      },
+      {
+        "class": "tests.test_custody_domain.CustodyDomainIntegrationTests",
+        "test": "test_substituted_domain_order_fails_before_budget_or_permit_consumption",
+        "kind": "failure",
+        "type": null
+      },
+      {
+        "class": "tests.test_custody_domain.CustodyDomainIntegrationTests",
+        "test": "test_substituted_domain_order_fails_before_budget_or_permit_consumption",
+        "kind": "error",
+        "type": null
+      },
+      {
+        "class": "tests.test_custody_domain.CustodyDomainIntegrationTests",
+        "test": "test_worker_rollback_after_restart_cannot_restore_budget_or_domain_permit",
+        "kind": "failure",
+        "type": null
+      },
+      {
+        "class": "tests.test_custody_domain.CustodyDomainIntegrationTests",
+        "test": "test_worker_rollback_after_restart_cannot_restore_budget_or_domain_permit",
+        "kind": "error",
+        "type": null
+      },
+      {
+        "class": "tests.test_custody_evidence.CustodyEvidenceConvergenceTests",
+        "test": "test_abort_before_custody_commit_creates_neither_mutation_nor_obligation",
+        "kind": "failure",
+        "type": null
+      },
+      {
+        "class": "tests.test_custody_evidence.CustodyEvidenceConvergenceTests",
+        "test": "test_abort_before_custody_commit_creates_neither_mutation_nor_obligation",
+        "kind": "error",
+        "type": null
+      },
+      {
+        "class": "tests.test_custody_evidence.CustodyEvidenceConvergenceTests",
+        "test": "test_committed_obligation_blocks_next_transition_until_projection",
+        "kind": "failure",
+        "type": null
+      },
+      {
+        "class": "tests.test_custody_evidence.CustodyEvidenceConvergenceTests",
+        "test": "test_committed_obligation_blocks_next_transition_until_projection",
+        "kind": "error",
+        "type": null
+      },
+      {
+        "class": "tests.test_custody_evidence.CustodyEvidenceConvergenceTests",
+        "test": "test_crash_during_projection_restarts_without_duplicate_canonical_event",
+        "kind": "failure",
+        "type": null
+      },
+      {
+        "class": "tests.test_custody_evidence.CustodyEvidenceConvergenceTests",
+        "test": "test_crash_during_projection_restarts_without_duplicate_canonical_event",
+        "kind": "error",
+        "type": null
+      },
+      {
+        "class": "tests.test_custody_evidence.CustodyEvidenceConvergenceTests",
+        "test": "test_duplicate_projection_is_idempotent_by_transition_hash",
+        "kind": "failure",
+        "type": null
+      },
+      {
+        "class": "tests.test_custody_evidence.CustodyEvidenceConvergenceTests",
+        "test": "test_duplicate_projection_is_idempotent_by_transition_hash",
+        "kind": "error",
+        "type": null
+      },
+      {
+        "class": "tests.test_custody_evidence.CustodyEvidenceConvergenceTests",
+        "test": "test_tampered_obligation_is_denied_and_blocks_custody",
+        "kind": "failure",
+        "type": null
+      },
+      {
+        "class": "tests.test_custody_evidence.CustodyEvidenceConvergenceTests",
+        "test": "test_tampered_obligation_is_denied_and_blocks_custody",
+        "kind": "error",
+        "type": null
+      }
+    ]
+  },
+  "windows_failure_set_matches_baseline": true,
+  "wsl_candidate": {
+    "cases": 63,
+    "problems": []
+  },
+  "wsl_python": "3.14",
+  "wsl_pytest": "9.1.1",
+  "wsl_cryptography": "50.0.1",
+  "classification": "Verified within named test cases. Windows SQLite cleanup failures reproduce with the original canonical helper functions; WSL selected suite passes.",
+  "source_sha256": {
+    "pulpo/kernel.py": "bd2e0ae7609da09f19d8c3f4a9cc37b916b2168d2b46f7314132406e8432c4b1",
+    "pulpo/state.py": "134f6e0ffc9ef3b818b086025669e2a9aeeac67e894d43ec13a4a3416ba7292c",
+    "tests/test_canonical_json.py": "86ebfdeddd23b346de2701f2eae193725432c2e21455fe7b3a7b120d4d2a17f9"
+  },
+  "benchmark_harness_smoke": "100 records: serialize, audit_record, verify_full on both; verify_engine on preview. Every output validated against original JSON behavior. Full fresh-process driver exercised in the original measurements."
+}
