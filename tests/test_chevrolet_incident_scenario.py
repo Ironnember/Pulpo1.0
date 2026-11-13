@@ -207,6 +207,27 @@ class _IntentBlindState(InMemoryKernelState):
         return valid
 
 
+class _UnguardedConsumeKernel(GovernanceKernel):
+    """Deliberately unguarded kernel double for the negative control.
+
+    Its consume() performs none of the kernel's spend-path checks --
+    neither token authentication nor the token-to-intent binding the
+    kernel itself has enforced since the 2026-11-13 layering change --
+    and delegates straight to the state, restoring the pre-#355 consume
+    path. Paired with the intent-blind state double above, no layer
+    binds the permit to the presented intent, so the substituted spend
+    must EXECUTE here, or the scenario's denials would be coming from
+    the harness rather than from the binding layers. The store layer's
+    own binding is proven directly in tests/test_writer_custody.py
+    (StateIntentBindingTests).
+    """
+
+    def consume(self, permit: str, intent: Intent) -> bool:
+        return self._state.consume_permit(
+            permit, self.intent_hash(intent), self._clock()
+        )
+
+
 def _events(kernel: GovernanceKernel, name: str) -> list[dict]:
     return [record for record in kernel.audit if record["event"] == name]
 
@@ -226,9 +247,14 @@ class ChevroletIncidentScenarioTests(unittest.TestCase):
         self.kernel = self._kernel()
         self.ledger = ConsequenceLedger()
 
-    def _kernel(self, state: InMemoryKernelState | None = None) -> GovernanceKernel:
+    def _kernel(
+        self,
+        state: InMemoryKernelState | None = None,
+        *,
+        kernel_class: type[GovernanceKernel] = GovernanceKernel,
+    ) -> GovernanceKernel:
         kwargs = {} if state is None else {"state": state}
-        return GovernanceKernel(
+        return kernel_class(
             self.policy,
             secret=b"unit-test-secret",
             approval_verifier=self.verifier,
@@ -366,12 +392,16 @@ class ChevroletIncidentScenarioTests(unittest.TestCase):
     # -- negative control --------------------------------------------------------
 
     def test_negative_control_unguarded_consume_executes_dollar_commitment(self) -> None:
-        # Same scenario, state double whose consume ignores intent
-        # binding: the quote permit spends on the $1 commitment and the
-        # commitment EXECUTES. The denials above therefore come from the
-        # real backend's binding, not from a harness that denies by
-        # construction.
-        blind_kernel = self._kernel(state=_IntentBlindState())
+        # Same scenario, consume unguarded at BOTH layers -- a kernel
+        # double whose consume skips token authentication and the
+        # kernel's token-to-intent binding, over a state double whose
+        # consume ignores the store's binding: the quote permit spends
+        # on the $1 commitment and the commitment EXECUTES. The denials
+        # above therefore come from the real consume path's binding
+        # checks, not from a harness that denies by construction.
+        blind_kernel = self._kernel(
+            state=_IntentBlindState(), kernel_class=_UnguardedConsumeKernel
+        )
         blind_permit = self._issue_quote_permit(blind_kernel)
         self.assertTrue(
             self.ledger.execute(blind_kernel, blind_permit, SALE_ONE_DOLLAR_INTENT)
