@@ -20,6 +20,7 @@ from typing import Mapping, Sequence
 
 from .mcp_boundary import MCPBoundaryError
 from .mcp_plugin import DEFAULT_SNAPSHOT_PATH, load_mcp_snapshot
+from .transport import sanitized_transport_environment
 
 
 class MCPTunnelBindingError(RuntimeError):
@@ -137,6 +138,7 @@ def _runtime_environment(
     ):
         runtime.pop(name, None)
 
+    runtime = sanitized_transport_environment(runtime)
     runtime[_RUNTIME_KEY_ENV] = runtime_key
     runtime[_TUNNEL_ID_ENV] = tunnel_id
     runtime["TUNNEL_CLIENT_PROFILE_DIR"] = profile_dir
