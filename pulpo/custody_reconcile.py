@@ -596,12 +596,10 @@ class GovernedDomainOutcomeMemoryProjection:
             recorded_at_ns=self._trusted_now(),
         )
         try:
-            existing_payload = self.kernel._state.append_unique(
-                self.EVENT,
-                "reconciliation_transition_hash",
-                reconciliation.receipt.transition_hash,
-                asdict(memory),
-                memory.recorded_at_ns,
+            existing_payload = self.kernel.record_domain_outcome_memory(
+                reconciliation_transition_hash=reconciliation.receipt.transition_hash,
+                payload=asdict(memory),
+                timestamp_ns=memory.recorded_at_ns,
             )
         except ValueError as exc:
             raise CustodyViolation("outcome_memory_canonical_identity_ambiguous") from exc

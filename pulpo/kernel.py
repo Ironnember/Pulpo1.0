@@ -6,13 +6,22 @@ from dataclasses import asdict, dataclass
 from hashlib import sha256
 import hmac
 import json
+import os
 import secrets
 import time
 from typing import Any, Callable
 
 from .authority import ApprovalEnvelope, ApprovalVerifier, AuthorityTrust
 from .ceremony import CeremonyEvidence, CeremonyTrust, CeremonyVerifier
-from .state import ApprovalUse, AuditSigner, InMemoryKernelState, KernelState
+from .state import (
+    ApprovalUse,
+    AuditSigner,
+    DirectivePermitBinding,
+    InMemoryKernelState,
+    KernelState,
+    SQLiteKernelState,
+    VerifiedAuthorityEvidence,
+)
 
 
 # Reuse the unchanged encoder configuration; per-call state stays in encode().
@@ -1007,6 +1016,156 @@ class GovernanceKernel:
 
     def verify_audit(self) -> bool:
         return bool(self.verify_audit_report()["ok"])
+
+    # ------------------------------------------------------------------
+    # Capability facade (Phase 2, Item 3A)
+    #
+    # The verbs below are the governed write/read surface sibling
+    # modules use instead of reaching ``kernel._state`` directly.
+    # Before Item 3A, production code held the state handle around the
+    # kernel: directives.py activated/revoked/bound through it,
+    # custody_reconcile.py appended outcome memory through it,
+    # target_reconcile.py appended completions through it, and
+    # incident_channel.py read the backend object itself. Every one of
+    # those writes now flows through a kernel method with a fixed
+    # event schema, and a structural regression test pins production
+    # modules at zero ``_state`` reach-through.
+    #
+    # Honest scope (ruling Q5): the facade is discipline + evidence,
+    # NOT in-process enforcement. The state object still exists inside
+    # this process, and a determined in-process caller can construct a
+    # backend directly and write around every verb here. What 3A
+    # proves is narrower and checkable: no production module possesses
+    # the ungoverned handle, every production write has one reviewable
+    # governed path, and directive mutation additionally requires the
+    # typed VerifiedAuthorityEvidence at the state surface itself.
+    # Process-boundary enforcement is Item 3B, the Phase 3 program.
+    # ------------------------------------------------------------------
+
+    def directive_status(self, directive_id: str, version: int, directive_hash: str) -> str:
+        """Facade read: the recorded status of one exact directive version."""
+
+        return self._state.directive_status(directive_id, version, directive_hash)
+
+    def directive_hash_status(self, directive_hash: str) -> str:
+        """Facade read: the recorded status of a directive by its hash."""
+
+        return self._state.directive_hash_status(directive_hash)
+
+    def activate_directive(
+        self,
+        directive: Any,
+        authority_evidence: VerifiedAuthorityEvidence,
+        timestamp_ns: int,
+    ) -> None:
+        """Facade verb: record a verified directive activation.
+
+        The only production caller is ``DirectiveAuthorityController``,
+        after envelope verification and the one-use authority-permit
+        consume. The state layer requires the typed evidence and
+        cross-checks its binding, so the fabricated-bare-dict
+        activation from design repro 3 (part B) fails at this surface.
+        """
+
+        self._state.activate_directive(directive, authority_evidence, timestamp_ns)
+
+    def revoke_directive(
+        self,
+        directive_id: str,
+        version: int,
+        authority_evidence: VerifiedAuthorityEvidence,
+        timestamp_ns: int,
+    ) -> None:
+        """Facade verb: record a verified directive revocation."""
+
+        self._state.revoke_directive(directive_id, version, authority_evidence, timestamp_ns)
+
+    def bind_permit_to_directive(
+        self,
+        permit: str,
+        intent_hash: str,
+        binding: DirectivePermitBinding,
+        timestamp_ns: int,
+    ) -> None:
+        """Facade verb: bind an issued permit to its live directive."""
+
+        self._state.bind_permit_to_directive(permit, intent_hash, binding, timestamp_ns)
+
+    def record_target_completion(
+        self,
+        *,
+        target_id: str,
+        version: int,
+        target_hash: str,
+        intent_hash: str,
+        completion: dict[str, Any],
+        completion_hash: str,
+        timestamp_ns: int,
+    ) -> None:
+        """Facade verb: append a target-completion record (fixed schema).
+
+        The event name and payload shape are fixed here, not chosen by
+        the caller: ``target_completed`` carrying the exact target and
+        intent hashes, the completion evidence dict, its hash, and
+        ``authority_effect: "none"`` — a completion record asserts an
+        observation; it grants nothing.
+        """
+
+        self._state.append(
+            "target_completed",
+            {
+                "target_id": target_id,
+                "version": version,
+                "target_hash": target_hash,
+                "intent_hash": intent_hash,
+                "completion": completion,
+                "completion_hash": completion_hash,
+                "authority_effect": "none",
+            },
+            timestamp_ns,
+        )
+
+    def record_domain_outcome_memory(
+        self,
+        *,
+        reconciliation_transition_hash: str,
+        payload: dict[str, Any],
+        timestamp_ns: int,
+    ) -> dict[str, Any] | None:
+        """Facade verb: append-once a domain outcome-memory record.
+
+        Fixed schema: the ``domain_outcome_memory`` event, unique on
+        ``reconciliation_transition_hash``. Returns the existing
+        payload when a record with that identity already exists (the
+        state layer's ``append_unique`` contract), else None.
+        """
+
+        return self._state.append_unique(
+            "domain_outcome_memory",
+            "reconciliation_transition_hash",
+            reconciliation_transition_hash,
+            payload,
+            timestamp_ns,
+        )
+
+    def state_source_id(self) -> str:
+        """Opaque process-scoped identifier for this kernel's backend.
+
+        Read-only identification for evidence derivation (the incident
+        channel stamps its reports with which backend instance they
+        were derived from). Exposing an identifier is not exposing the
+        handle: callers learn a stable name for the backend in this
+        process, never the object. A SQLite backend whose connection
+        carries an ``activity_id`` reports that id, as before.
+        """
+
+        backend = self._state
+        source_id = sha256(f"{os.getpid()}:{id(backend)}".encode()).hexdigest()[:32]
+        if type(backend) is SQLiteKernelState:
+            activity_id = getattr(backend._connection, "activity_id", None)
+            if type(activity_id) is str and activity_id:
+                source_id = activity_id
+        return source_id
 
     def _decide(self, outcome: str, reason: str, digest: str, permit: str | None = None) -> Decision:
         decision = Decision(outcome, reason, digest, permit)

@@ -271,17 +271,13 @@ class GovernedTargetReconciliation:
                 return existing
             raise ValueError("target_completion_immutable")
 
-        self.kernel._state.append(
-            self.COMPLETION_EVENT,
-            {
-                "target_id": target.target_id,
-                "version": target.version,
-                "target_hash": target.target_hash,
-                "intent_hash": self.kernel.intent_hash(target.intent),
-                "completion": asdict(completion),
-                "completion_hash": completion.evidence_hash,
-                "authority_effect": "none",
-            },
-            now_ns,
+        self.kernel.record_target_completion(
+            target_id=target.target_id,
+            version=target.version,
+            target_hash=target.target_hash,
+            intent_hash=self.kernel.intent_hash(target.intent),
+            completion=asdict(completion),
+            completion_hash=completion.evidence_hash,
+            timestamp_ns=now_ns,
         )
         return completion

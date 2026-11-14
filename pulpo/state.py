@@ -108,6 +108,114 @@ class DirectivePermitBinding:
         return payload
 
 
+@dataclass(frozen=True)
+class VerifiedAuthorityEvidence:
+    """Typed record that directive authority was verified (Phase 2, Item 3A).
+
+    Before Item 3A, ``activate_directive``/``revoke_directive`` accepted
+    ``authority_evidence`` as an opaque dict, verified against nothing:
+    any holder of the state handle could activate a directive with
+    ``{"approver": "no-one", "evidence": "invented"}`` and the invented
+    directive then gated real kernel spends (design repro 3, part B).
+    The state layer now requires this exact type and cross-checks its
+    binding fields against the directive being activated or revoked, so
+    a bare dict — or a wrapper naming a different directive — is
+    refused at the storage surface itself.
+
+    In practice the only production construction site is
+    ``DirectiveAuthorityController``, which builds this value only after
+    the kernel has verified the approval envelope and consumed the
+    one-use authority permit (the same discipline ``ApprovalUse``
+    carries for permit issuance). Honest boundary: this is a library
+    type, not a capability — a determined in-process caller can
+    construct one with fabricated fields, exactly as it can construct
+    a state backend directly. Item 3A makes fabrication a deliberate,
+    greppable construction of a named type instead of an anonymous
+    dict; process-boundary enforcement is Item 3B (Phase 3).
+    """
+
+    operation: str
+    directive_id: str
+    directive_version: int
+    directive_hash: str
+    parent_directive_hash: str | None
+    authority_id: str
+    approval_id: str
+    envelope_hash: str
+    intent_hash: str
+    policy_hash: str
+
+    def __post_init__(self) -> None:
+        if self.operation not in ("activate_directive", "revoke_directive"):
+            raise ValueError("authority evidence operation is unsupported")
+        if not self.directive_id or self.directive_version <= 0:
+            raise ValueError("authority evidence directive identity is invalid")
+        for value in (
+            self.directive_hash,
+            self.authority_id,
+            self.approval_id,
+            self.envelope_hash,
+            self.intent_hash,
+            self.policy_hash,
+        ):
+            if not isinstance(value, str) or not value:
+                raise ValueError("authority evidence fields must be non-empty")
+
+    def audit_payload(self) -> dict[str, Any]:
+        """The exact dict shape recorded in the audit chain.
+
+        Byte-identical to the pre-3A evidence dict the controller
+        built, so existing chains and their readers see no format
+        change — only the surface that accepts it changed.
+        """
+
+        return {
+            "operation": self.operation,
+            "directive_id": self.directive_id,
+            "directive_version": self.directive_version,
+            "directive_hash": self.directive_hash,
+            "parent_directive_hash": self.parent_directive_hash,
+            "authority_id": self.authority_id,
+            "approval_id": self.approval_id,
+            "envelope_hash": self.envelope_hash,
+            "intent_hash": self.intent_hash,
+            "policy_hash": self.policy_hash,
+        }
+
+
+def _require_verified_evidence(
+    authority_evidence: object,
+    *,
+    operation: str,
+    directive_id: str,
+    version: int,
+    directive_hash: str,
+    parent_directive_hash: str | None = None,
+    check_parent: bool = False,
+) -> VerifiedAuthorityEvidence:
+    """Fail closed unless ``authority_evidence`` is verified-typed and bound.
+
+    The type requirement is exact (``type(...) is``), following the
+    repo's canonical-type precedent: a dict, a subclass, or any other
+    mapping-shaped value is refused. The binding cross-checks are the
+    ones the state layer can perform itself — the evidence must name
+    the operation and the exact directive the call is mutating.
+    """
+
+    if type(authority_evidence) is not VerifiedAuthorityEvidence:
+        raise TypeError("authority_evidence must be VerifiedAuthorityEvidence")
+    evidence = authority_evidence
+    if (
+        evidence.operation != operation
+        or evidence.directive_id != directive_id
+        or evidence.directive_version != version
+        or evidence.directive_hash != directive_hash
+        or (check_parent and evidence.parent_directive_hash != parent_directive_hash)
+    ):
+        raise ValueError("authority evidence does not match the directive")
+    return evidence
+
+
 class KernelState(Protocol):
     @property
     def audit(self) -> list[dict[str, Any]]: ...
@@ -116,6 +224,9 @@ class KernelState(Protocol):
     def issue_permit(self, permit: str, intent_hash: str, decision_reason: str, timestamp_ns: int, approval: ApprovalUse | None = None, expires_at_ns: int | None = None) -> str | None: ...
     def bind_permit_to_directive(self, permit: str, intent_hash: str, binding: DirectivePermitBinding, timestamp_ns: int) -> None: ...
     def consume_permit(self, permit: str, intent_hash: str, timestamp_ns: int) -> bool: ...
+    def activate_directive(self, directive: Any, authority_evidence: VerifiedAuthorityEvidence, timestamp_ns: int) -> None: ...
+    def revoke_directive(self, directive_id: str, version: int, authority_evidence: VerifiedAuthorityEvidence, timestamp_ns: int) -> None: ...
+    def directive_status(self, directive_id: str, version: int, directive_hash: str) -> str: ...
     def directive_hash_status(self, directive_hash: str) -> str: ...
     def append(self, event: str, payload: dict[str, Any], timestamp_ns: int) -> None: ...
     def append_unique(self, event: str, identity_field: str, identity_value: Any, payload: dict[str, Any], timestamp_ns: int) -> dict[str, Any] | None: ...
@@ -240,7 +351,19 @@ class InMemoryKernelState:
             self.append("permit_consumed" if valid else "permit_rejected", payload, timestamp_ns)
             return valid
 
-    def activate_directive(self, directive, authority_evidence: dict[str, object], timestamp_ns: int) -> None:
+    def activate_directive(self, directive, authority_evidence: VerifiedAuthorityEvidence, timestamp_ns: int) -> None:
+        # Item 3A: the evidence gate runs before any mutation — a bare
+        # dict or a wrapper bound to another directive never reaches
+        # the immutability/parent checks, let alone the audit append.
+        evidence = _require_verified_evidence(
+            authority_evidence,
+            operation="activate_directive",
+            directive_id=directive.directive_id,
+            version=directive.version,
+            directive_hash=directive.directive_hash,
+            parent_directive_hash=getattr(directive, "parent_directive_hash", None),
+            check_parent=True,
+        )
         # Serialized under the same lock: the immutability and parent
         # checks must hold against the state the activation records into.
         with self._audit_lock:
@@ -250,9 +373,12 @@ class InMemoryKernelState:
             if parent_hash is not None and self.directive_hash_status(parent_hash) != "active":
                 raise ValueError("parent directive is not active for activation")
             self._directives[key] = (directive.directive_hash, False)
-            self.append("directive_activated", {"directive_id": directive.directive_id, "version": directive.version, "directive_hash": directive.directive_hash, "authority_evidence": authority_evidence}, timestamp_ns)
+            self.append("directive_activated", {"directive_id": directive.directive_id, "version": directive.version, "directive_hash": directive.directive_hash, "authority_evidence": evidence.audit_payload()}, timestamp_ns)
 
-    def revoke_directive(self, directive_id: str, version: int, authority_evidence: dict[str, object], timestamp_ns: int) -> None:
+    def revoke_directive(self, directive_id: str, version: int, authority_evidence: VerifiedAuthorityEvidence, timestamp_ns: int) -> None:
+        # Item 3A: the type gate runs before any lookup or mutation.
+        if type(authority_evidence) is not VerifiedAuthorityEvidence:
+            raise TypeError("authority_evidence must be VerifiedAuthorityEvidence")
         # Serialized under the same lock: the revocation mutation and its
         # audit append are one transition, atomic against consume_permit's
         # status read -- a revocation fully precedes or fully follows any
@@ -260,8 +386,18 @@ class InMemoryKernelState:
         with self._audit_lock:
             key = (directive_id, version)
             if key not in self._directives: raise ValueError("directive version not found")
-            digest, _ = self._directives[key]; self._directives[key] = (digest, True)
-            self.append("directive_revoked", {"directive_id": directive_id, "version": version, "directive_hash": digest, "authority_evidence": authority_evidence}, timestamp_ns)
+            digest, _ = self._directives[key]
+            # The stored hash is known only after the lookup, so the
+            # binding cross-check completes here, before the mutation.
+            evidence = _require_verified_evidence(
+                authority_evidence,
+                operation="revoke_directive",
+                directive_id=directive_id,
+                version=version,
+                directive_hash=digest,
+            )
+            self._directives[key] = (digest, True)
+            self.append("directive_revoked", {"directive_id": directive_id, "version": version, "directive_hash": digest, "authority_evidence": evidence.audit_payload()}, timestamp_ns)
 
     def directive_status(self, directive_id: str, version: int, directive_hash: str) -> str:
         value = self._directives.get((directive_id, version))
@@ -516,7 +652,18 @@ class SQLiteKernelState:
             self._append("permit_consumed" if valid else "permit_rejected", payload, timestamp_ns)
         return valid
 
-    def activate_directive(self, directive, authority_evidence: dict[str, object], timestamp_ns: int) -> None:
+    def activate_directive(self, directive, authority_evidence: VerifiedAuthorityEvidence, timestamp_ns: int) -> None:
+        # Item 3A: same evidence gate as the in-memory backend, before
+        # the transaction opens — a refused activation writes nothing.
+        evidence = _require_verified_evidence(
+            authority_evidence,
+            operation="activate_directive",
+            directive_id=directive.directive_id,
+            version=directive.version,
+            directive_hash=directive.directive_hash,
+            parent_directive_hash=getattr(directive, "parent_directive_hash", None),
+            check_parent=True,
+        )
         with self._connection:
             self._connection.execute("BEGIN IMMEDIATE")
             if self._connection.execute("SELECT 1 FROM directives WHERE directive_id=? AND version=?", (directive.directive_id, directive.version)).fetchone(): raise ValueError("directive version is immutable")
@@ -526,15 +673,27 @@ class SQLiteKernelState:
                 if parent is None or parent[0] != 0:
                     raise ValueError("parent directive is not active for activation")
             self._connection.execute("INSERT INTO directives (directive_id, version, directive_hash) VALUES (?, ?, ?)", (directive.directive_id, directive.version, directive.directive_hash))
-            self._append("directive_activated", {"directive_id": directive.directive_id, "version": directive.version, "directive_hash": directive.directive_hash, "authority_evidence": authority_evidence}, timestamp_ns)
+            self._append("directive_activated", {"directive_id": directive.directive_id, "version": directive.version, "directive_hash": directive.directive_hash, "authority_evidence": evidence.audit_payload()}, timestamp_ns)
 
-    def revoke_directive(self, directive_id: str, version: int, authority_evidence: dict[str, object], timestamp_ns: int) -> None:
+    def revoke_directive(self, directive_id: str, version: int, authority_evidence: VerifiedAuthorityEvidence, timestamp_ns: int) -> None:
+        # Item 3A: the type gate runs before the transaction opens.
+        if type(authority_evidence) is not VerifiedAuthorityEvidence:
+            raise TypeError("authority_evidence must be VerifiedAuthorityEvidence")
         with self._connection:
             self._connection.execute("BEGIN IMMEDIATE")
             row = self._connection.execute("SELECT directive_hash FROM directives WHERE directive_id=? AND version=?", (directive_id, version)).fetchone()
             if row is None: raise ValueError("directive version not found")
+            # Binding cross-check against the stored hash, before the
+            # mutation (mirrors the in-memory backend).
+            evidence = _require_verified_evidence(
+                authority_evidence,
+                operation="revoke_directive",
+                directive_id=directive_id,
+                version=version,
+                directive_hash=row[0],
+            )
             self._connection.execute("UPDATE directives SET revoked=1 WHERE directive_id=? AND version=?", (directive_id, version))
-            self._append("directive_revoked", {"directive_id": directive_id, "version": version, "directive_hash": row[0], "authority_evidence": authority_evidence}, timestamp_ns)
+            self._append("directive_revoked", {"directive_id": directive_id, "version": version, "directive_hash": row[0], "authority_evidence": evidence.audit_payload()}, timestamp_ns)
 
     def directive_status(self, directive_id: str, version: int, directive_hash: str) -> str:
         row = self._connection.execute("SELECT directive_hash, revoked FROM directives WHERE directive_id=? AND version=?", (directive_id, version)).fetchone()
