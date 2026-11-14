@@ -182,6 +182,32 @@ MUTATIONS: tuple[Mutation, ...] = (
         'elif False and signer is not None and index >= legacy_records:',
         ("tests.test_audit_signing.SignedAuditLibraryTests.test_single_signature_stripped_refused",),
     ),
+    Mutation(
+        # Phase 2, Item 3A: the typed-evidence requirement is the
+        # control that refuses a bare-dict directive activation at the
+        # state surface. Weakening it must be detected by the facade
+        # tests (a dict then reaches the binding checks and raises the
+        # wrong error / a subclass is admitted).
+        "directive_evidence_type_check_removed",
+        "pulpo/state.py",
+        'if type(authority_evidence) is not VerifiedAuthorityEvidence:\n        raise TypeError("authority_evidence must be VerifiedAuthorityEvidence")\n    evidence = authority_evidence',
+        'if False and type(authority_evidence) is not VerifiedAuthorityEvidence:\n        raise TypeError("authority_evidence must be VerifiedAuthorityEvidence")\n    evidence = authority_evidence',
+        (
+            "tests.test_capability_facade.TypedEvidenceGateTests.test_bare_dict_activation_refused_inmemory",
+            "tests.test_capability_facade.TypedEvidenceGateTests.test_evidence_subclass_refused",
+        ),
+    ),
+    Mutation(
+        # Phase 2, Item 3A: the binding cross-check is the control that
+        # refuses evidence naming a different directive than the one
+        # being mutated. Weakening it must be detected by the facade
+        # tests.
+        "directive_evidence_binding_check_removed",
+        "pulpo/state.py",
+        'if (\n        evidence.operation != operation\n        or evidence.directive_id != directive_id\n        or evidence.directive_version != version\n        or evidence.directive_hash != directive_hash\n        or (check_parent and evidence.parent_directive_hash != parent_directive_hash)\n    ):',
+        'if False and (\n        evidence.operation != operation\n        or evidence.directive_id != directive_id\n        or evidence.directive_version != version\n        or evidence.directive_hash != directive_hash\n        or (check_parent and evidence.parent_directive_hash != parent_directive_hash)\n    ):',
+        ("tests.test_capability_facade.TypedEvidenceGateTests.test_evidence_bound_to_another_directive_refused",),
+    ),
 )
 
 
