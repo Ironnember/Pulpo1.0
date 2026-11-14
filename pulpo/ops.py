@@ -66,7 +66,12 @@ operator artifacts plus the canonical kernel state:
   artifacts, so the directory and each file are owner-only (``0700`` /
   ``0600``), each file is created atomically without overwriting, and the
   filename carries the approval id because distinct approvals for one
-  intent share an intent hash but never an approval id.
+  intent share an intent hash but never an approval id. Each permit
+  carries a signed expiry (token v2, Phase 2 Item 4): the permit string
+  embeds its issue and expiry times under the kernel's HMAC, stamped at
+  issuance from the policy's TTL cap (default 4 hours, at most 24), and
+  ``consume`` refuses a permit past its expiry — bearer possession is
+  bounded to the TTL window, not to eternity.
 
 Transport-surface invariant, addressed head-on: this CLI is an operator
 transport, and every operation it declares IS a governed kernel transition

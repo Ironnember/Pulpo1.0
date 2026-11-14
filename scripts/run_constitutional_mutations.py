@@ -136,6 +136,33 @@ MUTATIONS: tuple[Mutation, ...] = (
         ("tests.test_kernel.GovernanceKernelTests.test_audit_chain_detects_tampering",),
     ),
     Mutation(
+        # Phase 2, Item 4: the kernel's consume-time expiry check is the
+        # control that refuses a dormant or stolen permit after its TTL.
+        # Weakening it must be detected by the token-v2 tests.
+        "permit_expiry_check_removed",
+        "pulpo/kernel.py",
+        'if now_ns >= expires_at_ns:',
+        'if False and now_ns >= expires_at_ns:',
+        ("tests.test_permit_ttl.ExpiryEnforcementTests.test_expired_permit_refused_at_consume_with_recorded_reason",),
+    ),
+    Mutation(
+        # Phase 2, Item 4: the state layer's recorded-expiry re-check is
+        # the second layer, binding direct handle-level consume calls.
+        "permit_store_expiry_check_removed_inmemory",
+        "pulpo/state.py",
+        'if stored_expiry is not None and timestamp_ns >= stored_expiry:',
+        'if False and stored_expiry is not None and timestamp_ns >= stored_expiry:',
+        ("tests.test_permit_ttl.StoreSecondLayerTests.test_inmemory_store_refuses_consume_at_expiry",),
+    ),
+    Mutation(
+        # Phase 2, Item 4: the same second layer on the SQLite backend.
+        "permit_store_expiry_check_removed_sqlite",
+        "pulpo/state.py",
+        'if row_expiry is not None and timestamp_ns >= row_expiry:',
+        'if False and row_expiry is not None and timestamp_ns >= row_expiry:',
+        ("tests.test_permit_ttl.StoreSecondLayerTests.test_sqlite_store_refuses_consume_at_expiry",),
+    ),
+    Mutation(
         # Phase 2, Item 1: the signature check is the control that makes
         # a consistently rehashed history refuse in a signed deployment.
         # Weakening it must be detected by the signed-mode tests.
