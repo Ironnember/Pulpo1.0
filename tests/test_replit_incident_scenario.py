@@ -143,6 +143,28 @@ class _UnguardedConsumeState(InMemoryKernelState):
         return valid
 
 
+class _UnguardedConsumeKernel(GovernanceKernel):
+    """Deliberately unguarded kernel double for the negative control.
+
+    Its consume() performs none of the kernel's spend-path checks --
+    neither token authentication nor the token-to-intent binding the
+    kernel itself has enforced since the 2026-11-13 layering change --
+    and delegates straight to the state, restoring the pre-#355 consume
+    path. Paired with the unguarded state double above (which also
+    ignores the directive binding/status), no layer binds the permit
+    to the presented intent or re-checks revocation, so the post-freeze
+    deletion must EXECUTE here, or the scenario's denials would be
+    coming from the harness rather than from the real checks. The
+    store layer's own intent binding is proven directly in
+    tests/test_writer_custody.py (StateIntentBindingTests).
+    """
+
+    def consume(self, permit: str, intent: Intent) -> bool:
+        return self._state.consume_permit(
+            permit, self.intent_hash(intent), self._clock()
+        )
+
+
 def _events(kernel: GovernanceKernel, name: str) -> list[dict]:
     return [record for record in kernel.audit if record["event"] == name]
 
@@ -204,9 +226,14 @@ class ReplitIncidentScenarioTests(unittest.TestCase):
         self.directive = work_directive()
         self.ledger = ConsequenceLedger()
 
-    def _kernel(self, state: InMemoryKernelState | None = None) -> GovernanceKernel:
+    def _kernel(
+        self,
+        state: InMemoryKernelState | None = None,
+        *,
+        kernel_class: type[GovernanceKernel] = GovernanceKernel,
+    ) -> GovernanceKernel:
         kwargs = {} if state is None else {"state": state}
-        return GovernanceKernel(
+        return kernel_class(
             self.policy,
             secret=b"unit-test-secret",
             approval_verifier=self.verifier,
@@ -457,8 +484,16 @@ class ReplitIncidentScenarioTests(unittest.TestCase):
         self.assertIsNone(decision.permit)
 
         # (b) Spending the still-held dev permit against the fabrication
-        # intent: rejected, carrying the fabrication intent hash, with
-        # the revocation recorded as the permit's directive status.
+        # intent: rejected, carrying the fabrication intent hash. Since
+        # the 2026-11-13 layering change, the kernel itself binds the
+        # token to the presented intent, so this refusal is issued by
+        # the kernel -- its rejection record names the intent mismatch
+        # -- before the store's directive-status check is reached. The
+        # kernel's rejection record is the reconciliation evidence now.
+        # (The store-level revocation evidence for this same held
+        # permit, spent against its OWN intent after the freeze, is
+        # step 3's ground and is unchanged.) The fabrication is denied
+        # either way, and the denial is in the trail below.
         self.assertFalse(self.ledger.execute(kernel, held_permit, PROD_FABRICATE_INTENT))
         rejected_fabrication = [
             record
@@ -467,7 +502,7 @@ class ReplitIncidentScenarioTests(unittest.TestCase):
         ]
         self.assertEqual(1, len(rejected_fabrication))
         self.assertEqual(
-            "directive_revoked", rejected_fabrication[0]["payload"]["directive_status"]
+            "permit_intent_mismatch", rejected_fabrication[0]["payload"]["reason"]
         )
 
         # (c) A fabricated permit token is not a permit: also rejected,
@@ -533,11 +568,16 @@ class ReplitIncidentScenarioTests(unittest.TestCase):
     # -- negative control ----------------------------------------------------
 
     def test_negative_control_unguarded_consume_would_execute_prod_delete(self) -> None:
-        # Same sequence against a state double whose consume ignores the
-        # intent binding and the directive revocation: the post-freeze
-        # production deletion EXECUTES. The denials above therefore come
-        # from the real backend's checks, not from the harness.
-        blind_kernel = self._kernel(state=_UnguardedConsumeState())
+        # Same sequence, consume unguarded at BOTH layers -- a kernel
+        # double whose consume skips token authentication and the
+        # kernel's token-to-intent binding, over a state double whose
+        # consume ignores the intent binding and the directive
+        # revocation: the post-freeze production deletion EXECUTES.
+        # The denials above therefore come from the real consume path's
+        # checks, not from the harness.
+        blind_kernel = self._kernel(
+            state=_UnguardedConsumeState(), kernel_class=_UnguardedConsumeKernel
+        )
         blind_controller = self._activate(blind_kernel)
         blind_held = self._issue_dev_permit(blind_kernel, DEV_MIGRATE_INTENT)
         self._freeze(blind_kernel, blind_controller)

@@ -12,11 +12,40 @@ from typing import Any, Callable
 
 from .authority import ApprovalEnvelope, ApprovalVerifier, AuthorityTrust
 from .ceremony import CeremonyEvidence, CeremonyTrust, CeremonyVerifier
-from .state import ApprovalUse, InMemoryKernelState, KernelState
+from .state import ApprovalUse, AuditSigner, InMemoryKernelState, KernelState
 
 
 # Reuse the unchanged encoder configuration; per-call state stays in encode().
 _CANONICAL_ENCODER = json.JSONEncoder(sort_keys=True, separators=(",", ":"))
+
+# Permit lifetime bounds (Phase 2, Item 4 — token v2). Every permit is
+# issued with a signed expiry; the policy's ``max_permit_ttl_ns`` is both
+# the lifetime stamped at issuance and the cap no issuance may exceed,
+# and policy construction refuses a cap above the absolute ceiling, so
+# no configuration of this library mints a longer-lived permit. The
+# defaults are on the order of hours: a leaked or dormant permit file is
+# worthless after its TTL instead of being spendable forever (the
+# bearer-token repro: a bare copied token consumed ten years later).
+DEFAULT_MAX_PERMIT_TTL_NS = 4 * 3600 * 1_000_000_000  # 4 hours
+PERMIT_TTL_CEILING_NS = 24 * 3600 * 1_000_000_000  # 24 hours
+
+
+def _token_time_ns(raw: str) -> int | None:
+    """Parse a token time field, or None when it is not well-formed.
+
+    Well-formed means ASCII digits only, at most 20 of them: nanosecond
+    timestamps fit in 19 digits for any plausible date, and the bound
+    keeps ``int()`` far below Python's integer-conversion limit.
+    Unicode digit characters pass ``str.isdigit()`` but ``int()``
+    rejects some of them — and an over-long field trips the conversion
+    limit — so without this guard a malformed bearer token made
+    ``consume`` raise instead of failing closed through the recorded
+    rejection path (Codex P2 on PR #358, reproduced before the fix).
+    """
+
+    if not raw or len(raw) > 20 or not raw.isascii() or not raw.isdigit():
+        return None
+    return int(raw)
 
 
 def _canonical(value: Any) -> bytes:
@@ -111,8 +140,21 @@ class Policy:
     authority_trust: AuthorityTrust | None = None
     ceremony_actions: frozenset[str] = frozenset()
     ceremony_trust: CeremonyTrust | None = None
+    # Token v2 (Phase 2, Item 4): the maximum lifetime of an issued
+    # permit, in nanoseconds. The kernel stamps every permit with
+    # ``issued_at + max_permit_ttl_ns`` as its signed expiry and refuses
+    # consumption at or after it; no issuance path may exceed this cap.
+    max_permit_ttl_ns: int = DEFAULT_MAX_PERMIT_TTL_NS
 
     def __post_init__(self) -> None:
+        if (
+            isinstance(self.max_permit_ttl_ns, bool)
+            or not isinstance(self.max_permit_ttl_ns, int)
+            or self.max_permit_ttl_ns <= 0
+        ):
+            raise ValueError("max_permit_ttl_ns must be positive")
+        if self.max_permit_ttl_ns > PERMIT_TTL_CEILING_NS:
+            raise ValueError("max_permit_ttl_ns exceeds the permit TTL ceiling")
         principals = [grant.principal for grant in self.agent_grants]
         if len(principals) != len(set(principals)):
             raise ValueError("agent principals must be unique")
@@ -164,13 +206,30 @@ class GovernanceKernel:
         state: KernelState | None = None,
         *,
         ceremony_verifier: CeremonyVerifier | None = None,
+        audit_signer: AuditSigner | None = None,
+        legacy_audit_records: int = 0,
     ) -> None:
         self.policy = policy
+        # Pin the exact policy this kernel was constructed under. Every
+        # authority decision point re-verifies the live policy against this
+        # hash and fails closed on drift, so reassigning kernel.policy can
+        # no longer silently change decisions (writer-custody Phase 1;
+        # diagnosis Repro D). The policy_hash property itself stays a live
+        # computation: callers legitimately compare it against hashes they
+        # captured earlier to detect exactly this drift.
+        self._pinned_policy_hash = self.policy_hash
         self._secret = secret or secrets.token_bytes(32)
         self._approval_verifier = approval_verifier
         self._ceremony_verifier = ceremony_verifier
         self._clock = clock or time.time_ns
-        self._state = state if state is not None else InMemoryKernelState()
+        if state is not None and (audit_signer is not None or legacy_audit_records):
+            # The signer lives in the state layer (it signs at append);
+            # a caller that hands in a state must have constructed that
+            # state with its signer. Supplying both would leave two
+            # sources of truth for which records must be signed, so
+            # refuse rather than guess.
+            raise ValueError("audit_signer/legacy_audit_records must be given on the state, not the kernel, when a state is supplied")
+        self._state = state if state is not None else InMemoryKernelState(audit_signer=audit_signer, legacy_audit_records=legacy_audit_records)
         if self._approval_verifier is not None and not self._verifier_matches_trust(self._approval_verifier):
             raise AuthorityTrustError("approval verifier does not match pinned authority trust")
         if self._ceremony_verifier is not None and not self._ceremony_verifier_matches_trust(self._ceremony_verifier):
@@ -215,6 +274,12 @@ class GovernanceKernel:
             # pre-ceremony hash, so their envelopes and behavior are unchanged.
             payload["ceremony_actions"] = sorted(self.policy.ceremony_actions)
             payload["ceremony_trust"] = asdict(self.policy.ceremony_trust) if self.policy.ceremony_trust else None
+        if self.policy.max_permit_ttl_ns != DEFAULT_MAX_PERMIT_TTL_NS:
+            # A non-default permit TTL is an authority-relevant policy
+            # choice (it widens or narrows the bearer window), so it binds
+            # into the policy hash. Policies at the default keep the exact
+            # pre-Item-4 hash, so their envelopes and behavior are unchanged.
+            payload["max_permit_ttl_ns"] = self.policy.max_permit_ttl_ns
         return sha256(_canonical(payload)).hexdigest()
 
     def lock_target(self, target_id: str, intent: Intent, *, version: int = 1) -> LockedTarget:
@@ -333,6 +398,7 @@ class GovernanceKernel:
         return resolution, self.evaluate(resolution.target.intent)
 
     def evaluate(self, intent: Intent) -> Decision:
+        self._require_pinned_policy()
         digest = self.intent_hash(intent)
         failure = self._policy_failure(intent)
         if failure:
@@ -360,6 +426,7 @@ class GovernanceKernel:
         parameter entirely and behave exactly as before.
         """
 
+        self._require_pinned_policy()
         digest = self.intent_hash(intent)
         failure = self._policy_failure(intent)
         if failure:
@@ -671,12 +738,23 @@ class GovernanceKernel:
         envelope: ApprovalEnvelope | None = None,
         timestamp_ns: int | None = None,
     ) -> Decision:
+        # The issuance funnel re-checks the pin itself: no permit is minted
+        # under a drifted policy regardless of which entry path reached here.
+        self._require_pinned_policy()
+        issued_at_ns = self._clock() if timestamp_ns is None else timestamp_ns
+        # Token v2 (Phase 2, Item 4): the expiry is inside the signed
+        # payload, so it cannot be extended without the kernel secret.
+        # The lifetime is the policy's TTL cap itself — no issuance path
+        # stamps a longer one, and policy construction refuses a cap
+        # above the absolute ceiling (see Policy.__post_init__).
+        expires_at_ns = issued_at_ns + self.policy.max_permit_ttl_ns
         nonce = secrets.token_hex(16)
-        payload = f"{digest}:{nonce}"
+        payload = f"{digest}:{nonce}:{issued_at_ns}:{expires_at_ns}"
         signature = hmac.new(self._secret, payload.encode(), sha256).hexdigest()
         permit = f"{payload}:{signature}"
-        issued_at_ns = self._clock() if timestamp_ns is None else timestamp_ns
-        replay = self._state.issue_permit(permit, digest, reason, issued_at_ns, approval)
+        replay = self._state.issue_permit(
+            permit, digest, reason, issued_at_ns, approval, expires_at_ns=expires_at_ns
+        )
         if replay:
             if envelope is None:
                 raise RuntimeError("state rejected an approval-free permit")
@@ -721,21 +799,214 @@ class GovernanceKernel:
         )
         return decision
 
+    def _require_pinned_policy(self) -> None:
+        """Fail closed if the live policy has drifted from the pinned one.
+
+        Policy is set once, at construction. Reassigning ``kernel.policy``
+        afterwards (diagnosis Repro D) previously swapped the evaluation
+        policy silently, with no audit record; now every authority decision
+        point refuses to decide under a policy other than the pinned one.
+        """
+
+        if not hmac.compare_digest(self.policy_hash, self._pinned_policy_hash):
+            raise StateIntegrityError(
+                "kernel policy does not match the policy pinned at construction"
+            )
+
+    def _permit_token_claims(self, permit: object) -> tuple[str, int, int] | None:
+        """Authenticate a v2 permit token and return its signed claims.
+
+        Tokens are minted in ``_issue_permit`` as
+        ``digest:nonce:issued_at_ns:expires_at_ns:signature`` with the
+        signature an HMAC of the first four fields under the kernel
+        secret. Verification recomputes that HMAC over the token's own
+        presented fields and compares in constant time: it proves the
+        token was minted under this kernel's secret and is unaltered —
+        including its expiry, which therefore cannot be extended by a
+        holder. Returns ``(intent_digest, issued_at_ns, expires_at_ns)``
+        for an authentic v2 token, else None.
+
+        v1 tokens (``digest:nonce:signature``, minted before token v2)
+        fail closed here: this is the cutover. An outstanding v1 permit
+        is refused at consume, never silently accepted — the Phase 1
+        (#355) precedent for outstanding tokens at a format change.
+        Malformed tokens and tokens minted under any other secret fail
+        closed the same way.
+        """
+
+        if not isinstance(permit, str):
+            return None
+        parts = permit.split(":")
+        if len(parts) != 5:
+            return None
+        token_digest, nonce, issued_raw, expires_raw, signature = parts
+        issued_at_ns = _token_time_ns(issued_raw)
+        expires_at_ns = _token_time_ns(expires_raw)
+        if issued_at_ns is None or expires_at_ns is None:
+            return None
+        if expires_at_ns <= issued_at_ns:
+            return None
+        expected = hmac.new(
+            self._secret,
+            f"{token_digest}:{nonce}:{issued_raw}:{expires_raw}".encode(),
+            sha256,
+        ).hexdigest()
+        if not hmac.compare_digest(signature.encode(), expected.encode()):
+            return None
+        return token_digest, issued_at_ns, expires_at_ns
+
+    def _permit_token_valid(self, permit: object) -> bool:
+        """Whether ``permit`` is an authentic v2 token (see _permit_token_claims).
+
+        On its own this authenticates provenance only, but ``consume``
+        no longer stops there: since the 2026-11-13 layering change it
+        also binds the authenticated token to the presented intent at
+        this layer, and since token v2 it enforces the signed expiry
+        at this layer too (see ``consume``). Single-use, store-side
+        expiry, and directive-revocation checks remain the store's
+        ``consume_permit`` checks, exactly as before.
+        """
+
+        return self._permit_token_claims(permit) is not None
+
     def consume(self, permit: str, intent: Intent) -> bool:
+        self._require_pinned_policy()
         digest = self.intent_hash(intent)
-        return self._state.consume_permit(permit, digest, self._clock())
+        claims = self._permit_token_claims(permit)
+        if claims is None:
+            # A permit the kernel cannot authenticate is refused before the
+            # store is consulted. Rows written directly into the store --
+            # state.issue_permit with approval=None (diagnosis Repro A) or
+            # raw state-file inserts (Repro B) -- carry no valid token
+            # signature and can no longer be spent through the kernel. The
+            # refusal is recorded under the same event the store uses for
+            # its own rejections, with the reason, so the attempt itself
+            # stays in evidence. Single-use and directive-revocation checks
+            # for authentic tokens remain the store's, unchanged. v1
+            # tokens land here too: the cutover refuses them with the
+            # same recorded reason rather than accepting an
+            # unsigned-expiry format.
+            self._state.append(
+                "permit_rejected",
+                {"intent_hash": digest, "reason": "permit_signature_invalid"},
+                self._clock(),
+            )
+            return False
+        _token_digest, _issued_at_ns, expires_at_ns = claims
+        now_ns = self._clock()
+        if now_ns >= expires_at_ns:
+            # Token v2 (Phase 2, Item 4): the signed expiry is enforced
+            # HERE, at consume time, before the store is consulted — an
+            # expired permit fails closed exactly as a revoked one does.
+            # The expiry was authenticated with the token, so no store
+            # row and no holder edit can extend it. The store re-checks
+            # the expiry recorded at issuance as the second layer.
+            self._state.append(
+                "permit_rejected",
+                {"intent_hash": digest, "reason": "permit_expired"},
+                now_ns,
+            )
+            return False
+        # Layering change (2026-11-13, superseding Phase 1's
+        # provenance-only layering): the authenticated token is also
+        # bound to the presented intent HERE, before the store is
+        # consulted. Phase 1 left that binding to the store's check
+        # against the permit row's stored intent hash -- a column the
+        # state-file writer controls, outside the audit chain. A writer
+        # holding any genuine token could therefore rewrite its row's
+        # intent hash (and reset spent) and spend the token for an
+        # intent the kernel never authorized, with the chain still
+        # verifying (Codex P1 on PR #355, independently reproduced).
+        # The token's own authenticated digest is the one statement of
+        # the authorized intent the writer cannot alter, so it is the
+        # one the presented intent is compared against. The store's
+        # binding check remains in place as the second layer, and
+        # single-use and directive-revocation checks remain the store's.
+        embedded_digest = claims[0]
+        if not hmac.compare_digest(embedded_digest.encode(), digest.encode()):
+            self._state.append(
+                "permit_rejected",
+                {"intent_hash": digest, "reason": "permit_intent_mismatch"},
+                self._clock(),
+            )
+            return False
+        return self._state.consume_permit(permit, digest, now_ns)
+
+    def verify_audit_report(self) -> dict[str, Any]:
+        """Verify the audit chain and report its signing coverage.
+
+        Returns ``ok`` plus, for every record, whether it was accepted
+        as signed or as legacy. The signature field is excluded from
+        the hashed body (it is a sibling of ``hash``, not part of it),
+        so the unkeyed chain math is identical to before signing
+        existed. When the state carries no signer, every record
+        verifies legacy-style and ``signing_enabled`` is False — the
+        exact pre-signing behavior. When a signer is configured,
+        every record at or after the legacy prefix must carry a valid
+        signature: a missing one fails as ``audit_signature_missing``,
+        a present-but-wrong one as ``audit_signature_invalid``. A
+        signature that is present anywhere must verify, including on
+        legacy-prefix records — a record carries no signature it cannot
+        prove. Malformed records fail as ``audit_record_malformed``
+        instead of raising, so callers that treat verification as a
+        boolean (boot included) fail closed the same way.
+        """
+
+        signer = getattr(self._state, "audit_signer", None)
+        try:
+            legacy_records = int(getattr(self._state, "legacy_audit_records", 0) or 0)
+        except (TypeError, ValueError):
+            legacy_records = 0
+        report: dict[str, Any] = {
+            "ok": True,
+            "reason": None,
+            "total_records": 0,
+            "signed_records": 0,
+            "unsigned_records": 0,
+            "legacy_records": legacy_records,
+            "signing_enabled": signer is not None,
+            "failed_record": None,
+        }
+        previous = "0" * 64
+        try:
+            records = self.audit
+        except Exception:
+            report.update({"ok": False, "reason": "audit_record_malformed"})
+            return report
+        for index, record in enumerate(records):
+            report["total_records"] = index + 1
+            try:
+                body = {key: value for key, value in record.items() if key not in ("hash", "signature")}
+                if body["previous_hash"] != previous:
+                    report.update({"ok": False, "reason": "audit_previous_hash_mismatch", "failed_record": index})
+                    return report
+                expected = sha256(_canonical(body)).hexdigest()
+                if not hmac.compare_digest(str(record["hash"]), expected):
+                    report.update({"ok": False, "reason": "audit_hash_mismatch", "failed_record": index})
+                    return report
+            except (AttributeError, KeyError, TypeError, ValueError):
+                report.update({"ok": False, "reason": "audit_record_malformed", "failed_record": index})
+                return report
+            signature = record.get("signature") if isinstance(record, dict) else None
+            if signature is not None:
+                if signer is None or not signer.verify(record["hash"], signature):
+                    # With no signer configured there is nothing a
+                    # signature could be verified against, so a present
+                    # signature on an unsigned chain is itself a
+                    # forgery-shaped anomaly: fail rather than ignore.
+                    report.update({"ok": False, "reason": "audit_signature_invalid", "failed_record": index})
+                    return report
+                report["signed_records"] += 1
+            elif signer is not None and index >= legacy_records:
+                report.update({"ok": False, "reason": "audit_signature_missing", "failed_record": index})
+                return report
+            else:
+                report["unsigned_records"] += 1
+            previous = record["hash"]
+        return report
 
     def verify_audit(self) -> bool:
-        previous = "0" * 64
-        for record in self.audit:
-            body = {key: value for key, value in record.items() if key != "hash"}
-            if body["previous_hash"] != previous:
-                return False
-            expected = sha256(_canonical(body)).hexdigest()
-            if not hmac.compare_digest(record["hash"], expected):
-                return False
-            previous = record["hash"]
-        return True
+        return bool(self.verify_audit_report()["ok"])
 
     def _decide(self, outcome: str, reason: str, digest: str, permit: str | None = None) -> Decision:
         decision = Decision(outcome, reason, digest, permit)

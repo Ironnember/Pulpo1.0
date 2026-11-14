@@ -139,6 +139,27 @@ class _IntentBlindState(InMemoryKernelState):
         return valid
 
 
+class _UnguardedConsumeKernel(GovernanceKernel):
+    """Deliberately unguarded kernel double for the negative control.
+
+    Its consume() performs none of the kernel's spend-path checks --
+    neither token authentication nor the token-to-intent binding the
+    kernel itself has enforced since the 2026-11-13 layering change --
+    and delegates straight to the state, restoring the pre-#355 consume
+    path. Paired with the intent-blind state double above, no layer
+    binds the permit to the presented intent, so the substituted spend
+    must TRANSFER here, or the example's denials would be coming from
+    the harness rather than from the binding layers. The store layer's
+    own binding is proven directly in tests/test_writer_custody.py
+    (StateIntentBindingTests).
+    """
+
+    def consume(self, permit: str, intent: Intent) -> bool:
+        return self._state.consume_permit(
+            permit, self.intent_hash(intent), self._clock()
+        )
+
+
 class WireAuthorizationExampleTests(unittest.TestCase):
     def setUp(self) -> None:
         self._tmp = tempfile.TemporaryDirectory()
@@ -159,8 +180,8 @@ class WireAuthorizationExampleTests(unittest.TestCase):
         self.rail = MockPaymentRail(self.ledger_path)
         self.service = WireAuthorizationService(self.kernel, self.rail)
 
-    def _kernel(self, state) -> GovernanceKernel:
-        return GovernanceKernel(
+    def _kernel(self, state, kernel_class=GovernanceKernel) -> GovernanceKernel:
+        return kernel_class(
             self.policy,
             secret=b"unit-test-secret",
             approval_verifier=self.verifier,
@@ -442,8 +463,8 @@ class WireAuthorizationExampleTests(unittest.TestCase):
         # genuinely minted for $100.00 in both; the substituted $999.00
         # intent is then presented for consumption through the service's
         # permit path.
-        def attempt(state) -> tuple[WireResult, MockPaymentRail]:
-            kernel = self._kernel(state)
+        def attempt(state, kernel_class=GovernanceKernel) -> tuple[WireResult, MockPaymentRail]:
+            kernel = self._kernel(state, kernel_class)
             rail = MockPaymentRail(Path(self._tmp.name) / f"ledger-{type(state).__name__}.jsonl")
             service = WireAuthorizationService(kernel, rail)
             approved = service.propose(principal=PRINCIPAL, payee=ACME, amount_cents=100_00)
@@ -453,10 +474,14 @@ class WireAuthorizationExampleTests(unittest.TestCase):
             substituted = service.propose(principal=PRINCIPAL, payee=ACME, amount_cents=999_00)
             return service.execute_with_permit(substituted, decision.permit), rail
 
-        # Under the intent-blind double the substituted execution
-        # TRANSFERS: the double's consume spends any permit for any
-        # intent, so the harness path itself does not deny.
-        blind_result, blind_rail = attempt(_IntentBlindState())
+        # Under the unguarded doubles -- a kernel whose consume skips
+        # token authentication and the kernel's token-to-intent
+        # binding, over an intent-blind state -- the substituted
+        # execution TRANSFERS: no layer's consume binds the permit to
+        # the intent, so the harness path itself does not deny.
+        blind_result, blind_rail = attempt(
+            _IntentBlindState(), kernel_class=_UnguardedConsumeKernel
+        )
         self.assertEqual("allow", blind_result.outcome)
         self.assertIsNotNone(blind_result.transfer)
         self.assertEqual(999_00, blind_result.transfer["amount_cents"])  # type: ignore[index]

@@ -241,7 +241,7 @@ class RestartSafeStateTests(unittest.TestCase):
         record_count_lock = threading.Lock()
         original_audit_record = state_module._audit_record
 
-        def observed_audit_record(previous_hash, event, payload, timestamp_ns):
+        def observed_audit_record(previous_hash, event, payload, timestamp_ns, signer=None):
             nonlocal record_count
             with record_count_lock:
                 record_count += 1
@@ -251,7 +251,11 @@ class RestartSafeStateTests(unittest.TestCase):
                 self.assertTrue(release_first_record.wait(2))
             elif current_record == 2:
                 second_record_started.set()
-            return original_audit_record(previous_hash, event, payload, timestamp_ns)
+            # Re-pinned (Phase 2, Item 1): _audit_record takes an
+            # optional signer; the observer must accept and forward it
+            # or the patched call raises. Observation only — no
+            # assertion here is weakened.
+            return original_audit_record(previous_hash, event, payload, timestamp_ns, signer=signer)
 
         errors = []
 

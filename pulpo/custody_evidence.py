@@ -24,7 +24,7 @@ import sqlite3
 from typing import Callable
 
 from .custody import CustodyViolation, SQLiteGovernanceCustody, TransitionReceipt
-from .state import _audit_record, _canonical
+from .state import AuditSigner, _audit_record, _canonical
 
 
 class CustodyEvidenceViolation(RuntimeError):
@@ -44,10 +44,19 @@ class SQLiteCustodyEvidenceConvergence:
         custody: SQLiteGovernanceCustody,
         *,
         fault_hook: FaultHook | None = None,
+        audit_signer: AuditSigner | None = None,
     ) -> None:
+        # Audit signing (Phase 2, Item 1): this convergence is the one
+        # append route into the canonical audit that does not go through
+        # a KernelState, so it must carry the same signer or refuse. A
+        # projection into a signed chain without a signer would append
+        # an unsigned record the kernel then refuses at boot — a
+        # fail-closed brick, not silent corruption — so the guard below
+        # fails earlier and louder, before anything is written.
         self.custody = custody
         self.path = Path(custody.path)
         self._fault_hook = fault_hook
+        self._audit_signer = audit_signer
         secret = getattr(custody, "_signing_secret", None)
         if not isinstance(secret, bytes) or not secret:
             raise CustodyEvidenceViolation("custody_signing_material_unavailable")
@@ -257,26 +266,70 @@ class SQLiteCustodyEvidenceConvergence:
                 "SELECT hash FROM audit ORDER BY sequence DESC LIMIT 1"
             ).fetchone()
             previous_hash = str(previous[0]) if previous is not None else "0" * 64
+            # Audit signing (Phase 2, Item 1): the canonical chain this
+            # projection appends to may already be signed. A projection
+            # without a signer into a signed chain is refused here —
+            # before the insert — rather than bricking the next kernel
+            # boot with an unsigned record. A chain that predates the
+            # signature column entirely (no column) is unsigned by
+            # construction and projects exactly as before.
+            audit_columns = {
+                row[1]
+                for row in connection.execute("PRAGMA table_info(audit)").fetchall()
+            }
+            signed_records = 0
+            if "signature" in audit_columns:
+                signed_records = int(
+                    connection.execute(
+                        "SELECT COUNT(*) FROM audit WHERE signature IS NOT NULL"
+                    ).fetchone()[0]
+                )
+            if signed_records and self._audit_signer is None:
+                raise CustodyEvidenceViolation(
+                    "canonical_audit_signed_signer_required"
+                )
             record = _audit_record(
                 previous_hash,
                 self.EVENT,
                 payload,
                 receipt.custody_time_ns,
+                signer=self._audit_signer,
             )
-            connection.execute(
-                """
-                INSERT INTO audit
-                    (event, payload_json, previous_hash, timestamp_ns, hash)
-                VALUES (?, ?, ?, ?, ?)
-                """,
-                (
-                    record["event"],
-                    _canonical(record["payload"]).decode(),
-                    record["previous_hash"],
-                    record["timestamp_ns"],
-                    record["hash"],
-                ),
-            )
+            if self._audit_signer is not None:
+                if "signature" not in audit_columns:
+                    raise CustodyEvidenceViolation(
+                        "canonical_audit_signature_column_missing"
+                    )
+                connection.execute(
+                    """
+                    INSERT INTO audit
+                        (event, payload_json, previous_hash, timestamp_ns, hash, signature)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        record["event"],
+                        _canonical(record["payload"]).decode(),
+                        record["previous_hash"],
+                        record["timestamp_ns"],
+                        record["hash"],
+                        record.get("signature"),
+                    ),
+                )
+            else:
+                connection.execute(
+                    """
+                    INSERT INTO audit
+                        (event, payload_json, previous_hash, timestamp_ns, hash)
+                    VALUES (?, ?, ?, ?, ?)
+                    """,
+                    (
+                        record["event"],
+                        _canonical(record["payload"]).decode(),
+                        record["previous_hash"],
+                        record["timestamp_ns"],
+                        record["hash"],
+                    ),
+                )
             self._fault("after_audit_insert")
             cursor = connection.execute(
                 """

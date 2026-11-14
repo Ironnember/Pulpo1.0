@@ -16,6 +16,15 @@ state API surface.  ``verify_anchored_audit`` fails closed unless the anchor
 history is intact and every anchor still matches the exact prefix of the
 presented audit trail it witnessed.
 
+Audit-record signing (Phase 2, Item 1) narrows this module's job: in a
+signed deployment a mid-chain deletion with rehashing is refused at the
+record layer (the recomputed hashes carry no valid signature), so the
+anchor no longer carries that case alone.  Tail truncation still needs
+the anchor — signatures do not bind the chain's length — and this
+module's chain check deliberately verifies only the unkeyed hash chain
+(a record's ``signature`` field is excluded from the hashed body, as
+``hash`` always has been); signature verification stays the kernel's.
+
 Trust domain, stated plainly: anchoring detects tampering with the audit
 store relative to the anchor history the verifier holds.  It does not
 protect against a writer who can also rewrite the anchor store and, for
@@ -332,7 +341,12 @@ def anchor_state(
 def _chain_valid(records: Sequence[dict[str, Any]]) -> bool:
     previous = GENESIS_HASH
     for record in records:
-        body = {key: value for key, value in record.items() if key != "hash"}
+        # ``signature`` is a sibling of ``hash``, not part of the hashed
+        # body (Phase 2, Item 1: audit-record signing): records in a
+        # signed deployment carry one, and the unkeyed chain math must
+        # agree on the same body it always has. Signature verification
+        # itself is the kernel's job (verify_audit), not the witness's.
+        body = {key: value for key, value in record.items() if key not in ("hash", "signature")}
         if body.get("previous_hash") != previous:
             return False
         if not hmac.compare_digest(str(record.get("hash")), sha256(_canonical(body)).hexdigest()):
