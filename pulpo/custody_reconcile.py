@@ -15,6 +15,7 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass
 from hashlib import sha256
+import hmac
 import json
 from typing import Any
 
@@ -36,6 +37,35 @@ def _canonical(value: Any) -> bytes:
 
 def _hash(value: Any) -> str:
     return sha256(_canonical(value)).hexdigest()
+
+
+def _outcome_memory_identity(memory: DomainOutcomeMemory) -> dict[str, Any]:
+    """The identity dict ``record`` hashes to derive ``memory_id``.
+
+    Recomputed on the read side (Codex P1 fix on PR #359) so a stored
+    record whose ``memory_id`` does not match its own fields is refused
+    even if it reached the audit by a route that skipped verification.
+    The derivation here must stay field-for-field identical to the one
+    in ``GovernedDomainOutcomeMemoryProjection.record``.
+    """
+
+    return {
+        "schema": "pulpo.domain-outcome-memory.v0",
+        "attempt_id": memory.attempt_id,
+        "order_hash": memory.order_hash,
+        "target_hash": memory.target_hash,
+        "intent_hash": memory.intent_hash,
+        "policy_hash": memory.policy_hash,
+        "observation_hash": memory.observation_hash,
+        "reconciliation_transition_hash": memory.reconciliation_transition_hash,
+        "reconciliation_epoch": memory.reconciliation_epoch,
+        "reconciliation_outcome": memory.reconciliation_outcome,
+        "classification": memory.classification,
+        "reason": memory.reason,
+        "reusable": memory.reusable,
+        "authority_effect": "none",
+        "governed_effect": "canonical_outcome_memory",
+    }
 
 
 def _valid_hash(value: str | None) -> bool:
@@ -526,6 +556,10 @@ class GovernedDomainOutcomeMemoryProjection:
                 memory = DomainOutcomeMemory(**payload)
             except (TypeError, CustodyViolation) as exc:
                 raise CustodyViolation("outcome_memory_record_invalid") from exc
+            if not hmac.compare_digest(
+                memory.memory_id, _hash(_outcome_memory_identity(memory))
+            ):
+                raise CustodyViolation("outcome_memory_record_identity_mismatch")
             if memory.reconciliation_transition_hash in seen_transitions:
                 raise CustodyViolation("outcome_memory_transition_duplicate")
             seen_transitions.add(memory.reconciliation_transition_hash)
