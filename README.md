@@ -17,6 +17,10 @@ The base dependency-free suite and optional asymmetric-authority suite prove:
 - caller-controlled boolean approval and authorization timestamps are absent
   from the evaluation API;
 - permits are bound to the exact intent and cannot be replayed;
+- revoking a directive or policy invalidates permits already issued under
+  it: revocation is re-checked when a permit is consumed, so a held permit
+  dies at consume time — including across process restart, for pre-issued
+  child permits under a revoked parent, and while consumption is in flight;
 - an optional SQLite state backend preserves approval-ID, nonce, permit, and
   audit state across process restart in the same canonical kernel;
 - persisted audit-chain tampering fails closed when the kernel restarts;
