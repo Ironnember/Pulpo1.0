@@ -35,15 +35,29 @@ At canonical main `c42aad6` (the merge of PR #359), run 2026-11-17:
   - `tests/test_expense_workflow.py` —
     `test_revocation_after_issue_prevents_effect_and_survives_restart`;
   - `tests/test_context_custody_gladiator.py` —
-    `test_policy_revocation_during_permit_consumption_denies`,
-    `test_kernel_policy_revocation_before_release_denies_old_permit`;
+    `test_kernel_policy_revocation_before_release_denies_old_permit`,
+    `test_policy_revocation_during_permit_consumption_denies` (the
+    policy is replaced after `kernel.consume` returns; the test proves
+    the later release is denied under the new policy — post-consumption
+    denial, not reversal of the consumption);
   - `tests/test_inmemory_consume_concurrency.py` —
-    `test_revoke_cannot_land_inside_consume`.
+    `test_revoke_cannot_land_inside_consume` (proves serialized,
+    linearized ordering: a revocation never precedes an admitted
+    consumption in the audit record, and a consumption attempted after
+    the revocation is recorded is denied; it does not show an admitted
+    consumption being invalidated).
 
 Adversarial check applied to the wording itself: the bullet claims only
 behavior those tests exercise — consume-time re-check, restart persistence,
-parent-to-child invalidation, and the in-flight consumption case. It does
-not claim revocation semantics for any surface the suite does not test.
+parent-to-child invalidation, and the serialized ordering of concurrent
+revocation and consumption. It does not claim revocation semantics for
+any surface the suite does not test.
+
+Correction (2026-11-17, after independent review): an earlier draft of
+the README bullet also claimed invalidation "while consumption is in
+flight." That wording overstated the evidence above — the concurrency
+test proves linearized ordering, not in-flight invalidation — and was
+removed before merge; the serialized-ordering statement replaces it.
 
 ## 5. Boundary the evidence does not prove
 
