@@ -93,15 +93,12 @@ over-limit export fails loudly instead of truncating the incident set.
 """
 
 from dataclasses import asdict, dataclass, fields
-import hashlib
 import json
-import os
 import time
 
 from .custody import SQLiteGovernanceCustody
 from .mcp_boundary import MCPBoundaryError, _publish_snapshot
 from .orchestrator import PulpoOrchestrator
-from .state import SQLiteKernelState
 
 KINDS = frozenset({"incident", "near_miss"})
 SOURCES = frozenset({"canonical_audit", "custody_store"})
@@ -344,18 +341,15 @@ def freeze_incident_report(orchestrator, *, custody=None):
     if custody is not None and type(custody) is not SQLiteGovernanceCustody:
         raise TypeError("invalid custody store")
     kernel = orchestrator.kernel
-    backend = kernel._state
-    source_id = hashlib.sha256(f"{os.getpid()}:{id(backend)}".encode()).hexdigest()[:32]
-    if type(backend) is SQLiteKernelState:
-        # Canonical adaptation (port of Preview PR #119): Preview's
-        # SQLiteKernelState connection carries an ``activity_id`` (its
-        # ObservedConnection); canonical's plain sqlite3 connection does
-        # not. Use the connection id when the backend provides one and
-        # keep the process-scoped hash above otherwise -- both are 32-hex
-        # source identifiers, stable for a given backend in this process.
-        activity_id = getattr(backend._connection, "activity_id", None)
-        if type(activity_id) is str and activity_id:
-            source_id = activity_id
+    # Item 3A: the channel needs only the backend's opaque source
+    # identifier, not the backend object. Canonical adaptation (port of
+    # Preview PR #119): Preview's SQLiteKernelState connection carries
+    # an ``activity_id`` (its ObservedConnection); canonical's plain
+    # sqlite3 connection does not. The kernel's ``state_source_id``
+    # preserves that behavior — the connection id when the backend
+    # provides one, a process-scoped hash otherwise; both are 32-hex
+    # source identifiers, stable for a given backend in this process.
+    source_id = kernel.state_source_id()
     audit = kernel.audit
     valid = kernel.verify_audit()
     records = _derive_records(audit, custody, valid)

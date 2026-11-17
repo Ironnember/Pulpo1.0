@@ -17,7 +17,7 @@ import json
 
 from .authority import ApprovalEnvelope
 from .kernel import Decision, GovernanceKernel, Intent
-from .state import DirectivePermitBinding
+from .state import DirectivePermitBinding, VerifiedAuthorityEvidence
 
 
 def _canonical(value: object) -> bytes:
@@ -145,19 +145,25 @@ class DirectiveAuthorityController:
         envelope: ApprovalEnvelope,
         authority_intent: Intent,
         kernel: GovernanceKernel,
-    ) -> dict[str, object]:
-        return {
-            "operation": operation,
-            "directive_id": directive.directive_id,
-            "directive_version": directive.version,
-            "directive_hash": directive.directive_hash,
-            "parent_directive_hash": directive.parent_directive_hash,
-            "authority_id": envelope.authority_id,
-            "approval_id": envelope.approval_id,
-            "envelope_hash": envelope.envelope_hash,
-            "intent_hash": kernel.intent_hash(authority_intent),
-            "policy_hash": kernel.policy_hash,
-        }
+    ) -> VerifiedAuthorityEvidence:
+        # Item 3A: this is the only production construction site for
+        # VerifiedAuthorityEvidence, and it is reached only after
+        # _authorize has verified the envelope through the kernel and
+        # consumed the one-use authority permit. The state layer
+        # requires the type, so the evidence can no longer be an
+        # opaque dict a handle holder invents (design repro 3, part B).
+        return VerifiedAuthorityEvidence(
+            operation=operation,
+            directive_id=directive.directive_id,
+            directive_version=directive.version,
+            directive_hash=directive.directive_hash,
+            parent_directive_hash=directive.parent_directive_hash,
+            authority_id=envelope.authority_id,
+            approval_id=envelope.approval_id,
+            envelope_hash=envelope.envelope_hash,
+            intent_hash=kernel.intent_hash(authority_intent),
+            policy_hash=kernel.policy_hash,
+        )
 
     def _trusted_now(self) -> int:
         now_ns = self.kernel._trusted_now()
@@ -228,7 +234,7 @@ class DirectiveAuthorityController:
         failure = directive.derivation_failure(parent_directive)
         if failure:
             return Decision("deny", failure, digest)
-        parent_status = self.kernel._state.directive_hash_status(parent_directive.directive_hash)
+        parent_status = self.kernel.directive_hash_status(parent_directive.directive_hash)
         if parent_status != "active":
             return Decision("deny", parent_status, digest)
         now_ns = self._trusted_now()
@@ -263,7 +269,7 @@ class DirectiveAuthorityController:
         if decision.outcome != "allow":
             return decision
         try:
-            self.kernel._state.activate_directive(
+            self.kernel.activate_directive(
                 directive,
                 self._evidence(self.ACTIVATE, directive, envelope, authority_intent, self.kernel),
                 self._trusted_now(),
@@ -291,7 +297,7 @@ class DirectiveAuthorityController:
         )
         if decision.outcome != "allow":
             return decision
-        self.kernel._state.revoke_directive(
+        self.kernel.revoke_directive(
             directive.directive_id,
             directive.version,
             self._evidence(self.REVOKE, directive, envelope, authority_intent, self.kernel),
@@ -313,7 +319,7 @@ class GovernedDirectiveProjection:
         return now_ns
 
     def evaluate(self, intent: Intent, directive: Directive) -> Decision:
-        status = self.kernel._state.directive_status(
+        status = self.kernel.directive_status(
             directive.directive_id,
             directive.version,
             directive.directive_hash,
@@ -322,7 +328,7 @@ class GovernedDirectiveProjection:
         if status != "active":
             return Decision("deny", status, digest)
         if directive.parent_directive_hash is not None:
-            parent_status = self.kernel._state.directive_hash_status(directive.parent_directive_hash)
+            parent_status = self.kernel.directive_hash_status(directive.parent_directive_hash)
             if parent_status != "active":
                 return Decision("deny", parent_status, digest)
         now_ns = self._trusted_now()
@@ -332,7 +338,7 @@ class GovernedDirectiveProjection:
 
         decision = self.kernel.evaluate(intent)
         if decision.outcome == "allow" and decision.permit is not None:
-            self.kernel._state.bind_permit_to_directive(
+            self.kernel.bind_permit_to_directive(
                 decision.permit,
                 digest,
                 directive.permit_binding,
