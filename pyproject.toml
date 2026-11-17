@@ -4,8 +4,10 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pulpo"
-version = "0.1.0"
+version = "0.2.0"
 description = "A minimal AI governance and evidence kernel"
+readme = "README.md"
+license = { file = "LICENSE" }
 requires-python = ">=3.11"
 
 [project.optional-dependencies]
