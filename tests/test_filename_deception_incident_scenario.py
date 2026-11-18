@@ -277,6 +277,7 @@ class ClaimReconciliation:
     undisclosed_attempts: frozenset[str]  # in the record, missing from the claim
     unbacked_consequences: frozenset[str]  # claimed, never executed per the record
     missing_consequences: frozenset[str]  # executed per the record, missing from the claim
+    phantom_attempts: frozenset[str]  # claimed as attempted, absent from the record
     audit_valid: bool = True  # False when verify_audit() fails / the chain is invalid
 
 
@@ -294,12 +295,14 @@ def reconcile_against_audit(kernel: GovernanceKernel, claim: dict) -> ClaimRecon
     undisclosed = frozenset(attempts - claimed_attempts)
     unbacked = frozenset(claimed_consequences - consequences)
     missing = frozenset(consequences - claimed_consequences)
-    ok = audit_valid and not (undisclosed or unbacked or missing)
+    phantom = frozenset(claimed_attempts - attempts)
+    ok = audit_valid and not (undisclosed or unbacked or missing or phantom)
     return ClaimReconciliation(
         ok=ok,
         undisclosed_attempts=undisclosed,
         unbacked_consequences=unbacked,
         missing_consequences=missing,
+        phantom_attempts=phantom,
         audit_valid=audit_valid,
     )
 
@@ -583,6 +586,41 @@ class FilenameDeceptionIncidentScenarioTests(unittest.TestCase):
         }
         honest = reconcile_against_audit(self.kernel, honest_claim)
         self.assertTrue(honest.ok)
+        self.assertTrue(self.kernel.verify_audit())
+
+    # -- step 5b: reconciliation — a claim may not invent attempts ---------
+
+    def test_step5_reconciliation_rejects_phantom_attempts(self) -> None:
+        issued = self._issue_all(self.kernel)
+        self._create_both(self.kernel, issued)
+        submit_permit = issued["submit-1"][0]
+        # The incident's attempts, then the genuine submissions.
+        self.assertFalse(self.ledger.execute(self.kernel, submit_permit, RENAME_LONG_INTENT))
+        self.assertFalse(self.ledger.execute(self.kernel, submit_permit, RENAME_SHORT_INTENT))
+        self.assertFalse(
+            self.ledger.execute(self.kernel, submit_permit, SUBMIT_DECEPTIVE_INTENT)
+        )
+        self.assertTrue(self.ledger.execute(self.kernel, submit_permit, SUBMIT_1_INTENT))
+        self.assertTrue(self.ledger.execute(self.kernel, issued["submit-2"][0], SUBMIT_2_INTENT))
+        authorized_hashes = {self.hashes[intent] for intent in AUTHORIZED_INTENTS}
+        deceptive_hashes = {self.hashes[intent] for intent in DECEPTIVE_INTENTS}
+        # The mirror-image forgery: disclose everything real, then pad the
+        # claimed history with an attempt that never happened. Exact
+        # reconciliation compares in both directions — a claim is no more
+        # free to invent attempts than it is to hide them.
+        phantom = "0" * 64
+        self.assertNotIn(phantom, authorized_hashes | deceptive_hashes)
+        padded_claim = {
+            "consequences": sorted(authorized_hashes),
+            "attempts": sorted(deceptive_hashes) + [phantom],
+        }
+        result = reconcile_against_audit(self.kernel, padded_claim)
+        self.assertFalse(result.ok)
+        self.assertTrue(result.audit_valid)
+        self.assertEqual(frozenset({phantom}), result.phantom_attempts)
+        self.assertEqual(frozenset(), result.undisclosed_attempts)
+        self.assertEqual(frozenset(), result.unbacked_consequences)
+        self.assertEqual(frozenset(), result.missing_consequences)
         self.assertTrue(self.kernel.verify_audit())
 
     # -- negative control -------------------------------------------------------

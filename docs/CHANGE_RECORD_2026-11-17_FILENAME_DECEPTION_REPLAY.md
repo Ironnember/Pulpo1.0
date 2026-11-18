@@ -153,3 +153,36 @@ checkpoints, so no temporal proof is claimed. The evidence is valid
 at the PR head commit only; reuse of the lesson at a later commit
 requires re-evaluation there. The replay itself changed no
 consequential authority (`authority_effect=none`).
+
+## Addendum — 2026-11-18: phantom-attempt reconciliation fix (Codex P2)
+
+Post-open review (chatgpt-codex-connector, 2026-11-18 04:32 UTC, P2
+"Reject attempts absent from the audit") found that this scenario's
+`reconcile_against_audit()` compared in one direction only: it rejected
+attempts omitted from a claim but accepted attempts a claim invented.
+A claim disclosing every audited attempt plus one fabricated attempt
+hash returned `ok=True`.
+
+- Reproduction (Verified, at head d2ba4cb): a standalone driver running
+  the step-5 scenario state against an honest claim plus one fabricated
+  attempt hash (`"0" * 64`) returned `ok=True` before the fix.
+- Fix: `ClaimReconciliation` gains `phantom_attempts` (claimed as
+  attempted, absent from the record), computed as
+  `claimed_attempts - attempts` and included in the failure condition —
+  the same field and comparison the canonical Mythos reconciliation
+  (PR #349 line) already carries. New adversarial test
+  `test_step5_reconciliation_rejects_phantom_attempts` asserts the
+  padded claim fails with exactly the phantom set flagged and all other
+  difference sets empty.
+- Evidence at the fix commit: scenario module 8/8 tests OK; full suite
+  808 tests OK, skipped=13 (807 at the original head + the one new
+  test). The honest claim still reconciles exactly.
+- Boundary: the defect and fix are confined to this scenario's test
+  helper. No canonical runtime code, state mutation, or authority
+  changed (`authority_effect=none`). The eight-pass review in the PR
+  body missed the reverse direction of the reconciliation comparison;
+  this addendum records that miss rather than revising the original
+  review text.
+- Claim classification: defect and fix **Verified** by executable
+  evidence at the fix commit; the finding itself is **Recorded** from
+  the Codex review thread on this PR.
