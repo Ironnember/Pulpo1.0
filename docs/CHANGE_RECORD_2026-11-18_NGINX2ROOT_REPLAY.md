@@ -177,3 +177,43 @@ claimed. The evidence is valid at the PR head commit only; reuse of
 the lesson at a later commit requires re-evaluation there. The
 replay itself changed no consequential authority
 (`authority_effect=none`).
+
+## Addendum — 2026-11-18: reconciliation evidence restricted to probe intents (Codex P1 review finding on PR #363)
+
+### Finding (held — Verified in source at head `fc97779`)
+
+Codex P1, "Restrict reconciliation evidence to probe intents," on
+`tests/test_nginx2root_incident_scenario.py`: `reconcile_findings`
+built its evidence set from **every** `permit_consumed` audit
+record, regardless of action. The scenario's positive control
+legitimately consumes the `run_audit_scan` and `submit_finding`
+intents alongside the probe, so a hostile report could place either
+consumed hash in `claimed_probe_hashes` and reconcile `ok` even
+though no probe with that hash ever ran — contradicting the
+helper's own stated contract ("supported only by a consumed probe
+act"). The finding held exactly as filed.
+
+### Fix
+
+The evidence set is now restricted to consumed records whose
+payload `intent_hash` equals the kernel's intent hash of one of the
+scenario's `probe_target` intents (`PROBE_INTENT`,
+`PROBE_PROD_INTENT`, computed via `kernel.intent_hash`); the
+docstring states the restriction explicitly. The return shape
+(`{ok, phantom_findings, attempts}`) is unchanged, and both
+existing callers (step 4's honest and padded claims) are
+unaffected: the honest probe claim still reconciles, and the
+denied production probe is still flagged as the sole phantom.
+
+New negative case, step 4b
+(`test_step4b_scan_and_submit_hashes_do_not_support_a_finding`):
+after a run in which the scan, the probe, and the submission were
+all legitimately consumed, claiming the scan intent's hash — or
+the submission intent's hash — as a probe finding returns
+`ok=False` with the borrowed hash in `phantom_findings`.
+
+Evidence at the fix commit: scenario module 8/8 passing; full
+suite **808 tests, OK (skipped=13)** — the original head's baseline
+was 807 OK (skipped=13), and the delta is exactly the one new
+regression test. Test-only change; `authority_effect=none`;
+claim classification of the finding: **Verified** (held).

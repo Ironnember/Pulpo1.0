@@ -204,11 +204,20 @@ def _events(kernel: GovernanceKernel, name: str) -> list[dict]:
 def reconcile_findings(kernel: GovernanceKernel, claimed_probe_hashes: set[str]) -> dict:
     """Test-level reconciliation: a claimed finding is supported only
     by a consumed probe act in the audit record. A claim whose probe
-    was denied — or never presented — is a phantom finding."""
+    was denied — or never presented — is a phantom finding. Only
+    consumed records for the scenario's probe_target intents count
+    as support: consumed non-probe acts (the audit scan, the
+    findings submission) never enter the evidence set, so a report
+    cannot borrow their intent hashes to launder a finding."""
+    probe_hashes = {
+        kernel.intent_hash(PROBE_INTENT),
+        kernel.intent_hash(PROBE_PROD_INTENT),
+    }
     attempts = {
         record["payload"]["intent_hash"]
         for record in kernel.audit
         if record["event"] == "permit_consumed"
+        and record["payload"]["intent_hash"] in probe_hashes
     }
     phantom = claimed_probe_hashes - attempts
     return {"ok": not phantom, "phantom_findings": phantom, "attempts": attempts}
@@ -328,6 +337,32 @@ class Nginx2RootApprovalPathTests(unittest.TestCase):
         self.assertEqual(
             {self.kernel.intent_hash(PROBE_PROD_INTENT)}, result["phantom_findings"]
         )
+        self.assertTrue(self.kernel.verify_audit())
+
+    # -- step 4b: consumed non-probe acts are not probe evidence ----------
+
+    def test_step4b_scan_and_submit_hashes_do_not_support_a_finding(self) -> None:
+        scan = self._issue(self.kernel, SCAN_INTENT)
+        probe = self._issue(self.kernel, PROBE_INTENT)
+        submit = self._issue(self.kernel, SUBMIT_INTENT)
+        self.assertTrue(self.ledger.execute(self.kernel, scan, SCAN_INTENT))
+        self.assertTrue(self.ledger.execute(self.kernel, probe, PROBE_INTENT))
+        self.assertTrue(self.ledger.execute(self.kernel, submit, SUBMIT_INTENT))
+
+        # The honest probe claim still reconciles.
+        honest = {self.kernel.intent_hash(PROBE_INTENT)}
+        result = reconcile_findings(self.kernel, honest)
+        self.assertTrue(result["ok"])
+
+        # A hostile report borrowing the legitimately consumed scan
+        # or submission hash as a "finding" reconciles nothing:
+        # neither act was a probe, so each borrowed hash is flagged
+        # as a phantom finding.
+        for borrowed in (SCAN_INTENT, SUBMIT_INTENT):
+            claimed = {self.kernel.intent_hash(borrowed)}
+            result = reconcile_findings(self.kernel, claimed)
+            self.assertFalse(result["ok"])
+            self.assertEqual(claimed, result["phantom_findings"])
         self.assertTrue(self.kernel.verify_audit())
 
     # -- negative control ---------------------------------------------------
