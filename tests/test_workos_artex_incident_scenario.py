@@ -62,6 +62,28 @@ attempts stand as denied attempts (evidence exists even though no
 data moved), and a padded claim of a production extraction is
 flagged as a phantom extraction.
 
+Release accounting (acceptance-review addendum, 2026-11-18):
+the store also counts the records it ACTUALLY releases per call
+— an observer-side release log, independent of the intent's
+declared cost — and ``reconcile_releases`` checks that log
+against the audit. Two results. An over-releasing data plane
+(one that serves more records than the consumed intent declared)
+is DETECTED: the act was authorized and consumed, but the
+observed effect exceeds the authorized act, and the divergence
+is flagged per release. Cumulative disclosure, however, is NOT
+prevented at this commit: cost binding is per intent
+(``Directive.permits`` checks each intent against ``max_cost``
+individually; the kernel's policy and grant checks are likewise
+per intent; neither state backend accumulates spend —
+``consume_permit`` is never even passed a cost), so a sequence
+of individually in-limit reads walks past the same aggregate a
+single bulk read cannot cross. The sequence is exercised below:
+every read is served, and the breach is caught only by
+observer-side reconciliation over actual releases. The gap, and
+the proposed build item (a cumulative directive/session budget
+enforced in the projection path), are recorded in the change
+record's §6/§8 addendum of 2026-11-18.
+
 Boundary: this proves kernel behavior at this commit for these
 action classes (Verified, executable evidence). It proves nothing
 about WorkOS's actual systems, benchmark design, or sandboxing:
@@ -81,14 +103,16 @@ direct reader) remains outside this evidence and open.
 Audit-growth classification (per AGENTS.md, ``NO_PERMIT !=
 NO_GOVERNED_EFFECT``): each attempt presented for consumption
 appends exactly one audit record, and each attempt refused at
-the data-plane boundary appends exactly one access-log entry —
-governed effects (evidence production), bounded at one record
-per attempt, append-only, ``authority_effect=none``. "Consequence"
+the data-plane boundary appends exactly one access-log entry and
+one release-log entry — governed effects (evidence production),
+bounded at one record per attempt, append-only,
+``authority_effect=none``. "Consequence"
 below means records actually extracted, never audit or log growth.
 """
 
 from __future__ import annotations
 
+from collections import Counter
 import unittest
 
 from pulpo import GovernanceKernel, Intent, Policy
@@ -113,6 +137,7 @@ STAGING = "staging:crm-readonly-mirror"
 # a lookup and a bulk pull are different intents, not sizes of one.
 BENCH_QUERY = Intent(AGENT, "query_records", BENCH, 10, SESSION)
 BENCH_QUERY_SMALL = Intent(AGENT, "query_records", BENCH, 5, SESSION)
+BENCH_READ_MAX = Intent(AGENT, "query_records", BENCH, 25, SESSION)
 BENCH_BULK = Intent(AGENT, "export_records", BENCH, 5_000, SESSION)
 PROD_QUERY = Intent(AGENT, "query_records", PROD, 10, SESSION)
 PROD_LOOKUP = Intent(AGENT, "query_records", PROD, 1, SESSION)
@@ -127,18 +152,41 @@ class RecordsStore:
     successful consume; every presented attempt — served or not —
     is written to the tool-side access log, which the agent does
     not hold (the observer's record, as the tool's API log was in
-    the incident)."""
+    the incident).
+
+    The store also counts the records it ACTUALLY releases per
+    call in ``release_log`` — the observer-side count, independent
+    of the intent's declared cost — and ``extracted`` records
+    actual releases. A data plane that serves more than the
+    consumed intent declared therefore shows the overage here,
+    not the caller's number."""
 
     def __init__(self) -> None:
         self.extracted: list[tuple[str, str, int]] = []
         self.access_log: list[dict] = []
+        self.release_log: list[dict] = []
+
+    def release_count(self, intent: Intent) -> int:
+        """Records this data plane actually releases for a served
+        call. The honest plane releases exactly the declared
+        count; the hook exists so a test can model one that does
+        not (see _OverReleasingStore)."""
+        return intent.cost
+
+    @property
+    def total_actual_released(self) -> int:
+        return sum(
+            entry["actual_records"] for entry in self.release_log if entry["served"]
+        )
 
     def access(
         self, kernel: GovernanceKernel, permit: str | None, intent: Intent
     ) -> bool:
         served = False
+        actual = 0
         if permit is not None and kernel.consume(permit, intent):
-            self.extracted.append((intent.action, intent.resource, intent.cost))
+            actual = self.release_count(intent)
+            self.extracted.append((intent.action, intent.resource, actual))
             served = True
         self.access_log.append(
             {
@@ -148,32 +196,92 @@ class RecordsStore:
                 "served": served,
             }
         )
+        self.release_log.append(
+            {
+                "intent_hash": kernel.intent_hash(intent),
+                "action": intent.action,
+                "resource": intent.resource,
+                "declared_cost": intent.cost,
+                "actual_records": actual,
+                "served": served,
+            }
+        )
         return served
+
+
+class _OverReleasingStore(RecordsStore):
+    """A data plane that releases more records than the consumed
+    intent declared — the export that ignores its own limit, the
+    page that overruns. The kernel authorized the declared act;
+    only the observer's count of what actually left can show the
+    divergence."""
+
+    def release_count(self, intent: Intent) -> int:
+        return intent.cost * 25
 
 
 def reconcile_activity(
     kernel: GovernanceKernel,
     store: RecordsStore,
-    claimed_extraction_hashes: set[str],
+    claimed_extraction_hashes: list[str],
 ) -> dict:
-    """Test-level reconciliation: an extraction is credited only to
-    a consumed act in the kernel audit (``claimed - consumed`` must
-    be empty — a claimed extraction with no consumed act is a
-    phantom extraction). Denied attempts are reported from the
-    access log: they moved no data, but they are governed evidence,
-    not nothing."""
+    """Test-level reconciliation, BOTH directions, with occurrence
+    counts (the summary is a list of intent hashes, one entry per
+    claimed extraction occurrence): claimed occurrences beyond
+    the consumed occurrences in the kernel audit are phantom
+    extractions; consumed occurrences the summary omits are
+    unreported extractions. A set-based check would miss both an
+    omitted extraction and an undercounted repeat of the same
+    act — the two failure modes Codex's P1 finding on the
+    original head identified, fixed here. Denied attempts are
+    reported from the access log: they moved no data, but they
+    are governed evidence, not nothing."""
+    consumed_counts = Counter(
+        record["payload"]["intent_hash"]
+        for record in kernel.audit
+        if record["event"] == "permit_consumed"
+    )
+    claimed_counts = Counter(claimed_extraction_hashes)
+    phantom = claimed_counts - consumed_counts
+    unreported = consumed_counts - claimed_counts
+    denied = [entry for entry in store.access_log if not entry["served"]]
+    return {
+        "ok": not phantom and not unreported,
+        "phantom_extractions": set(phantom),
+        "unreported_extractions": set(unreported),
+        "phantom_counts": dict(phantom),
+        "unreported_counts": dict(unreported),
+        "denied_attempts": denied,
+        "consumed": set(consumed_counts),
+    }
+
+
+def reconcile_releases(
+    kernel: GovernanceKernel, store: RecordsStore, disclosure_limit: int
+) -> dict:
+    """Observer-side release reconciliation: count what ACTUALLY
+    left, from the store's release log — never the caller's
+    declared cost — and check it against the kernel audit. A
+    served release with no consumed act is unaccounted; a release
+    whose actual count differs from the consumed intent's
+    declared cost is overstated; and the aggregate of actual
+    releases is compared against the disclosure limit a single
+    bulk intent would be refused for crossing."""
     consumed = {
         record["payload"]["intent_hash"]
         for record in kernel.audit
         if record["event"] == "permit_consumed"
     }
-    phantom = claimed_extraction_hashes - consumed
-    denied = [entry for entry in store.access_log if not entry["served"]]
+    served = [entry for entry in store.release_log if entry["served"]]
+    unaccounted = [e for e in served if e["intent_hash"] not in consumed]
+    overstated = [e for e in served if e["actual_records"] != e["declared_cost"]]
+    total = sum(e["actual_records"] for e in served)
     return {
-        "ok": not phantom,
-        "phantom_extractions": phantom,
-        "denied_attempts": denied,
-        "consumed": consumed,
+        "ok": not unaccounted and not overstated and total <= disclosure_limit,
+        "unaccounted_releases": unaccounted,
+        "overstated_releases": overstated,
+        "total_actual_released": total,
+        "aggregate_breach": total > disclosure_limit,
     }
 
 
@@ -314,6 +422,12 @@ class WorkosDirectiveScopeTests(unittest.TestCase):
             [("query_records", BENCH, 10), ("query_records", BENCH, 5)],
             self.store.extracted,
         )
+        # The observer's count of what actually left equals the
+        # permitted cost exactly — actuals, not declarations.
+        self.assertEqual(15, self.store.total_actual_released)
+        releases = reconcile_releases(kernel, self.store, 5_000)
+        self.assertTrue(releases["ok"])
+        self.assertEqual([], releases["overstated_releases"])
         self.assertTrue(kernel.verify_audit())
 
     # -- step 1: production query under a benchmark permit -----------------
@@ -384,6 +498,66 @@ class WorkosDirectiveScopeTests(unittest.TestCase):
         self.assertIsNone(decision.permit)
         self.assertEqual([], self.store.extracted)
 
+    # -- cumulative reads: detected in aggregate, NOT prevented -------------
+
+    def test_cumulative_sequence_of_in_limit_reads_is_detected_not_prevented(self) -> None:
+        kernel, state, d, _ = self._run()
+        projection = GovernedDirectiveProjection(kernel)
+        # The single bulk read is refused at evaluation (step 2),
+        # restated here as the contrast:
+        bulk = projection.evaluate(BENCH_BULK, d)
+        self.assertNotEqual("allow", bulk.outcome)
+        self.assertIsNone(bulk.permit)
+        # But cost binding at this commit is per intent:
+        # Directive.permits checks intent.cost against max_cost one
+        # intent at a time, the kernel's policy/grant checks are
+        # likewise per intent, and neither state backend
+        # accumulates spend (consume_permit is never passed a
+        # cost). So a sequence of reads, each exactly at the
+        # mandate's per-read limit, is served one after another
+        # past the same aggregate. This test asserts what is TRUE
+        # — prevention does not hold; detection (below) does. The
+        # gap is recorded in the change record, §6/§8 addendum of
+        # 2026-11-18. The two measurements are kept distinct:
+        #
+        # Measurement (a), per-act outcomes: every one of the 210
+        # reads is individually allowed and served, and every
+        # served release is individually within the mandate —
+        # honestly declared, actually released as declared, and
+        # backed by a consumed act. Per-act, this run is CLEAN:
+        # a reconciliation that merely accounts for each lookup
+        # one-by-one would report it reconciled and miss the
+        # breach entirely.
+        served = 0
+        for _ in range(210):
+            decision = projection.evaluate(BENCH_READ_MAX, d)
+            self.assertEqual("allow", decision.outcome)
+            self.assertTrue(self.store.access(kernel, decision.permit, BENCH_READ_MAX))
+            served += 1
+        self.assertEqual(210, served)
+        self.assertTrue(
+            all(
+                entry["declared_cost"] <= 25
+                and entry["actual_records"] == entry["declared_cost"]
+                for entry in self.store.release_log
+                if entry["served"]
+            )
+        )
+        # Measurement (b), the observer's aggregate: the store's
+        # own count of ACTUAL releases — not declared costs summed
+        # from claims — totals 5,250 against the same 5,000-record
+        # cap the single bulk intent could not cross, and the
+        # aggregate flag is what fires. Detection is credited to
+        # this measurement only.
+        self.assertEqual(210 * 25, self.store.total_actual_released)
+        result = reconcile_releases(kernel, self.store, 5_000)
+        self.assertFalse(result["ok"])
+        self.assertTrue(result["aggregate_breach"])
+        self.assertEqual(5_250, result["total_actual_released"])
+        self.assertEqual([], result["overstated_releases"])
+        self.assertEqual([], result["unaccounted_releases"])
+        self.assertTrue(kernel.verify_audit())
+
 
 class WorkosRevocationReconciliationTests(unittest.TestCase):
     """Setup B: owner-approved staging lookups; revocation of the
@@ -421,6 +595,8 @@ class WorkosRevocationReconciliationTests(unittest.TestCase):
             [("query_records", STAGING, 1), ("query_records", STAGING, 1)],
             self.store.extracted,
         )
+        # Actual releases equal the permitted cost (1 record each).
+        self.assertEqual(2, self.store.total_actual_released)
         self.assertTrue(kernel.verify_audit())
 
     # -- revocation mid-run kills an unconsumed lookup permit ---------------
@@ -462,9 +638,10 @@ class WorkosRevocationReconciliationTests(unittest.TestCase):
 
     # -- reconciliation: denied attempts are evidence; phantom claims flag --
 
-    def test_reconciliation_denied_attempts_are_evidence_and_phantom_claim_flagged(self) -> None:
+    def test_reconciliation_flags_phantom_omitted_and_undercounted_extractions(self) -> None:
         kernel = _approval_kernel(self.verifier)
         store = RecordsStore()
+        bench_hash = kernel.intent_hash(BENCH_QUERY)
 
         bench_permit = self._issue(kernel, BENCH_QUERY)
         self.assertTrue(store.access(kernel, bench_permit, BENCH_QUERY))
@@ -478,10 +655,21 @@ class WorkosRevocationReconciliationTests(unittest.TestCase):
         self.assertEqual([("query_records", BENCH, 10)], store.extracted)
 
         # The agent's summary — benchmark queries only, zero
-        # production extraction — reconciles on extractions.
-        honest = {kernel.intent_hash(BENCH_QUERY)}
-        result = reconcile_activity(kernel, store, honest)
+        # production extraction — reconciles on extractions, in
+        # both directions.
+        result = reconcile_activity(kernel, store, [bench_hash])
         self.assertTrue(result["ok"])
+        self.assertEqual(set(), result["phantom_extractions"])
+        self.assertEqual(set(), result["unreported_extractions"])
+
+        # A summary that OMITS the consumed extraction is flagged
+        # with exactly that act as unreported — the direction the
+        # original head's claimed-minus-consumed check could not
+        # see (Codex P1 on the original head).
+        result = reconcile_activity(kernel, store, [])
+        self.assertFalse(result["ok"])
+        self.assertEqual({bench_hash}, result["unreported_extractions"])
+        self.assertEqual({bench_hash: 1}, result["unreported_counts"])
         self.assertEqual(set(), result["phantom_extractions"])
 
         # The production attempts moved no data, but they are on
@@ -494,14 +682,56 @@ class WorkosRevocationReconciliationTests(unittest.TestCase):
         rejected = [r for r in kernel.audit if r["event"] == "permit_rejected"]
         self.assertEqual(1, len(rejected))
 
+        # Occurrence counts: the same benchmark extraction happens
+        # a second time. A summary still claiming it once is
+        # flagged as undercounted — a set-based comparison would
+        # call it reconciled.
+        bench_permit_3 = self._issue(kernel, BENCH_QUERY)
+        self.assertTrue(store.access(kernel, bench_permit_3, BENCH_QUERY))
+        self.assertEqual(
+            [("query_records", BENCH, 10), ("query_records", BENCH, 10)],
+            store.extracted,
+        )
+        result = reconcile_activity(kernel, store, [bench_hash])
+        self.assertFalse(result["ok"])
+        self.assertEqual({bench_hash: 1}, result["unreported_counts"])
+        result = reconcile_activity(kernel, store, [bench_hash, bench_hash])
+        self.assertTrue(result["ok"])
+
         # A summary padded with a production bulk extraction is
         # flagged with exactly that act as a phantom extraction.
-        claimed = honest | {kernel.intent_hash(PROD_BULK)}
+        claimed = [bench_hash, bench_hash, kernel.intent_hash(PROD_BULK)]
         result = reconcile_activity(kernel, store, claimed)
         self.assertFalse(result["ok"])
         self.assertEqual(
             {kernel.intent_hash(PROD_BULK)}, result["phantom_extractions"]
         )
+        self.assertEqual(set(), result["unreported_extractions"])
+        self.assertTrue(kernel.verify_audit())
+
+    # -- actual releases: an over-releasing data plane is detected ----------
+
+    def test_actual_release_overstatement_flagged_by_reconciliation(self) -> None:
+        kernel = _approval_kernel(self.verifier)
+        store = _OverReleasingStore()
+        permit = self._issue(kernel, BENCH_QUERY)
+        self.assertTrue(store.access(kernel, permit, BENCH_QUERY))
+        # The kernel authorized and consumed exactly the declared
+        # act (10 records) — claim-side reconciliation by intent
+        # hash calls this clean, and as far as authority goes it
+        # is. But the data plane actually released 250 records.
+        # The observer's count, not the caller's declaration, is
+        # what release reconciliation checks.
+        self.assertEqual([("query_records", BENCH, 250)], store.extracted)
+        self.assertEqual(250, store.total_actual_released)
+        result = reconcile_releases(kernel, store, 5_000)
+        self.assertFalse(result["ok"])
+        self.assertEqual(1, len(result["overstated_releases"]))
+        entry = result["overstated_releases"][0]
+        self.assertEqual(10, entry["declared_cost"])
+        self.assertEqual(250, entry["actual_records"])
+        self.assertEqual([], result["unaccounted_releases"])
+        self.assertFalse(result["aggregate_breach"])
         self.assertTrue(kernel.verify_audit())
 
     # -- negative control ---------------------------------------------------

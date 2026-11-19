@@ -194,6 +194,84 @@ behavior at the PR head commit for these action classes only.
 - Any claim that this prevents the incident class in a deployed
   system: **Proposed** — not made by this PR.
 
+**Addendum — cumulative disclosure and actual-release
+verification (2026-11-18, acceptance review).** After the
+original head (`3b378fa`) was reported, the acceptance criterion
+was sharpened: a bulk read *and* a sequence of smaller reads
+that together exceed the same disclosure limit must both be
+denied, and the actual records released must be verified rather
+than the caller's declared cost trusted. Two tests were added
+and one existing test extended (scenario now 12 tests; full
+suite at the new head: 820 tests, OK, skipped=13 — these counts
+supersede §4's, which describe the original head). Findings, by
+code inspection and executable evidence:
+
+- Per-intent cost binding: **Verified**. A single intent whose
+  cost exceeds the mandate is refused before any permit exists
+  (step 2), and the store's observer-side count of actual
+  releases equals the permitted cost in every positive control.
+- Declared-vs-actual divergence: **Verified** as detectable.
+  The store now counts actual releases independently of the
+  intent's declared cost (`release_log`); a data plane that
+  releases more records than the consumed intent declared is
+  flagged by release reconciliation (`reconcile_releases`) even
+  though the act itself was authorized and consumed — claim-side
+  reconciliation by intent hash alone calls that act clean.
+- Cumulative (aggregate) disclosure prevention: **GAP —
+  recorded, not claimed.** No cumulative or session-level
+  budget exists for directive-path permits at this commit.
+  `Directive.permits` (`pulpo/directives.py`) checks each
+  intent's cost against `max_cost` individually; the kernel's
+  policy check and per-principal grant check
+  (`GovernanceKernel._policy_failure`, `pulpo/kernel.py`) are
+  likewise per intent; neither state backend accumulates spend
+  — `consume_permit` receives no cost and records only
+  single-use, directive-binding status, and expiry. The
+  codebase's one cumulative budget (`pulpo/commerce.py`:
+  ceiling / spent / reserved, `insufficient_available_budget`)
+  serves the bounded commerce pilot's purchase orders in cents,
+  is imported only by the custody-domain modules, and is not
+  wired into the kernel, the directive projection, or any state
+  backend. Exercised consequence: 210 consecutive benchmark
+  reads of 25 records each — every one within the mandate's
+  per-read limit — are ALL served, releasing 5,250 records past
+  the same 5,000-record limit the single bulk intent cannot
+  cross. Observer-side reconciliation over actual releases
+  detects and flags the aggregate breach; nothing in the kernel
+  prevents it. Detection is established only at the aggregate:
+  per-act accounting of the same run is completely clean (every
+  release consumed, honestly declared, within the per-read
+  limit), so a reconciliation that merely accounts for each
+  lookup one-by-one would report the run reconciled and miss
+  the breach. The incident's bulk retrieval was a single
+  high-volume burst, which per-intent binding does stop; a
+  patient sequence of small reads under per-read mandates is
+  the residual form of the incident's "missing rate limits" gap,
+  and it is open. (Codex's P1 finding on the original head
+  converged on this point independently, from the PR body's
+  Amplify conclusion. Disposition: the repeated-small-request
+  adversarial case is added and the evidence claim is narrowed
+  to per-act — the Amplify wording is qualified in the PR body
+  addendum — while the aggregate quota itself is the §8 build
+  item, not something this test-only PR enforces.)
+- Reconciliation completeness (Codex P1 on the original head,
+  2026-11-18): **Verified** as a defect in this scenario's
+  test-level reconciliation at the original head —
+  `reconcile_activity` checked claimed − consumed (phantom
+  claims) but not consumed − claimed, and collapsed repeated
+  identical extractions into a set, so a summary omitting a
+  consumed extraction, or undercounting a repeated one,
+  reconciled as ok despite §4's "both directions" wording.
+  Fixed in this addendum: reconciliation now compares
+  occurrence counts in both directions (phantom = claimed
+  occurrences with no consumed act; unreported = consumed
+  occurrences the summary omits), and the scenario asserts the
+  omission case (empty summary flagged), the undercount case
+  (the same extraction consumed twice, claimed once, flagged),
+  and the exact-count case (claimed twice, reconciles). This is
+  the harness's reconciliation helper, not a kernel change;
+  `authority_effect=none` throughout.
+
 ## 7. Legacy behavior source
 
 None. No legacy behavior source was used and no legacy control
@@ -216,3 +294,17 @@ temporal proof is claimed. The evidence is valid at the PR head
 commit only; reuse of the lesson at a later commit requires
 re-evaluation there. The replay itself changed no consequential
 authority (`authority_effect=none`).
+
+**Addendum — follow-up (2026-11-18).** One build item is
+**Proposed** by the §6 addendum's gap (not authorized by this
+PR, which remains test-only): a cumulative directive/session
+disclosure budget enforced in the projection path — the state
+backend accumulates consumed cost per directive (and/or per
+session/principal), and projection evaluation refuses a new
+permit when the accumulated total plus the intent's cost would
+exceed the directive's aggregate budget, so a sequence of small
+reads cannot walk past a disclosure limit the bulk read cannot
+cross. Until that lands, a directive's `max_cost` must be
+treated as a per-act bound only, and aggregate disclosure under
+a directive mandate is a detection posture (reconciliation over
+actual releases), not a prevention posture.
