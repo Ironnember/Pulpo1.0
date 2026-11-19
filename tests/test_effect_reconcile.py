@@ -7,6 +7,7 @@ import unittest
 from pulpo.kernel import GovernanceKernel, Intent, Policy
 
 from pulpo.effect_reconcile import (
+    MAX_SNAPSHOT_FILE_BYTES,
     EffectEnvelope,
     EffectReconciliationError,
     ExecutionIdentity,
@@ -326,6 +327,14 @@ class PermitBoundEffectReconciliationTests(unittest.TestCase):
         )
         self.assertEqual(result.status, "mismatch")
         self.assertIn("undeclared_effect_observed", result.reason)
+
+
+    def test_snapshot_rejects_oversized_file_before_hashing(self):
+        huge = self.protected / "huge.bin"
+        with huge.open("wb") as handle:
+            handle.truncate(MAX_SNAPSHOT_FILE_BYTES + 1)
+        with self.assertRaisesRegex(EffectReconciliationError, "file_size_limit"):
+            capture_surface(SurfaceSpec(str(self.protected), "protected"))
 
 
 if __name__ == "__main__":
