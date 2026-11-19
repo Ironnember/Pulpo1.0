@@ -213,3 +213,66 @@ checkpoints, so no temporal proof is claimed. The evidence is valid
 at the PR head commit only; reuse of the lesson at a later commit
 requires re-evaluation there. The replay itself changed no
 consequential authority (`authority_effect=none`).
+
+## Addendum (2026-11-18) — Codex review findings on the original head
+
+Codex review of the original head (`bd65ef0`) raised two findings
+against the scenario's consequence double, `ServedStore.publish`.
+Both were verified in source and **both held**. They are the same
+two defect classes Codex caught on PR #367, fixed there, and now
+fixed here with the same pattern. This addendum is the record of
+those fixes; it supersedes the two statements it names below.
+
+**P1 — bind the served bytes to the consumed intent.** `publish()`
+called `kernel.consume(permit, intent)` and then stored the
+caller-supplied `project`/`content` arguments without checking
+them against the intent, whose resource binds
+`{project}#sha256={content digest}`. A caller pairing the approved
+benign intent with malicious content — or with a different
+project — would have had the substituted bytes served under the
+consumed permit: the exact substitution the scenario claims to
+exclude. (The pre-existing steps 2 and 2b did not catch this
+because they presented a *different intent* alongside the
+substituted arguments, which the kernel's own intent binding
+denies; the hole was in the double's independent arguments, not
+in the kernel.) Fix: `publish()` now parses the intent's bound
+project and digest out of its resource and refuses any mismatch
+**before** consumption — the permit stays unspent and nothing is
+served. New regression coverage: step 2c (approved intent +
+malicious content argument → refused, store unchanged, audit
+unchanged, and the same permit then publishes the reviewed
+bytes) and step 2d (approved intent + reviewed content + wrong
+project argument → refused, nothing served under either project,
+same permit then publishes on its own project).
+
+**P2 — record permit-less attempts through the canonical
+kernel.** When `permit` was `None`, `publish()` returned `False`
+immediately, bypassing the kernel and appending no record —
+contradicting the one-record-per-denied-attempt classification
+stated in §3 and the module docstring. Fix: a permit-less
+attempt now calls `kernel.consume` with the sentinel permit
+`"no-permit-issued"` and the attempted intent before returning
+`False`, recording exactly one `permit_rejected` entry (reason
+`permit_signature_invalid`, payload carrying the attempted
+intent's hash). Step 1 now asserts exactly that: the audit grew
+by exactly one record, the record is that rejection, and
+`verify_audit()` passes.
+
+**Narrowed claim.** With the P1 fix, one refusal never reaches
+the kernel: the store's own bytes/intent mismatch check (steps
+2c/2d) refuses an internally inconsistent presentation before
+consumption and appends nothing. The blanket statement in §3
+("each denied attempt appends exactly one audit record") and the
+module docstring's classification are therefore narrowed to:
+each denied attempt *that reaches the kernel* appends exactly
+one record; the mismatch refusal appends none — stated rather
+than claimed away, mirroring PR #367.
+
+**Updated counts.** The scenario module is now 12 tests (10
+original + steps 2c and 2d), all passing. Full suite at the new
+head: **820 tests, OK (skipped=13)** — the delta over the §4
+baseline is exactly the two new regression tests. No production
+code was touched by these fixes; `authority_effect=none`
+throughout. Claim classification of this addendum: the findings
+and fixes are **Verified** (executable evidence at the new head);
+nothing here widens the §5 boundary.

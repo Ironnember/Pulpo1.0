@@ -74,9 +74,14 @@ any non-kernel publish path (the known direct-writer class)
 remains outside this evidence and open.
 
 Audit-growth classification (per AGENTS.md, ``NO_PERMIT !=
-NO_GOVERNED_EFFECT``): each denied attempt appends exactly one
-audit record — a governed effect (evidence production), bounded
-at one record per attempt, append-only, ``authority_effect=none``.
+NO_GOVERNED_EFFECT``): each denied attempt that reaches the
+kernel appends exactly one audit record — a governed effect
+(evidence production), bounded at one record per attempt,
+append-only, ``authority_effect=none``. The one refusal that
+never reaches the kernel is the store double's own
+bytes/intent mismatch check (steps 2c/2d): an internally
+inconsistent presentation, refused before consumption,
+appending nothing — stated here rather than claimed away.
 "Consequence" below means governed external consequence — bytes
 actually served by the store — never audit growth.
 """
@@ -136,7 +141,32 @@ class ServedStore:
         project: str,
         content: bytes,
     ) -> bool:
+        # The served bytes are bound to the consumed intent: the
+        # intent's target names the project AND the content hash,
+        # and the presented project/content must be exactly what
+        # the intent binds. A caller pairing an approved intent
+        # with different bytes — or the same bytes under another
+        # project — is refused BEFORE consumption: the permit is
+        # not spent and nothing is served (Codex P1 on this PR:
+        # previously the independent project/content arguments
+        # were stored after consume accepted the intent, so an
+        # approved permit could have served any bytes, under any
+        # project, that the caller supplied).
+        bound_project, sep, bound_digest = intent.resource.rpartition("#sha256=")
+        if (
+            not sep
+            or project != bound_project
+            or hashlib.sha256(content).hexdigest() != bound_digest
+        ):
+            return False
         if permit is None:
+            # No permit was issued for this publish. The attempt is
+            # routed through the canonical kernel with a sentinel
+            # permit rather than short-circuited here, so the
+            # kernel's own rejection path is exercised and the
+            # refusal lands in the audit as exactly one
+            # permit_rejected record (Codex P2 on this PR).
+            kernel.consume("no-permit-issued", intent)
             return False
         if not kernel.consume(permit, intent):
             return False
@@ -252,12 +282,26 @@ class OptimjackApprovalPathTests(unittest.TestCase):
     # -- step 1: publish with no permit ------------------------------------
 
     def test_step1_publish_without_permit_refused(self) -> None:
+        intent = intent_for(PROJECT, BENIGN)
+        # No permit was ever issued for this publish. The attempt
+        # is routed through the canonical kernel with a sentinel
+        # permit rather than short-circuited in this double, so
+        # the kernel's own rejection path is exercised and the
+        # refusal lands in the audit (Codex P2 on this PR).
+        audit_before = len(self.kernel.audit)
         self.assertFalse(
-            self.store.publish(
-                self.kernel, None, intent_for(PROJECT, BENIGN), PROJECT, BENIGN
-            )
+            self.store.publish(self.kernel, None, intent, PROJECT, BENIGN)
         )
         self.assertEqual({}, self.store.served)
+        # Exactly one record grew, and it is the kernel's rejection
+        # of the attempted intent.
+        self.assertEqual(audit_before + 1, len(self.kernel.audit))
+        rejected = [r for r in self.kernel.audit if r["event"] == "permit_rejected"]
+        self.assertEqual(1, len(rejected))
+        self.assertEqual(
+            self.kernel.intent_hash(intent), rejected[0]["payload"]["intent_hash"]
+        )
+        self.assertEqual("permit_signature_invalid", rejected[0]["payload"]["reason"])
         self.assertTrue(self.kernel.verify_audit())
 
     # -- step 2: substitution — malicious bytes under the benign permit ----
@@ -293,6 +337,64 @@ class OptimjackApprovalPathTests(unittest.TestCase):
             )
         )
         self.assertEqual({}, self.store.served)
+        self.assertTrue(
+            self.store.publish(
+                self.kernel, permit, intent_for(PROJECT, BENIGN), PROJECT, BENIGN
+            )
+        )
+        self.assertEqual({PROJECT: BENIGN}, self.store.served)
+        self.assertTrue(self.kernel.verify_audit())
+
+    # -- step 2c: approved intent paired with substituted bytes -------------
+
+    def test_step2c_approved_intent_with_substituted_bytes_refused(self) -> None:
+        permit = self._issue(self.kernel, intent_for(PROJECT, BENIGN))
+        # The caller pairs the BENIGN publish's approved intent
+        # with the MALICIOUS bytes as the content argument. The
+        # store refuses the mismatch before consumption: the
+        # bytes served must be the consumed intent's bytes
+        # (Codex P1 on this PR).
+        audit_before = len(self.kernel.audit)
+        self.assertFalse(
+            self.store.publish(
+                self.kernel, permit, intent_for(PROJECT, BENIGN), PROJECT, MALICIOUS
+            )
+        )
+        self.assertEqual({}, self.store.served)
+        # The refusal happened before the kernel: no audit growth,
+        # and the permit is unspent.
+        self.assertEqual(audit_before, len(self.kernel.audit))
+        # The reviewed publish still executes on the same permit.
+        self.assertTrue(
+            self.store.publish(
+                self.kernel, permit, intent_for(PROJECT, BENIGN), PROJECT, BENIGN
+            )
+        )
+        self.assertEqual({PROJECT: BENIGN}, self.store.served)
+        self.assertTrue(self.kernel.verify_audit())
+
+    # -- step 2d: approved intent paired with another project ---------------
+
+    def test_step2d_approved_intent_with_wrong_project_refused(self) -> None:
+        permit = self._issue(self.kernel, intent_for(PROJECT, BENIGN))
+        # The caller pairs the approved intent with the reviewed
+        # bytes but presents them under a DIFFERENT project. The
+        # store refuses the mismatch before consumption: nothing
+        # is served under either project (Codex P1 on this PR).
+        audit_before = len(self.kernel.audit)
+        self.assertFalse(
+            self.store.publish(
+                self.kernel,
+                permit,
+                intent_for(PROJECT, BENIGN),
+                OTHER_PROJECT,
+                BENIGN,
+            )
+        )
+        self.assertEqual({}, self.store.served)
+        self.assertEqual(audit_before, len(self.kernel.audit))
+        # The refusal spent nothing: the reviewed publish still
+        # executes on the same permit, on its own project.
         self.assertTrue(
             self.store.publish(
                 self.kernel, permit, intent_for(PROJECT, BENIGN), PROJECT, BENIGN
