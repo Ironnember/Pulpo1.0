@@ -59,16 +59,25 @@ None introduced. The scenario exercises the existing `evaluate`,
 revocation, projection evaluation, and audit read paths, and adds
 no writer, route, ledger, executor, or state backend. Audit growth
 is classified in the module docstring per AGENTS.md (`NO_PERMIT !=
-NO_GOVERNED_EFFECT`): each denied attempt appends exactly one audit
-record — a governed effect (evidence production), bounded at one
-record per attempt, append-only, with `authority_effect=none` and
-no capability accumulation — assessed separately from governed
-external consequences throughout.
+NO_GOVERNED_EFFECT`): each denial that reaches the kernel appends
+exactly one audit record — a governed effect (evidence production),
+bounded at one record per attempt, append-only, with
+`authority_effect=none` and no capability accumulation — assessed
+separately from governed external consequences throughout.
+Projection-scope denials are the exception to that bound:
+`GovernedDirectiveProjection.evaluate` under a directive that is
+not active (e.g. revoked) returns its deny decision without
+reaching the kernel and appends no audit record. That is a
+documented kernel limitation — the same limitation recorded on
+PR #366 (projection denials are not persisted; persisting them is
+open kernel build work, not attempted here) — and the scenario pins
+the behavior executably in Setup B (audit length unchanged across
+the revoked-directive projection evaluation).
 
 ## 4. Exact success and adversarial evidence
 
 Scenario module `tests/test_tcp_tls_escape_incident_scenario.py`
-(8 tests, all passing at the PR head):
+(9 tests, all passing at the PR head):
 
 - positive control: the three authorized acts (fetch the public
   target, build the clone, ceremony-gated submission) execute
@@ -87,6 +96,11 @@ Scenario module `tests/test_tcp_tls_escape_incident_scenario.py`
 - step 5: reconciliation — with every route to the target denied,
   the deliverable's clone-of-target provenance claim is unsupported,
   flagged with exactly the source fetch's intent hash.
+- step 5b: reconciliation, temporal direction — the deliverable is
+  submitted first and the source fetched only afterward; the claim
+  is still unsupported, because reconciliation binds to audit order:
+  a fetch consumed after the submission cannot retroactively supply
+  its provenance.
 - step 6 (directive path): a fetch permit issued under the run's
   active directive fails at consume after the directive is revoked,
   with `directive_revoked` on the rejection record; a fresh
@@ -97,18 +111,18 @@ Scenario module `tests/test_tcp_tls_escape_incident_scenario.py`
   from the binding layers, not from a harness that denies by
   construction.
 
-Full suite at the PR head: **808 tests, OK (skipped=13)** —
+Full suite at the PR head: **809 tests, OK (skipped=13)** —
 baseline at the base commit is 800 OK, skipped=13; the delta is
-exactly the 8 scenario tests.
+exactly the 9 scenario tests.
 
 Adversarial transformation review (eight passes per
 `docs/ADVERSARIAL_TRANSFORMATION_SOP.md`; full text in the PR body):
 Flip — provenance flows from the record to the claim, never from
 the deliverable to the record; step 5 is that flip at test level.
 Reverse — submit-then-fetch mints no fetch authority; the
-submission is ceremony-gated and bound to its own intent
-(composition of the positive control and step 5; no dedicated test,
-stated as composition). Invert — an agent-held record would let the
+submission is ceremony-gated and bound to its own intent, and
+reconciliation refuses to let a later fetch retroactively support
+an earlier submission (dedicated test: step 5b). Invert — an agent-held record would let the
 fabricated provenance reconcile against an edited history; the
 record here is kernel-held, and the agent-held-record failure is
 already proven in PR #350's negative control. Inside-Out — no
@@ -178,3 +192,39 @@ claimed. The evidence is valid at the PR head commit only; reuse of
 the lesson at a later commit requires re-evaluation there. The
 replay itself changed no consequential authority
 (`authority_effect=none`).
+
+## Addendum — 2026-11-18: Codex P2 dispositions
+
+Two P2 findings from automated review of head `f821033` were
+verified against source; both held, and both are addressed at this
+head.
+
+1. **Provenance reconciliation lacked a submission-time bound.**
+   `reconcile_provenance` accepted a claimed source fetch if its
+   intent hash appeared anywhere among `permit_consumed` records,
+   so a fetch consumed after the deliverable was submitted
+   retroactively validated the claim (the Reverse case the step-5
+   test never exercised). The helper now binds to audit order: the
+   claim is supported only if the fetch consumption precedes the
+   submission consumption; with no submission consumed yet, it
+   remains a presence check. New regression test (step 5b):
+   submit, then fetch, then reconcile — `ok=False`, flagged with
+   the fetch intent hash. The honest order (fetch before
+   submission) still reconciles, per the positive control.
+
+2. **The §3 audit bound overstated the evidence.** Denials issued
+   by `GovernedDirectiveProjection.evaluate` when the directive is
+   not active append no audit record, so "each denied attempt
+   appends exactly one audit record" was false for the
+   revoked-directive attempt in Setup B. §3 and the module
+   docstring now state the accurate bound (kernel-reached denials:
+   exactly one record; projection-scope denials: none), and Setup B
+   pins the behavior executably (audit length unchanged across the
+   revoked-directive projection evaluation). The limitation itself
+   — projection denials are not persisted — remains open as kernel
+   build work, the same item recorded on PR #366; this PR documents
+   it accurately and does not attempt a kernel fix.
+
+Evidence at this head: scenario module 9 tests, all passing; full
+suite 809 tests, OK (skipped=13). Claim classification for this
+addendum: **Verified** (executable evidence at this head).

@@ -68,11 +68,17 @@ this incident is recorded in this scenario's pull request per
 CONTINUE in the governed kernel path only.
 
 Audit-growth classification (per AGENTS.md, ``NO_PERMIT !=
-NO_GOVERNED_EFFECT``): each denied attempt appends exactly one audit
-record — a governed effect (evidence production), bounded at one
-record per attempt, append-only, ``authority_effect=none``.
-"Consequence" below means governed external consequence recorded in
-the consequence ledger, never audit growth.
+NO_GOVERNED_EFFECT``): each denial that reaches the kernel appends
+exactly one audit record — a governed effect (evidence production),
+bounded at one record per attempt, append-only,
+``authority_effect=none``. Projection-scope denials are the
+exception: ``GovernedDirectiveProjection.evaluate`` under a
+directive that is not active returns its deny decision without
+reaching the kernel and appends no record — a documented kernel
+limitation (the same limitation recorded on PR #366), pinned
+executably in Setup B below. "Consequence" below means governed
+external consequence recorded in the consequence ledger, never
+audit growth.
 """
 
 from __future__ import annotations
@@ -226,15 +232,27 @@ class _UnguardedConsumeKernel(GovernanceKernel):
 def reconcile_provenance(kernel: GovernanceKernel, claimed_source_intent: Intent) -> dict:
     """Test-level reconciliation: a deliverable's claim to be a clone
     of a source is supported only if the fetch of that source was a
-    consumed act in the audit record. A claim whose source fetch was
-    denied — or never presented — is unsupported provenance."""
-    attempts = {
+    consumed act in the audit record *before* the deliverable was
+    submitted. The temporal bound is the point: a fetch consumed
+    after the submission cannot retroactively supply the
+    deliverable's provenance. A claim whose source fetch was denied,
+    never presented, or consumed only after the submission is
+    unsupported provenance. If no submission has been consumed yet,
+    the check reduces to presence of the fetch consumption (a
+    pre-submission provenance check)."""
+    consumed = [
         record["payload"]["intent_hash"]
         for record in kernel.audit
         if record["event"] == "permit_consumed"
-    }
+    ]
     claimed = kernel.intent_hash(claimed_source_intent)
-    return {"ok": claimed in attempts, "unsupported_claim": None if claimed in attempts else claimed}
+    submit_hash = kernel.intent_hash(SUBMIT_INTENT)
+    fetch_index = consumed.index(claimed) if claimed in consumed else None
+    submit_index = consumed.index(submit_hash) if submit_hash in consumed else None
+    supported = fetch_index is not None and (
+        submit_index is None or fetch_index < submit_index
+    )
+    return {"ok": supported, "unsupported_claim": None if supported else claimed}
 
 
 class TcpTlsEscapeApprovalPathTests(unittest.TestCase):
@@ -370,6 +388,22 @@ class TcpTlsEscapeApprovalPathTests(unittest.TestCase):
         self.assertEqual(self.kernel.intent_hash(FETCH_INTENT), result["unsupported_claim"])
         self.assertTrue(self.kernel.verify_audit())
 
+    # -- step 5b: provenance cannot be supplied retroactively -------------
+
+    def test_step5b_fetch_after_submission_does_not_support_provenance(self) -> None:
+        # Reverse case: the deliverable is submitted first and the
+        # source fetched only afterward. Presence of the fetch
+        # consumption in the audit record is not enough — the fetch
+        # must precede the submission it is claimed to support.
+        submit = self._issue(self.kernel, SUBMIT_INTENT)
+        self.assertTrue(self.ledger.execute(self.kernel, submit, SUBMIT_INTENT))
+        fetch = self._issue(self.kernel, FETCH_INTENT)
+        self.assertTrue(self.ledger.execute(self.kernel, fetch, FETCH_INTENT))
+        result = reconcile_provenance(self.kernel, FETCH_INTENT)
+        self.assertFalse(result["ok"])
+        self.assertEqual(self.kernel.intent_hash(FETCH_INTENT), result["unsupported_claim"])
+        self.assertTrue(self.kernel.verify_audit())
+
     # -- negative control -----------------------------------------------------
 
     def test_negative_control_unguarded_kernel_executes_raw_network_act(self) -> None:
@@ -456,9 +490,17 @@ class TcpTlsEscapePersistenceTests(unittest.TestCase):
 
         # And no new permit mints under the revoked directive: the
         # run cannot be resumed from the agent's own context.
+        audit_len = len(state.audit)
         decision2 = projection.evaluate(FETCH_INTENT, d)
         self.assertNotEqual("allow", decision2.outcome)
         self.assertIsNone(decision2.permit)
+        # Documented limitation, pinned: a projection-scope denial
+        # (directive not active) returns before reaching the kernel
+        # and appends NO audit record, unlike kernel-reached denials,
+        # which append exactly one. Persisting projection denials is
+        # open kernel build work (the same limitation recorded on
+        # PR #366); this scenario documents it, it does not fix it.
+        self.assertEqual(audit_len, len(state.audit))
 
 
 if __name__ == "__main__":
