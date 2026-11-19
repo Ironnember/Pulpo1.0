@@ -11,7 +11,7 @@ from pathlib import Path
 import secrets
 import stat
 import time
-from typing import Any, Callable
+from typing import Any, Callable, Protocol
 
 from .authority import ApprovalEnvelope, ApprovalVerifier, AuthorityTrust
 from .ceremony import CeremonyEvidence, CeremonyTrust, CeremonyVerifier
@@ -39,6 +39,36 @@ _CANONICAL_ENCODER = json.JSONEncoder(sort_keys=True, separators=(",", ":"))
 # bearer-token repro: a bare copied token consumed ten years later).
 DEFAULT_MAX_PERMIT_TTL_NS = 4 * 3600 * 1_000_000_000  # 4 hours
 PERMIT_TTL_CEILING_NS = 24 * 3600 * 1_000_000_000  # 24 hours
+
+# Presenter binding (Phase 3, Item 4B — token v3). A permit may be
+# bound at issuance to one presenter identity; the token's signed
+# claims then carry the SHA-256 of that identity, and consumption
+# requires a proof, signed by the presenter's key over the exact
+# token and intent, that the kernel verifies against the presenter
+# verifier registered for that identity at construction. An unbound
+# permit carries the hash of the empty string as its presenter
+# claim and remains a bearer <redacted> exactly as in token v2 —
+# unless the policy requires binding, in which case unbound permits
+# are neither minted nor spent. Token v2 strings fail closed at
+# consume under this format (the Item 4 hard-cutover precedent).
+PRESENTER_PROOF_SCHEMA = "pulpo.presenter-proof.v1"
+UNBOUND_PRESENTER_HASH = sha256(b"").hexdigest()
+
+
+class PresenterVerifier(Protocol):
+    """Verification-only adapter for one presenter's key.
+
+    Structurally the approval verifier's shape: the presenter signs
+    ``GovernanceKernel.presenter_proof_payload(...)`` bytes with its
+    own key; the kernel holds only verification. A deployment
+    registers one verifier per presenter identity at kernel
+    construction; the registry is deployment configuration, never
+    policy, and never enters the audit chain.
+    """
+
+    def verify(self, payload: bytes, signature: str) -> bool:
+        """Return true only for a proof signed by this presenter."""
+        ...
 
 
 def _token_time_ns(raw: str) -> int | None:
@@ -226,8 +256,15 @@ class Policy:
     # ``issued_at + max_permit_ttl_ns`` as its signed expiry and refuses
     # consumption at or after it; no issuance path may exceed this cap.
     max_permit_ttl_ns: int = DEFAULT_MAX_PERMIT_TTL_NS
+    # Presenter binding (Phase 3, Item 4B): when true, every permit
+    # this policy issues must be bound to a registered presenter, and
+    # unbound permits are refused at consume. Default false keeps the
+    # token-v2 bearer posture for policies that do not opt in.
+    require_presenter_binding: bool = False
 
     def __post_init__(self) -> None:
+        if not isinstance(self.require_presenter_binding, bool):
+            raise ValueError("require_presenter_binding must be a bool")
         if (
             isinstance(self.max_permit_ttl_ns, bool)
             or not isinstance(self.max_permit_ttl_ns, int)
@@ -289,6 +326,7 @@ class GovernanceKernel:
         ceremony_verifier: CeremonyVerifier | None = None,
         audit_signer: AuditSigner | None = None,
         legacy_audit_records: int = 0,
+        presenter_verifiers: dict[str, PresenterVerifier] | None = None,
     ) -> None:
         self.policy = policy
         # Pin the exact policy this kernel was constructed under. Every
@@ -302,6 +340,11 @@ class GovernanceKernel:
         self._secret = secret or secrets.token_bytes(32)
         self._approval_verifier = approval_verifier
         self._ceremony_verifier = ceremony_verifier
+        # Presenter registry (Item 4B): presenter identity -> verifier.
+        # Deployment configuration injected at construction, like the
+        # approval verifier; copied so later mutation of the caller's
+        # dict cannot change who this kernel will accept proofs from.
+        self._presenter_verifiers: dict[str, PresenterVerifier] = dict(presenter_verifiers or {})
         self._clock = clock or time.time_ns
         if state is not None and (audit_signer is not None or legacy_audit_records):
             # The signer lives in the state layer (it signs at append);
@@ -361,6 +404,12 @@ class GovernanceKernel:
             # into the policy hash. Policies at the default keep the exact
             # pre-Item-4 hash, so their envelopes and behavior are unchanged.
             payload["max_permit_ttl_ns"] = self.policy.max_permit_ttl_ns
+        if self.policy.require_presenter_binding:
+            # Requiring presenter binding is an authority-relevant
+            # policy choice (it retires the bearer posture), so it
+            # binds into the policy hash. Policies that do not require
+            # it keep the exact pre-Item-4B hash.
+            payload["require_presenter_binding"] = True
         return sha256(_canonical(payload)).hexdigest()
 
     def lock_target(self, target_id: str, intent: Intent, *, version: int = 1) -> LockedTarget:
@@ -470,15 +519,16 @@ class GovernanceKernel:
         expected_target_hash: str,
         *,
         version: int = 1,
+        presenter: str | None = None,
     ) -> tuple[TargetResolution, Decision | None]:
         """Resolve an exact target, then delegate authority to the normal evaluator."""
 
         resolution = self.resolve_locked_target(target_id, expected_target_hash, version=version)
         if resolution.outcome != "match" or resolution.target is None:
             return resolution, None
-        return resolution, self.evaluate(resolution.target.intent)
+        return resolution, self.evaluate(resolution.target.intent, presenter=presenter)
 
-    def evaluate(self, intent: Intent) -> Decision:
+    def evaluate(self, intent: Intent, *, presenter: str | None = None) -> Decision:
         self._require_pinned_policy()
         digest = self.intent_hash(intent)
         failure = self._policy_failure(intent)
@@ -487,7 +537,7 @@ class GovernanceKernel:
         if intent.action in self.policy.approval_actions:
             return self._decide("require_approval", "approval_required", digest)
 
-        return self._issue_permit(digest)
+        return self._issue_permit(digest, presenter=presenter)
 
     def evaluate_with_approval(
         self,
@@ -495,6 +545,7 @@ class GovernanceKernel:
         envelope: ApprovalEnvelope,
         *,
         ceremony_evidence: CeremonyEvidence | None = None,
+        presenter: str | None = None,
     ) -> Decision:
         """Issue a permit only after verification by the configured authority.
 
@@ -651,6 +702,7 @@ class GovernanceKernel:
             approval=approval,
             envelope=envelope,
             timestamp_ns=verified_at_ns,
+            presenter=presenter,
         )
 
     def _verifier_matches_trust(self, verifier: ApprovalVerifier) -> bool:
@@ -818,10 +870,24 @@ class GovernanceKernel:
         approval: ApprovalUse | None = None,
         envelope: ApprovalEnvelope | None = None,
         timestamp_ns: int | None = None,
+        presenter: str | None = None,
     ) -> Decision:
         # The issuance funnel re-checks the pin itself: no permit is minted
         # under a drifted policy regardless of which entry path reached here.
         self._require_pinned_policy()
+        # Presenter binding (Phase 3, Item 4B) is enforced in this
+        # funnel so every issuance path inherits it: a policy that
+        # requires binding mints no unbound permit, and a permit is
+        # never bound to a presenter this kernel could not verify a
+        # proof from at consume time — such a permit would be
+        # unspendable by construction, so it is not minted.
+        if presenter is None and self.policy.require_presenter_binding:
+            return self._decide("deny", "presenter_binding_required", digest)
+        if presenter is not None:
+            if not isinstance(presenter, str) or not presenter:
+                return self._decide("deny", "presenter_invalid", digest)
+            if presenter not in self._presenter_verifiers:
+                return self._decide("deny", "presenter_not_registered", digest)
         issued_at_ns = self._clock() if timestamp_ns is None else timestamp_ns
         # Token v2 (Phase 2, Item 4): the expiry is inside the signed
         # payload, so it cannot be extended without the kernel secret.
@@ -830,7 +896,15 @@ class GovernanceKernel:
         # above the absolute ceiling (see Policy.__post_init__).
         expires_at_ns = issued_at_ns + self.policy.max_permit_ttl_ns
         nonce = secrets.token_hex(16)
-        payload = f"{digest}:{nonce}:{issued_at_ns}:{expires_at_ns}"
+        # Token v3 (Item 4B): the presenter claim — the SHA-256 of the
+        # bound presenter identity, or of the empty string for an
+        # unbound (bearer) permit — is inside the signed payload too,
+        # so the binding cannot be stripped or swapped without the
+        # kernel secret.
+        presenter_hash = (
+            UNBOUND_PRESENTER_HASH if presenter is None else sha256(presenter.encode()).hexdigest()
+        )
+        payload = f"{digest}:{nonce}:{issued_at_ns}:{expires_at_ns}:{presenter_hash}"
         signature = hmac.new(self._secret, payload.encode(), sha256).hexdigest()
         permit = f"{payload}:{signature}"
         replay = self._state.issue_permit(
@@ -894,50 +968,120 @@ class GovernanceKernel:
                 "kernel policy does not match the policy pinned at construction"
             )
 
-    def _permit_token_claims(self, permit: object) -> tuple[str, int, int] | None:
-        """Authenticate a v2 permit token and return its signed claims.
+    def _permit_token_claims(self, permit: object) -> tuple[str, int, int, str] | None:
+        """Authenticate a v3 permit token and return its signed claims.
 
         Tokens are minted in ``_issue_permit`` as
-        ``digest:nonce:issued_at_ns:expires_at_ns:signature`` with the
-        signature an HMAC of the first four fields under the kernel
-        secret. Verification recomputes that HMAC over the token's own
-        presented fields and compares in constant time: it proves the
-        token was minted under this kernel's secret and is unaltered —
-        including its expiry, which therefore cannot be extended by a
-        holder. Returns ``(intent_digest, issued_at_ns, expires_at_ns)``
-        for an authentic v2 token, else None.
+        ``digest:nonce:issued_at_ns:expires_at_ns:presenter_hash:signature``
+        with the signature an HMAC of the first five fields under the
+        kernel secret. Verification recomputes that HMAC over the
+        token's own presented fields and compares in constant time: it
+        proves the token was minted under this kernel's secret and is
+        unaltered — including its expiry, which therefore cannot be
+        extended by a holder, and its presenter claim (Item 4B), which
+        therefore cannot be stripped or swapped by a holder. Returns
+        ``(intent_digest, issued_at_ns, expires_at_ns, presenter_hash)``
+        for an authentic v3 token, else None.
 
-        v1 tokens (``digest:nonce:signature``, minted before token v2)
-        fail closed here: this is the cutover. An outstanding v1 permit
-        is refused at consume, never silently accepted — the Phase 1
-        (#355) precedent for outstanding tokens at a format change.
-        Malformed tokens and tokens minted under any other secret fail
-        closed the same way.
+        v1 tokens (``digest:nonce:signature``) and v2 tokens (no
+        presenter field) fail closed here: this is the cutover. An
+        outstanding pre-v3 permit is refused at consume, never
+        silently accepted — the Phase 1 (#355) precedent for
+        outstanding tokens at a format change, applied at Item 4 for
+        v1 and here for v2. Malformed tokens and tokens minted under
+        any other secret fail closed the same way.
         """
 
         if not isinstance(permit, str):
             return None
         parts = permit.split(":")
-        if len(parts) != 5:
+        if len(parts) != 6:
             return None
-        token_digest, nonce, issued_raw, expires_raw, signature = parts
+        token_digest, nonce, issued_raw, expires_raw, presenter_hash, signature = parts
         issued_at_ns = _token_time_ns(issued_raw)
         expires_at_ns = _token_time_ns(expires_raw)
         if issued_at_ns is None or expires_at_ns is None:
             return None
         if expires_at_ns <= issued_at_ns:
             return None
+        if len(presenter_hash) != 64 or not presenter_hash.isascii() or not all(
+            char in "0123456789abcdef" for char in presenter_hash
+        ):
+            return None
         expected = hmac.new(
             self._secret,
-            f"{token_digest}:{nonce}:{issued_raw}:{expires_raw}".encode(),
+            f"{token_digest}:{nonce}:{issued_raw}:{expires_raw}:{presenter_hash}".encode(),
             sha256,
         ).hexdigest()
         if not hmac.compare_digest(signature.encode(), expected.encode()):
             return None
-        return token_digest, issued_at_ns, expires_at_ns
+        return token_digest, issued_at_ns, expires_at_ns, presenter_hash
+
+    @staticmethod
+    def presenter_proof_payload(permit: str, intent_digest: str, presenter: str) -> bytes:
+        """The exact bytes a presenter signs to prove a consumption.
+
+        One canonical construction, shared by presenters and the
+        kernel: the proof binds the presenter identity to the exact
+        permit token and the exact intent digest, so a proof captured
+        for one permit or intent verifies for no other. The permit's
+        own single-use semantics bound replay of a valid proof.
+        """
+
+        return _canonical(
+            {
+                "schema": PRESENTER_PROOF_SCHEMA,
+                "permit": permit,
+                "intent_hash": intent_digest,
+                "presenter": presenter,
+            }
+        )
+
+    def _presenter_refusal(
+        self,
+        claims: tuple[str, int, int, str],
+        digest: str,
+        permit: str,
+        presenter: str | None,
+        presenter_proof: str | None,
+    ) -> str | None:
+        """The Item 4B consume gate: a refusal reason, or None to proceed.
+
+        Runs after the token is authenticated and bound to the
+        presented intent, before the store is consulted — so a
+        refusal here never burns the permit, and the bound presenter
+        can still spend it. An unbound permit proceeds exactly as a
+        token-v2 bearer <redacted> unless the pinned policy requires
+        binding. A bound permit requires the named presenter's valid
+        proof under the verifier registered for that identity; every
+        failure mode is a distinct recorded reason.
+        """
+
+        presenter_hash = claims[3]
+        if presenter_hash == UNBOUND_PRESENTER_HASH:
+            if self.policy.require_presenter_binding:
+                return "permit_presenter_unbound"
+            return None
+        if presenter is None or presenter_proof is None:
+            return "permit_presenter_proof_required"
+        if not isinstance(presenter, str) or not isinstance(presenter_proof, str):
+            return "permit_presenter_mismatch"
+        if not hmac.compare_digest(sha256(presenter.encode()).hexdigest(), presenter_hash):
+            return "permit_presenter_mismatch"
+        verifier = self._presenter_verifiers.get(presenter)
+        if verifier is None:
+            return "permit_presenter_unverifiable"
+        payload = self.presenter_proof_payload(permit, digest, presenter)
+        try:
+            verified = verifier.verify(payload, presenter_proof)
+        except Exception:
+            verified = False
+        if not verified:
+            return "permit_presenter_mismatch"
+        return None
 
     def _permit_token_valid(self, permit: object) -> bool:
-        """Whether ``permit`` is an authentic v2 token (see _permit_token_claims).
+        """Whether ``permit`` is an authentic v3 token (see _permit_token_claims).
 
         On its own this authenticates provenance only, but ``consume``
         no longer stops there: since the 2026-11-13 layering change it
@@ -950,7 +1094,14 @@ class GovernanceKernel:
 
         return self._permit_token_claims(permit) is not None
 
-    def consume(self, permit: str, intent: Intent) -> bool:
+    def consume(
+        self,
+        permit: str,
+        intent: Intent,
+        *,
+        presenter: str | None = None,
+        presenter_proof: str | None = None,
+    ) -> bool:
         self._require_pinned_policy()
         digest = self.intent_hash(intent)
         claims = self._permit_token_claims(permit)
@@ -973,7 +1124,7 @@ class GovernanceKernel:
                 self._clock(),
             )
             return False
-        _token_digest, _issued_at_ns, expires_at_ns = claims
+        _token_digest, _issued_at_ns, expires_at_ns, _presenter_hash = claims
         now_ns = self._clock()
         if now_ns >= expires_at_ns:
             # Token v2 (Phase 2, Item 4): the signed expiry is enforced
@@ -1008,6 +1159,20 @@ class GovernanceKernel:
             self._state.append(
                 "permit_rejected",
                 {"intent_hash": digest, "reason": "permit_intent_mismatch"},
+                self._clock(),
+            )
+            return False
+        # Presenter binding (Phase 3, Item 4B): the authenticated
+        # token's presenter claim is enforced HERE, at the same layer
+        # as the expiry and intent bindings — the claim lives in the
+        # signed token, not in any store row a writer could edit. A
+        # refusal is recorded and the store is never consulted, so a
+        # failed presenter attempt does not burn the permit.
+        refusal = self._presenter_refusal(claims, digest, permit, presenter, presenter_proof)
+        if refusal is not None:
+            self._state.append(
+                "permit_rejected",
+                {"intent_hash": digest, "reason": refusal},
                 self._clock(),
             )
             return False
