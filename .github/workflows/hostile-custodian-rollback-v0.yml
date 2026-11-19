@@ -1,0 +1,34 @@
+name: Hostile Custodian Rollback Red Proof
+
+on:
+  push:
+    branches:
+      - proof/hostile-custodian-rollback-v0
+  pull_request:
+    paths:
+      - "tests/test_hostile_custodian_rollback_v0.py"
+      - "proofs/hostile-custodian-rollback-v0.md"
+      - ".github/workflows/hostile-custodian-rollback-v0.yml"
+      - "pulpo/kernel.py"
+      - "pulpo/state.py"
+
+permissions:
+  contents: read
+
+jobs:
+  hostile-custodian-rollback-red-proof:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Reproduce rollback fork and authoritative-table tamper failures
+        run: python -W error -m unittest tests.test_hostile_custodian_rollback_v0 -v
+      - name: Compile diagnostic proof source
+        run: python -m py_compile tests/test_hostile_custodian_rollback_v0.py
+      - name: Check committed whitespace
+        run: git diff --check HEAD^
