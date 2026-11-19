@@ -91,12 +91,25 @@ non-kernel execution path (the known direct-writer class)
 remains outside this evidence and open.
 
 Audit-growth classification (per AGENTS.md): each denied attempt
-appends exactly one audit record — a governed effect (evidence
-production), bounded at one record per attempt, append-only,
-``authority_effect=none``. "Consequence" below means governed
-external consequence recorded in the effect ledger, never audit
-growth. Here the audit growth is load-bearing: it is the record
-against which confinement claims reconcile.
+that REACHES THE KERNEL appends exactly one audit record — a
+governed effect (evidence production), bounded at one record per
+attempt, append-only, ``authority_effect=none``. "Consequence"
+below means governed external consequence recorded in the effect
+ledger, never audit growth. Here the audit growth is
+load-bearing: it is the record against which confinement claims
+reconcile.
+
+KNOWN LIMITATION (Codex P1 on this PR, verified against
+``pulpo/directives.py`` at this commit):
+``GovernedDirectiveProjection.evaluate`` returns directive-scope
+denials (steps 3 and 3b) directly, without a kernel call, so no
+audit record is appended for them — unlike kernel evaluation
+denials (``decision`` / ``approval_rejected``) and consume
+denials (``permit_rejected``), which are recorded. Steps 3/3b
+pin the current behavior with assertions (audit length unchanged
+across a projection denial) so the gap is executable and visible
+rather than claimed away; persisting projection denials is a
+kernel change outside this scenario PR.
 """
 
 from __future__ import annotations
@@ -131,17 +144,29 @@ MANDATE_ACTIONS = frozenset({"fetch_page", "submit_answer"})
 
 
 class EffectLedger:
-    """Effects on target systems, reachable only through a successful consume."""
+    """Effects on target systems, reachable only through a successful consume.
+
+    The executor step (``_perform``) is the simulated effector — the
+    site fetch / message send itself. It runs only after a successful
+    consume, and every invocation is recorded in ``calls`` so tests
+    can assert the executor received ZERO calls for denied attempts
+    (not merely that no effect state accumulated) and exact counts
+    for the permitted acts."""
 
     def __init__(self) -> None:
         self.effects: list[tuple[str, str]] = []
+        self.calls: list[tuple[str, str]] = []
+
+    def _perform(self, intent: Intent) -> None:
+        self.calls.append((intent.action, intent.resource))
+        self.effects.append((intent.action, intent.resource))
 
     def execute(self, kernel: GovernanceKernel, permit: str | None, intent: Intent) -> bool:
         if permit is None:
             return False
         if not kernel.consume(permit, intent):
             return False
-        self.effects.append((intent.action, intent.resource))
+        self._perform(intent)
         return True
 
 
@@ -232,7 +257,17 @@ def reconcile_run_report(kernel: GovernanceKernel, claim: dict) -> dict:
     the kernel record, both directions stated explicitly: live
     EFFECTS are consumed live-target acts in the audit; live
     ATTEMPTS are denied live-target consumes, which are governed
-    effects recorded as evidence even though nothing executed."""
+    effects recorded as evidence even though nothing executed.
+
+    The audit chain is verified FIRST and the helper fails closed
+    if verification fails (Codex P1 on this PR): reconciling
+    against an unverified record would let a tampered record
+    confirm false claims."""
+    if not kernel.verify_audit():
+        raise ValueError(
+            "audit verification failed; refusing to reconcile claims "
+            "against unverified evidence"
+        )
     live_hash = kernel.intent_hash(FETCH_LIVE)
     consumed = {
         record["payload"]["intent_hash"]
@@ -283,8 +318,13 @@ class TrajectoryDirectivePathTests(unittest.TestCase):
             [("fetch_page", LOCAL), ("submit_answer", LOCAL)],
             self.ledger.effects,
         )
+        # The executor was invoked exactly once per permitted act.
+        self.assertEqual(self.ledger.effects, self.ledger.calls)
+        self.assertEqual(2, len(self.ledger.calls))
         # Each permit is single-use even inside the mandate.
         self.assertFalse(self.ledger.execute(self.kernel, fetch, FETCH_LOCAL))
+        # The replay denial never reached the executor either.
+        self.assertEqual(2, len(self.ledger.calls))
         self.assertTrue(self.kernel.verify_audit())
 
     # -- step 1: the live fetch under a local-copy permit ------------------
@@ -293,9 +333,12 @@ class TrajectoryDirectivePathTests(unittest.TestCase):
         fetch = self._permit(FETCH_LOCAL)
         self.assertFalse(self.ledger.execute(self.kernel, fetch, FETCH_LIVE))
         self.assertEqual([], self.ledger.effects)
+        # The denied live fetch invoked the executor zero times.
+        self.assertEqual([], self.ledger.calls)
         # The denial consumed nothing: the mandated fetch still spends.
         self.assertTrue(self.ledger.execute(self.kernel, fetch, FETCH_LOCAL))
         self.assertEqual([("fetch_page", LOCAL)], self.ledger.effects)
+        self.assertEqual([("fetch_page", LOCAL)], self.ledger.calls)
         self.assertTrue(self.kernel.verify_audit())
 
     # -- step 2: route substitution does not launder scope -----------------
@@ -312,26 +355,59 @@ class TrajectoryDirectivePathTests(unittest.TestCase):
         # Presentation 2: the live target read via a third-party reader.
         self.assertFalse(self.ledger.execute(self.kernel, fetch, FETCH_LIVE))
         self.assertEqual([], self.ledger.effects)
+        # Both route substitutions together: zero executor calls.
+        self.assertEqual([], self.ledger.calls)
         # Neither denial burned the permit: the mandated fetch spends.
         self.assertTrue(self.ledger.execute(self.kernel, fetch, FETCH_LOCAL))
         self.assertEqual([("fetch_page", LOCAL)], self.ledger.effects)
+        self.assertEqual([("fetch_page", LOCAL)], self.ledger.calls)
         self.assertTrue(self.kernel.verify_audit())
 
     # -- step 3: probe_endpoint is outside the mandate ----------------------
 
     def test_step3_probe_endpoint_outside_mandate_mints_no_permit(self) -> None:
+        audit_len = len(self.state.audit)
         decision = self.projection.evaluate(PROBE_LIVE, self.d)
         self.assertNotEqual("allow", decision.outcome)
         self.assertIsNone(decision.permit)
+        # KNOWN LIMITATION, pinned (module docstring): the
+        # projection returns directive-scope denials without a
+        # kernel call, so no audit record is appended for this
+        # denial — unlike consume-presented denials, which are
+        # recorded as permit_rejected.
+        self.assertEqual(audit_len, len(self.state.audit))
         self.assertEqual([], self.ledger.effects)
+        # With no permit minted, presenting the act to the
+        # consequence path invokes the executor zero times.
+        self.assertFalse(self.ledger.execute(self.kernel, decision.permit, PROBE_LIVE))
+        self.assertEqual([], self.ledger.calls)
+        # Allowed control in the same fixture: the counter is
+        # live — a mandated fetch reaches the executor exactly
+        # once, so the zero above is measured, not inferred.
+        fetch = self._permit(FETCH_LOCAL)
+        self.assertTrue(self.ledger.execute(self.kernel, fetch, FETCH_LOCAL))
+        self.assertEqual([("fetch_page", LOCAL)], self.ledger.calls)
 
     # -- step 3b: impersonation is outside the mandate -----------------------
 
     def test_step3b_impersonation_outside_mandate_mints_no_permit(self) -> None:
+        audit_len = len(self.state.audit)
         decision = self.projection.evaluate(IMPERSONATE, self.d)
         self.assertNotEqual("allow", decision.outcome)
         self.assertIsNone(decision.permit)
+        # KNOWN LIMITATION, pinned (module docstring): no audit
+        # record is appended for a projection-level denial.
+        self.assertEqual(audit_len, len(self.state.audit))
         self.assertEqual([], self.ledger.effects)
+        # Acting as staff was never authorized: zero executor calls.
+        self.assertFalse(self.ledger.execute(self.kernel, decision.permit, IMPERSONATE))
+        self.assertEqual([], self.ledger.calls)
+        # Allowed control in the same fixture: the counter is
+        # live — a mandated fetch reaches the executor exactly
+        # once, so the zero above is measured, not inferred.
+        fetch = self._permit(FETCH_LOCAL)
+        self.assertTrue(self.ledger.execute(self.kernel, fetch, FETCH_LOCAL))
+        self.assertEqual([("fetch_page", LOCAL)], self.ledger.calls)
 
     # -- negative control ---------------------------------------------------
 
@@ -346,6 +422,9 @@ class TrajectoryDirectivePathTests(unittest.TestCase):
         ledger = EffectLedger()
         self.assertTrue(ledger.execute(kernel, decision.permit, FETCH_LIVE))
         self.assertEqual([("fetch_page", LIVE)], ledger.effects)
+        # Contrast with every governed denial above: here the
+        # executor really was invoked, exactly once.
+        self.assertEqual([("fetch_page", LIVE)], ledger.calls)
 
 
 class TrajectoryApprovalPathTests(unittest.TestCase):
@@ -374,6 +453,30 @@ class TrajectoryApprovalPathTests(unittest.TestCase):
         decision = kernel.evaluate_with_approval(IMPERSONATE, forged)
         self.assertNotEqual("allow", decision.outcome)
         self.assertIsNone(decision.permit)
+        # The forged approval minted nothing, so presenting the act
+        # to the consequence path invokes the executor zero times.
+        ledger = EffectLedger()
+        self.assertFalse(ledger.execute(kernel, decision.permit, IMPERSONATE))
+        self.assertEqual([], ledger.calls)
+        self.assertEqual([], ledger.effects)
+        # Allowed control in the same fixture: acting as staff WITH
+        # its own authorization — a genuine approval from the
+        # trusted authority — mints a permit and reaches the
+        # executor exactly once. The forged zero above is measured
+        # against this live counter.
+        genuine = signed_envelope(
+            kernel,
+            IMPERSONATE,
+            verifier,
+            now_ns=NOW,
+            approval_id="approval-genuine-1",
+            nonce="genuine-nonce-1",
+        )
+        decision = kernel.evaluate_with_approval(IMPERSONATE, genuine)
+        self.assertEqual("allow", decision.outcome)
+        self.assertIsNotNone(decision.permit)
+        self.assertTrue(ledger.execute(kernel, decision.permit, IMPERSONATE))
+        self.assertEqual([("send_message", HELPLINE)], ledger.calls)
 
 
 class TrajectoryRevocationTests(unittest.TestCase):
@@ -384,6 +487,17 @@ class TrajectoryRevocationTests(unittest.TestCase):
         d = _mandate()
         kernel, verifier, controller = _activate(state, d)
         projection = GovernedDirectiveProjection(kernel)
+        ledger = EffectLedger()
+
+        # Allowed control first: a mandated fetch executes, so the
+        # executor counter is proven live in this fixture before
+        # the kill switch is tested against it.
+        control = projection.evaluate(FETCH_LOCAL, d)
+        self.assertEqual("allow", control.outcome)
+        self.assertTrue(ledger.execute(kernel, control.permit, FETCH_LOCAL))
+        self.assertEqual([("fetch_page", LOCAL)], ledger.calls)
+
+        # A second permit is issued and left unconsumed.
         decision = projection.evaluate(FETCH_LOCAL, d)
         self.assertEqual("allow", decision.outcome)
         self.assertIsNotNone(decision.permit)
@@ -394,9 +508,11 @@ class TrajectoryRevocationTests(unittest.TestCase):
         revoke = controller.revoke(d, revoke_envelope, operator_principal=OPERATOR)
         self.assertEqual("allow", revoke.outcome)
 
-        ledger = EffectLedger()
+        # The kill switch: the issued permit dies at consume, and
+        # the executor receives zero further calls.
         self.assertFalse(ledger.execute(kernel, decision.permit, FETCH_LOCAL))
-        self.assertEqual([], ledger.effects)
+        self.assertEqual([("fetch_page", LOCAL)], ledger.effects)
+        self.assertEqual([("fetch_page", LOCAL)], ledger.calls)
         rejected = [r for r in state.audit if r["event"] == "permit_rejected"][-1]
         self.assertEqual("directive_revoked", rejected["payload"]["directive_status"])
 
@@ -418,6 +534,9 @@ class TrajectoryRevocationTests(unittest.TestCase):
         self.assertFalse(ledger.execute(kernel, permit_for(FETCH_LOCAL), FETCH_LIVE))
         self.assertFalse(ledger.execute(kernel, permit_for(FETCH_LOCAL), FETCH_LIVE))
         self.assertEqual([("fetch_page", LOCAL)], ledger.effects)
+        # Exactly one executor invocation in the whole run — the
+        # mandated fetch. Both denied live presentations: zero.
+        self.assertEqual([("fetch_page", LOCAL)], ledger.calls)
 
         # An agent-side summary claiming total confinement.
         claim = {"confined_to_local_copy": True, "live_effects": 0, "live_attempts": 0}
@@ -430,6 +549,43 @@ class TrajectoryRevocationTests(unittest.TestCase):
         self.assertFalse(result["attempts_reconciled"])
         self.assertEqual(2, result["recorded_live_attempts"])
         self.assertTrue(kernel.verify_audit())
+
+    def test_reconciliation_fails_closed_on_tampered_audit(self) -> None:
+        state = InMemoryKernelState()
+        d = _mandate()
+        kernel, verifier, controller = _activate(state, d)
+        projection = GovernedDirectiveProjection(kernel)
+        ledger = EffectLedger()
+
+        def permit_for(intent: Intent) -> str:
+            decision = projection.evaluate(intent, d)
+            assert decision.outcome == "allow" and decision.permit
+            return decision.permit
+
+        self.assertTrue(ledger.execute(kernel, permit_for(FETCH_LOCAL), FETCH_LOCAL))
+        self.assertFalse(ledger.execute(kernel, permit_for(FETCH_LOCAL), FETCH_LIVE))
+        self.assertFalse(ledger.execute(kernel, permit_for(FETCH_LOCAL), FETCH_LIVE))
+
+        # Tamper as a party covering the attempts would: rewrite
+        # the rejection records' intent hashes so the denied live
+        # attempts no longer point at the live intent. Against the
+        # tampered record a zero-attempt claim would reconcile —
+        # so reconciliation must refuse the record itself. The
+        # chain no longer verifies, and the helper fails closed
+        # instead of confirming any claim from it (Codex P1).
+        # The tamper writes the STORED chain (``state._audit``):
+        # the public accessor returns deep copies precisely so a
+        # caller cannot rewrite history through it, so the modeled
+        # attacker is a state writer — the writer-custody threat
+        # class — not an accessor holder.
+        local_hash = kernel.intent_hash(FETCH_LOCAL)
+        for record in state._audit:
+            if record["event"] == "permit_rejected":
+                record["payload"]["intent_hash"] = local_hash
+        self.assertFalse(kernel.verify_audit())
+        claim = {"confined_to_local_copy": True, "live_effects": 0, "live_attempts": 0}
+        with self.assertRaises(ValueError):
+            reconcile_run_report(kernel, claim)
 
 
 if __name__ == "__main__":

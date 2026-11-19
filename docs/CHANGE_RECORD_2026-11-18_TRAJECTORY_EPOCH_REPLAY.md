@@ -96,7 +96,7 @@ summary's confinement claim reconciles.
 ## 4. Exact success and adversarial evidence
 
 Scenario module `tests/test_trajectory_epoch_incident_scenario.py`
-(9 tests, all passing at the PR head):
+(10 tests, all passing at the PR head):
 
 - positive control: the mandated acts (fetch and answer submission
   against the local copy) execute exactly once each; replay of a
@@ -139,9 +139,9 @@ Scenario module `tests/test_trajectory_epoch_incident_scenario.py`
   under the local-copy permit — the denials come from the binding
   layers, not from a harness that denies by construction.
 
-Full suite at the PR head: **817 tests, OK (skipped=13)** —
+Full suite at the PR head: **818 tests, OK (skipped=13)** —
 baseline at the base commit is 808 OK, skipped=13; the delta is
-exactly the 9 scenario tests.
+exactly the 10 scenario tests.
 
 Adversarial transformation review (eight passes per
 `docs/ADVERSARIAL_TRANSFORMATION_SOP.md`; full text in the PR body):
@@ -193,6 +193,26 @@ deployment would have to route the agent's tool calls through the
 gate and obtain the target owner's consent for any live act, as
 Trajectory's own fixes now require. Its evidence covers kernel
 behavior at the PR head commit for these action classes only.
+
+Post-review addendum (Codex review of the original head, plus
+the acceptance-criteria pass): two P1 findings. (1) "Verify the
+audit before reconciling claims" — HELD and fixed:
+`reconcile_run_report` verifies the chain first and fails
+closed, with a regression test that tampers with the stored
+chain (state-writer model) and asserts reconciliation refuses
+the record. (2) "Persist projection denials in the audit" —
+HELD as a kernel limitation, not fixed in this PR:
+`GovernedDirectiveProjection.evaluate` returns directive-scope
+denials without a kernel call, so no record is appended for
+steps 3/3b (verified against `pulpo/directives.py`). The
+scenario's audit-growth claim was narrowed to kernel-reached
+denials, and steps 3/3b pin the current behavior with
+assertions; persisting projection denials requires a kernel
+change. The same pass added executor-boundary call assertions:
+every denial test asserts zero invocations of the simulated
+executor at the execution boundary, measured against an allowed
+control in the same fixture that reaches the executor exactly
+as permitted.
 
 ## 6. Claim classification
 
