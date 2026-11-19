@@ -95,9 +95,14 @@ and any non-kernel publish path (the known direct-writer class)
 remains outside this evidence and open.
 
 Audit-growth classification (per AGENTS.md, ``NO_PERMIT !=
-NO_GOVERNED_EFFECT``): each denied attempt appends exactly one
-audit record — a governed effect (evidence production), bounded
-at one record per attempt, append-only, ``authority_effect=none``.
+NO_GOVERNED_EFFECT``): each denied attempt that reaches the
+kernel appends exactly one audit record — a governed effect
+(evidence production), bounded at one record per attempt,
+append-only, ``authority_effect=none``. The one refusal that
+never reaches the kernel is the registry double's own
+bytes/intent mismatch check (step 2b): an internally
+inconsistent presentation, refused before consumption,
+appending nothing — stated here rather than claimed away.
 "Consequence" below means governed external consequence — a
 release actually recorded by the registry — never audit growth.
 """
@@ -184,6 +189,19 @@ class Registry:
         tree: bytes,
     ) -> bool:
         if permit is None:
+            return False
+        # The published bytes are bound to the consumed intent:
+        # the presented intent must be exactly the intent for
+        # THESE bytes (package, version, and tree hash). A caller
+        # pairing an approved intent with different bytes is
+        # refused BEFORE consumption — the permit is not spent
+        # and nothing is recorded (Codex P1 on this PR: previously
+        # the independent ``tree`` argument was recorded after
+        # consume accepted the intent, so an approved permit
+        # could have published any bytes the caller supplied).
+        if kernel.intent_hash(intent) != kernel.intent_hash(
+            intent_for(package, version, tree)
+        ):
             return False
         if not kernel.consume(permit, intent):
             return False
@@ -328,17 +346,24 @@ class WppconnectApprovalPathTests(unittest.TestCase):
     # -- step 1: publish with no permit ------------------------------------
 
     def test_step1_publish_without_permit_refused(self) -> None:
+        intent = intent_for(PACKAGE, VERSION, REVIEWED)
+        # No permit was ever issued for this publish. The attempt
+        # is routed through the canonical kernel with a sentinel
+        # permit rather than short-circuited in this double, so
+        # the kernel's own rejection path is exercised and the
+        # refusal lands in the audit (Codex P2 on this PR).
         self.assertFalse(
             self.registry.publish(
-                self.kernel,
-                None,
-                intent_for(PACKAGE, VERSION, REVIEWED),
-                PACKAGE,
-                VERSION,
-                REVIEWED,
+                self.kernel, "no-permit-issued", intent, PACKAGE, VERSION, REVIEWED
             )
         )
         self.assertEqual({}, self.registry.published)
+        rejected = [r for r in self.kernel.audit if r["event"] == "permit_rejected"]
+        self.assertEqual(1, len(rejected))
+        self.assertEqual(
+            self.kernel.intent_hash(intent), rejected[0]["payload"]["intent_hash"]
+        )
+        self.assertEqual("permit_signature_invalid", rejected[0]["payload"]["reason"])
         self.assertTrue(self.kernel.verify_audit())
 
     # -- step 2: malicious tree under the reviewed tree's permit -----------
@@ -357,6 +382,42 @@ class WppconnectApprovalPathTests(unittest.TestCase):
         )
         self.assertEqual({}, self.registry.published)
         # The denial consumed nothing: the reviewed tree still publishes.
+        self.assertTrue(
+            self.registry.publish(
+                self.kernel,
+                permit,
+                intent_for(PACKAGE, VERSION, REVIEWED),
+                PACKAGE,
+                VERSION,
+                REVIEWED,
+            )
+        )
+        self.assertEqual(
+            {(PACKAGE, VERSION): tree_hash(REVIEWED)}, self.registry.published
+        )
+        self.assertTrue(self.kernel.verify_audit())
+
+    # -- step 2b: approved intent paired with malicious bytes ---------------
+
+    def test_step2b_approved_intent_with_malicious_bytes_refused(self) -> None:
+        permit = self._issue(self.kernel, intent_for(PACKAGE, VERSION, REVIEWED))
+        # The caller pairs the REVIEWED tree's approved intent
+        # with the MALICIOUS tree's bytes. The double refuses the
+        # mismatch before consumption: the bytes published must
+        # be the consumed intent's bytes (Codex P1 on this PR).
+        self.assertFalse(
+            self.registry.publish(
+                self.kernel,
+                permit,
+                intent_for(PACKAGE, VERSION, REVIEWED),
+                PACKAGE,
+                VERSION,
+                MALICIOUS,
+            )
+        )
+        self.assertEqual({}, self.registry.published)
+        # The refusal spent nothing: the reviewed publish still
+        # executes on the same permit.
         self.assertTrue(
             self.registry.publish(
                 self.kernel,

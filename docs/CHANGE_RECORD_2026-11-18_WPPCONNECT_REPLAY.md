@@ -99,7 +99,7 @@ actually recorded by the registry) throughout.
 ## 4. Exact success and adversarial evidence
 
 Scenario module `tests/test_wppconnect_incident_scenario.py`
-(9 tests, all passing at the PR head):
+(10 tests, all passing at the PR head):
 
 - positive control: a reviewer-approved publish of the exact
   reviewed tree executes exactly once; the registry records the
@@ -144,9 +144,9 @@ Scenario module `tests/test_wppconnect_incident_scenario.py`
   from the binding layers, not from a harness that denies by
   construction.
 
-Full suite at the PR head: **817 tests, OK (skipped=13)** —
+Full suite at the PR head: **818 tests, OK (skipped=13)** —
 baseline at the base commit is 808 OK, skipped=13; the delta is
-exactly the 9 scenario tests.
+exactly the 10 scenario tests.
 
 Adversarial transformation review (eight passes per
 `docs/ADVERSARIAL_TRANSFORMATION_SOP.md`; full text in the PR
@@ -193,6 +193,25 @@ non-governed publish routes (a direct write to the registry is
 the known direct-writer class): a control not on the execution
 path governs nothing. Its evidence covers kernel behavior at the
 PR head commit for this action class only.
+
+Post-review addendum (Codex review of the original head): two
+findings, both HELD and fixed. (1) P1 "Bind the published bytes
+to the consumed intent" — the registry double previously
+recorded the caller's independent `tree` argument after consume
+accepted the intent, so an approved permit could have published
+arbitrary bytes; the double now refuses any intent/bytes
+mismatch before consumption (permit unspent), with a regression
+test (step 2b) pairing the reviewed intent with malicious
+bytes. (2) P2 "Route no-permit attempts through the canonical
+kernel" — step 1 previously short-circuited on a `None` permit
+inside the double; it now presents a sentinel permit to the
+kernel and asserts the recorded `permit_rejected` entry. The
+step 5 readback was re-verified against the acceptance
+criterion in the same pass: the observed hashes are read by the
+observer directly from the registry/tag doubles (reference
+resolution), the expected hash set is derived solely from the
+kernel audit, and no claimant-supplied value enters either
+side of the comparison.
 
 ## 6. Claim classification
 
