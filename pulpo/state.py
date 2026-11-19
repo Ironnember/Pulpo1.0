@@ -15,7 +15,7 @@ import json
 from os import PathLike
 import sqlite3
 from threading import RLock
-from typing import Any, Protocol
+from typing import Any, Callable, Protocol
 from urllib.parse import quote as _url_quote
 
 
@@ -198,8 +198,31 @@ def budget_scope_key(
     return "budget:" + sha256(_canonical(components)).hexdigest()
 
 
+def _binding_carries_budget_facts(binding: DirectivePermitBinding) -> bool:
+    """Whether a binding claims any budget facts at all.
+
+    The projection records all three facts together, and only for
+    permits under a budgeted directive, so a binding carrying any
+    of them was issued against a budget policy. If no policy is
+    then found in the store at consume time, the policy is MISSING
+    (deleted row, partial restore) — the consumption must fail
+    closed with ``budget_policy_missing``, never spend against an
+    unrecorded mandate.
+    """
+
+    return (
+        binding.budget_cost is not None
+        or binding.budget_principal is not None
+        or binding.budget_session_id is not None
+    )
+
+
 def _budget_scope_key_for(
-    budget: DirectiveBudget, binding: DirectivePermitBinding
+    budget: DirectiveBudget,
+    binding: DirectivePermitBinding,
+    *,
+    directive_id: str | None = None,
+    version: int | None = None,
 ) -> tuple[str | None, str | None]:
     """(failure_status, scope_key) for a bound permit's budget facts.
 
@@ -208,6 +231,14 @@ def _budget_scope_key_for(
     the consumption then fails closed, because a budgeted
     directive's permit may not spend against a debit the backend
     cannot compute — or the bucket key when the facts are usable.
+
+    The bucket's directive component names the directive that OWNS
+    the budget: by default the binding's own directive; for a
+    budgeted ancestor reached through the lineage walk, the
+    ancestor's identity is passed explicitly. The principal and
+    session components always resolve from the permit's recorded
+    facts — the ancestor's scope definition decides which of them
+    name its bucket.
     """
 
     if (
@@ -228,11 +259,43 @@ def _budget_scope_key_for(
         return "budget_context_invalid", None
     return None, budget_scope_key(
         budget.scope,
-        directive_id=binding.directive_id,
-        version=binding.version,
+        directive_id=binding.directive_id if directive_id is None else directive_id,
+        version=binding.version if version is None else version,
         principal=binding.budget_principal,
         session_id=binding.budget_session_id,
     )
+
+
+def _budget_lineage_ancestors(
+    binding: DirectivePermitBinding,
+    resolve_identity: Callable[[str], "tuple[str, int] | None"],
+    parent_hash_of: Callable[[str, int], "str | None"],
+) -> tuple[list[tuple[str, int]], bool]:
+    """The derivation lineage above a bound permit's directive.
+
+    Returns (ancestors, complete): the (directive_id, version) of
+    every ancestor from the nearest parent upward, and whether the
+    chain was followed all the way to a root. Activation requires
+    the parent to pre-exist and directive records are immutable,
+    so a governed store's chains are finite and acyclic; the walk
+    still stops incomplete on a missing record or a cycle (the
+    store was then written out of band), and the caller must not
+    enforce a partial lineage as if it were whole.
+    """
+
+    ancestors: list[tuple[str, int]] = []
+    seen = {binding.directive_hash}
+    parent_hash = binding.parent_directive_hash
+    while parent_hash is not None:
+        if parent_hash in seen:
+            return ancestors, False
+        seen.add(parent_hash)
+        identity = resolve_identity(parent_hash)
+        if identity is None:
+            return ancestors, False
+        ancestors.append(identity)
+        parent_hash = parent_hash_of(identity[0], identity[1])
+    return ancestors, True
 
 
 def _budget_from_row(ceiling: Any, scope_json: Any, session_reset: Any) -> DirectiveBudget | None:
@@ -435,6 +498,12 @@ class InMemoryKernelState:
         # this backend's canonical store — there is no second ledger.
         self._directive_budgets: dict[tuple[str, int], DirectiveBudget] = {}
         self._budget_spent: dict[str, int] = {}
+        # Derivation lineage (Codex P1(i) fix on PR #369): each
+        # directive's parent link, recorded at activation, so
+        # consume_permit can walk the lineage and charge budgeted
+        # ancestors. Recorded for every activation (None for a
+        # root); the directive records themselves stay immutable.
+        self._directive_parents: dict[tuple[str, int], str | None] = {}
         self._permit_directives: dict[str, DirectivePermitBinding] = {}
         self._audit: list[dict[str, Any]] = []
         self._audit_lock = RLock()
@@ -532,34 +601,116 @@ class InMemoryKernelState:
             # budget_status, never as a bare silent False. Permits
             # under budget-less directives take none of this path and
             # their audit payloads are unchanged.
+            #
+            # Lineage (Codex P1(i) fix): derivation narrows a child
+            # beneath its parent's ceiling, but the child's bucket
+            # key names the child — without lineage charging, parent
+            # and child each hold an independent allowance and the
+            # lineage total multiplies past the ancestor's cap.
+            # Every budgeted ancestor's bucket is therefore planned
+            # against the same recorded facts and debited in this
+            # same transition, all-or-nothing: every bucket is
+            # checked before any is debited, and any failure — a
+            # crossing bucket, an unresolvable scope, a lineage that
+            # cannot be walked completely — refuses the whole
+            # consumption with the permit unspent.
             budget_key: str | None = None
             budget_amount = 0
             budget_spent_before = 0
+            lineage_entries: list[dict[str, Any]] = []
+            lineage_debits: list[tuple[str, int]] = []
             if binding is not None:
                 budget = self._directive_budgets.get((binding.directive_id, binding.version))
+                facts = _binding_carries_budget_facts(binding)
+                budget_failure: str | None = None
+                if budget is None and facts:
+                    # Codex P1(ii) fix: the binding carries budget
+                    # facts but no policy is recorded for its
+                    # directive (deleted entry, partial restore).
+                    # A malformed policy already fails closed; a
+                    # missing one must too — never spend against a
+                    # mandate the backend cannot read.
+                    budget_failure = "budget_policy_missing"
                 if budget is not None:
                     payload["budget_scope"] = list(budget.scope)
                     payload["budget_ceiling"] = budget.ceiling
                     failure, key = _budget_scope_key_for(budget, binding)
                     if failure is not None:
-                        valid = False
-                        payload["budget_status"] = failure
+                        budget_failure = failure
                     else:
                         budget_key = key
                         budget_amount = binding.budget_cost
                         budget_spent_before = self._budget_spent.get(budget_key, 0)
                         payload["budget_amount"] = budget_amount
                         payload["budget_spent_before"] = budget_spent_before
-                        if budget_spent_before + budget_amount > budget.ceiling:
-                            valid = False
-                            payload["budget_status"] = "aggregate_budget_exceeded"
-                        else:
-                            payload["budget_status"] = "within_budget"
+                ancestors, lineage_complete = _budget_lineage_ancestors(
+                    binding,
+                    self._directive_identity_for_hash,
+                    lambda directive_id, version: self._directive_parents.get(
+                        (directive_id, version)
+                    ),
+                )
+                engaged = budget is not None or facts
+                for ancestor_id, ancestor_version in ancestors:
+                    ancestor_budget = self._directive_budgets.get(
+                        (ancestor_id, ancestor_version)
+                    )
+                    if ancestor_budget is None:
+                        continue
+                    engaged = True
+                    if budget_failure is not None:
+                        continue
+                    failure, key = _budget_scope_key_for(
+                        ancestor_budget,
+                        binding,
+                        directive_id=ancestor_id,
+                        version=ancestor_version,
+                    )
+                    if failure is not None:
+                        budget_failure = failure
+                        continue
+                    spent_before = self._budget_spent.get(key, 0)
+                    lineage_entries.append(
+                        {
+                            "directive_id": ancestor_id,
+                            "directive_version": ancestor_version,
+                            "budget_scope": list(ancestor_budget.scope),
+                            "budget_ceiling": ancestor_budget.ceiling,
+                            "budget_amount": binding.budget_cost,
+                            "budget_spent_before": spent_before,
+                        }
+                    )
+                    lineage_debits.append((key, spent_before))
+                if not lineage_complete and engaged and budget_failure is None:
+                    # A lineage that cannot be walked completely is
+                    # never enforced partially: some ancestor above
+                    # the break could carry a budget this consumption
+                    # would silently escape.
+                    budget_failure = "budget_lineage_unresolvable"
+                if budget_failure is None:
+                    if budget_key is not None and budget_spent_before + budget_amount > budget.ceiling:
+                        budget_failure = "aggregate_budget_exceeded"
+                    else:
+                        for entry in lineage_entries:
+                            if entry["budget_spent_before"] + entry["budget_amount"] > entry["budget_ceiling"]:
+                                budget_failure = "aggregate_budget_exceeded"
+                                break
+                if lineage_entries:
+                    payload["budget_lineage"] = lineage_entries
+                if budget_failure is not None:
+                    valid = False
+                    payload["budget_status"] = budget_failure
+                elif budget_key is not None:
+                    payload["budget_status"] = "within_budget"
             if valid:
                 self._spent.add(permit)
                 if budget_key is not None:
                     self._budget_spent[budget_key] = budget_spent_before + budget_amount
                     payload["budget_spent"] = budget_spent_before + budget_amount
+                for entry, (key, spent_before) in zip(lineage_entries, lineage_debits):
+                    total = spent_before + entry["budget_amount"]
+                    self._budget_spent[key] = total
+                    entry["budget_spent"] = total
             self.append("permit_consumed" if valid else "permit_rejected", payload, timestamp_ns)
             return valid
 
@@ -594,6 +745,7 @@ class InMemoryKernelState:
             if parent_hash is not None and self.directive_hash_status(parent_hash) != "active":
                 raise ValueError("parent directive is not active for activation")
             self._directives[key] = (directive.directive_hash, False)
+            self._directive_parents[key] = parent_hash
             if budget is not None:
                 self._directive_budgets[key] = budget
             self.append("directive_activated", {"directive_id": directive.directive_id, "version": directive.version, "directive_hash": directive.directive_hash, "authority_evidence": evidence.audit_payload()}, timestamp_ns)
@@ -634,6 +786,15 @@ class InMemoryKernelState:
             if digest == directive_hash:
                 return "directive_parent_revoked" if revoked else "active"
         return "directive_parent_not_authorized"
+
+    def _directive_identity_for_hash(self, directive_hash: str) -> tuple[str, int] | None:
+        # The (directive_id, version) a stored hash belongs to, for
+        # the budget lineage walk. A directive hash binds its own
+        # identity fields, so at most one record can match.
+        for (directive_id, version), (digest, _revoked) in self._directives.items():
+            if digest == directive_hash:
+                return directive_id, version
+        return None
 
     def append(self, event: str, payload: dict[str, Any], timestamp_ns: int) -> None:
         with self._audit_lock:
@@ -721,7 +882,7 @@ class SQLiteKernelState:
                 CREATE TABLE IF NOT EXISTS permits (permit TEXT PRIMARY KEY, intent_hash TEXT NOT NULL, spent INTEGER NOT NULL DEFAULT 0 CHECK (spent IN (0, 1)), expires_at_ns INTEGER);
                 CREATE TABLE IF NOT EXISTS approvals (approval_id TEXT PRIMARY KEY, nonce TEXT NOT NULL UNIQUE);
                 CREATE TABLE IF NOT EXISTS ceremony_evidence (evidence_id TEXT PRIMARY KEY);
-                CREATE TABLE IF NOT EXISTS directives (directive_id TEXT NOT NULL, version INTEGER NOT NULL, directive_hash TEXT NOT NULL, revoked INTEGER NOT NULL DEFAULT 0 CHECK (revoked IN (0, 1)), PRIMARY KEY (directive_id, version));
+                CREATE TABLE IF NOT EXISTS directives (directive_id TEXT NOT NULL, version INTEGER NOT NULL, directive_hash TEXT NOT NULL, revoked INTEGER NOT NULL DEFAULT 0 CHECK (revoked IN (0, 1)), parent_directive_hash TEXT, PRIMARY KEY (directive_id, version));
                 CREATE TABLE IF NOT EXISTS permit_directives (permit TEXT PRIMARY KEY REFERENCES permits(permit) ON DELETE CASCADE, directive_id TEXT NOT NULL, directive_version INTEGER NOT NULL, directive_hash TEXT NOT NULL, directive_issued_at_ns INTEGER NOT NULL, directive_expires_at_ns INTEGER NOT NULL, parent_directive_hash TEXT);
                 CREATE TABLE IF NOT EXISTS directive_budgets (directive_id TEXT NOT NULL, version INTEGER NOT NULL, ceiling INTEGER NOT NULL, scope_json TEXT NOT NULL, session_reset INTEGER NOT NULL, PRIMARY KEY (directive_id, version));
                 CREATE TABLE IF NOT EXISTS budget_spend (scope_key TEXT PRIMARY KEY, spent INTEGER NOT NULL);
@@ -730,6 +891,16 @@ class SQLiteKernelState:
             columns = {row[1] for row in self._connection.execute("PRAGMA table_info(permit_directives)").fetchall()}
             if "parent_directive_hash" not in columns:
                 self._connection.execute("ALTER TABLE permit_directives ADD COLUMN parent_directive_hash TEXT")
+            # The directives parent link (Codex P1(i) fix on PR
+            # #369): same migration pattern. Existing directive rows
+            # keep a NULL parent link — they predate lineage
+            # recording, and no budgeted directive can exist among
+            # them (budgets arrive with this build), so the consume
+            # path's lineage walk ending at a NULL link is exact for
+            # every lineage that can carry a budget.
+            directive_columns = {row[1] for row in self._connection.execute("PRAGMA table_info(directives)").fetchall()}
+            if "parent_directive_hash" not in directive_columns:
+                self._connection.execute("ALTER TABLE directives ADD COLUMN parent_directive_hash TEXT")
             # The permit_directives budget columns (kernel build item
             # #1): same migration pattern. Existing binding rows keep
             # NULL budget facts — they are permits bound under
@@ -777,6 +948,13 @@ class SQLiteKernelState:
         # budget-less, exactly as it was before budgets existed.
         permit_directive_columns = {row[1] for row in self._connection.execute("PRAGMA table_info(permit_directives)").fetchall()}
         self._permit_directives_has_budget = "budget_cost" in permit_directive_columns
+        # Same treatment for the directives parent link: a legacy
+        # database opened without migration has no column, and the
+        # lineage walk then ends at the binding's own parent —
+        # exact for such a database, which holds no budgeted
+        # directive (see the migration note above).
+        directive_columns = {row[1] for row in self._connection.execute("PRAGMA table_info(directives)").fetchall()}
+        self._directives_has_parent = "parent_directive_hash" in directive_columns
         table_names = {row[0] for row in self._connection.execute("SELECT name FROM sqlite_master WHERE type = 'table'").fetchall()}
         self._has_budget_tables = "directive_budgets" in table_names and "budget_spend" in table_names
 
@@ -892,6 +1070,8 @@ class SQLiteKernelState:
             budget_key: str | None = None
             budget_amount = 0
             budget_spent_before = 0
+            lineage_entries: list[dict[str, Any]] = []
+            lineage_debits: list[tuple[str, int]] = []
             if row is not None:
                 binding = DirectivePermitBinding(row[0], row[1], row[2], row[3], row[4], row[5], row[6], row[7], row[8])
                 directive = self._connection.execute("SELECT directive_hash, revoked FROM directives WHERE directive_id = ? AND version = ?", (binding.directive_id, binding.version)).fetchone()
@@ -907,41 +1087,122 @@ class SQLiteKernelState:
                 # decisive check is HERE, inside the same BEGIN
                 # IMMEDIATE transaction that spends the permit — an
                 # atomic check-and-debit, mirroring the in-memory
-                # backend. The debit itself lands below, only if the
-                # spend lands, in this same transaction.
+                # backend. The debits themselves land below, only if
+                # the spend lands, in this same transaction.
+                #
+                # Lineage (Codex P1(i) fix): every budgeted
+                # ancestor's bucket is planned against the same
+                # recorded facts and debited in this same
+                # transaction, all-or-nothing — see the in-memory
+                # backend for the full rationale.
+                budget_failure: str | None = None
+                facts = _binding_carries_budget_facts(binding)
+                budget = None
                 if self._has_budget_tables:
                     budget_row = self._connection.execute("SELECT ceiling, scope_json, session_reset FROM directive_budgets WHERE directive_id = ? AND version = ?", (binding.directive_id, binding.version)).fetchone()
                     if budget_row is not None:
                         budget = _budget_from_row(budget_row[0], budget_row[1], budget_row[2])
                         if budget is None:
-                            valid = False
-                            payload["budget_status"] = "budget_policy_invalid"
+                            budget_failure = "budget_policy_invalid"
+                if budget is None and budget_failure is None and facts:
+                    # Codex P1(ii) fix: the binding carries budget
+                    # facts but no policy row is recorded for its
+                    # directive (deleted row, partial restore). A
+                    # malformed policy already fails closed; a
+                    # missing one must too — never spend against a
+                    # mandate the backend cannot read.
+                    budget_failure = "budget_policy_missing"
+                if budget is not None:
+                    payload["budget_scope"] = list(budget.scope)
+                    payload["budget_ceiling"] = budget.ceiling
+                    failure, key = _budget_scope_key_for(budget, binding)
+                    if failure is not None:
+                        budget_failure = failure
+                    else:
+                        budget_key = key
+                        budget_amount = binding.budget_cost
+                        spent_row = self._connection.execute("SELECT spent FROM budget_spend WHERE scope_key = ?", (budget_key,)).fetchone()
+                        budget_spent_before = spent_row[0] if spent_row is not None else 0
+                        if isinstance(budget_spent_before, bool) or not isinstance(budget_spent_before, int) or budget_spent_before < 0:
+                            # A corrupted ledger row is never
+                            # guessed at: fail closed.
+                            budget_key = None
+                            budget_failure = "budget_ledger_invalid"
                         else:
-                            payload["budget_scope"] = list(budget.scope)
-                            payload["budget_ceiling"] = budget.ceiling
-                            failure, key = _budget_scope_key_for(budget, binding)
-                            if failure is not None:
-                                valid = False
-                                payload["budget_status"] = failure
-                            else:
-                                budget_key = key
-                                budget_amount = binding.budget_cost
-                                spent_row = self._connection.execute("SELECT spent FROM budget_spend WHERE scope_key = ?", (budget_key,)).fetchone()
-                                budget_spent_before = spent_row[0] if spent_row is not None else 0
-                                if isinstance(budget_spent_before, bool) or not isinstance(budget_spent_before, int) or budget_spent_before < 0:
-                                    # A corrupted ledger row is never
-                                    # guessed at: fail closed.
-                                    valid = False
-                                    budget_key = None
-                                    payload["budget_status"] = "budget_ledger_invalid"
-                                else:
-                                    payload["budget_amount"] = budget_amount
-                                    payload["budget_spent_before"] = budget_spent_before
-                                    if budget_spent_before + budget_amount > budget.ceiling:
-                                        valid = False
-                                        payload["budget_status"] = "aggregate_budget_exceeded"
-                                    else:
-                                        payload["budget_status"] = "within_budget"
+                            payload["budget_amount"] = budget_amount
+                            payload["budget_spent_before"] = budget_spent_before
+                ancestors, lineage_complete = _budget_lineage_ancestors(
+                    binding,
+                    self._directive_identity_for_hash,
+                    self._directive_parent_hash,
+                )
+                engaged = budget is not None or facts
+                for ancestor_id, ancestor_version in ancestors:
+                    ancestor_budget = None
+                    if self._has_budget_tables:
+                        ancestor_row = self._connection.execute("SELECT ceiling, scope_json, session_reset FROM directive_budgets WHERE directive_id = ? AND version = ?", (ancestor_id, ancestor_version)).fetchone()
+                        if ancestor_row is None:
+                            continue
+                        engaged = True
+                        ancestor_budget = _budget_from_row(ancestor_row[0], ancestor_row[1], ancestor_row[2])
+                        if ancestor_budget is None:
+                            if budget_failure is None:
+                                budget_failure = "budget_policy_invalid"
+                            continue
+                    if ancestor_budget is None:
+                        continue
+                    engaged = True
+                    if budget_failure is not None:
+                        continue
+                    failure, key = _budget_scope_key_for(
+                        ancestor_budget,
+                        binding,
+                        directive_id=ancestor_id,
+                        version=ancestor_version,
+                    )
+                    if failure is not None:
+                        budget_failure = failure
+                        continue
+                    spent_row = self._connection.execute("SELECT spent FROM budget_spend WHERE scope_key = ?", (key,)).fetchone()
+                    spent_before = spent_row[0] if spent_row is not None else 0
+                    if isinstance(spent_before, bool) or not isinstance(spent_before, int) or spent_before < 0:
+                        # A corrupted ledger row is never guessed
+                        # at: fail closed, for an ancestor's bucket
+                        # exactly as for the permit's own.
+                        budget_failure = "budget_ledger_invalid"
+                        continue
+                    lineage_entries.append(
+                        {
+                            "directive_id": ancestor_id,
+                            "directive_version": ancestor_version,
+                            "budget_scope": list(ancestor_budget.scope),
+                            "budget_ceiling": ancestor_budget.ceiling,
+                            "budget_amount": binding.budget_cost,
+                            "budget_spent_before": spent_before,
+                        }
+                    )
+                    lineage_debits.append((key, spent_before))
+                if not lineage_complete and engaged and budget_failure is None:
+                    # A lineage that cannot be walked completely is
+                    # never enforced partially: some ancestor above
+                    # the break could carry a budget this consumption
+                    # would silently escape.
+                    budget_failure = "budget_lineage_unresolvable"
+                if budget_failure is None:
+                    if budget_key is not None and budget_spent_before + budget_amount > budget.ceiling:
+                        budget_failure = "aggregate_budget_exceeded"
+                    else:
+                        for entry in lineage_entries:
+                            if entry["budget_spent_before"] + entry["budget_amount"] > entry["budget_ceiling"]:
+                                budget_failure = "aggregate_budget_exceeded"
+                                break
+                if lineage_entries:
+                    payload["budget_lineage"] = lineage_entries
+                if budget_failure is not None:
+                    valid = False
+                    payload["budget_status"] = budget_failure
+                elif budget_key is not None:
+                    payload["budget_status"] = "within_budget"
             if valid:
                 # Token v2 second layer (Phase 2, Item 4): a recorded
                 # expiry is re-checked here, mirroring the in-memory
@@ -956,6 +1217,13 @@ class SQLiteKernelState:
             if valid and budget_key is not None:
                 self._connection.execute("INSERT INTO budget_spend (scope_key, spent) VALUES (?, ?) ON CONFLICT(scope_key) DO UPDATE SET spent = excluded.spent", (budget_key, budget_spent_before + budget_amount))
                 payload["budget_spent"] = budget_spent_before + budget_amount
+            if valid:
+                # Lineage debits land in this same transaction, or
+                # (when the consumption was refused above) none do.
+                for entry, (key, spent_before) in zip(lineage_entries, lineage_debits):
+                    total = spent_before + entry["budget_amount"]
+                    self._connection.execute("INSERT INTO budget_spend (scope_key, spent) VALUES (?, ?) ON CONFLICT(scope_key) DO UPDATE SET spent = excluded.spent", (key, total))
+                    entry["budget_spent"] = total
             self._append("permit_consumed" if valid else "permit_rejected", payload, timestamp_ns)
         return valid
 
@@ -990,7 +1258,14 @@ class SQLiteKernelState:
                 parent = self._connection.execute("SELECT revoked FROM directives WHERE directive_hash=?", (parent_hash,)).fetchone()
                 if parent is None or parent[0] != 0:
                     raise ValueError("parent directive is not active for activation")
-            self._connection.execute("INSERT INTO directives (directive_id, version, directive_hash) VALUES (?, ?, ?)", (directive.directive_id, directive.version, directive.directive_hash))
+            if self._directives_has_parent:
+                self._connection.execute("INSERT INTO directives (directive_id, version, directive_hash, parent_directive_hash) VALUES (?, ?, ?, ?)", (directive.directive_id, directive.version, directive.directive_hash, parent_hash))
+            else:
+                # Unmigrated legacy schema: no parent-link column
+                # exists to record into (reachable only on a
+                # read-only open misused for activation — mutating
+                # opens always migrate).
+                self._connection.execute("INSERT INTO directives (directive_id, version, directive_hash) VALUES (?, ?, ?)", (directive.directive_id, directive.version, directive.directive_hash))
             if budget is not None:
                 self._connection.execute("INSERT INTO directive_budgets (directive_id, version, ceiling, scope_json, session_reset) VALUES (?, ?, ?, ?, ?)", (directive.directive_id, directive.version, budget.ceiling, _canonical(list(budget.scope)).decode(), 1 if budget.session_reset else 0))
             self._append("directive_activated", {"directive_id": directive.directive_id, "version": directive.version, "directive_hash": directive.directive_hash, "authority_evidence": evidence.audit_payload()}, timestamp_ns)
@@ -1025,6 +1300,26 @@ class SQLiteKernelState:
         row = self._connection.execute("SELECT revoked FROM directives WHERE directive_hash=?", (directive_hash,)).fetchone()
         if row is None: return "directive_parent_not_authorized"
         return "directive_parent_revoked" if row[0] else "active"
+
+    def _directive_identity_for_hash(self, directive_hash: str) -> tuple[str, int] | None:
+        # The (directive_id, version) a stored hash belongs to, for
+        # the budget lineage walk. A directive hash binds its own
+        # identity fields, so at most one row can match.
+        row = self._connection.execute("SELECT directive_id, version FROM directives WHERE directive_hash = ?", (directive_hash,)).fetchone()
+        if row is None:
+            return None
+        return row[0], row[1]
+
+    def _directive_parent_hash(self, directive_id: str, version: int) -> str | None:
+        # The parent link recorded at activation, for the budget
+        # lineage walk. A schema without the column (a legacy
+        # database opened without migration) reports no link: the
+        # walk ends there, which is exact for such a database
+        # because it can hold no budgeted directive.
+        if not self._directives_has_parent:
+            return None
+        row = self._connection.execute("SELECT parent_directive_hash FROM directives WHERE directive_id = ? AND version = ?", (directive_id, version)).fetchone()
+        return row[0] if row is not None else None
 
     def append(self, event: str, payload: dict[str, Any], timestamp_ns: int) -> None:
         # A signer configured over a database without a signature column
