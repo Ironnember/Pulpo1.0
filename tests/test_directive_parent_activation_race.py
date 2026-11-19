@@ -2,7 +2,7 @@ import unittest
 
 from pulpo import GovernanceKernel, Policy
 from pulpo.directives import Directive, DirectiveAuthorityController
-from pulpo.state import InMemoryKernelState
+from pulpo.state import InMemoryKernelState, VerifiedAuthorityEvidence
 from tests.authority_support import HmacTestVerifier, signed_envelope, trust_for
 
 
@@ -24,10 +24,25 @@ class ParentRevokesAtMutationState(InMemoryKernelState):
             if self.parent_checks == 2:
                 for (directive_id, version), (digest, revoked) in list(self._directives.items()):
                     if digest == directive_hash and not revoked:
+                        # Item 3A migration: the simulated revocation
+                        # presents typed evidence bound to the parent,
+                        # as a verified controller revocation would;
+                        # the race being modeled is timing, not evidence.
                         self.revoke_directive(
                             directive_id,
                             version,
-                            {"test_race": True, "authority_effect": "none"},
+                            VerifiedAuthorityEvidence(
+                                operation="revoke_directive",
+                                directive_id=directive_id,
+                                directive_version=version,
+                                directive_hash=digest,
+                                parent_directive_hash=None,
+                                authority_id="authority:test-owner",
+                                approval_id="approval:test-race",
+                                envelope_hash="envelope:test-race",
+                                intent_hash="intent:test-race",
+                                policy_hash="policy:test-race",
+                            ),
                             NOW,
                         )
                         break
