@@ -1,12 +1,35 @@
 from dataclasses import asdict
 import inspect
+import os
 import unittest
+from unittest.mock import patch
 
 from pulpo import ApprovalEnvelope, AuthorityApprovalRequest, AuthorityClient
 
 
+_AMBIENT_CA_VARIABLES = (
+    "SSL_CERT_FILE",
+    "SSL_CERT_DIR",
+    "REQUESTS_CA_BUNDLE",
+    "CURL_CA_BUNDLE",
+    "PULPO_CA_BUNDLE",
+)
+
+
 class AuthorityClientTests(unittest.TestCase):
     def setUp(self):
+        # The hardened transport fails closed on ambient CA configuration
+        # without an explicit PULPO_CA_BUNDLE. These tests inject a fake
+        # transport and must stay hermetic in environments that export CA
+        # variables, so strip them for the duration of each test (same
+        # patch.dict discipline as tests/test_transport_security.py).
+        sanitized = {
+            name: value
+            for name, value in os.environ.items()
+            if name not in _AMBIENT_CA_VARIABLES
+        }
+        self._environment = patch.dict(os.environ, sanitized, clear=True)
+        self._environment.start()
         self.request = AuthorityApprovalRequest(
             principal="agent:publisher",
             action="push",
@@ -30,6 +53,9 @@ class AuthorityClientTests(unittest.TestCase):
             return {"status": "pending"}
 
         self.client = AuthorityClient("https://authority.example.com", transport=transport)
+
+    def tearDown(self):
+        self._environment.stop()
 
     def test_client_exposes_only_request_and_poll(self):
         public = {
