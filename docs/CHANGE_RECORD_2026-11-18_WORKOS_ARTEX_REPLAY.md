@@ -308,3 +308,35 @@ cross. Until that lands, a directive's `max_cost` must be
 treated as a per-act bound only, and aggregate disclosure under
 a directive mandate is a detection posture (reconciliation over
 actual releases), not a prevention posture.
+
+**Addendum — build-item tightening (2026-11-18, Austin's
+direction).** The §8 item above is tightened at three points;
+the item remains **Proposed**, not authorized:
+
+1. **Enforcement sits at consumption, atomically.**
+   Projection-time refusal is an early optimization only:
+   several outstanding permits can each pass an issuance check
+   against the same remaining allowance. The decisive check is
+   an atomic check-and-debit at permit consumption, before the
+   store releases any data — the backend debits the aggregate
+   budget in the same transition that spends the permit, and a
+   consumption that would cross the budget is refused with the
+   permit's effect unrealized.
+2. **The release boundary enforces the permitted quantity.**
+   A permit for 10 records releases at most 10. This converts
+   this scenario's second detection case (an executor releasing
+   250 against a 10-record permit, caught today only by
+   observer-side reconciliation) into prevention.
+3. **Budget scope is explicit policy.** The budget's scope
+   (per directive, per session, per principal, or a stated
+   combination) must be defined in the policy itself, including
+   whether opening a new session resets the allowance. A silent
+   reset is a bypass; whatever the policy chooses, it says so.
+
+**Pinned acceptance regression for the build item:** issue two
+permits while both fit the remaining allowance individually;
+consume them (concurrently or in sequence) when only one fits
+in aggregate; verify from the store that exactly one release
+occurred. Plus the quantity case: a 10-record permit presented
+to the release boundary yields at most 10 records, observed
+store-side.
