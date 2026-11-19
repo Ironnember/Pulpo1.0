@@ -116,6 +116,22 @@ equal to the approval fingerprint, so the envelope signer cannot
 self-attest. Policies that do not opt in are unchanged, including
 byte-identical policy hashes.
 
+Permit consumption on the in-memory backend is serialized under the
+same state lock: `consume_permit`, and the directive transitions that
+race it (bind, activate, revoke), are atomic against each other, so a
+permit is consumed single-use under concurrent callers and a
+revocation either fully precedes a consumption (the consume is
+denied, `directive_revoked`) or fully follows it. Before this change
+the in-memory consume transition was unserialized: two concurrent
+consumptions of one permit could both succeed -- reproduced at the
+state layer and through the kernel ceremony path, whose
+`GovernanceKernel.consume` adds no lock and no independent spent
+guard above the state layer -- and a revocation completing
+mid-consume still admitted against the pre-revocation status. The
+SQLite backend already serialized this transition with
+`BEGIN IMMEDIATE`. Scheduler-forced regressions cover both
+interleavings at the state layer and through the ceremony path.
+
 Scoped limits, stated plainly: this is a technology-neutral contract
 (the kernel parses no WebAuthn or authenticator payloads) and does
 **not** establish a production hardware-backed human ceremony — that
