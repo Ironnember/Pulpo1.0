@@ -1,6 +1,6 @@
 # Pulpo
 
-Pulpo is the governance and evidence plane between AI intelligence and consequential execution. It turns explicit intent into deterministic governance, binds allowed work to narrowly scoped one-use permits, and preserves durable evidence for verification and reconciliation.
+Pulpo is an AI governance and evidence plane for systems that propose or perform consequential work. It turns explicit intent into deterministic governance, binds allowed work to narrowly scoped one-use permits, and preserves durable evidence for verification and reconciliation. Pulpo does not provide autonomous execution or production authority.
 
 This repository is the clean canonical Pulpo project. The older `Iron-Ember/pulpo` repository remains historical reference material; its accumulated plans, generated evidence, machine-specific scripts, and CI workarounds are intentionally not imported here.
 
@@ -17,6 +17,13 @@ The base dependency-free suite and optional asymmetric-authority suite prove:
 - caller-controlled boolean approval and authorization timestamps are absent
   from the evaluation API;
 - permits are bound to the exact intent and cannot be replayed;
+- revoking a directive or policy invalidates permits already issued under
+  it: revocation is re-checked when a permit is consumed, so a held permit
+  dies at consume time — including across process restart and for
+  pre-issued child permits under a revoked parent. Consumption and
+  revocation are serialized: a revocation cannot land inside an admitted
+  consumption, and any consumption attempted after revocation is denied.
+  A policy change after consumption denies later release under that permit;
 - an optional SQLite state backend preserves approval-ID, nonce, permit, and
   audit state across process restart in the same canonical kernel;
 - persisted audit-chain tampering fails closed when the kernel restarts;
@@ -36,6 +43,10 @@ checkouts without inferring tests or authority. See the
 ```bash
 python -m unittest discover -s tests -v
 ```
+
+## Learning library
+
+[Source-linked learning library](docs/learning/README.md): 18 annotated book sources, Python and financial-literacy curriculum, and a runnable **offline synthetic** input-verification lab. This material is educational and does not grant a permit, spending authority, access to production systems, or independent runtime custody. Books not available as authorized full text are linked by publisher excerpt or table of contents, not mirrored.
 
 ## Minimal example
 
