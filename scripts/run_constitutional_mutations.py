@@ -182,6 +182,74 @@ MUTATIONS: tuple[Mutation, ...] = (
         'elif False and signer is not None and index >= legacy_records:',
         ("tests.test_audit_signing.SignedAuditLibraryTests.test_single_signature_stripped_refused",),
     ),
+    Mutation(
+        # Phase 2, Item 3A: the typed-evidence requirement is the
+        # control that refuses a bare-dict directive activation at the
+        # state surface. Weakening it must be detected by the facade
+        # tests (a dict then reaches the binding checks and raises the
+        # wrong error / a subclass is admitted).
+        "directive_evidence_type_check_removed",
+        "pulpo/state.py",
+        'if type(authority_evidence) is not VerifiedAuthorityEvidence:\n        raise TypeError("authority_evidence must be VerifiedAuthorityEvidence")\n    evidence = authority_evidence',
+        'if False and type(authority_evidence) is not VerifiedAuthorityEvidence:\n        raise TypeError("authority_evidence must be VerifiedAuthorityEvidence")\n    evidence = authority_evidence',
+        (
+            "tests.test_capability_facade.TypedEvidenceGateTests.test_bare_dict_activation_refused_inmemory",
+            "tests.test_capability_facade.TypedEvidenceGateTests.test_evidence_subclass_refused",
+        ),
+    ),
+    Mutation(
+        # Phase 2, Item 3A: the binding cross-check is the control that
+        # refuses evidence naming a different directive than the one
+        # being mutated. Weakening it must be detected by the facade
+        # tests.
+        "directive_evidence_binding_check_removed",
+        "pulpo/state.py",
+        'if (\n        evidence.operation != operation\n        or evidence.directive_id != directive_id\n        or evidence.directive_version != version\n        or evidence.directive_hash != directive_hash\n        or (check_parent and evidence.parent_directive_hash != parent_directive_hash)\n    ):',
+        'if False and (\n        evidence.operation != operation\n        or evidence.directive_id != directive_id\n        or evidence.directive_version != version\n        or evidence.directive_hash != directive_hash\n        or (check_parent and evidence.parent_directive_hash != parent_directive_hash)\n    ):',
+        ("tests.test_capability_facade.TypedEvidenceGateTests.test_evidence_bound_to_another_directive_refused",),
+    ),
+    Mutation(
+        # Codex P1 fix on PR #359: the completion verb's own filesystem
+        # observation is the control that refuses evidence naming a
+        # nonexistent or unobserved artifact. Replacing the observation
+        # with a fabricated one must be detected by the facade tests.
+        "target_completion_observation_removed",
+        "pulpo/kernel.py",
+        '        resolved_path, artifact_sha256, size_bytes = _observe_artifact_file(artifact_path)',
+        '        resolved_path, artifact_sha256, size_bytes = (str(artifact_path), "0" * 64, 1)',
+        (
+            "tests.test_capability_facade.HonestFacadeFlowTests.test_kernel_verb_target_completion_observes_real_file",
+            "tests.test_capability_facade.HonestFacadeFlowTests.test_kernel_verb_target_completion_refuses_unobserved_or_mismatched",
+            "tests.test_capability_facade.HonestFacadeFlowTests.test_forged_target_completion_does_not_complete_target",
+        ),
+    ),
+    Mutation(
+        # Codex P1 fix on PR #359: the completion verb's intent-hash
+        # cross-check binds the observed artifact to the exact locked
+        # target's intent. Weakening it must be detected by the facade
+        # tests.
+        "target_completion_intent_check_removed",
+        "pulpo/kernel.py",
+        '        if not hmac.compare_digest(expected_intent_hash, intent_hash):',
+        '        if False and not hmac.compare_digest(expected_intent_hash, intent_hash):',
+        (
+            "tests.test_capability_facade.HonestFacadeFlowTests.test_kernel_verb_target_completion_refuses_unobserved_or_mismatched",
+        ),
+    ),
+    Mutation(
+        # Codex P1 fix on PR #359: the outcome-memory verb's custody-
+        # evidence requirement is the control that refuses a
+        # self-asserted memory with no projected custody receipt behind
+        # it. Weakening it must be detected by the facade tests.
+        "outcome_memory_custody_evidence_check_removed",
+        "pulpo/kernel.py",
+        '        if len(custody_matches) != 1:',
+        '        if False and len(custody_matches) != 1:',
+        (
+            "tests.test_capability_facade.HonestFacadeFlowTests.test_kernel_verb_outcome_memory_refuses_self_asserted_payloads",
+            "tests.test_capability_facade.HonestFacadeFlowTests.test_forged_outcome_memory_is_not_returned_by_latest",
+        ),
+    ),
 )
 
 
