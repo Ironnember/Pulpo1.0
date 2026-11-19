@@ -23,7 +23,7 @@ from pathlib import Path
 import stat
 from typing import Literal
 
-from .kernel import GovernanceKernel, StateIntegrityError
+from .kernel import GovernanceKernel, StateIntegrityError, _observe_artifact_file
 
 
 def _canonical(value: object) -> bytes:
@@ -165,70 +165,15 @@ class GovernedTargetReconciliation:
 
     @staticmethod
     def _observe_file(path: str | Path) -> tuple[str, str, int]:
-        """Hash one stable regular file through a descriptor-bound observation.
+        """Observe one stable regular file (delegates to the kernel).
 
-        The resolved path, descriptor identity, byte count, size, and metadata
-        must remain stable for the whole observation. A writer racing the read
-        therefore cannot produce completion evidence for a mixed or replaced
-        artifact snapshot.
+        The descriptor-bound stable-observation logic lives in
+        ``pulpo.kernel._observe_artifact_file`` as the single
+        implementation, shared with the kernel's
+        ``record_target_completion`` verb (Codex P1 fix on PR #359).
         """
 
-        try:
-            resolved = Path(path).expanduser().resolve(strict=True)
-        except (OSError, RuntimeError) as exc:
-            raise ValueError("artifact_not_found") from exc
-
-        flags = os.O_RDONLY
-        if hasattr(os, "O_CLOEXEC"):
-            flags |= os.O_CLOEXEC
-        if hasattr(os, "O_NOFOLLOW"):
-            flags |= os.O_NOFOLLOW
-        try:
-            descriptor = os.open(resolved, flags)
-        except FileNotFoundError as exc:
-            raise ValueError("artifact_changed_during_observation") from exc
-        except OSError as exc:
-            raise ValueError("artifact_unreadable") from exc
-
-        try:
-            before = os.fstat(descriptor)
-            if not stat.S_ISREG(before.st_mode):
-                raise ValueError("artifact_not_file")
-            if before.st_size <= 0:
-                raise ValueError("artifact_empty")
-
-            digest = sha256()
-            bytes_read = 0
-            try:
-                while True:
-                    chunk = os.read(descriptor, 1024 * 1024)
-                    if not chunk:
-                        break
-                    bytes_read += len(chunk)
-                    digest.update(chunk)
-                after = os.fstat(descriptor)
-                path_after = os.stat(resolved, follow_symlinks=False)
-            except OSError as exc:
-                raise ValueError("artifact_changed_during_observation") from exc
-
-            stable_descriptor = (
-                before.st_dev == after.st_dev
-                and before.st_ino == after.st_ino
-                and before.st_size == after.st_size
-                and before.st_mtime_ns == after.st_mtime_ns
-                and before.st_ctime_ns == after.st_ctime_ns
-            )
-            stable_path = (
-                after.st_dev == path_after.st_dev
-                and after.st_ino == path_after.st_ino
-                and after.st_size == path_after.st_size
-            )
-            if bytes_read != before.st_size or not stable_descriptor or not stable_path:
-                raise ValueError("artifact_changed_during_observation")
-
-            return str(resolved), digest.hexdigest(), bytes_read
-        finally:
-            os.close(descriptor)
+        return _observe_artifact_file(path)
 
     def complete_file(
         self,
@@ -271,17 +216,12 @@ class GovernedTargetReconciliation:
                 return existing
             raise ValueError("target_completion_immutable")
 
-        self.kernel._state.append(
-            self.COMPLETION_EVENT,
-            {
-                "target_id": target.target_id,
-                "version": target.version,
-                "target_hash": target.target_hash,
-                "intent_hash": self.kernel.intent_hash(target.intent),
-                "completion": asdict(completion),
-                "completion_hash": completion.evidence_hash,
-                "authority_effect": "none",
-            },
-            now_ns,
+        recorded = self.kernel.record_target_completion(
+            target_id=target.target_id,
+            version=target.version,
+            target_hash=target.target_hash,
+            intent_hash=self.kernel.intent_hash(target.intent),
+            artifact_path=resolved_path,
+            timestamp_ns=now_ns,
         )
-        return completion
+        return ArtifactCompletionEvidence(**recorded)
