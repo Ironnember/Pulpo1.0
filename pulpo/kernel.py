@@ -1124,6 +1124,17 @@ class GovernanceKernel:
 
         return self._state.directive_hash_status(directive_hash)
 
+    def budget_spent(self, scope_key: str) -> int:
+        """Facade read: total cost already debited under one budget bucket.
+
+        Read-only and advisory: the directive projection consults it
+        as an issuance-time early check. The decisive budget check is
+        the atomic check-and-debit inside the state backend's consume
+        transition, never this read.
+        """
+
+        return self._state.budget_spent(scope_key)
+
     def activate_directive(
         self,
         directive: Any,
