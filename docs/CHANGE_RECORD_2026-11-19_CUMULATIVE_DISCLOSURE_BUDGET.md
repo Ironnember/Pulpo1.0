@@ -322,3 +322,274 @@ authority only in the direction §2 states, and only for
 directives whose issuers opt into a budget through the governed
 activation path (`authority_effect` for all existing directives:
 none).
+
+---
+
+## Addendum — 2026-11-19: Codex P1 fixes (PR #369 review)
+
+Codex review of the original head (`0225416`) left two P1
+findings. Both were pulled and verified in source before fixing —
+both HELD. Austin authorized the fixes on 2026-11-19; the merge
+decision is unchanged (Austin's separate word — this remains an
+authority-semantics change). This addendum follows the record's
+eight sections for the fix only; §4's counts describe the
+original head and are superseded by the counts here.
+
+### The findings, quoted and verified
+
+**P1(i) — "Debit the parent budget for derived-directive
+spends"** (on `pulpo/directives.py`, at the derivation
+narrowing): "A child whose ceiling is less than or equal to its
+parent's passes this check, but its ledger key contains the
+child's own directive ID/version, so it receives an independent
+allowance. For example, a parent and child each capped at 30 can
+both consume a cost-20 permit, allowing 40 units under authority
+derived from a 30-unit parent; multiple children multiply this
+further. Child consumption must also debit/check every budgeted
+ancestor, or the lineage must share the parent's bucket."
+**Verified** in source: the bucket key is built from the
+binding's own (directive_id, version), both consume paths
+consulted only that bucket, and `derivation_failure`'s narrowing
+bounds the child's ceiling per bucket while nothing charged any
+ancestor.
+
+**P1(ii) — "Fail closed when a bound budget policy is
+missing"** (on `pulpo/state.py`, at the SQLite consume): "If a
+budgeted permit retains its non-null budget binding but the
+corresponding `directive_budgets` row is unavailable — for
+example after database corruption or an incomplete restore —
+this branch simply skips budget enforcement, spends the permit,
+and records no debit. A missing policy must be treated like the
+already-handled malformed policy and reject consumption rather
+than silently restoring unlimited authority." **Verified** in
+source, in BOTH backends: SQLite's `if budget_row is not None`
+guard skipped the whole budget block on a missing row, and the
+in-memory backend's `.get(...)` → None took the same silent
+path. A malformed row already refused with
+`budget_policy_invalid`.
+
+### A1. Invariant or failure addressed
+
+Two failures of the invariant in §1. (a) The aggregate bound did
+not compose across derivation: a sequence of individually
+permitted acts under DIFFERENT directives of one lineage could
+compose into a total an ancestor's mandate forbids. (b) The
+fail-closed taxonomy had a hole: every corrupted-policy shape
+refused except a missing one, which silently restored the
+pre-build unlimited posture for that permit.
+
+### A2. Authority gained, narrowed, or left unchanged
+
+No actor gains authority. Enforcement narrows further against
+spenders: consumption under a derived directive can now be
+refused for a budgeted ancestor's aggregate as well as its own,
+and a budgeted permit whose policy record is missing is refused
+outright. Directive issuers gain no new policy term and no new
+capability. The permit binding format is UNCHANGED, and
+directive hashes are UNCHANGED — budget-less hash stability is
+untouched, and no field was added to any hash payload.
+
+### A3. Canonical state mutations introduced or exposed
+
+- **Parent link per directive (new stored fact):** each backend
+  now records a directive's parent hash at activation, inside
+  the existing governed activation transition — in-memory
+  `_directive_parents` map; SQLite `directives.parent_directive_hash`
+  column, added to the CREATE and by ALTER migration in the
+  established pattern (legacy rows keep NULL). Written at
+  exactly one site per backend (`activate_directive`, after the
+  typed-evidence gate); no other writer exists. This is what
+  lets consume resolve the lineage from the directive store;
+  the permit binding was deliberately NOT changed to carry it.
+- **Audit payloads:** a consumption that plans at least one
+  ancestor debit gains a `budget_lineage` list on its
+  `permit_consumed`/`permit_rejected` record — per ancestor:
+  directive identity, scope, ceiling, amount, bucket total
+  before, and on success the total after. Own-bucket fields are
+  unchanged. A consumption with no budgeted ancestor produces a
+  byte-identical payload to the original build (pinned by the
+  negative-control test below).
+- **New refusal statuses:** `budget_policy_missing` and
+  `budget_lineage_unresolvable`, recorded as `budget_status` on
+  the `permit_rejected` record with the permit unspent and no
+  debit taken, consistent with the existing taxonomy.
+
+### A4. Exact success and adversarial evidence
+
+New module `tests/test_cumulative_disclosure_budget_fixes.py` —
+19 tests against BOTH backends, importing the original module's
+harness unchanged; no existing test was modified. Full suite at
+the fix head: **930 tests, OK, skipped=13** (911 at the original
+head + exactly these 19). The original module — including the
+WorkOS walk stopping at exactly 5,000 — runs unmodified in the
+same suite.
+
+- **Missing policy:** after issuance, the policy is deleted
+  (SQLite `directive_budgets` row; in-memory policy entry) —
+  consumption refuses with `budget_policy_missing`, the permit
+  is verified unspent IN THE STORE, and the release store
+  records zero releases.
+- **Lineage, both orders:** parent cap 30, child cap 30; both
+  permits issued while both fit individually. Child consumed
+  first: both buckets stand at exactly 20, the audit's
+  `budget_lineage` shows the ancestor debited exactly once (20,
+  not 40), exactly one store-side release, and the parent's
+  permit is then refused `aggregate_budget_exceeded`, unspent.
+  Parent consumed first: the child is refused against the
+  ancestor's bucket with the child's own bucket still at 0 —
+  the refusal takes no partial debit.
+- **Multiple children:** two children of one budgeted parent;
+  the second child's crossing consumption is refused and the
+  parent bucket holds exactly one debit — siblings no longer
+  multiply the allowance.
+- **Ancestor scope resolution:** a per-session parent with a
+  declared reset charges the child's session-2 spend to the
+  parent's fresh session-2 bucket — the ancestor's bucket is
+  keyed by the ANCESTOR's scope definition, with principal and
+  session resolved from the permit's recorded facts.
+- **Independent caps compose:** a child's own tighter ceiling
+  (10 under a parent's 30) still refuses on its own bucket; the
+  parent keeps exactly the debits that landed.
+- **Unwalkable lineage fails closed:** the parent's record
+  deleted out of band, or its parent link cycled to name the
+  child — consumption refuses with
+  `budget_lineage_unresolvable` and no bucket is debited.
+- **Negative control:** the identical lineage with NO budgets
+  behaves exactly as pre-fix — both consumptions succeed, 40
+  released, and no `budget_*` key appears in any record. The
+  enforcement is budget-driven, not lineage-driven.
+- **Durability:** on SQLite a lineage debit survives a restart
+  and refuses the parent's further spend at issuance.
+
+### A5. Boundary the evidence does not prove
+
+- **The issuance early check remains own-bucket only.** The
+  projection's advisory check reads the permit's own bucket;
+  after an ancestor's bucket fills through lineage debits, the
+  projection may still issue a permit that consumption refuses.
+  That is the designed optimization/decider split (§4), now
+  true across the lineage as well; consumption is decisive.
+- **Versions are still fresh buckets, lineage-shaped.** A
+  successor version of an ancestor is a new directive identity,
+  not an ancestor of existing permits (a permit's lineage is
+  named by hash). Nothing totals spend across versions — §5's
+  narrowing, unchanged, now stated for lineages too.
+- **Ancestor revocation is not re-checked by the walk.** The
+  consume path re-checks the immediate parent's status exactly
+  as before; the budget walk charges a budgeted ancestor's
+  bucket without re-checking that ancestor's revocation. The
+  direction is fail-closed (a debit can only refuse more, never
+  allow more), and governed derivation is one level deep
+  (`directive_parent_chain_unsupported`), so the
+  immediate-parent check covers every creatable lineage.
+- **Recorded links beyond one level.** The walk's first hop
+  comes from the binding's parent hash, which was always
+  recorded; activation-recorded links extend the walk deeper.
+  Governed derivation cannot currently create a deeper chain,
+  so deeper links matter only for out-of-band store states —
+  where an unwalkable chain fails closed (A4) rather than
+  enforcing partially.
+- **Writer custody is unchanged.** A direct store writer who
+  deletes the policy row AND strips the binding's recorded
+  facts makes a permit read as budget-less. That is §5's
+  pre-existing writer-custody class: the bind-time audit record
+  carries the original facts, so the strip is detectable from
+  the chained audit. The credible case P1(ii) named — row gone,
+  facts intact — now fails closed.
+
+### A6. Claim classification
+
+- The two findings: **Verified** (Codex; confirmed in source
+  before fixing).
+- The fix's behavior: **Verified** (executable evidence at the
+  fix head commit).
+- Build item status: unchanged from §6 — implemented in this
+  PR, NOT canonical until merged on Austin's word.
+
+### A7. Legacy behavior source
+
+None new. The fix follows the repository's own current
+patterns: the `parent_directive_hash` migration shape (the
+permit_directives precedent) for the directives column, and the
+original build's fail-closed status taxonomy for the new
+statuses. No legacy control path was copied, and
+`pulpo/commerce.py` remains untouched by this path.
+
+### A8. Temporal-transfer evidence
+
+No relevant historical checkpoint exists for the fix as a
+replay, and none is manufactured. The transfer property that
+matters — budget-less directives and budget-less lineages keep
+byte-identical behavior — is pinned executably (A4's negative
+control, plus the original module's backwards-compatibility
+tests in the same run) rather than by historical replay.
+
+### Eight-pass adversarial review of the fix
+
+Per `docs/ADVERSARIAL_TRANSFORMATION_SOP.md`, applied to the
+fix before treating the path as governed:
+
+- **Flip.** The walk trusts only stored records — policies,
+  parent links, ledger totals — never anything the permit
+  presenter supplies at consume time; debit facts are the
+  binding's governed record. No step depends on a cooperative
+  caller: a fabricated binding is enforced against its
+  fabricated facts (the pre-existing posture), and facts missing
+  under ANY budgeted lineage member refuse as
+  `budget_context_missing` — including a fabricated budget-less
+  child of a budgeted parent, which the walk catches because the
+  ancestor's bucket key cannot be computed without facts.
+- **Reverse.** Backward from lineage overspend: it requires a
+  budgeted ancestor the walk never charges — the walk starts at
+  the binding's own parent hash and follows activation-recorded
+  links to a root, and any break refuses when enforcement is
+  engaged. Backward from an unenforced budgeted spend: it
+  requires facts present with no readable policy — now
+  `budget_policy_missing` in both backends. The earliest
+  boundary for both consequences is the consume transition,
+  which is where the fix sits.
+- **Invert.** A success through an unauthorized path would be
+  recorded as `permit_consumed`; the shapes that could produce
+  one were each traced: child without facts under a budgeted
+  parent (refused at the ancestor's key computation), forged
+  negative cost (refused `budget_context_invalid`, pre-existing),
+  malformed ancestor policy (refused `budget_policy_invalid`),
+  unwalkable chain (refused `budget_lineage_unresolvable`). No
+  success path skips a budgeted bucket the store can show it.
+- **Inside-Out.** The backends record and enforce; the fix adds
+  no self-authorization. The parent link is written only inside
+  `activate_directive`'s typed-evidence transition, the ledger's
+  only writer remains the consume transition, and debits never
+  decrement or refund. The enforcer cannot mint, widen, or
+  ratify through the new state.
+- **Darken** (threat case, labeled as such — not a claim it
+  occurred): a store writer deletes a policy row and strips the
+  binding's facts to restore unlimited spend. This is §5's
+  pre-existing writer-custody class, not created or widened by
+  the fix: the bind-time audit record carries the original
+  facts, so the strip is reconcilable from the chain. The
+  bounded corruption case Codex named — row gone, facts
+  intact — now refuses.
+- **Lighten.** A missing policy row is at least as plausibly
+  benign operations damage (a partial restore) as an attack.
+  The refusal records a store fact, destroys nothing, and
+  leaves the permit unspent and consumable once the policy is
+  restored; the record attributes no intent.
+- **Amplify.** Sibling multiplication is closed (A4). Cost: the
+  walk adds O(depth) stored-record reads inside the existing
+  lock/transaction — governed depth is one, so one extra policy
+  lookup and one link lookup per consumption in practice.
+  Refusals never debit, so re-presented permits cannot
+  accumulate spend across retries; the pinned tests assert
+  bucket totals are unchanged after every refusal.
+- **Negate.** The alternatives were narrower in appearance
+  only. Sharing the parent's bucket key for children (Codex's
+  stated alternative) conflates two policies into one bucket
+  and erases the child's own narrower cap as an independent
+  check. Issuance-side lineage checks cannot be decisive —
+  outstanding permits race (design point 1). Recording lineage
+  on the permit binding would change the binding format and
+  every child permit's audit payload to carry what activation
+  already records once. The chosen fix records one link per
+  directive at its already-governed activation and leaves the
+  binding and both hashes untouched.
