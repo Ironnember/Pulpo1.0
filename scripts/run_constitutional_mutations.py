@@ -250,6 +250,19 @@ MUTATIONS: tuple[Mutation, ...] = (
             "tests.test_capability_facade.HonestFacadeFlowTests.test_forged_outcome_memory_is_not_returned_by_latest",
         ),
     ),
+    Mutation(
+        # Phase 3, Item 4B: the consume-side presenter gate is what
+        # makes a bound permit unspendable by a token thief. Removing
+        # it must be detected by the presenter-binding tests.
+        "presenter_binding_check_removed",
+        "pulpo/kernel.py",
+        "        refusal = self._presenter_refusal(claims, digest, permit, presenter, presenter_proof)",
+        "        refusal = None and self._presenter_refusal(claims, digest, permit, presenter, presenter_proof)",
+        (
+            "tests.test_presenter_binding.BoundConsumeTests.test_wrong_presenter_refused_and_permit_not_burned",
+            "tests.test_presenter_binding.BoundConsumeTests.test_missing_proof_refused_and_permit_not_burned",
+        ),
+    ),
 )
 
 
