@@ -329,3 +329,294 @@ service design before treating the path as governed.
   deployments that choose it. The negation that would matter — a
   verb that bypasses the kernel — does not exist in the table, and
   the structural pins keep it that way.
+
+## Addendum — Codex review fixes: credential–principal binding, nonce retention, artifact roots, socket read deadline (2026-11-20)
+
+Four unresolved Codex review threads stood on this PR (two P1, two
+P2). Each finding was verified against the code at head `6ab6012`
+before fixing; all four held. The fixes are commit `bb0907e` on the
+original base, plus follow-up `e17db96` (the frame deadline made
+total rather than per-call). Between them, `origin/main` at
+`84390f1` (PR #373, presenter binding) was merged into the branch
+as signed merge commit `50874cf`, bringing the branch current; the
+only merge conflict was in `scripts/run_constitutional_mutations.py`,
+where both sides had appended mutation entries after the same
+anchor entry — resolved by keeping both blocks, semantics of both
+feature sets unchanged.
+
+### A1. Invariant or failure addressed
+
+- **P1 — requests not bound to an authenticated principal**
+  (thread `PRRT_kwDOUBywws65dQRj`). One shared service secret
+  authenticated membership in the client set, while the envelope's
+  `Intent.principal` was self-asserted: any secret-holder could
+  evaluate and consume as any principal. Violates the AGENTS.md
+  binding discipline (approval binds the exact principal) at the
+  channel layer.
+- **P1 — nonces evicted inside their validity window**
+  (thread `PRRT_kwDOUBywws65dQRr`). The replay cache pruned by
+  expiry and then evicted oldest-expiring entries past 16,384, so
+  a captured request whose nonce was evicted could be replayed
+  inside its five-minute freshness window and pass the replay
+  check. This record's own Amplify pass had priced that eviction
+  as safe because the TTL cap keeps the window short; the finding
+  correctly priced short as still open.
+- **P2 — artifact observations unconstrained**
+  (thread `PRRT_kwDOUBywws65dQRy`). `record_target_completion`
+  accepted any `artifact_path` the service process could read and
+  recorded its resolved path, size, and SHA-256 as verified
+  completion evidence: a file-hash oracle over host files clients
+  cannot read, and a route to forged completion evidence for
+  artifacts unrelated to the locked target.
+- **P2 — no deadline on socket frame reads**
+  (thread `PRRT_kwDOUBywws65dQR7`). `_recv_frame` blocked
+  indefinitely on a partial frame; the serve loop is sequential,
+  so any local process could deny the service to every legitimate
+  client without knowing any secret.
+
+### A2. Authority gained, narrowed, or left unchanged
+
+- **Narrowed — credential authority is per-principal.** The
+  service is now configured with named credentials
+  (`Mapping[credential_id, (secret, principals)]`). The request
+  envelope names its credential (inside the MAC'd body), the MAC
+  is verified under that credential's secret, and every principal
+  the request asserts — the intent's principal, the directive
+  operator, any carried directive's principal, a binding's budget
+  principal — must be inside the credential's bound set, checked
+  under the dispatch lock before the verb runs
+  (`request_principal_not_bound`). Responses are MAC'd under the
+  requesting credential's secret.
+- **Narrowed — artifact observation is per-deployment-root.**
+  `record_target_completion` resolves `artifact_path` (after
+  normalization, symlinks followed) and refuses before the kernel
+  verb — before any file is read — unless it lies beneath a
+  configured artifact root (`artifact_path_not_authorized`); with
+  no root configured, observation is refused outright
+  (`artifact_roots_not_configured`).
+- **Unchanged:** kernel semantics, the permit and directive
+  lifecycles, and the approval-envelope authority path. The
+  credential binding is channel identity, not a second authority
+  plane: directive activation still requires an envelope verified
+  against the policy's pinned authority trust. The binding governs
+  which principals a *channel credential* may speak for; it grants
+  no principal any authority policy does not already grant.
+- **Gained:** none. Two fail-closed availability behaviors are
+  added deliberately and priced in A5: a nonce cache full of live
+  nonces refuses new requests (`request_nonce_capacity`), and a
+  socket frame read that exceeds its deadline is disconnected.
+- **Configuration break, recorded:** `KernelService` and
+  `KernelServiceClient` constructor shapes changed (bare secret →
+  named bound credentials; the client gains its credential id).
+  A bare secret, an empty credential map, or an empty/unspecified
+  principal set raises at construction — never a silent
+  all-principals default. In-tree callers were the boundary tests
+  only; out-of-tree deployments must reconfigure explicitly.
+
+### A3. Canonical state mutations introduced or exposed
+
+None. All four fixes act before dispatch; every new refusal
+appends nothing and spends nothing (asserted by audit-length
+checks in the new tests). Two protocol-state notes: an
+authenticated request refused for principal binding has already
+recorded its nonce — the same posture as a governed deny, and it
+prevents re-presenting the refused frame; and the nonce cache is
+service protocol state, not canonical state — the capacity
+refusal changes no canonical record.
+
+### A4. Exact success and adversarial evidence
+
+Nine new tests; the existing sixteen updated to the credential
+configuration shape (no test deleted, no assertion weakened):
+
+- `CredentialBindingTests` (3): a restricted credential evaluating
+  for an unbound principal refuses `request_principal_not_bound`
+  with the audit unmoved, and succeeds for its own principal; a
+  second credential holding a genuine permit cannot spend the
+  first principal's permit (refused pre-dispatch; the permit
+  remains spendable by its own credential); unbound configurations
+  (empty map, bare secret, empty principal set, a bare string in
+  place of the set) all fail closed at construction.
+- `AdversarialBoundaryTests` additions (2): an unknown credential
+  id refuses `request_credential_unknown` with no state change;
+  with an injected cache limit of 4, four live nonces fill the
+  cache, the oldest still refuses replay as `request_replayed`
+  (retained, not evicted), and a fresh request refuses
+  `request_nonce_capacity` undispatched.
+- `ArtifactRootTests` (3): an artifact outside the configured root
+  refuses; a `..` traversal escaping the root refuses; with no
+  root configured, an otherwise valid completion refuses. The
+  honest completion test now runs with its temp directory as the
+  configured root and passes unchanged in substance.
+- `SocketDeadlineTests` (1): a raw socket that sends a partial
+  frame header and stalls is disconnected at a 0.2 s deadline,
+  the kernel audit is unmoved, and the sequential loop then serves
+  a legitimate client on the same socket.
+
+Suite: **955 OK (skipped=13)** at `bb0907e` on the `fc51e71` base
+(946 + 9 new); **973 OK (skipped=13)** at the final head after the
+main merge (948 at `84390f1` + 25 service-boundary tests).
+Constitutional mutations: one added
+(`service_principal_binding_check_removed`, anchored on the
+binding check, killed by the two credential-binding tests);
+**29/29 killed** pre-merge, **30/30 killed** at the final head —
+main's `presenter_binding_check_removed` and the five service
+mutations coexist and all die. The existing service mutations
+(request MAC, replay, expiry, response MAC) anchor on lines the
+fixes deliberately left byte-identical, and still kill.
+
+### A5. Boundary the evidence does not prove
+
+- **A leaked credential still acts — for its bound principals.**
+  The fix narrows the original §5 leaked-secret floor from
+  service-wide to the credential's principal set for
+  cross-principal acts; inside the bound set the posture is
+  unchanged. The binding authenticates a configured credential,
+  not a human.
+- **The bound set is configuration, and configuration can be
+  wrong.** A deployment that binds one credential to every
+  principal reproduces the pre-fix posture — now as a visible
+  configuration choice rather than a protocol default. The code
+  guarantees no silent wildcard; it cannot guarantee a deployment
+  splits credentials by component.
+- **Principal coverage is the principals a request asserts.**
+  Verbs whose principal lives only in server-side state assert
+  none: `evaluate_locked_target` names a locked target, not an
+  intent, so its issuance is gated by a valid credential and the
+  target hash, while *spending* the resulting permit still
+  requires asserting the intent at `consume`, where the binding
+  applies. Recorded as the check's exact reach, not hidden.
+- **Nonce capacity is an availability trade, chosen openly.** An
+  attacker holding any valid credential can fill the cache with
+  distinct nonces and refuse service to other credentials until
+  entries expire (bounded by the request TTL cap, five minutes by
+  default). Unauthenticated senders cannot fill the cache —
+  nonces are recorded only after MAC verification. The rejected
+  alternative, eviction, reopens replay; this record chooses
+  replay-safety over that availability edge.
+- **Artifact roots are checked by resolution, observed by the
+  kernel.** The service resolves the path and compares it against
+  the resolved roots before dispatch; the kernel verb then
+  re-resolves and observes descriptor-bound, as before. The fix
+  removes the unconstrained path; it does not add a new
+  time-of-check/time-of-use proof beyond the kernel's existing
+  stable observation. A root configured as `/` reproduces the old
+  posture by configuration.
+- **The socket deadline bounds occupancy; it does not parallelize
+  it.** One connection can still hold the sequential loop for up
+  to one deadline (default 30 s). Concurrent connection handling
+  was the finding's alternative and was not adopted: dispatch
+  serialization under one lock is a design property of this
+  boundary.
+- **Presenter binding is not wired through this boundary.** The
+  4B record said presenter fields would ride service envelopes as
+  additive optional members "when both land". Both have now
+  landed, via the merge in this addendum — but that wiring is not
+  part of these fixes: permits across this boundary remain bearer
+  at consume, exactly as the original §5 stated. The merge must
+  not be misread as closing it.
+
+### A6. Claim classification
+
+- **Verified** (executed at the final head): the 25 boundary
+  tests; the full suite at 973 OK; 30/30 constitutional mutations
+  killed; the subprocess socket run under the new credential
+  shape; the stall-disconnect run.
+- **Recorded:** the four Codex thread texts and their AGENTS.md
+  references; the 4B change record's "when both land" note on
+  presenter fields.
+- **Inferred:** that the asserted-principal extraction covers the
+  facade's argument shapes — it mirrors every principal-bearing
+  field the verb table accepts at this head; a future verb that
+  adds a principal-bearing field must extend the extraction, and
+  the mutation pin guards the check itself, not the extraction's
+  completeness.
+- **Proposed:** nothing in this addendum.
+- **Unknown:** whether any out-of-tree deployment constructs the
+  service with the pre-fix constructor shape; such a deployment
+  fails loudly at construction, by design.
+
+### A7. Legacy behavior source
+
+The pre-fix protocol shapes themselves: the single shared secret,
+the eviction-pruned nonce cache, the unconstrained artifact path,
+and the unbounded frame read. They are replaced, not shimmed —
+except that single-credential deployments remain expressible by
+binding one credential to exactly the principals it serves. The
+original record's Amplify reasoning (the TTL cap makes early
+nonce eviction safe) is superseded by finding 2 and this
+addendum: the cap bounded the replay window; it never closed it.
+
+### A8. Temporal-transfer evidence
+
+No new historical checkpoint applies: the four findings are
+review findings against this branch's own head, and the boundary
+has no earlier implementation to replay against (original §8).
+The applicable regression evidence is the suite at the merged
+head: all 930 tests of the `fc51e71` base and all of main's
+presenter-binding tests pass unmodified alongside the 25 boundary
+tests, which is the record that the fixes and the merge changed
+no behavior outside the four findings' scope.
+
+### Eight-pass adversarial review of the fixes
+
+Procedure: `docs/ADVERSARIAL_TRANSFORMATION_SOP.md`, run over the
+four fixes before treating the paths as governed.
+
+- **Flip** (client and server exchange roles): responses are now
+  MAC'd under the *requesting credential's* secret, so a party
+  holding credential A's secret cannot forge responses to
+  credential B's client. The one unMAC'd response class is the
+  unknown-credential refusal — no shared secret exists to MAC
+  with — and a client fails closed on it; it can fabricate a
+  refusal, never a result.
+- **Reverse** (run the flow backwards): the replay check runs
+  before the capacity check, so a captured frame replayed into a
+  full cache is still reported and refused as a replay; a frame
+  refused for principal binding has burned its nonce, and
+  re-presenting it under another credential id fails the MAC
+  (the credential id is inside the MAC'd body). No step reverses
+  into authority.
+- **Invert** (turn the controls against themselves): distinct
+  refusal tokens (unknown credential / bad MAC / unbound
+  principal) let a valid credential-holder probe the binding
+  configuration — accepted, as the protocol already distinguished
+  its failures, and probing requires a credential. The nonce
+  capacity refusal is the invertible control with real cost;
+  its authenticated-fill bound is priced in A5.
+- **Inside-Out** (view from inside the boundary): the credential
+  table lives in the trusted service process (the original §5
+  posture, unchanged). Principal extraction is defensive — a
+  malformed principal field asserts nothing and is refused later
+  by the verb's own reconstruction — so no type confusion in an
+  asserted principal can carry a request past the check into a
+  dispatch that reads it differently; the dataclass constructors
+  re-validate every field server-side.
+- **Darken** (assume the worst input): credential ids of the
+  wrong type refuse as unknown; principal sets containing
+  non-strings refuse at construction; artifact paths that are
+  relative, traversing, or symlinked out of the root resolve
+  before comparison and refuse; a frame header declaring a huge
+  length and drip-feeding exhausts one total deadline, not one
+  deadline per byte; a frame that never arrives dispatches
+  nothing. Every path lands in a refusal or a disconnect with no
+  state change.
+- **Lighten** (weakest assumption): that deployments actually
+  split credentials per component and configure narrow roots.
+  The code's part — no defaults, no wildcards, construction
+  failures for unbound shapes — is done; the deployment's part
+  is recorded in A5 so the claim never outruns it.
+- **Amplify** (scale it): the nonce cache is now hard-bounded by
+  its limit with refusal past it, so memory growth is capped by
+  configuration; principal extraction is proportional to the
+  principal fields present in one request's args; artifact
+  resolution happens once per completion call. The sequential
+  serve loop remains the throughput bound, now with bounded
+  per-connection occupancy.
+- **Negate** (remove each control): remove the binding and
+  finding 1 returns verbatim; restore eviction and finding 2
+  returns; drop the root check and finding 3 returns; drop the
+  deadline and finding 4 returns. The fixes are the minimal
+  removals of exactly those four holes — the only other protocol
+  change is the additive `credential_id` envelope field and the
+  constructor configuration shape recorded in A2.
