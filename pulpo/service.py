@@ -1040,23 +1040,30 @@ def _send_frame(sock: socket.socket, data: bytes) -> None:
     sock.sendall(len(data).to_bytes(8, "big") + data)
 
 
-def _recv_frame(sock: socket.socket) -> bytes:
-    header = b""
-    while len(header) < 8:
-        chunk = sock.recv(8 - len(header))
+def _recv_exactly(sock: socket.socket, count: int, deadline: float | None) -> bytes:
+    data = b""
+    while len(data) < count:
+        if deadline is not None:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise ServiceRefusal("transport_timeout")
+            sock.settimeout(remaining)
+        chunk = sock.recv(count - len(data))
         if not chunk:
             raise ServiceRefusal("transport_closed")
-        header += chunk
+        data += chunk
+    return data
+
+
+def _recv_frame(sock: socket.socket, deadline: float | None = None) -> bytes:
+    # ``deadline`` (a time.monotonic() instant) bounds the whole
+    # frame read, not each recv: a peer drip-feeding bytes inside a
+    # per-call timeout still exhausts the same total budget.
+    header = _recv_exactly(sock, 8, deadline)
     length = int.from_bytes(header, "big")
     if length > _MAX_FRAME_BYTES:
         raise ServiceRefusal("frame_too_large")
-    payload = b""
-    while len(payload) < length:
-        chunk = sock.recv(length - len(payload))
-        if not chunk:
-            raise ServiceRefusal("transport_closed")
-        payload += chunk
-    return payload
+    return _recv_exactly(sock, length, deadline)
 
 
 class UnixSocketTransport:
@@ -1079,11 +1086,13 @@ def serve_unix_socket(
 
     One request per connection, handled sequentially: the kernel's
     own consume-time atomicity lives in the state backend, and the
-    service lock keeps dispatch deterministic. Each connection
-    carries a read deadline (Codex P2 fix on PR #371): a peer that
-    sends a partial frame and stalls is disconnected at the deadline
-    with nothing dispatched, so it cannot hold the sequential loop —
-    and every legitimate client behind it — hostage indefinitely.
+    service lock keeps dispatch deterministic. Each connection's
+    frame read carries a total deadline (Codex P2 fix on PR #371):
+    a peer that sends a partial frame and stalls — or drip-feeds
+    bytes to stay inside a per-call timeout — is disconnected at
+    the deadline with nothing dispatched, so it cannot hold the
+    sequential loop, and every legitimate client behind it, hostage
+    indefinitely.
     """
     if read_timeout_s <= 0:
         raise ValueError("read_timeout_s must be positive")
@@ -1097,7 +1106,9 @@ def serve_unix_socket(
             with connection:
                 try:
                     connection.settimeout(read_timeout_s)
-                    request = _recv_frame(connection)
+                    request = _recv_frame(
+                        connection, deadline=time.monotonic() + read_timeout_s
+                    )
                     _send_frame(connection, service.handle(request))
                 except (ServiceRefusal, ConnectionError, OSError):
                     continue
