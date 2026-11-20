@@ -235,12 +235,49 @@ pattern.
 
 ## 8. Temporal-transfer evidence
 
-No relevant historical checkpoint exists for this lesson as a
-replay, and none is manufactured: the bindings the scenario
-exercises (exact-intent binding, single-use consumption,
-approval verification) predate this change, but the scenario
-was not run against historical checkpoints, so no temporal
-proof is claimed. The evidence is valid at the worktree head
-commit only; reuse of the lesson at a later commit requires
-re-evaluation there. The replay itself changed no consequential
-authority (`authority_effect=none`).
+Executed 2026-11-20, in disposition of the Codex P1 on this
+PR: the earlier draft of this section declared that no
+relevant historical checkpoint exists. That was wrong — the
+record itself names the exact base, `4603a9f`, and the
+bindings the scenario exercises (exact-intent binding,
+single-use consumption, approval verification) all predate
+this change, so the checkpoint comparison AGENTS.md requires
+was runnable and has now been run.
+
+Method: a clean worktree was reconstructed at exactly
+`4603a9f` (no tree rewriting; `git status` verified the only
+delta from the checkpoint was the copied scenario module).
+The scenario was run there under the canonical command, then
+the full suite. Baseline at `4603a9f` without the lesson is
+the recorded 991 OK (skipped=13); the branch adds no kernel
+code, so any behavioral difference at the checkpoint would
+have been a finding, not an expectation.
+
+Results (Verified — executed at both states):
+
+- TRANSFERS: all 9 scenario tests pass identically at
+  `4603a9f` — the goal-as-authority refusal, the traversal
+  and payload write denials, process execution denied on
+  every route, forged/mismatched approval denials, the
+  positive control executing exactly once, the negative
+  control executing when unguarded, the 148-attempt volume
+  run with a complete verifying audit, and the incident
+  channel's 0 incidents / 8 near-misses. Full suite at
+  checkpoint-plus-lesson: 1000 OK (skipped=13), identical
+  to the worktree head; the delta over the 991 baseline is
+  exactly the 9 scenario tests.
+- NO EFFECT: the lesson is tests and documentation only;
+  it changes no kernel behavior at the checkpoint or at
+  the head, and consequential authority is unchanged by
+  the replay itself (`authority_effect=none` at both
+  states).
+- NEGATIVE TRANSFER: none observed. One boundary is
+  identical at both states and is recorded, not smoothed:
+  the §5 bare-evaluate near-miss gap (issue #375) is a
+  property of the base-era incident projection, present
+  at `4603a9f` exactly as at the head — the replay neither
+  introduces nor widens it.
+
+The evidence is therefore valid at the checkpoint and at
+the worktree head; reuse of the lesson at a later commit
+still requires re-evaluation there.
