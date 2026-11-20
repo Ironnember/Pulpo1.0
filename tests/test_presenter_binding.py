@@ -66,6 +66,17 @@ def rejection_reasons(kernel):
     ]
 
 
+class TruthyPresenterVerifier:
+    """A misbehaving presenter verifier: verify() returns 1.
+
+    Truthy, but not the literal True — the Codex P1 shape. Under
+    the pre-fix gate this return spent the permit.
+    """
+
+    def verify(self, payload, signature):
+        return 1
+
+
 class BoundConsumeTests(unittest.TestCase):
     def test_bound_permit_spends_for_its_presenter_with_valid_proof(self):
         kernel = make_kernel()
@@ -154,6 +165,27 @@ class BoundConsumeTests(unittest.TestCase):
         proof = proof_for(issuer, issuer._presenter_verifiers[PRESENTER], token, INTENT, PRESENTER)
         self.assertFalse(bare.consume(token, INTENT, presenter=PRESENTER, presenter_proof=proof))
         self.assertEqual(rejection_reasons(bare), ["permit_presenter_unverifiable"])
+
+    def test_truthy_verifier_result_refused_and_permit_not_burned(self):
+        # Codex P1 on PR #373: the gate accepted any truthy
+        # verify() return. A return of 1 is not the literal True,
+        # so the verifier has not verified: the refusal is
+        # permit_presenter_unverifiable, and the permit survives
+        # for a subsequent spend under a proper verifier.
+        kernel = make_kernel()
+        token = kernel.evaluate(INTENT, presenter=PRESENTER).permit
+        proof = proof_for(
+            kernel, kernel._presenter_verifiers[PRESENTER], token, INTENT, PRESENTER
+        )
+        kernel._presenter_verifiers[PRESENTER] = TruthyPresenterVerifier()
+        self.assertFalse(
+            kernel.consume(token, INTENT, presenter=PRESENTER, presenter_proof=proof)
+        )
+        self.assertEqual(rejection_reasons(kernel), ["permit_presenter_unverifiable"])
+        kernel._presenter_verifiers[PRESENTER] = HmacPresenterVerifier(b"presenter-secret")
+        self.assertTrue(
+            kernel.consume(token, INTENT, presenter=PRESENTER, presenter_proof=proof)
+        )
 
 
 class IssuanceBindingTests(unittest.TestCase):

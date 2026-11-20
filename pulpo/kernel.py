@@ -1054,7 +1054,13 @@ class GovernanceKernel:
         token-v2 bearer <redacted> unless the pinned policy requires
         binding. A bound permit requires the named presenter's valid
         proof under the verifier registered for that identity; every
-        failure mode is a distinct recorded reason.
+        failure mode is a distinct recorded reason. Verification
+        follows the approval path's discipline: only the literal
+        ``True`` is a verdict in favor — a verifier that raises, or
+        that returns anything other than a bool, has not verified
+        (``permit_presenter_unverifiable``); a verifier that returns
+        ``False`` has verified and refused the proof
+        (``permit_presenter_mismatch``).
         """
 
         presenter_hash = claims[3]
@@ -1075,10 +1081,12 @@ class GovernanceKernel:
         try:
             verified = verifier.verify(payload, presenter_proof)
         except Exception:
-            verified = False
-        if not verified:
+            return "permit_presenter_unverifiable"
+        if verified is True:
+            return None
+        if verified is False:
             return "permit_presenter_mismatch"
-        return None
+        return "permit_presenter_unverifiable"
 
     def _permit_token_valid(self, permit: object) -> bool:
         """Whether ``permit`` is an authentic v3 token (see _permit_token_claims).

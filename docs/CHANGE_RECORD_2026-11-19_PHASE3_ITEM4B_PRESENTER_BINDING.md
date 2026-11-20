@@ -309,3 +309,171 @@ standing price, not presented as governed).
 Stop/continue decision: **continue** — no stop condition fired.
 The build is authorized; the merge is Austin's separate decision,
 as with every authority-semantics item.
+
+## Addendum — post-review fix: literal True from presenter verifiers (2026-11-20)
+
+Source: Codex P1 on PR #373, "Require a literal True from
+presenter verifiers" — the one unresolved review thread after
+dual human approval. Verified against the code at `abac49b`
+before fixing: `_presenter_refusal` branched on the truthiness
+of `verifier.verify(...)`, so a verifier returning `1` or
+`"yes"` spent a bound permit, while the approval path
+(`evaluate_with_approval`) has always required
+`signature_valid is not True` to refuse. This addendum is the
+change record for the fix, in the same eight sections.
+
+### A1. Invariant or failure addressed
+
+A presenter verifier's non-bool return was treated as a
+verification verdict. The gate now applies the approval path's
+discipline: only the literal `True` is a verdict in favor.
+The refusal mapping, all recorded as `permit_rejected` and none
+of them burning the permit:
+
+- verifier returns `True` — proceed;
+- verifier returns `False` — the proof was verified and
+  refused: `permit_presenter_mismatch` (unchanged);
+- verifier returns anything else (truthy or falsy non-bool) —
+  no verdict exists: `permit_presenter_unverifiable`;
+- verifier raises — no verdict exists:
+  `permit_presenter_unverifiable` (previously the exception was
+  folded into `False` and misrecorded as a mismatch).
+
+### A2. Authority gained, narrowed, or left unchanged
+
+None gained. Narrowed: the set of verifier behaviors that can
+spend a bound permit shrinks from "any truthy return" to "the
+literal True". Unchanged: every Decision, the bearer path, the
+no-verifier-registered refusal (already
+`permit_presenter_unverifiable`), and the outcome of the
+exception path (refusal before and after; only its recorded
+reason is corrected).
+
+### A3. Canonical state mutations introduced or exposed
+
+None new. The same `permit_rejected` event now records
+`permit_presenter_unverifiable` for two failure shapes that
+previously recorded `permit_presenter_mismatch` (verifier
+exception) or recorded nothing at all because the consume
+succeeded (truthy non-bool return). No event type, payload
+field, or store behavior changes.
+
+### A4. Exact success and adversarial evidence
+
+One regression test added:
+`test_truthy_verifier_result_refused_and_permit_not_burned`
+(a `TruthyPresenterVerifier` double whose `verify` returns
+`1`): the consume refuses with
+`permit_presenter_unverifiable`, and after the registry entry
+is restored to the HMAC verifier the bound presenter spends
+the same permit — the failed attempt did not burn it.
+Full suite at the fixed head: **948 OK (skipped=13)** — the
+947 at `abac49b` plus the one new test, no existing test
+modified. Constitutional mutations: **25/25 killed**,
+unchanged — no new mutation is added, because the fix
+strengthens a check inside the existing gate and the standing
+`presenter_binding_check_removed` mutation (the whole gate
+neutralized) is still killed by the bound-consume tests.
+
+### A5. Boundary the evidence does not prove
+
+- The fix governs the kernel's treatment of verifier returns,
+  not any verifier's honesty: a verifier that returns `True`
+  for a bad proof still spends the permit. Verifier correctness
+  and key custody remain the deployment's, as in §5.
+- No production presenter verifier exists yet; the doubles are
+  same-process HMAC, as throughout this record.
+- **Observed, deliberately not fixed here:** the audit-anchor
+  signature check in `verify_audit_report` calls
+  `signer.verify(...)` under a truthiness branch — the same
+  shape against a different, base-era path (Items 1/2). It is
+  outside this PR's scope and outside the Codex thread; it is
+  recorded here so it is not lost, and it belongs to a separate
+  item if Austin wants it closed.
+
+### A6. Claim classification
+
+- **Verified** (executed at the fixed head): the new regression
+  test; the full suite at 948 OK; 25/25 constitutional
+  mutations killed.
+- **Recorded:** the Codex P1 thread on PR #373; the pre-fix
+  truthiness behavior at `abac49b`, read from the code.
+- **Inferred:** that `permit_presenter_unverifiable` is the
+  right token for a non-verdict — it is the gate's existing
+  token for "verification could not be performed" (no
+  registered verifier), extended to "the verifier produced no
+  bool verdict".
+- **Proposed / Unknown:** nothing.
+
+### A7. Legacy behavior source
+
+The pre-fix gate at `abac49b` (truthiness, exception folded to
+`False`). The discipline copied is the approval path's
+`is not True` check at `fc51e71` — a pattern transfer, not a
+control-path copy: the presenter gate keeps its own reason
+vocabulary and its kernel-layer placement.
+
+### A8. Temporal-transfer evidence
+
+The transferred lesson is the approval path's literal-True
+discipline, in force at the base checkpoint `fc51e71` and
+traced to the Item 4-era approval verification. Evaluated
+against the current tree rather than assumed: a grep over
+every `verify(` call site in `pulpo/kernel.py` at the fixed
+head shows the presenter gate was the one authority-bearing
+site not applying it (the approval sites already did; the
+audit-anchor site is the §A5 observation, a reporting path,
+not an authorization gate). Where the lesson transfers: any
+future verifier-shaped dependency consulted by an
+authorization gate. Where it does not: nothing in this fix
+changes reporting-path behavior.
+
+### Eight-pass adversarial review of the fix
+
+- **Flip:** if the *verifier* is the hostile party, it could
+  always return `True` — the fix does not pretend otherwise;
+  it removes the accidental-ally case, where a sloppy or
+  coerced non-bool return spent a permit without any verifier
+  ever deciding to approve.
+- **Reverse:** from the consequence — a bound spend now
+  requires a chain of literal verdicts: token authentic,
+  intent bound, presenter hash matched, verifier returned
+  `True`. Every earlier refusal in the chain is unchanged.
+- **Invert:** could the stricter check invert into a denial
+  oracle or a lockout? A misbehaving verifier now fails its
+  own presenter closed, with a legible reason, and the permit
+  is not burned — the honest presenter spends once the
+  verifier is fixed (pinned by the regression test).
+- **Inside-Out:** the kernel is still its own registry
+  authority (§8 posture); the fix adds no registry verb and
+  no runtime surface.
+- **Darken:** worst case after the fix is the standing one —
+  token + presenter key + a verifier willing to return `True`
+  spends once inside the window. The truthiness side door,
+  which needed no key compromise at all, is closed.
+- **Lighten:** the benign reading of the old code was "Python
+  convention" — but this codebase's approval path had already
+  settled the convention the other way; the fix is the
+  presenter gate joining the house rule, not a new rule.
+- **Amplify:** one `is` comparison per bound consume; no new
+  state, no new audit volume beyond refusals that previously
+  succeeded silently.
+- **Negate:** is the literal-True requirement necessary, or
+  would documenting "verifiers must return bool" do? No —
+  the registry accepts any object with a `verify` method, and
+  an unenforced contract at an authorization gate is the
+  failure this item exists to remove. The check is one line;
+  the contract alone is none.
+
+Invariants checked: `AUTHORIZED_OUTCOME !=
+AUTHORIZATION_FOR_ARBITRARY_MEANS` (a truthy return was an
+arbitrary means of reaching the authorized outcome; it no
+longer reaches it); `NO_PERMIT != NO_GOVERNED_EFFECT` (the
+new refusals append their records; the previously silent
+success now leaves evidence when it fails).
+
+Stop/continue decision: **continue** — the fix is inside the
+PR's existing scope (the consume gate it built), no new
+authority, no new state. The merge remains Austin's separate
+decision; this push dismisses the standing approvals, which
+must be re-given on the new head.
