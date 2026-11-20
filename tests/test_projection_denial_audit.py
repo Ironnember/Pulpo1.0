@@ -27,17 +27,39 @@ double, as in the facade fixtures.
 
 from __future__ import annotations
 
+from pathlib import Path
+import tempfile
 import unittest
 
-from pulpo import GovernanceKernel, Intent, Policy
+from pulpo import GovernanceKernel, Intent, Policy, PulpoOrchestrator
 from pulpo.directives import Directive, DirectiveAuthorityController, GovernedDirectiveProjection
+from pulpo.incident_channel import freeze_incident_report
 from pulpo.kernel import AgentGrant
-from pulpo.state import AuditSigner, InMemoryKernelState
+from pulpo.state import AuditSigner, InMemoryKernelState, SQLiteKernelState
 from tests.authority_support import HmacTestVerifier, signed_envelope, trust_for
 
 
 NOW = 2_000_000
 OPERATOR = "operator:owner"
+
+
+class SwitchClock:
+    """A kernel clock whose failure mode the test arms after setup.
+
+    The Codex P2 shape is precisely a clock that was healthy while
+    directives were activated and revoked, then becomes unavailable
+    at evaluation time.
+    """
+
+    def __init__(self):
+        self.mode = "ok"
+
+    def __call__(self):
+        if self.mode == "raise":
+            raise RuntimeError("clock exploded")
+        if self.mode == "none":
+            return None
+        return NOW
 
 
 def directive(**overrides):
@@ -57,7 +79,7 @@ def directive(**overrides):
 
 
 class Fixture:
-    def __init__(self, state=None, policy=None):
+    def __init__(self, state=None, policy=None, clock=None):
         self.verifier = HmacTestVerifier()
         self.policy = policy or Policy(
             frozenset({"write", "activate_directive", "revoke_directive"}),
@@ -70,7 +92,7 @@ class Fixture:
             self.policy,
             b"kernel-secret",
             approval_verifier=self.verifier,
-            clock=lambda: NOW,
+            clock=clock if clock is not None else (lambda: NOW),
             state=self.state,
         )
         self.controller = DirectiveAuthorityController(self.kernel)
@@ -259,6 +281,148 @@ class ProjectionDenialRecordTests(unittest.TestCase):
         self.assertEqual(len(fx.denials()), 1)
         self.assertIn("signature", fx.denials()[0])
         self.assertTrue(fx.kernel.verify_audit())
+
+
+class ProjectionDenialClockPostureTests(unittest.TestCase):
+    """Codex P2 on PR #372: the denial record must survive an
+    unavailable clock.
+
+    The projection's status denials (unknown, revoked, parent
+    revoked) are computed before any trusted-time check, and before
+    item #2 those paths returned their fail-closed Decision without
+    touching the clock at all. The record verb therefore resolves
+    its timestamp through the kernel's trusted clock and degrades
+    to the 0 sentinel (the ``approval_rejected`` precedent) instead
+    of propagating a clock exception, writing a ``None`` timestamp
+    into the in-memory chain, or tripping the SQLite backend's
+    NOT NULL timestamp constraint. The Decision returned is the one
+    the projection has always returned; the denial is recorded
+    exactly once; only the record's timestamp degrades.
+    """
+
+    def test_healthy_clock_stamps_the_denial_with_kernel_time(self):
+        fx = Fixture()
+        fx.projection.evaluate(Intent("agent:builder", "write", "repo:core", 3, "s1"), directive())
+        self.assertEqual(len(fx.denials()), 1)
+        self.assertEqual(fx.denials()[0]["timestamp_ns"], NOW)
+
+    def test_raising_clock_unknown_directive_still_denies_and_records(self):
+        clock = SwitchClock()
+        fx = Fixture(clock=clock)
+        clock.mode = "raise"
+        intent = Intent("agent:builder", "write", "repo:core", 3, "s1")
+        decision = fx.projection.evaluate(intent, directive())
+        self.assertEqual(decision.outcome, "deny")
+        self.assertEqual(decision.reason, "directive_not_authorized")
+        self.assertEqual(decision.intent_hash, fx.kernel.intent_hash(intent))
+        self.assertIsNone(decision.permit)
+        self.assertEqual(len(fx.denials()), 1)
+        self.assertEqual(fx.denials()[0]["timestamp_ns"], 0)
+        self.assertTrue(fx.kernel.verify_audit())
+
+    def test_raising_clock_revoked_directive_still_denies_and_records(self):
+        clock = SwitchClock()
+        fx = Fixture(clock=clock)
+        d = directive()
+        fx.activate(d)
+        fx.revoke(d)
+        clock.mode = "raise"
+        decision = fx.projection.evaluate(Intent("agent:builder", "write", "repo:core", 1, "s1"), d)
+        self.assertEqual(decision.outcome, "deny")
+        self.assertEqual(decision.reason, "directive_revoked")
+        self.assertEqual(len(fx.denials()), 1)
+        self.assertEqual(fx.denials()[0]["timestamp_ns"], 0)
+        self.assertTrue(fx.kernel.verify_audit())
+
+    def test_raising_clock_parent_revoked_directive_still_denies_and_records(self):
+        clock = SwitchClock()
+        fx = Fixture(clock=clock)
+        parent = directive()
+        fx.activate(parent, "act-parent")
+        child = directive(
+            directive_id="deploy-child",
+            parent_directive_hash=parent.directive_hash,
+        )
+        fx.activate(child, "act-child", parent=parent)
+        fx.revoke(parent, "rev-parent")
+        clock.mode = "raise"
+        decision = fx.projection.evaluate(Intent("agent:builder", "write", "repo:core", 1, "s1"), child)
+        self.assertEqual(decision.outcome, "deny")
+        self.assertEqual(decision.reason, "directive_parent_revoked")
+        self.assertEqual(len(fx.denials()), 1)
+        self.assertEqual(fx.denials()[0]["payload"]["directive_id"], "deploy-child")
+        self.assertEqual(fx.denials()[0]["timestamp_ns"], 0)
+        self.assertTrue(fx.kernel.verify_audit())
+
+    def test_none_clock_records_zero_timestamp_in_memory(self):
+        clock = SwitchClock()
+        fx = Fixture(clock=clock)
+        clock.mode = "none"
+        decision = fx.projection.evaluate(Intent("agent:builder", "write", "repo:core", 3, "s1"), directive())
+        self.assertEqual(decision.outcome, "deny")
+        self.assertEqual(decision.reason, "directive_not_authorized")
+        self.assertEqual(len(fx.denials()), 1)
+        self.assertEqual(fx.denials()[0]["timestamp_ns"], 0)
+        self.assertTrue(fx.kernel.verify_audit())
+
+    def test_unavailable_clock_records_zero_timestamp_in_sqlite(self):
+        for mode in ("none", "raise"):
+            with self.subTest(mode=mode), tempfile.TemporaryDirectory() as td:
+                state = SQLiteKernelState(Path(td) / "state.sqlite3")
+                try:
+                    clock = SwitchClock()
+                    fx = Fixture(state=state, clock=clock)
+                    clock.mode = mode
+                    decision = fx.projection.evaluate(
+                        Intent("agent:builder", "write", "repo:core", 3, "s1"), directive()
+                    )
+                    self.assertEqual(decision.outcome, "deny")
+                    self.assertEqual(decision.reason, "directive_not_authorized")
+                    self.assertEqual(len(fx.denials()), 1)
+                    self.assertEqual(fx.denials()[0]["timestamp_ns"], 0)
+                    self.assertTrue(fx.kernel.verify_audit())
+                finally:
+                    state.close()
+
+
+class ProjectionDenialIncidentReportTests(unittest.TestCase):
+    """Codex P1 on PR #372, end to end: a projection denial recorded
+    in the canonical audit must surface in the frozen incident
+    report as a near-miss — before the classification fix, the same
+    chain froze into a report showing zero incidents and zero
+    near-misses, implying no attempt occurred."""
+
+    def test_unknown_directive_denial_is_a_near_miss_in_the_report(self):
+        fx = Fixture()
+        intent = Intent("agent:builder", "write", "repo:core", 3, "s1")
+        fx.projection.evaluate(intent, directive())
+        report = freeze_incident_report(PulpoOrchestrator(fx.kernel))
+        self.assertEqual(report.incidents, 0)
+        self.assertEqual(report.near_misses, 1)
+        (record,) = report.records
+        self.assertEqual(record.kind, "near_miss")
+        self.assertEqual(record.source, "canonical_audit")
+        self.assertEqual(record.source_detail, "directive_denial")
+        self.assertEqual(record.reason, "directive_not_authorized")
+        self.assertEqual(record.resolution, "not_applicable")
+        self.assertTrue(record.record_id.startswith("near-miss:"))
+        self.assertIn(("intent_hash", fx.kernel.intent_hash(intent)), record.anchors)
+        self.assertTrue(report.audit_valid)
+
+    def test_revoked_directive_denial_is_a_near_miss_in_the_report(self):
+        fx = Fixture()
+        d = directive()
+        fx.activate(d)
+        fx.revoke(d)
+        fx.projection.evaluate(Intent("agent:builder", "write", "repo:core", 1, "s1"), d)
+        report = freeze_incident_report(PulpoOrchestrator(fx.kernel))
+        self.assertEqual(report.incidents, 0)
+        self.assertEqual(report.near_misses, 1)
+        (record,) = report.records
+        self.assertEqual(record.kind, "near_miss")
+        self.assertEqual(record.source_detail, "directive_denial")
+        self.assertEqual(record.reason, "directive_revoked")
+        self.assertTrue(report.audit_valid)
 
 
 if __name__ == "__main__":

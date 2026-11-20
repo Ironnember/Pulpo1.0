@@ -1200,9 +1200,25 @@ class GovernanceKernel:
         ``directive_denial`` record with ``authority_effect=none``.
         Recording a denial grants nothing, spends nothing, and
         changes no directive state.
+
+        Clock posture (Codex P2 on PR #372): the projection computes
+        its status denials before any trusted-time check, and those
+        paths returned their fail-closed Decision without touching
+        the clock before this verb existed — so the record must
+        never let an unavailable clock change the outcome. The
+        record time is resolved through ``_trusted_now`` (the
+        ``approval_rejected`` precedent in ``_approval_decide``);
+        an unavailable clock stamps 0, the same visible sentinel
+        approval rejections carry, instead of propagating the
+        clock's exception, writing an invalid ``None`` timestamp
+        into the in-memory chain, or tripping the SQLite backend's
+        NOT NULL timestamp constraint. The denial is still recorded
+        exactly once; only its timestamp degrades.
         """
 
-        self._append(
+        trusted_time = self._trusted_now()
+        record_time = 0 if trusted_time is None else trusted_time
+        self._state.append(
             "directive_denial",
             {
                 "schema": "pulpo.directive-denial.v0",
@@ -1218,6 +1234,7 @@ class GovernanceKernel:
                 "reason": reason,
                 "authority_effect": "none",
             },
+            record_time,
         )
 
     def record_target_completion(
