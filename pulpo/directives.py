@@ -400,7 +400,7 @@ class GovernedDirectiveProjection:
         )
         return Decision("deny", reason, digest)
 
-    def evaluate(self, intent: Intent, directive: Directive) -> Decision:
+    def evaluate(self, intent: Intent, directive: Directive, *, presenter: str | None = None) -> Decision:
         status = self.kernel.directive_status(
             directive.directive_id,
             directive.version,
@@ -429,7 +429,7 @@ class GovernedDirectiveProjection:
             if self.kernel.budget_spent(budget_key) + intent.cost > directive.aggregate_budget:
                 return self._deny(intent, directive, "directive_aggregate_budget_exceeded", digest)
 
-        decision = self.kernel.evaluate(intent)
+        decision = self.kernel.evaluate(intent, presenter=presenter)
         if decision.outcome == "allow" and decision.permit is not None:
             binding = directive.permit_binding
             if directive.aggregate_budget is not None:
