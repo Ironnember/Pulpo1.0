@@ -36,14 +36,26 @@ A caller in another process who constructs its own state backend
 touch the canonical store, which is the property a process boundary
 can actually prove, and the one the tests assert.
 
-Authentication is a dedicated service secret, injected at
-construction and never defaulted, domain-separated from the kernel,
-audit, and anchor secrets (the Item 1/2 pattern). Requests are
+Authentication is by named service credentials, injected at
+construction and never defaulted. Each credential is a dedicated
+secret bound in deployment configuration to the explicit set of
+principals it may act for: the request envelope names its
+credential, the MAC is verified under that credential's secret
+(domain-separated from the kernel, audit, and anchor secrets — the
+Item 1/2 pattern), and a request asserting a principal outside the
+credential's bound set is refused before dispatch. There is no
+wildcard and no default binding — a credential configured without
+principals fails closed at construction. Requests are
 freshness-bounded and nonce-replay-checked server-side; a replayed,
 expired, malformed, or wrongly authenticated request fails closed
-with no state change. The transport is any bytes-to-bytes callable:
-a loopback transport for in-process embedding and tests, and a
-length-prefixed Unix-socket transport for a real second process.
+with no state change, and a nonce is retained for its entire
+validity window — the replay cache never evicts an unexpired nonce,
+and a request that arrives while the cache is full of live nonces
+is refused rather than displacing one. The transport is any
+bytes-to-bytes callable: a loopback transport for in-process
+embedding and tests, and a length-prefixed Unix-socket transport
+for a real second process (its frame reads carry a deadline, so a
+stalled partial frame cannot hold the sequential serve loop).
 """
 
 from __future__ import annotations
@@ -51,12 +63,13 @@ from __future__ import annotations
 import hmac
 import json
 import os
+from pathlib import Path
 import secrets
 import socket
 import threading
 import time
 from hashlib import sha256
-from typing import Any, Callable
+from typing import Any, Callable, Iterable, Mapping
 
 from .authority import ApprovalEnvelope
 from .directives import Directive, DirectiveAuthorityController, GovernedDirectiveProjection
@@ -71,6 +84,7 @@ _RESPONSE_MAC_DOMAIN = b"pulpo.service.response.v1\n"
 DEFAULT_MAX_REQUEST_TTL_NS = 300_000_000_000  # five minutes
 _MAX_FRAME_BYTES = 16 * 1024 * 1024
 _NONCE_CACHE_LIMIT = 16_384
+_DEFAULT_SOCKET_READ_TIMEOUT_S = 30.0
 
 
 class ServiceRefusal(RuntimeError):
@@ -341,29 +355,37 @@ class KernelService:
 
     The service is the only component in its process that holds the
     kernel and therefore the state handle. Construction requires the
-    dedicated service secret; there is no default and no ambient
-    fallback, so a service that was never given its secret cannot be
-    constructed at all.
+    deployment's named credentials; there is no default and no
+    ambient fallback, so a service that was never given credentials
+    cannot be constructed at all. Each credential binds one secret
+    to the explicit set of principals it may act for — possession of
+    a credential authenticates membership in the client set *for
+    those principals only*, never for a principal the envelope
+    merely names.
     """
 
     def __init__(
         self,
         kernel: GovernanceKernel,
-        secret: str | bytes,
+        credentials: Mapping[str, tuple[str | bytes, Iterable[str]]],
         *,
         clock: Callable[[], int] | None = None,
         max_request_ttl_ns: int = DEFAULT_MAX_REQUEST_TTL_NS,
+        artifact_roots: Iterable[str | Path] = (),
+        nonce_cache_limit: int = _NONCE_CACHE_LIMIT,
     ) -> None:
-        if isinstance(secret, str):
-            secret = secret.encode()
-        if not secret:
-            raise ValueError("service secret must be non-empty")
         if max_request_ttl_ns <= 0:
             raise ValueError("max_request_ttl_ns must be positive")
+        if nonce_cache_limit <= 0:
+            raise ValueError("nonce_cache_limit must be positive")
+        self._credentials = self._validate_credentials(credentials)
+        self._artifact_roots = tuple(
+            Path(root).expanduser().resolve() for root in artifact_roots
+        )
+        self._nonce_cache_limit = nonce_cache_limit
         self._kernel = kernel
         self._controller = DirectiveAuthorityController(kernel)
         self._projection = GovernedDirectiveProjection(kernel)
-        self._secret = secret
         self._clock = clock or time.time_ns
         self._max_request_ttl_ns = max_request_ttl_ns
         self._seen_nonces: dict[str, int] = {}
@@ -392,16 +414,86 @@ class KernelService:
             "policy_hash": self._verb_policy_hash,
         }
 
+    @staticmethod
+    def _validate_credentials(
+        credentials: Mapping[str, tuple[str | bytes, Iterable[str]]],
+    ) -> dict[str, tuple[bytes, frozenset[str]]]:
+        """Bind each credential id to (secret, principals), fail closed.
+
+        A credential is a (secret, principals) pair. A bare secret —
+        the pre-binding configuration shape — is refused, as is an
+        empty or unspecified principal set: there is no wildcard and
+        no default-to-all, so an unbound credential can never be
+        constructed into silently acting for every principal.
+        """
+        if not isinstance(credentials, Mapping) or not credentials:
+            raise ValueError("service credentials must be a non-empty mapping")
+        validated: dict[str, tuple[bytes, frozenset[str]]] = {}
+        for credential_id, binding in credentials.items():
+            if not isinstance(credential_id, str) or not credential_id:
+                raise ValueError("service credential id must be a non-empty string")
+            if isinstance(binding, (str, bytes)) or not isinstance(binding, tuple) or len(binding) != 2:
+                raise ValueError(
+                    "service credential must bind a secret to an explicit principal set"
+                )
+            secret, principals = binding
+            if isinstance(secret, str):
+                secret = secret.encode()
+            if not isinstance(secret, bytes) or not secret:
+                raise ValueError("service credential secret must be non-empty")
+            if isinstance(principals, (str, bytes)):
+                raise ValueError("service credential principals must be a non-empty set")
+            try:
+                principal_set = frozenset(principals)
+            except TypeError as exc:
+                raise ValueError(
+                    "service credential principals must be a non-empty set"
+                ) from exc
+            if not principal_set or not all(
+                isinstance(principal, str) and principal for principal in principal_set
+            ):
+                raise ValueError("service credential principals must be a non-empty set")
+            validated[credential_id] = (secret, principal_set)
+        return validated
+
     # -- protocol --
+
+    @staticmethod
+    def _claimed_principals(args: dict[str, Any]) -> set[str]:
+        """Every principal a request asserts in a principal role.
+
+        The intent's principal, the directive-lifecycle operator,
+        the principals of any directive the request carries, and a
+        permit binding's budget principal. Extraction is defensive:
+        a malformed field asserts nothing here and is refused by the
+        verb's own reconstruction instead — still before any state
+        change.
+        """
+        claimed: set[str] = set()
+
+        def note(container: Any, field: str) -> None:
+            if isinstance(container, dict):
+                value = container.get(field)
+                if isinstance(value, str) and value:
+                    claimed.add(value)
+
+        note(args.get("intent"), "principal")
+        note(args, "operator_principal")
+        note(args.get("directive"), "principal")
+        note(args.get("parent_directive"), "principal")
+        note(args.get("binding"), "budget_principal")
+        return claimed
 
     def handle(self, raw: bytes) -> bytes:
         """Serve one request frame; always returns a response frame.
 
         Every failure is a refusal response, never an exception and
-        never a state change: authentication, freshness, and replay
-        are all checked before any verb runs.
+        never a state change: credential, authentication, freshness,
+        replay, nonce capacity, and principal binding are all checked
+        before any verb runs.
         """
         nonce: str | None = None
+        response_secret: bytes | None = None
         try:
             request = json.loads(raw.decode("utf-8"))
             if not isinstance(request, dict):
@@ -409,9 +501,17 @@ class KernelService:
             claimed_nonce = request.get("nonce")
             if isinstance(claimed_nonce, str) and claimed_nonce:
                 nonce = claimed_nonce
+            credential_id = request.get("credential_id")
+            credential = (
+                self._credentials.get(credential_id) if isinstance(credential_id, str) else None
+            )
+            if credential is None:
+                raise ServiceRefusal("request_credential_unknown")
+            secret, bound_principals = credential
+            response_secret = secret
             claimed_mac = request.get("mac")
             body = {key: value for key, value in request.items() if key != "mac"}
-            expected = _mac(self._secret, _REQUEST_MAC_DOMAIN, body)
+            expected = _mac(secret, _REQUEST_MAC_DOMAIN, body)
             if not isinstance(claimed_mac, str) or not hmac.compare_digest(claimed_mac, expected):
                 raise ServiceRefusal("request_mac_invalid")
             if request.get("schema") != REQUEST_SCHEMA:
@@ -440,41 +540,56 @@ class KernelService:
             args = request.get("args")
             if not isinstance(args, dict):
                 raise ServiceRefusal("request_args_invalid")
+            claimed_principals = self._claimed_principals(args)
             with self._lock:
                 self._prune_nonces(now_ns)
                 if nonce in self._seen_nonces:
                     raise ServiceRefusal("request_replayed")
+                if len(self._seen_nonces) >= self._nonce_cache_limit:
+                    raise ServiceRefusal("request_nonce_capacity")
                 self._seen_nonces[nonce] = expires
+                if not claimed_principals <= bound_principals:
+                    raise ServiceRefusal("request_principal_not_bound")
                 result = self._verbs[verb](args)
-            return self._respond(nonce, True, result=result)
+            return self._respond(nonce, True, result=result, secret=response_secret)
         except ServiceRefusal as refusal:
-            return self._respond(nonce, False, error=str(refusal))
+            return self._respond(nonce, False, error=str(refusal), secret=response_secret)
         except ValueError as exc:
             # Kernel and constructor refusals already speak in reason
             # tokens; they are refusals, not service failures.
-            return self._respond(nonce, False, error=str(exc))
+            return self._respond(nonce, False, error=str(exc), secret=response_secret)
         except Exception:
-            return self._respond(nonce, False, error="service_internal_error")
+            return self._respond(nonce, False, error="service_internal_error", secret=response_secret)
 
     def _prune_nonces(self, now_ns: int) -> None:
+        # Only expired nonces are ever removed. A nonce must stay
+        # replay-proof for its entire validity window (Codex P1 fix
+        # on PR #371): evicting a live nonce to make room would
+        # reopen replay inside that window, so a cache full of live
+        # nonces refuses new requests instead (see handle()).
         expired = [nonce for nonce, expiry in self._seen_nonces.items() if expiry <= now_ns]
         for nonce in expired:
             del self._seen_nonces[nonce]
-        if len(self._seen_nonces) > _NONCE_CACHE_LIMIT:
-            # Oldest-expiring first; a nonce dropped early can only be
-            # replayed inside its own freshness window, which the TTL
-            # cap keeps short.
-            by_expiry = sorted(self._seen_nonces.items(), key=lambda item: item[1])
-            for nonce, _ in by_expiry[: len(self._seen_nonces) - _NONCE_CACHE_LIMIT]:
-                del self._seen_nonces[nonce]
 
-    def _respond(self, nonce: str | None, ok: bool, *, result: Any = None, error: str | None = None) -> bytes:
+    def _respond(
+        self,
+        nonce: str | None,
+        ok: bool,
+        *,
+        result: Any = None,
+        error: str | None = None,
+        secret: bytes | None,
+    ) -> bytes:
         body: dict[str, Any] = {"schema": RESPONSE_SCHEMA, "nonce": nonce, "ok": ok}
         if ok:
             body["result"] = result
         else:
             body["error"] = error
-        body["mac"] = _mac(self._secret, _RESPONSE_MAC_DOMAIN, body)
+        # A request whose credential is unknown shares no secret with
+        # the service, so its refusal cannot be MAC'd; the mac is
+        # empty and any conforming client fails closed on it. A known
+        # credential's responses are always MAC'd under its secret.
+        body["mac"] = _mac(secret, _RESPONSE_MAC_DOMAIN, body) if secret is not None else ""
         return _canonical(body)
 
     # -- verbs: authority decisions --
@@ -572,16 +687,35 @@ class KernelService:
 
     # -- verbs: reconciliation records --
 
+    def _require_artifact_within_roots(self, artifact_path: str) -> None:
+        # The artifact path is the one place a request reaches into
+        # the service's filesystem. Constrain it to the deployment's
+        # configured artifact roots (Codex P2 fix on PR #371):
+        # resolved after normalization, so `..` traversal and symlink
+        # escapes land outside and refuse; with no root configured,
+        # artifact observation is refused outright. The check runs
+        # before the kernel verb — before any file is read — so an
+        # arbitrary host file can never become a hash oracle or
+        # forged completion evidence.
+        if not self._artifact_roots:
+            raise ValueError("artifact_roots_not_configured")
+        resolved = Path(artifact_path).expanduser().resolve()
+        if not any(resolved.is_relative_to(root) for root in self._artifact_roots):
+            raise ValueError("artifact_path_not_authorized")
+
     def _verb_record_target_completion(self, args: dict[str, Any]) -> Any:
         # The artifact path is observed in the service's own
         # filesystem domain, by the kernel verb itself; the client
-        # supplies the reference, never the observation.
+        # supplies the reference, never the observation — and only
+        # from beneath a configured artifact root.
+        artifact_path = _require_str(args, "artifact_path")
+        self._require_artifact_within_roots(artifact_path)
         return self._kernel.record_target_completion(
             target_id=_require_str(args, "target_id"),
             version=_require_int(args, "version"),
             target_hash=_require_str(args, "target_hash"),
             intent_hash=_require_str(args, "intent_hash"),
-            artifact_path=_require_str(args, "artifact_path"),
+            artifact_path=artifact_path,
             timestamp_ns=_require_int(args, "timestamp_ns"),
         )
 
@@ -634,21 +768,27 @@ class KernelService:
 class KernelServiceClient:
     """The only surface another component receives: authenticated verbs.
 
-    The client holds a transport callable and the service secret —
-    never a kernel, a state backend, or any other canonical writer
-    (AGENTS.md: a transport surface must not retain a canonical
-    writer merely because its declared API is read-only). Every
+    The client holds a transport callable, its credential id, and
+    that credential's secret — never a kernel, a state backend, or
+    any other canonical writer (AGENTS.md: a transport surface must
+    not retain a canonical writer merely because its declared API is
+    read-only). The credential id names which configured credential
+    the request acts under; the service binds that credential to its
+    principals, so the client can only ever act for them. Every
     method returns plain data reconstructed from the response.
     """
 
     def __init__(
         self,
         transport: Callable[[bytes], bytes],
+        credential_id: str,
         secret: str | bytes,
         *,
         clock: Callable[[], int] | None = None,
         request_ttl_ns: int = DEFAULT_MAX_REQUEST_TTL_NS,
     ) -> None:
+        if not isinstance(credential_id, str) or not credential_id:
+            raise ValueError("service credential id must be a non-empty string")
         if isinstance(secret, str):
             secret = secret.encode()
         if not secret:
@@ -656,6 +796,7 @@ class KernelServiceClient:
         if request_ttl_ns <= 0:
             raise ValueError("request_ttl_ns must be positive")
         self._transport = transport
+        self._credential_id = credential_id
         self._secret = secret
         self._clock = clock or time.time_ns
         self._request_ttl_ns = request_ttl_ns
@@ -664,6 +805,7 @@ class KernelServiceClient:
         issued = self._clock()
         body: dict[str, Any] = {
             "schema": REQUEST_SCHEMA,
+            "credential_id": self._credential_id,
             "verb": verb,
             "nonce": secrets.token_hex(16),
             "issued_at_ns": issued,
@@ -930,13 +1072,21 @@ class UnixSocketTransport:
             return _recv_frame(sock)
 
 
-def serve_unix_socket(service: KernelService, path: str) -> None:
+def serve_unix_socket(
+    service: KernelService, path: str, *, read_timeout_s: float = _DEFAULT_SOCKET_READ_TIMEOUT_S
+) -> None:
     """Serve ``service`` on a Unix domain socket until interrupted.
 
     One request per connection, handled sequentially: the kernel's
     own consume-time atomicity lives in the state backend, and the
-    service lock keeps dispatch deterministic.
+    service lock keeps dispatch deterministic. Each connection
+    carries a read deadline (Codex P2 fix on PR #371): a peer that
+    sends a partial frame and stalls is disconnected at the deadline
+    with nothing dispatched, so it cannot hold the sequential loop —
+    and every legitimate client behind it — hostage indefinitely.
     """
+    if read_timeout_s <= 0:
+        raise ValueError("read_timeout_s must be positive")
     if os.path.exists(path):
         os.unlink(path)
     with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as server:
@@ -946,6 +1096,7 @@ def serve_unix_socket(service: KernelService, path: str) -> None:
             connection, _ = server.accept()
             with connection:
                 try:
+                    connection.settimeout(read_timeout_s)
                     request = _recv_frame(connection)
                     _send_frame(connection, service.handle(request))
                 except (ServiceRefusal, ConnectionError, OSError):

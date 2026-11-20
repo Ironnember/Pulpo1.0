@@ -298,6 +298,21 @@ MUTATIONS: tuple[Mutation, ...] = (
             "tests.test_service_boundary.AdversarialBoundaryTests.test_response_tampering_detected_by_client",
         ),
     ),
+    Mutation(
+        # Codex P1 fix on PR #371: the principal-binding check is what
+        # stops a credential holder from acting for a principal
+        # outside its configured set — the MAC authenticates the
+        # credential, this check binds it to its principals.
+        # Weakening it must be detected by the boundary tests.
+        "service_principal_binding_check_removed",
+        "pulpo/service.py",
+        '                if not claimed_principals <= bound_principals:\n                    raise ServiceRefusal("request_principal_not_bound")',
+        '                if False and not claimed_principals <= bound_principals:\n                    raise ServiceRefusal("request_principal_not_bound")',
+        (
+            "tests.test_service_boundary.CredentialBindingTests.test_credential_cannot_act_for_unbound_principal",
+            "tests.test_service_boundary.CredentialBindingTests.test_second_credential_cannot_spend_first_principals_permit",
+        ),
+    ),
 )
 
 

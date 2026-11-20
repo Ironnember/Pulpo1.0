@@ -24,9 +24,21 @@ evidence (repro B3), or append a forged record (repro C) — against
   transport, and over a real Unix-socket subprocess boundary for the
   core spend path.
 
+The four Codex review findings on PR #371 are covered where they
+land: credentials are bound to principals (a credential cannot act
+for a principal outside its configured set, a second credential
+cannot spend the first principal's permit, and an unbound credential
+cannot be constructed); nonces are retained for their whole
+validity window (a cache full of live nonces refuses new requests
+fail-closed instead of evicting); artifact observation is confined
+to configured roots (outside paths, `..` traversal, and the
+no-root configuration all refuse before any file is read); and
+socket frame reads carry a deadline (a stalled partial frame is
+disconnected with nothing dispatched).
+
 Honesty label, as with 3A's fixtures: the approval verifier is a
 same-process HMAC test double, not evidence of independent human
-authority; the service secret in these tests is a test value.
+authority; the service secrets in these tests are test values.
 """
 
 from __future__ import annotations
@@ -35,9 +47,11 @@ from hashlib import sha256
 import json
 import os
 from pathlib import Path
+import socket
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 import unittest
 
@@ -52,6 +66,7 @@ from pulpo.service import (
     directive_from_dict,
     directive_to_dict,
     loopback_transport,
+    serve_unix_socket,
 )
 from pulpo.state import InMemoryKernelState
 from tests.authority_support import HmacTestVerifier, signed_envelope, trust_for
@@ -60,6 +75,10 @@ from tests.authority_support import HmacTestVerifier, signed_envelope, trust_for
 NOW = 2_000_000
 OPERATOR = "operator:owner"
 SERVICE_SECRET = b"service-secret-test-only"
+CREDENTIAL_ID = "client:primary"
+RESTRICTED_CREDENTIAL_ID = "client:auditor"
+RESTRICTED_SECRET = b"restricted-secret-test-only"
+RESTRICTED_PRINCIPAL = "agent:auditor"
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -84,15 +103,18 @@ def directive(**overrides):
 
 
 class BoundaryFixture:
-    """A service and a client wired over the loopback transport.
+    """A service and clients wired over the loopback transport.
 
     The fixture (the test harness, acting as the deployment operator)
     holds the server-side kernel to mint approval envelopes, exactly
-    as the 3A fixtures do. The client object under test holds only
-    the transport and the service secret.
+    as the 3A fixtures do. The client objects under test hold only
+    the transport, their credential id, and that credential's
+    secret. The service is configured with two credentials: the
+    primary, bound to the operator and the builder agent, and a
+    restricted one bound to a different principal only.
     """
 
-    def __init__(self, state=None, clock=None):
+    def __init__(self, state=None, clock=None, *, nonce_cache_limit=None, artifact_roots=()):
         self.clock_cell = [NOW]
         self.clock = clock or (lambda: self.clock_cell[0])
         self.verifier = HmacTestVerifier()
@@ -109,15 +131,31 @@ class BoundaryFixture:
             clock=self.clock,
             state=state if state is not None else InMemoryKernelState(),
         )
+        service_kwargs = {}
+        if nonce_cache_limit is not None:
+            service_kwargs["nonce_cache_limit"] = nonce_cache_limit
         self.service = KernelService(
             self.kernel,
-            SERVICE_SECRET,
+            {
+                CREDENTIAL_ID: (SERVICE_SECRET, frozenset({OPERATOR, "agent:builder"})),
+                RESTRICTED_CREDENTIAL_ID: (RESTRICTED_SECRET, frozenset({RESTRICTED_PRINCIPAL})),
+            },
             clock=self.clock,
             max_request_ttl_ns=500_000,
+            artifact_roots=artifact_roots,
+            **service_kwargs,
         )
         self.client = KernelServiceClient(
             loopback_transport(self.service),
+            CREDENTIAL_ID,
             SERVICE_SECRET,
+            clock=self.clock,
+            request_ttl_ns=400_000,
+        )
+        self.restricted_client = KernelServiceClient(
+            loopback_transport(self.service),
+            RESTRICTED_CREDENTIAL_ID,
+            RESTRICTED_SECRET,
             clock=self.clock,
             request_ttl_ns=400_000,
         )
@@ -197,15 +235,15 @@ class HonestFlowTests(unittest.TestCase):
         self.assertEqual(after.outcome, "deny")
 
     def test_locked_target_completion_across_boundary(self):
-        fx = BoundaryFixture()
-        intent = Intent("agent:builder", "write", "repo:core", 1, "s1")
-        target = fx.client.lock_target("deploy-1", intent, version=1)
-        fetched = fx.client.get_locked_target("deploy-1", version=1)
-        self.assertEqual(fetched.target_hash, target.target_hash)
-        resolution, decision = fx.client.evaluate_locked_target("deploy-1", target.target_hash, version=1)
-        self.assertEqual(resolution.outcome, "match")
-        self.assertEqual(decision.outcome, "allow")
         with tempfile.TemporaryDirectory() as tmp:
+            fx = BoundaryFixture(artifact_roots=[tmp])
+            intent = Intent("agent:builder", "write", "repo:core", 1, "s1")
+            target = fx.client.lock_target("deploy-1", intent, version=1)
+            fetched = fx.client.get_locked_target("deploy-1", version=1)
+            self.assertEqual(fetched.target_hash, target.target_hash)
+            resolution, decision = fx.client.evaluate_locked_target("deploy-1", target.target_hash, version=1)
+            self.assertEqual(resolution.outcome, "match")
+            self.assertEqual(decision.outcome, "allow")
             artifact = Path(tmp) / "artifact.bin"
             artifact.write_bytes(b"governed-bytes")
             completion = fx.client.record_target_completion(
@@ -259,11 +297,12 @@ class HonestFlowTests(unittest.TestCase):
 
 
 class AdversarialBoundaryTests(unittest.TestCase):
-    def raw_request(self, fx, verb, args, *, secret=SERVICE_SECRET, nonce="raw-1", issued=NOW, ttl=400_000):
+    def raw_request(self, fx, verb, args, *, secret=SERVICE_SECRET, credential_id=CREDENTIAL_ID, nonce="raw-1", issued=NOW, ttl=400_000):
         import hmac as hmac_module
 
         body = {
             "schema": "pulpo.service.request.v1",
+            "credential_id": credential_id,
             "verb": verb,
             "nonce": nonce,
             "issued_at_ns": issued,
@@ -374,6 +413,7 @@ class AdversarialBoundaryTests(unittest.TestCase):
         captured = []
         recording_client = KernelServiceClient(
             lambda raw: (captured.append(raw), transport(raw))[1],
+            CREDENTIAL_ID,
             SERVICE_SECRET,
             clock=fx.clock,
             request_ttl_ns=400_000,
@@ -382,6 +422,46 @@ class AdversarialBoundaryTests(unittest.TestCase):
         replay = json.loads(transport(captured[0]))
         self.assertFalse(replay["ok"])
         self.assertEqual(replay["error"], "request_replayed")
+
+    def test_unknown_credential_refused(self):
+        fx = BoundaryFixture()
+        before = fx.audit_len()
+        raw = self.raw_request(
+            fx, "verify_audit", {}, credential_id="client:ghost", secret=b"ghost-secret"
+        )
+        response = json.loads(fx.service.handle(raw))
+        self.assertFalse(response["ok"])
+        self.assertEqual(response["error"], "request_credential_unknown")
+        self.assertEqual(fx.audit_len(), before)
+
+    def test_nonce_cache_full_of_live_nonces_fails_closed_without_eviction(self):
+        fx = BoundaryFixture(nonce_cache_limit=4)
+        frames = []
+        for index in range(4):
+            raw = self.raw_request(fx, "verify_audit", {}, nonce=f"fill-{index}")
+            frames.append(raw)
+            response = json.loads(fx.service.handle(raw))
+            self.assertTrue(response["ok"])
+        # The cache is now full of unexpired nonces. The oldest one
+        # is still replay-proof: it was retained for its whole
+        # validity window, not evicted to make room.
+        replay = json.loads(fx.service.handle(frames[0]))
+        self.assertFalse(replay["ok"])
+        self.assertEqual(replay["error"], "request_replayed")
+        # A fresh request is refused fail-closed rather than
+        # displacing a live nonce — and it is never dispatched, so
+        # the canonical audit does not move.
+        before = len(fx.kernel.audit)
+        fresh = self.raw_request(
+            fx,
+            "evaluate",
+            {"intent": {"principal": "agent:builder", "action": "write", "resource": "repo:core", "cost": 3, "session_id": "s1"}},
+            nonce="fill-fresh",
+        )
+        response = json.loads(fx.service.handle(fresh))
+        self.assertFalse(response["ok"])
+        self.assertEqual(response["error"], "request_nonce_capacity")
+        self.assertEqual(len(fx.kernel.audit), before)
 
     def test_expired_and_not_yet_valid_requests_refused(self):
         fx = BoundaryFixture()
@@ -401,7 +481,7 @@ class AdversarialBoundaryTests(unittest.TestCase):
             return bytes(response)
 
         client = KernelServiceClient(
-            tampering_transport, SERVICE_SECRET, clock=fx.clock, request_ttl_ns=400_000
+            tampering_transport, CREDENTIAL_ID, SERVICE_SECRET, clock=fx.clock, request_ttl_ns=400_000
         )
         with self.assertRaises(ServiceRefusal) as caught:
             client.verify_audit()
@@ -414,6 +494,7 @@ class StructuralPinTests(unittest.TestCase):
         for value in vars(fx.client).values():
             self.assertNotIsInstance(value, KernelClass)
             self.assertNotIsInstance(value, InMemoryKernelState)
+        self.assertEqual(fx.client._credential_id, CREDENTIAL_ID)
         socket_client_transport = UnixSocketTransport("/nonexistent/service.sock")
         self.assertEqual(vars(socket_client_transport), {"_path": "/nonexistent/service.sock"})
 
@@ -435,6 +516,151 @@ class StructuralPinTests(unittest.TestCase):
             directive_from_dict(tampered)
 
 
+class CredentialBindingTests(unittest.TestCase):
+    """Codex P1 on PR #371: a credential authenticates its holder
+    for its bound principals only — the envelope's claimed principal
+    is no longer self-asserted authority."""
+
+    def test_credential_cannot_act_for_unbound_principal(self):
+        fx = BoundaryFixture()
+        before = len(fx.kernel.audit)
+        with self.assertRaises(ServiceRefusal) as caught:
+            fx.restricted_client.evaluate(Intent("agent:builder", "write", "repo:core", 3, "s1"))
+        self.assertEqual(str(caught.exception), "request_principal_not_bound")
+        self.assertEqual(len(fx.kernel.audit), before)
+        # The same credential acting for its own bound principal works:
+        # the binding is per-principal, not a per-credential verb ban.
+        decision = fx.restricted_client.evaluate(
+            Intent(RESTRICTED_PRINCIPAL, "write", "repo:core", 3, "s1")
+        )
+        self.assertEqual(decision.outcome, "allow")
+
+    def test_second_credential_cannot_spend_first_principals_permit(self):
+        fx = BoundaryFixture()
+        intent = Intent("agent:builder", "write", "repo:core", 3, "s1")
+        decision = fx.client.evaluate(intent)
+        self.assertEqual(decision.outcome, "allow")
+        # The restricted credential holds a valid service credential
+        # and the genuine permit string — but the intent's principal
+        # is outside its bound set, so the request is refused at the
+        # protocol layer, before dispatch.
+        with self.assertRaises(ServiceRefusal) as caught:
+            fx.restricted_client.consume(decision.permit, intent)
+        self.assertEqual(str(caught.exception), "request_principal_not_bound")
+        # The refusal burned nothing: the permit is still spendable
+        # by the credential bound to its principal.
+        self.assertTrue(fx.client.consume(decision.permit, intent))
+
+    def test_unbound_credential_configuration_fails_closed(self):
+        kernel = GovernanceKernel(
+            Policy(frozenset({"write"}), 100), b"kernel-secret", state=InMemoryKernelState()
+        )
+        with self.assertRaises(ValueError):
+            KernelService(kernel, {})
+        # A bare secret — the pre-binding shape — names no principals
+        # and must never silently mean "all principals".
+        with self.assertRaises(ValueError):
+            KernelService(kernel, {"client:x": SERVICE_SECRET})
+        with self.assertRaises(ValueError):
+            KernelService(kernel, {"client:x": (SERVICE_SECRET, frozenset())})
+        with self.assertRaises(ValueError):
+            KernelService(kernel, {"client:x": (SERVICE_SECRET, "agent:builder")})
+
+
+class ArtifactRootTests(unittest.TestCase):
+    """Codex P2 on PR #371: artifact observation is confined to the
+    deployment's configured roots, checked before any file is read."""
+
+    def _locked_fixture(self, artifact_roots):
+        fx = BoundaryFixture(artifact_roots=artifact_roots)
+        intent = Intent("agent:builder", "write", "repo:core", 1, "s1")
+        target = fx.client.lock_target("deploy-1", intent, version=1)
+        return fx, intent, target
+
+    def _completion(self, fx, intent, target, artifact_path):
+        return fx.client.record_target_completion(
+            target_id="deploy-1",
+            version=1,
+            target_hash=target.target_hash,
+            intent_hash=fx.kernel.intent_hash(intent),
+            artifact_path=str(artifact_path),
+            timestamp_ns=NOW + 1,
+        )
+
+    def test_artifact_outside_configured_root_refused(self):
+        with tempfile.TemporaryDirectory() as root, tempfile.TemporaryDirectory() as outside:
+            fx, intent, target = self._locked_fixture([root])
+            artifact = Path(outside) / "artifact.bin"
+            artifact.write_bytes(b"outside-bytes")
+            before = len(fx.kernel.audit)
+            with self.assertRaises(ServiceRefusal) as caught:
+                self._completion(fx, intent, target, artifact)
+            self.assertEqual(str(caught.exception), "artifact_path_not_authorized")
+            self.assertEqual(len(fx.kernel.audit), before)
+
+    def test_artifact_traversal_escaping_root_refused(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "root"
+            root.mkdir()
+            secret_file = Path(tmp) / "secret.bin"
+            secret_file.write_bytes(b"not-an-artifact")
+            fx, intent, target = self._locked_fixture([root])
+            traversal = root / ".." / "secret.bin"
+            with self.assertRaises(ServiceRefusal) as caught:
+                self._completion(fx, intent, target, traversal)
+            self.assertEqual(str(caught.exception), "artifact_path_not_authorized")
+
+    def test_artifact_refused_when_no_root_configured(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            fx, intent, target = self._locked_fixture(())
+            artifact = Path(tmp) / "artifact.bin"
+            artifact.write_bytes(b"governed-bytes")
+            with self.assertRaises(ServiceRefusal) as caught:
+                self._completion(fx, intent, target, artifact)
+            self.assertEqual(str(caught.exception), "artifact_roots_not_configured")
+
+
+class SocketDeadlineTests(unittest.TestCase):
+    """Codex P2 on PR #371: a stalled partial frame cannot hold the
+    sequential serve loop; it is disconnected at the read deadline
+    with nothing dispatched."""
+
+    def test_stalled_partial_frame_disconnects_and_dispatches_nothing(self):
+        kernel = GovernanceKernel(
+            Policy(frozenset({"write"}), 100), b"kernel-secret", state=InMemoryKernelState()
+        )
+        service = KernelService(
+            kernel, {CREDENTIAL_ID: (SERVICE_SECRET, frozenset({"agent:builder"}))}
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            sock_path = os.path.join(tmp, "pulpo-service.sock")
+            server_thread = threading.Thread(
+                target=serve_unix_socket,
+                args=(service, sock_path),
+                kwargs={"read_timeout_s": 0.2},
+                daemon=True,
+            )
+            server_thread.start()
+            deadline = time.time() + 10
+            while not os.path.exists(sock_path):
+                if time.time() > deadline:
+                    self.fail("socket server did not start")
+                time.sleep(0.05)
+            before = len(kernel.audit)
+            with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as stalled:
+                stalled.connect(sock_path)
+                stalled.sendall(b"\x00\x00\x00")  # partial frame header, then stall
+                stalled.settimeout(10)
+                # The read deadline closes the connection: recv sees
+                # the close without any request being dispatched.
+                self.assertEqual(stalled.recv(1), b"")
+            self.assertEqual(len(kernel.audit), before)
+            # The sequential loop survived the stall and still serves
+            # a legitimate client.
+            client = KernelServiceClient(UnixSocketTransport(sock_path), CREDENTIAL_ID, SERVICE_SECRET)
+            self.assertTrue(client.verify_audit())
+
+
 class SubprocessBoundaryTests(unittest.TestCase):
     def test_core_spend_path_across_a_real_process_boundary(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -448,7 +674,8 @@ class SubprocessBoundaryTests(unittest.TestCase):
                 "from pulpo.state import SQLiteKernelState\n"
                 "policy = Policy(frozenset({'write'}), 100)\n"
                 "kernel = GovernanceKernel(policy, 'kernel-secret'.encode(), state=SQLiteKernelState(sys.argv[2]))\n"
-                "serve_unix_socket(KernelService(kernel, b'service-secret-test-only'), sys.argv[1])\n"
+                "credentials = {'client:subprocess': (b'service-secret-test-only', frozenset({'agent:builder'}))}\n"
+                "serve_unix_socket(KernelService(kernel, credentials), sys.argv[1])\n"
             )
             env = {**os.environ, "PYTHONPATH": str(REPO_ROOT)}
             proc = subprocess.Popen(
@@ -463,7 +690,7 @@ class SubprocessBoundaryTests(unittest.TestCase):
                     if proc.poll() is not None or time.time() > deadline:
                         self.fail("service subprocess did not start")
                     time.sleep(0.05)
-                client = KernelServiceClient(UnixSocketTransport(sock), SERVICE_SECRET)
+                client = KernelServiceClient(UnixSocketTransport(sock), "client:subprocess", SERVICE_SECRET)
                 intent = Intent("agent:builder", "write", "repo:core", 3, "s1")
                 decision = client.evaluate(intent)
                 self.assertEqual(decision.outcome, "allow")
