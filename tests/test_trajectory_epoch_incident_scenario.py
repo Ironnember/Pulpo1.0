@@ -99,17 +99,20 @@ ledger, never audit growth. Here the audit growth is
 load-bearing: it is the record against which confinement claims
 reconcile.
 
-KNOWN LIMITATION (Codex P1 on this PR, verified against
-``pulpo/directives.py`` at this commit):
-``GovernedDirectiveProjection.evaluate`` returns directive-scope
-denials (steps 3 and 3b) directly, without a kernel call, so no
-audit record is appended for them — unlike kernel evaluation
-denials (``decision`` / ``approval_rejected``) and consume
-denials (``permit_rejected``), which are recorded. Steps 3/3b
-pin the current behavior with assertions (audit length unchanged
-across a projection denial) so the gap is executable and visible
-rather than claimed away; persisting projection denials is a
-kernel change outside this scenario PR.
+FORMER LIMITATION, CLOSED BY KERNEL BUILD ITEM #2 (recorded on
+PR #366 as Codex P1, verified against ``pulpo/directives.py`` at
+that commit): ``GovernedDirectiveProjection.evaluate`` returned
+directive-scope denials (steps 3 and 3b) directly, without a
+kernel call, so no audit record was appended for them — unlike
+kernel evaluation denials (``decision`` / ``approval_rejected``)
+and consume denials (``permit_rejected``), which are recorded.
+Steps 3/3b originally pinned that behavior (audit length
+unchanged across a projection denial) so the gap was executable
+and visible rather than claimed away. Build item #2 persists
+projection denials through the kernel's ``record_directive_denial``
+verb (one fixed-schema ``directive_denial`` record per denied
+attempt), and steps 3/3b now pin the closed behavior: exactly one
+denial record appended, carrying the returned reason.
 """
 
 from __future__ import annotations
@@ -370,12 +373,14 @@ class TrajectoryDirectivePathTests(unittest.TestCase):
         decision = self.projection.evaluate(PROBE_LIVE, self.d)
         self.assertNotEqual("allow", decision.outcome)
         self.assertIsNone(decision.permit)
-        # KNOWN LIMITATION, pinned (module docstring): the
-        # projection returns directive-scope denials without a
-        # kernel call, so no audit record is appended for this
-        # denial — unlike consume-presented denials, which are
-        # recorded as permit_rejected.
-        self.assertEqual(audit_len, len(self.state.audit))
+        # Build item #2 (module docstring): the projection denial
+        # is now persisted — exactly one directive_denial record is
+        # appended, carrying the returned reason, unlike the
+        # pre-fix behavior this step originally pinned.
+        self.assertEqual(audit_len + 1, len(self.state.audit))
+        denial = self.state.audit[-1]
+        self.assertEqual("directive_denial", denial["event"])
+        self.assertEqual(decision.reason, denial["payload"]["reason"])
         self.assertEqual([], self.ledger.effects)
         # With no permit minted, presenting the act to the
         # consequence path invokes the executor zero times.
@@ -395,9 +400,13 @@ class TrajectoryDirectivePathTests(unittest.TestCase):
         decision = self.projection.evaluate(IMPERSONATE, self.d)
         self.assertNotEqual("allow", decision.outcome)
         self.assertIsNone(decision.permit)
-        # KNOWN LIMITATION, pinned (module docstring): no audit
-        # record is appended for a projection-level denial.
-        self.assertEqual(audit_len, len(self.state.audit))
+        # Build item #2 (module docstring): exactly one
+        # directive_denial record is appended for the projection
+        # denial, carrying the returned reason.
+        self.assertEqual(audit_len + 1, len(self.state.audit))
+        denial = self.state.audit[-1]
+        self.assertEqual("directive_denial", denial["event"])
+        self.assertEqual(decision.reason, denial["payload"]["reason"])
         self.assertEqual([], self.ledger.effects)
         # Acting as staff was never authorized: zero executor calls.
         self.assertFalse(self.ledger.execute(self.kernel, decision.permit, IMPERSONATE))

@@ -494,13 +494,16 @@ class TcpTlsEscapePersistenceTests(unittest.TestCase):
         decision2 = projection.evaluate(FETCH_INTENT, d)
         self.assertNotEqual("allow", decision2.outcome)
         self.assertIsNone(decision2.permit)
-        # Documented limitation, pinned: a projection-scope denial
-        # (directive not active) returns before reaching the kernel
-        # and appends NO audit record, unlike kernel-reached denials,
-        # which append exactly one. Persisting projection denials is
-        # open kernel build work (the same limitation recorded on
-        # PR #366); this scenario documents it, it does not fix it.
-        self.assertEqual(audit_len, len(state.audit))
+        # Former limitation, closed by kernel build item #2 (the
+        # same limitation recorded on PR #366): a projection-scope
+        # denial (directive not active) used to return before
+        # reaching the kernel and append NO audit record. It now
+        # appends exactly one directive_denial record, like
+        # kernel-reached denials, carrying the returned reason.
+        self.assertEqual(audit_len + 1, len(state.audit))
+        denial = state.audit[-1]
+        self.assertEqual("directive_denial", denial["event"])
+        self.assertEqual("directive_revoked", denial["payload"]["reason"])
 
 
 if __name__ == "__main__":

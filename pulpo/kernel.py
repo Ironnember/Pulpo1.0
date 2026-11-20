@@ -1347,6 +1347,69 @@ class GovernanceKernel:
 
         self._state.bind_permit_to_directive(permit, intent_hash, binding, timestamp_ns)
 
+    def record_directive_denial(
+        self,
+        intent: Intent,
+        *,
+        directive_id: str,
+        version: int,
+        directive_hash: str,
+        reason: str,
+    ) -> None:
+        """Facade verb: record a directive-scope denial in the audit.
+
+        Kernel build item #2: the directive projection returns its
+        directive-scope denials (directive not active, parent not
+        active, mandate failure, aggregate-budget early check)
+        without a kernel evaluation, so before this verb those
+        denials appended nothing — a refused attempt was invisible
+        to the canonical audit and to reconciliation, unlike
+        kernel-reached denials (``decision``) and consume denials
+        (``permit_rejected``), which append exactly one record each.
+        The projection reports each of its denials through this verb
+        instead. The schema is fixed: the caller supplies the intent,
+        the directive's identity, and the reason it already computed;
+        the kernel derives the intent hash and appends exactly one
+        ``directive_denial`` record with ``authority_effect=none``.
+        Recording a denial grants nothing, spends nothing, and
+        changes no directive state.
+
+        Clock posture (Codex P2 on PR #372): the projection computes
+        its status denials before any trusted-time check, and those
+        paths returned their fail-closed Decision without touching
+        the clock before this verb existed — so the record must
+        never let an unavailable clock change the outcome. The
+        record time is resolved through ``_trusted_now`` (the
+        ``approval_rejected`` precedent in ``_approval_decide``);
+        an unavailable clock stamps 0, the same visible sentinel
+        approval rejections carry, instead of propagating the
+        clock's exception, writing an invalid ``None`` timestamp
+        into the in-memory chain, or tripping the SQLite backend's
+        NOT NULL timestamp constraint. The denial is still recorded
+        exactly once; only its timestamp degrades.
+        """
+
+        trusted_time = self._trusted_now()
+        record_time = 0 if trusted_time is None else trusted_time
+        self._state.append(
+            "directive_denial",
+            {
+                "schema": "pulpo.directive-denial.v0",
+                "directive_id": directive_id,
+                "version": version,
+                "directive_hash": directive_hash,
+                "intent_hash": self.intent_hash(intent),
+                "principal": intent.principal,
+                "action": intent.action,
+                "resource": intent.resource,
+                "cost": intent.cost,
+                "session_id": intent.session_id,
+                "reason": reason,
+                "authority_effect": "none",
+            },
+            record_time,
+        )
+
     def record_target_completion(
         self,
         *,

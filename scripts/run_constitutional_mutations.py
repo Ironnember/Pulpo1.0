@@ -251,6 +251,48 @@ MUTATIONS: tuple[Mutation, ...] = (
         ),
     ),
     Mutation(
+        # Kernel build item #2: the projection's denial record call is
+        # what makes a directive-scope denial visible to the canonical
+        # audit. Removing it must be detected by the item #2 tests.
+        "projection_denial_record_removed",
+        "pulpo/directives.py",
+        '        self.kernel.record_directive_denial(\n            intent,',
+        '        None and self.kernel.record_directive_denial(\n            intent,',
+        (
+            "tests.test_projection_denial_audit.ProjectionDenialRecordTests.test_unknown_directive_denial_is_recorded_with_fixed_schema",
+            "tests.test_projection_denial_audit.ProjectionDenialRecordTests.test_mandate_failures_are_recorded",
+        ),
+    ),
+    Mutation(
+        # PR #372 Codex P1 fix: the incident channel's near-miss
+        # classification of directive_denial is what makes a recorded
+        # projection denial visible in a frozen incident report.
+        # Dropping the event from the set must be detected.
+        "incident_channel_directive_denial_unclassified",
+        "pulpo/incident_channel.py",
+        '_AUDIT_NEAR_MISS_EVENTS = frozenset({"purchase_revalidation_failed", "permit_rejected", "approval_rejected", "directive_denial"})',
+        '_AUDIT_NEAR_MISS_EVENTS = frozenset({"purchase_revalidation_failed", "permit_rejected", "approval_rejected"})',
+        (
+            "tests.test_incident_channel.IncidentChannelAuditFeedTests.test_directive_denial_audit_event_is_a_near_miss",
+            "tests.test_projection_denial_audit.ProjectionDenialIncidentReportTests.test_unknown_directive_denial_is_a_near_miss_in_the_report",
+        ),
+    ),
+    Mutation(
+        # PR #372 Codex P2 fix: the denial verb's trusted-time
+        # resolution is what keeps an unavailable clock from breaking
+        # the fail-closed Decision. Restoring the raw clock read must
+        # be detected by the clock-posture tests.
+        "directive_denial_clock_unchecked",
+        "pulpo/kernel.py",
+        "        trusted_time = self._trusted_now()\n        record_time = 0 if trusted_time is None else trusted_time",
+        "        record_time = self._clock()",
+        (
+            "tests.test_projection_denial_audit.ProjectionDenialClockPostureTests.test_raising_clock_unknown_directive_still_denies_and_records",
+            "tests.test_projection_denial_audit.ProjectionDenialClockPostureTests.test_none_clock_records_zero_timestamp_in_memory",
+            "tests.test_projection_denial_audit.ProjectionDenialClockPostureTests.test_unavailable_clock_records_zero_timestamp_in_sqlite",
+        ),
+    ),
+    Mutation(
         # Phase 3, Item 3B: the service boundary's request MAC is the
         # authentication control — a request that does not authenticate
         # must never reach a verb. Weakening it must be detected by the
