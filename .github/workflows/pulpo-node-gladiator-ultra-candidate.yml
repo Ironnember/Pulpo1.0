@@ -7,6 +7,8 @@ on:
       - "proofs/pulpo-node/**"
       - "proofs/pulpo_node_virtual_lamp.py"
       - "tests/test_pulpo_node_virtual_lamp.py"
+      - "tests/test_pulpo_node_dry_run_gpio.py"
+      - "pulpo/node_dry_run.py"
       - "scripts/run_gladiator_ultra_tournament.py"
       - "docs/pulpo-node/**"
   workflow_dispatch:
@@ -51,6 +53,15 @@ jobs:
             --repo . \
             --expected-revision "$(git rev-parse HEAD)" \
             --output "$evidence/gladiator-ultra-candidate"
+
+      - name: Run Phase 2 dry-run GPIO contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/pulpo-node-gladiator-ultra-candidate"
+          python3 proofs/pulpo-node/dry_run_gpio_proof.py \
+            --expected-revision "$(git rev-parse HEAD)" \
+            --output "$evidence/phase2-dry-run-gpio-result.json"
 
       - name: Upload synthetic proof artifacts
         uses: actions/upload-artifact@v4
