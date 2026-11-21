@@ -51,14 +51,18 @@ project window. Permits are issued only through the governed
 directive projection, are bound to the directive and to one exact
 intent, live at most the policy's permit TTL, and are single-use.
 The incident's consequential acts are then attempted in sequence:
-replaying the vendor's spent permit after the project (the stolen
-standing key's first call), presenting an unspent permit after its
-signed expiry, presenting a bound permit after the owner retires
-the engagement by revoking the directive, lateral movement to
-accounts and systems the engagement never granted, and the reach
-for the XDR credential store. The kernel must deny each one, the
-consequence ledger must stay empty for all of them, and every
-denial must land in the audit record.
+the stolen credential material -- the vendor's spent permit and
+the raw key string -- presented first inside the window, minutes
+after the legitimate use (denied: a permit spends exactly once,
+and a key string is not a permit), and again after the project
+window has closed and the permit's signed expiry has passed
+(denied on those post-project grounds), presenting an unspent
+permit after its signed expiry, presenting a bound permit after
+the owner retires the engagement by revoking the directive,
+lateral movement to accounts and systems the engagement never
+granted, and the reach for the XDR credential store. The kernel
+must deny each one, the consequence ledger must stay empty for
+all of them, and every denial must land in the audit record.
 
 Incident-channel surfacing (Verified at this commit, by executable
 assertion in step 6): every attempt in this scenario routes through
@@ -390,11 +394,22 @@ class BarracudaIncidentScenarioTests(unittest.TestCase):
         permit = self._issue_project_permit(self.kernel)
         # The vendor's legitimate project use: the permit spends, once.
         self.assertTrue(self.ledger.execute(self.kernel, permit, PROJECT_INTENT))
-        # The project is over. The attacker, holding what the vendor
-        # held, makes the incident's first call -- November 1, 04:33 --
-        # with the same credential material. What the vendor held was
-        # a spent permit and a raw key string; neither is a standing
-        # capability.
+        # The vendor's work is done, and the attacker, holding what
+        # the vendor held, makes the incident's first call -- in the
+        # incident, November 1, 04:33 -- with the same credential
+        # material. Precision about what this attempt proves: it is
+        # still INSIDE the engagement window (the directive runs to
+        # T0 + PROJECT_WINDOW_NS, nothing has been revoked) and the
+        # permit's signed expiry (T0 + 100 + PERMIT_TTL_NS) is still
+        # ahead of it, so the denial below is not a timing denial.
+        # The spent permit is refused because a permit spends
+        # exactly once -- its rejection record carries the store's
+        # directive_status "active", the store's own statement that
+        # the engagement was live and the spend itself was the bar
+        # -- and the raw key string is refused as a fabricated
+        # token, a rejection that does not depend on the clock at
+        # all. What the vendor held is not a standing capability,
+        # so there is nothing standing to steal.
         self.clock.advance_to(T0 + 300)
         self.assertFalse(self.ledger.execute(self.kernel, permit, PROJECT_INTENT))
         self.assertFalse(self.ledger.execute(self.kernel, STANDING_KEY, PROJECT_INTENT))
@@ -406,8 +421,53 @@ class BarracudaIncidentScenarioTests(unittest.TestCase):
             if record["payload"]["intent_hash"] == project_digest
         ]
         self.assertEqual(2, len(rejected))
-        reasons = {record["payload"].get("reason") for record in rejected}
-        self.assertIn("permit_signature_invalid", reasons)
+        spent_replay = [
+            record for record in rejected if "directive_status" in record["payload"]
+        ]
+        self.assertEqual(1, len(spent_replay))
+        self.assertEqual("active", spent_replay[0]["payload"]["directive_status"])
+        fabricated = [
+            record
+            for record in rejected
+            if record["payload"].get("reason") == "permit_signature_invalid"
+        ]
+        self.assertEqual(1, len(fabricated))
+        # The same stolen material presented again when the attempt
+        # IS post-project: past the engagement's expiry and past
+        # the permit's signed expiry. Now the authentic token is
+        # refused on a post-project ground itself -- its signed
+        # expiry, enforced at the kernel layer before the store is
+        # consulted, so the rejection record carries no
+        # directive_status (step 2 exercises each expiry layer
+        # separately, including the store's directive_inactive
+        # refusal for a token whose expiry outlives the window) --
+        # and the raw key is refused as fabricated, exactly as
+        # before. Neither the in-window replay nor the post-project
+        # call yields a second consequence.
+        self.clock.advance_to(T0 + PROJECT_WINDOW_NS + 300)
+        self.assertFalse(self.ledger.execute(self.kernel, permit, PROJECT_INTENT))
+        self.assertFalse(self.ledger.execute(self.kernel, STANDING_KEY, PROJECT_INTENT))
+        self.assertEqual([("read_secrets", PROJECT_RESOURCE)], self.ledger.effects)
+        rejected = [
+            record
+            for record in _events(self.kernel, "permit_rejected")
+            if record["payload"]["intent_hash"] == project_digest
+        ]
+        self.assertEqual(4, len(rejected))
+        post_project = rejected[2:]
+        expired = [
+            record
+            for record in post_project
+            if record["payload"].get("reason") == "permit_expired"
+        ]
+        self.assertEqual(1, len(expired))
+        self.assertNotIn("directive_status", expired[0]["payload"])
+        fabricated_post = [
+            record
+            for record in post_project
+            if record["payload"].get("reason") == "permit_signature_invalid"
+        ]
+        self.assertEqual(1, len(fabricated_post))
         self.assertTrue(self.kernel.verify_audit())
 
     # -- step 2: expiry -- the permit's own clock runs out ------------------

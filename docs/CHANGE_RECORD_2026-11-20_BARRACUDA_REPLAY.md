@@ -90,12 +90,24 @@ Scenario module `tests/test_barracuda_incident_scenario.py`
   issued through the directive projection and bound to the live
   engagement) executes exactly once; replay of the spent permit
   is denied; the audit chain verifies.
-- step 1: the first call with the stolen credential — the
-  vendor's spent permit, replayed after the project, is denied
-  at consume, and the raw standing-key string presented as a
-  permit is rejected as a fabricated token
-  (`permit_signature_invalid`). What the vendor held is not a
-  standing capability, so there is nothing standing to steal.
+- step 1: the first call with the stolen credential, in two
+  parts. In-window — minutes after the legitimate use, the
+  engagement still live, the permit's signed expiry still
+  ahead: the vendor's spent permit is denied at consume on
+  single-use (its rejection record carries the store's
+  `directive_status` "active" — the engagement was live; the
+  spend itself was the bar), and the raw standing-key string
+  presented as a permit is rejected as a fabricated token
+  (`permit_signature_invalid`, a rejection that does not
+  depend on the clock). Post-project — the same material
+  presented again past the engagement's expiry and past the
+  permit's signed expiry: the authentic token is refused at
+  the kernel layer with `permit_expired`, the store never
+  consulted (no `directive_status` in the record), and the
+  raw key is rejected as fabricated again. What the vendor
+  held is not a standing capability, so there is nothing
+  standing to steal — in the window or after it. Step 2
+  exercises each expiry layer separately.
 - step 2: expiry at every layer — an unspent permit presented at
   its signed expiry is refused at the kernel layer
   (`permit_expired`, store never consulted); a permit issued
@@ -154,9 +166,14 @@ Scenario module `tests/test_barracuda_incident_scenario.py`
   revocation layers, not from a harness that denies by
   construction.
 
-Full suite at the worktree head: **1000 tests, OK
-(skipped=13)** — the recorded baseline at the base commit is
-991 OK (skipped=13); the delta is exactly the 9 scenario tests.
+Full suite at the worktree head: **1018 tests, OK
+(skipped=13)** (executed 2026-11-20 at head `645c9da` with
+the step-1 correction recorded in §8 applied; the branch
+head sits on a main that has absorbed the Dragos and Cairn
+replays since the original base — at the §8 checkpoint,
+`4603a9f` plus this module alone, the suite is 1000 OK
+(skipped=13) against the recorded 991 baseline, the delta
+exactly the 9 scenario tests).
 
 Adversarial transformation review (eight passes per
 `docs/ADVERSARIAL_TRANSFORMATION_SOP.md`):
@@ -174,10 +191,13 @@ Adversarial transformation review (eight passes per
 - Reverse — the intrusion chain required every hop to unlock
   the next: key to secrets to analytics to source token to
   clusters to credential store. The earliest unreachable point
-  is the first post-project call (step 1), and the chain does
-  not collapse to one control: even inside the window each hop
-  is a distinct intent requiring its own permit (step 4), so a
-  live permit for hop one spends on no later hop.
+  is the first call with the stolen material (step 1): inside
+  the window the spent permit already spends zero times, and
+  past the window its signed expiry bars it at the kernel
+  layer. And the chain does not collapse to one control: even
+  inside the window each hop is a distinct intent requiring
+  its own permit (step 4), so a live permit for hop one spends
+  on no later hop.
 - Invert — outcome is not legitimacy: a report claiming "the
   vendor accessed the project account" is supportable only for
   the one consumed act; every other act in the sequence stands
@@ -283,14 +303,35 @@ per-module helper-duplication pattern.
 
 ## 8. Temporal-transfer evidence
 
+Review disposition (Codex P2 on this PR, 2026-11-20): Codex
+observed that step 1's original attempt timestamps (T0 + 300)
+fall inside the project window — the engagement directive
+runs to T0 + 100_000 and the permit's signed expiry to
+T0 + 20_100 — so the step's authentic-token denial evidenced
+in-window single-use replay protection, not a first
+post-project attempt, and the raw-key rejection
+(`permit_signature_invalid`) is timing-independent.
+Verified accurate against the module and the kernel's
+consume layering. Step 1 is restructured accordingly: the
+in-window attempt is labeled as exactly that, with its
+rejection record's `directive_status` "active" asserted as
+the proof of what barred it, and the same stolen material is
+presented again past the window's end and past the permit's
+signed expiry, refused there at the kernel layer with
+`permit_expired`; step 2 continues to exercise each expiry
+layer separately rather than step 1 duplicating them. The
+checkpoint comparison below was re-run with the corrected
+module; the results are unchanged.
+
 Executed 2026-11-20, before this record was finalized — the
 checkpoint comparison AGENTS.md requires, run proactively
-rather than on review. The record names the exact base,
-`4603a9f`, and every binding the scenario exercises (signed
-permit expiry, directive binding and revocation at consume,
-exact-intent binding, single-use consumption, projection denial
-recording) predates this change, so the comparison was runnable
-and has been run.
+rather than on review — and re-run the same day with the
+corrected step 1 described above. The record names the exact
+base, `4603a9f`, and every binding the scenario exercises
+(signed permit expiry, directive binding and revocation at
+consume, exact-intent binding, single-use consumption,
+projection denial recording) predates this change, so the
+comparison was runnable and has been run.
 
 Method: a clean worktree was reconstructed at exactly
 `4603a9f` (no tree rewriting; `git status` verified the only
@@ -305,17 +346,20 @@ Results (Verified — executed at both states):
 
 - TRANSFERS: all 9 scenario tests pass identically at
   `4603a9f` — the positive control executing exactly once, the
-  stolen-material denials of step 1, expiry enforced at the
-  kernel layer, the store layer, and the projection (step 2),
-  revocation enforced at consume (step 3), lateral movement and
-  the crown-jewel acts denied on every route (steps 4–5), the
+  stolen-material denials of step 1 (the in-window replay
+  refused on single-use with the engagement recorded active;
+  the same material refused again past the window on its
+  signed expiry), expiry enforced at the kernel layer, the
+  store layer, and the projection (step 2), revocation
+  enforced at consume (step 3), lateral movement and the
+  crown-jewel acts denied on every route (steps 4–5), the
   incident channel's 0 incidents / 20 near-misses with complete
   coverage on the exercised routes (step 6), the 44-attempt
   volume run with a complete verifying audit, and the negative
   control executing when unguarded. Full suite at
   checkpoint-plus-lesson: 1000 OK (skipped=13), identical to
-  the worktree head; the delta over the 991 baseline is exactly
-  the 9 scenario tests.
+  the worktree head at the time of the original run; the delta
+  over the 991 baseline is exactly the 9 scenario tests.
 - NO EFFECT: the lesson is tests and documentation only; it
   changes no kernel behavior at the checkpoint or at the head,
   and consequential authority is unchanged by the replay itself
