@@ -112,15 +112,25 @@ Scenario module `tests/test_agentgates_incident_scenario.py`
   (`approval_intent_mismatch`); the genuine pair still
   admits afterward.
 - step 6: the incident channel sees the campaign — freezing
-  a report over the full attempt sequence yields zero
+  a report over the full attempt sequence (every attack
+  variant from steps 1–5: the planted intents on every
+  route, both parameter overrides under the genuine permit,
+  and both approval-envelope attempts) yields zero
   incidents and exactly the near-miss records the channel's
-  derivation produces from the audit: 6 `permit_rejected`,
-  1 `approval_rejected`, 1 denied `decision` (8 near-misses),
-  each classified Recorded under a valid audit chain; the
-  freeze appends nothing. The step also pins the surfacing
+  derivation produces from the audit: 8 `permit_rejected`
+  (6 planted-route rejections plus the 2 parameter-override
+  rejections), 2 `approval_rejected`, and 2 denied
+  `decision` records — the forged envelope denied
+  `approval_signature_invalid` and the genuine envelope
+  presented for the wrong intent denied
+  `approval_intent_mismatch` (12 near-misses in total), each
+  classified Recorded under a valid audit chain; the freeze
+  appends nothing. The step also pins the surfacing
   boundary stated in §5: the sequence's 3 `require_approval`
   decisions are present in the audit and contribute zero
-  near-miss records.
+  near-miss records. (Step 6's sequence and counts were
+  amended after a Codex P2 on the original submission; see
+  the addendum.)
 - step 7: persistence is not authority — in a fresh session
   on a fresh kernel (the block still sitting in the config
   after uninstall, per the advisory), the planted send is
@@ -318,3 +328,64 @@ Results (Verified — executed at both states):
 The evidence is therefore valid at the checkpoint and at
 the worktree head; reuse of the lesson at a later commit
 still requires re-evaluation there.
+
+## Addendum — Codex P2 on step 6's reporting coverage (2026-11-21)
+
+Finding (Codex, P2, PR #378 review thread on
+`tests/test_agentgates_incident_scenario.py`): the
+incident-channel reporting test's frozen sequence replayed
+only `PLANTED_INTENTS` plus the forged-envelope attempt; it
+omitted step 4's two parameter-override attempts and step
+5's genuine-envelope/incorrect-intent attempt. The pinned
+8 near-misses therefore passed without demonstrating that
+those attacks appear in the owner-facing incident channel,
+while §4 claimed coverage of the "full attempt sequence."
+The finding was correct; the denials themselves were
+proven in steps 4 and 5, but the reporting assertion did
+not cover them.
+
+Fix (test-only; `authority_effect=none`):
+
+- Step 6's frozen sequence now replays every attack
+  variant exercised in steps 1–5: the planted intents on
+  every route, both parameter overrides under the genuine
+  permit (consume rejections bound to exactly the
+  overridden intents), and both approval-envelope attempts
+  — the forged envelope denied
+  `approval_signature_invalid`, and the genuine envelope
+  presented for the send intent denied
+  `approval_intent_mismatch`.
+- Each envelope in the compressed sequence carries its own
+  `approval_id` and nonce, as each real approval would.
+  The test helper's fixed default `approval_id` would
+  otherwise collide with the permit issuance in the same
+  kernel and turn the forgery denial into an
+  `approval_id_replayed` denial, misattributing which
+  control rejected it (verified by probe: default ID →
+  `approval_id_replayed`; distinct IDs →
+  `approval_signature_invalid`, matching step 5).
+- §4's step-6 bullet is corrected above to the amended
+  executed counts.
+
+Executed evidence for the amendment (Verified):
+
+- Scenario module at the amended head: 9/9 OK.
+- Step 6 as amended: 0 incidents; 12 near-misses =
+  8 `permit_rejected` (6 planted-route + 2 override) +
+  2 `approval_rejected` + 2 denied `decision` records.
+  The sequence's 3 `require_approval` decisions remain in
+  the audit and still contribute zero near-miss records —
+  the §5 / issue #375 boundary is unchanged, and is still
+  pinned rather than smoothed over.
+- Full suite at the amended head: 1027 tests, OK
+  (skipped=13) — total unchanged; the amendment edits one
+  existing test rather than adding one.
+- Temporal transfer re-run: the §8 checkpoint comparison
+  was re-executed with the amended module at exactly
+  `bb4769f` (clean worktree; the only delta was the copied
+  scenario module): scenario 9/9 OK; full suite 1027 OK
+  (skipped=13), identical to the amended head — TRANSFERS,
+  no negative transfer. §8's figures record the first
+  execution of the unamended module; this addendum records
+  the amended execution. The §5 boundary is identical at
+  both states.

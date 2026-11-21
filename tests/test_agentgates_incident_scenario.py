@@ -425,6 +425,15 @@ class AgentgatesIncidentScenarioTests(unittest.TestCase):
     # derived as near-misses -- the expected near-miss count is
     # built from the event classes the channel actually derives,
     # so this test pins the boundary instead of papering over it.
+    #
+    # The frozen sequence below is the full attempt sequence of
+    # steps 1-5, not a subset: the planted intents on every route
+    # (steps 1-3), both parameter overrides under the genuine
+    # permit (step 4), and both approval-envelope attempts -- the
+    # attacker's forged envelope and the genuine envelope
+    # presented for the wrong intent (step 5). The report
+    # assertions therefore cover every attack variant the
+    # scenario exercises.
 
     def test_step6_incident_channel_surfaces_the_planted_campaign(self) -> None:
         permit = self._issue_swap_permit(self.kernel)
@@ -435,11 +444,46 @@ class AgentgatesIncidentScenarioTests(unittest.TestCase):
             self.kernel.evaluate(intent)
             self.assertFalse(self.kernel.consume(PLANTED_TOKEN, intent))
             self.assertFalse(self.kernel.consume(permit, intent))
+        # Each envelope in this compressed sequence carries its
+        # own approval_id and nonce, as each real approval would:
+        # the helper's fixed defaults would collide with the
+        # permit issuance above and turn the forgery denial below
+        # into a replay denial, misattributing the control that
+        # rejected it.
         forged_envelope = signed_envelope(
-            self.kernel, SEND_INTENT, HmacTestVerifier(b"attacker-key"), now_ns=NOW
+            self.kernel,
+            SEND_INTENT,
+            HmacTestVerifier(b"attacker-key"),
+            now_ns=NOW,
+            approval_id="approval-forged",
+            nonce="nonce-forged",
         )
         decision = self.kernel.evaluate_with_approval(SEND_INTENT, forged_envelope)
         self.assertEqual("deny", decision.outcome)
+        self.assertEqual("approval_signature_invalid", decision.reason)
+        # Step 4's attempts, replayed into the frozen sequence:
+        # the permitted swap re-presented under the genuine permit
+        # with each bound parameter overridden -- the loss bound
+        # raised to the advisory's advertised 1000, and the amount
+        # inflated tenfold. Each is rejected at consume, bound to
+        # exactly the overridden intent.
+        self.assertFalse(self.kernel.consume(permit, OVERRIDE_INTENT))
+        self.assertFalse(self.kernel.consume(permit, AMOUNT_INTENT))
+        # Step 5's second attempt, also replayed: the genuine swap
+        # envelope presented for the send intent. A real approval
+        # for one act is not approval for another; the decision is
+        # a denial and the rejection lands in the channel.
+        genuine_envelope = signed_envelope(
+            self.kernel,
+            SWAP_INTENT,
+            self.verifier,
+            now_ns=NOW,
+            approval_id="approval-genuine-2",
+            nonce="nonce-genuine-2",
+        )
+        decision = self.kernel.evaluate_with_approval(SEND_INTENT, genuine_envelope)
+        self.assertEqual("deny", decision.outcome)
+        self.assertEqual("approval_intent_mismatch", decision.reason)
         # The one legitimate act still executes; the campaign did
         # not.
         self.assertTrue(self.ledger.execute(self.kernel, permit, SWAP_INTENT))
@@ -465,9 +509,9 @@ class AgentgatesIncidentScenarioTests(unittest.TestCase):
             for record in _events(self.kernel, "decision")
             if record["payload"]["outcome"] == "require_approval"
         ]
-        self.assertEqual(6, len(permit_rejected))
-        self.assertEqual(1, len(approval_rejected))
-        self.assertEqual(1, len(denied_decisions))
+        self.assertEqual(8, len(permit_rejected))
+        self.assertEqual(2, len(approval_rejected))
+        self.assertEqual(2, len(denied_decisions))
         self.assertEqual(3, len(require_approval_decisions))
         # Every derived near-miss is accounted for by the event
         # classes the channel derives -- no more, no fewer. The
