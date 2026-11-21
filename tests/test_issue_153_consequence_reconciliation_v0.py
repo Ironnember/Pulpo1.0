@@ -591,8 +591,14 @@ class Issue153ConsequenceReconciliationV0(unittest.TestCase):
         )
         projection = GovernedDirectiveProjection(kernel)
         intent = Intent("agent:builder", "write", "repo:exact", 1)
+        # The parameter list stays closed over authority inputs: the
+        # projection is offered an intent and a directive, nothing
+        # else that could authorize. Item 4B added ``presenter``,
+        # which is not an authority input — it is never consulted as
+        # evidence for a decision; it only narrows the issued permit
+        # (binding it to one presenter, verified at consume time).
         self.assertEqual(
-            ("intent", "directive"),
+            ("intent", "directive", "presenter"),
             tuple(inspect.signature(projection.evaluate).parameters),
         )
         before_activation = projection.evaluate(intent, directive)
