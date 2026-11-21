@@ -86,9 +86,14 @@ outside this evidence and open.
 
 Audit-growth classification (per AGENTS.md, ``NO_PERMIT !=
 NO_GOVERNED_EFFECT``): a denied attempt is not "no state
-changed." Each denied evaluate/consume appends exactly one
-audit record. That growth is itself a governed effect --
-evidence production -- bounded at one record per attempt,
+changed." A denied attempt appends audit records, counted
+per route: a bare evaluate returning ``require_approval``
+appends one decision record; a ``consume`` rejection
+appends one ``permit_rejected`` record; a denied
+approval-envelope evaluation appends two records -- an
+``approval_rejected`` record and a denied decision record.
+That growth is itself a governed effect --
+evidence production -- bounded at two records per attempt,
 append-only, and it does not alter authority
 (``authority_effect=none``) or accumulate capability. It is
 classified and assessed separately from governed external

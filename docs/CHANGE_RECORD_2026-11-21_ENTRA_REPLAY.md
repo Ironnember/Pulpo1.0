@@ -68,11 +68,17 @@ incident-channel freeze is asserted read-only in the scenario
 itself (audit length unchanged across the freeze). Audit
 growth is classified in the module docstring per AGENTS.md
 (`NO_PERMIT != NO_GOVERNED_EFFECT`): each denied attempt
-appends exactly one audit record — a governed effect
-(evidence production), bounded at one record per attempt,
-append-only, with `authority_effect=none` and no capability
-accumulation — assessed separately from governed external
-consequences throughout.
+appends audit records — a governed effect (evidence
+production), append-only, with `authority_effect=none` and
+no capability accumulation — assessed separately from
+governed external consequences throughout. The count is
+per route, not uniformly one: a bare `evaluate` returning
+`require_approval` appends one decision record; a `consume`
+rejection appends one `permit_rejected` record; a denied
+approval-envelope evaluation appends two records — an
+`approval_rejected` record and a denied decision record.
+Growth stays bounded per attempt (at most two records),
+which is the invariant the scenario pins.
 
 ## 4. Exact success and adversarial evidence
 
@@ -192,7 +198,10 @@ Adversarial transformation review (eight passes per
   every tenant using the service, at API tempo. Inside the
   governed path the maximum consequence remains the one
   authorized read; every out-of-scope attempt produces
-  exactly one audit record and zero consequences. Outside
+  audit records only — one per attempt on the bare-evaluate
+  and consume routes, two (an `approval_rejected` record and
+  a denied decision record) on the denied approval-envelope
+  route — and zero consequences. Outside
   the governed path stands the incident's real worst case —
   an API that answers first and checks scope never — and
   this replay does not mitigate it; it is the boundary
