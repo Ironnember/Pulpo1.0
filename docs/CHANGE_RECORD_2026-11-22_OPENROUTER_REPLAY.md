@@ -132,12 +132,19 @@ Scenario module `tests/test_openrouter_incident_scenario.py`
   presented as a permit, is rejected at consume
   (`permit_rejected` bound to the altered intent's hash).
   An account key is not a permit.
-- step 2: the approved dispatch with an injected block
-  appended to its payload in transit — the hidden-token
-  shape — is denied under the genuine permit: the altered
-  payload is a different intent, the rejection is bound to
-  its hash, and the genuine permit spends afterward on its
-  exact intent. The alteration fails at execution time.
+- step 2: the approved intent and the genuine permit
+  presented at the governed dispatch boundary with the
+  payload bytes mutated in transit — an injected instruction
+  block substituted into the bytes, same length, different
+  bytes (the hidden-token shape). The boundary derives the
+  SHA-256 of the bytes actually presented and submits the
+  act those bytes constitute; the genuine permit rejects
+  that derived intent at consume (the rejection is bound to
+  the derived intent's hash, not the approved intent's), and
+  the genuine permit spends afterward on its exact intent
+  when the bytes presented are the bytes approved. The
+  alteration fails at execution time. (This step is the fix
+  cycle's rewrite — see §9.)
 - step 3: destination scope, in both of its shapes. The
   forward to the provider's upstream endpoint — a genuinely
   distinct destination sharing no string prefix with the
@@ -164,16 +171,17 @@ Scenario module `tests/test_openrouter_incident_scenario.py`
 - step 6: the incident channel sees the campaign — freezing
   a report over the full attempt sequence (every attack
   variant from steps 1–5 and 7: all four attack intents on
-  every route, both approval-envelope attempts, and both
-  spent-permit replays) yields zero incidents and exactly
-  the near-miss records the channel's derivation produces
-  from the audit: 10 `permit_rejected` (8 campaign-route
-  rejections plus the 2 spent-permit replays),
-  2 `approval_rejected`, and 3 denied `decision` records —
-  the forward's `agent_resource_not_allowed` scope denial
-  and the two step-5 envelope denials
+  every route, step 2's governed-boundary route, both
+  approval-envelope attempts, and both spent-permit
+  replays) yields zero incidents and exactly the near-miss
+  records the channel's derivation produces from the audit:
+  11 `permit_rejected` (8 campaign-route rejections, step
+  2's boundary-route rejection, plus the 2 spent-permit
+  replays), 2 `approval_rejected`, and 3 denied `decision`
+  records — the forward's `agent_resource_not_allowed` scope
+  denial and the two step-5 envelope denials
   (`approval_signature_invalid`,
-  `approval_intent_mismatch`) — 15 near-misses in total,
+  `approval_intent_mismatch`) — 16 near-misses in total,
   each classified Recorded under a valid audit chain; the
   freeze appends nothing. The step also pins the surfacing
   boundary stated in §5: the sequence's 3 `require_approval`
@@ -191,13 +199,16 @@ Scenario module `tests/test_openrouter_incident_scenario.py`
   `require_approval` at evaluate and rejected at consume
   with the API key presented as its permit. The flag's
   presence changes nothing about what the kernel asks for.
-- negative control: with consume unguarded at both layers
-  (kernel double + intent-blind state double), the
-  altered-payload dispatch EXECUTES under the genuine
-  permit — the incident's own shape, a routing path that
-  forwards whatever arrives, altered or not. The denials
-  come from the binding layers, not from a harness that
-  denies by construction.
+- negative control: the identical presentation as step 2
+  (approved intent, genuine permit, mutated bytes at the
+  same boundary) with consume unguarded at both layers
+  (kernel double + intent-blind state double) EXECUTES —
+  the boundary still derives the altered intent from the
+  bytes, and no layer binds the permit to it. That is the
+  incident's own shape, a routing path that forwards
+  whatever arrives, altered or not. The denials come from
+  the real consume path's binding, not from the boundary's
+  derivation or a harness that denies by construction.
 
 Full suite at the worktree head: **1045 tests, OK
 (skipped=13)** — the recorded baseline at the base commit
@@ -322,7 +333,7 @@ Four boundaries are stated plainly:
    derivation-coverage boundary in the owner-facing
    channel, not an authorization gap. Step 6 pins it: the
    sequence's 3 `require_approval` decisions contribute
-   zero of its 15 near-misses. (The forward's bare evaluate
+   zero of its 16 near-misses. (The forward's bare evaluate
    is the other shape: a policy denial, which IS derived —
    1 of the 3 denied decisions in the pin.)
 
@@ -346,12 +357,14 @@ Four boundaries are stated plainly:
   probe, and step 3 / step 6's pinned counts).
 - The mapping from the incident's pattern to kernel intents
   (a dispatch names its destination endpoint and payload
-  digest together in the resource identity; an injected
-  block modeled as a distinct payload resource; an upstream
-  forward modeled as a distinct destination resource; an
-  API key and a ZDR flag modeled as no authority artifact
-  at all): **Inferred** — the harness's modeling choices,
-  stated in the module docstring.
+  digest together in the resource identity, the digest
+  derived with SHA-256 from the payload's actual bytes; an
+  injected block modeled as mutated bytes whose derived
+  digest constitutes a distinct intent; an upstream forward
+  modeled as a distinct destination resource; an API key
+  and a ZDR flag modeled as no authority artifact at all):
+  **Inferred** — the harness's modeling choices, stated in
+  the module docstring.
 - Any claim that this prevents the incident class in a
   deployed system: **Proposed** — not made by this change.
 
@@ -395,10 +408,14 @@ Results (Verified — executed at both states):
   forged/mismatched approval denials, the positive control
   executing exactly once, the ZDR-flag step, the negative
   control executing when unguarded, and the incident
-  channel's 0 incidents / 15 near-misses. Full suite at
+  channel's 0 incidents / 16 near-misses. Full suite at
   checkpoint-plus-lesson: 1045 OK (skipped=13), identical
   to the worktree head; the delta over the 1036 baseline
-  is exactly the 9 scenario tests.
+  is exactly the 9 scenario tests. (These results were
+  re-executed for the fix-cycle module of §9 on 2026-11-22:
+  scenario 9/9 and full suite 1045 OK (skipped=13) at the
+  checkpoint, with the re-pinned 0 incidents / 16
+  near-misses.)
 - NO EFFECT: the lesson is tests and documentation only;
   it changes no kernel behavior at the checkpoint or at
   the head, and consequential authority is unchanged by
@@ -415,3 +432,131 @@ Results (Verified — executed at both states):
 The evidence is therefore valid at the checkpoint and at
 the worktree head; reuse of the lesson at a later commit
 still requires re-evaluation there.
+
+## 9. Fix cycle — Codex P1: bind the executed payload, not a supplied label
+
+Finding (Recorded: Codex review on this PR, 2026-11-22,
+thread `PRRT_kwDOUBywws66ndrQ`; Verified correct by
+inspection and by the fix's executed run): as first
+submitted, step 2's altered-payload case merely constructed
+a different caller-supplied resource string — a different
+`Intent`. Neither the scenario's dispatch executor nor the
+kernel received or hashed any payload bytes (the "digest"
+in the resource identity was a fixed label,
+`sha256:9f2c-customer-prompt-exact`, not a function of any
+bytes). A route could therefore have consumed the permit
+with the approved intent and then sent altered bytes while
+every test still passed. Step 2 proved the kernel rejects
+a different intent; it did not prove altered bytes cannot
+execute under a consumed permit, and the PR's
+execution-time payload-binding wording claimed the stronger
+statement. Same defect class as the incidental-denial
+finding on PR #381: a gap in the replay's proof, not a
+kernel bypass.
+
+Fix (test-only; no kernel or library source touched):
+
+- The payload is now an actual byte string, and the digest
+  bound in the intent is `sha256:` + the SHA-256 of those
+  bytes, derived from them at module scope.
+- `ConsequenceLedger` is remodeled as the governed dispatch
+  boundary the incident actually lacked. It is presented
+  with the permit, the intent the caller claims, and the
+  actual payload bytes. It derives the SHA-256 of the bytes
+  at the boundary; on a mismatch with the digest bound in
+  the presented intent, it rebuilds the intent from the
+  derived digest and submits that act to the kernel. It
+  holds no authority of its own — it cannot mint, approve,
+  or spend except through `kernel.consume` — and it records
+  a consequence only for the intent actually consumed, so
+  it can never record the approved resource for bytes that
+  were not the approved bytes.
+- Step 2 is rewritten to the real incident shape: approval
+  for payload A; at dispatch, the approved intent and the
+  genuine permit presented together with mutated payload B
+  (same length, different bytes — the hidden-token shape).
+  The boundary derives B's intent; the genuine permit
+  rejects it at consume, bound to the derived intent's hash;
+  the permit then spends on A when A's bytes are presented.
+- The negative control now presents the identical step-2
+  presentation (approved intent, genuine permit, mutated
+  bytes, same boundary) against the unguarded consume
+  doubles: the altered dispatch EXECUTES, proving the
+  denial in step 2 comes from the real consume path's
+  binding rather than from the boundary's derivation alone.
+- Step 6's frozen sequence now also replays the
+  governed-boundary route, so the denial is asserted in the
+  reporting sequence, not only in step 2.
+
+Re-pinned counts (from the fresh executed run at the fixed
+head; old → new): step 6 `permit_rejected` 10 → 11 (the one
+added record is the boundary-route rejection); near-misses
+15 → 16; incidents 0 → 0; `approval_rejected` 2 → 2;
+denied decisions 3 → 3; `require_approval` decisions 3 → 3,
+still contributing zero near-misses — the issue-#375
+surfacing boundary is pinned exactly as before, both
+halves. Scenario 9/9; full suite at the fixed head 1045 OK
+(skipped=13); temporal transfer re-executed at `2726e59`
+with the fixed module: scenario 9/9, full suite 1045 OK
+(skipped=13), pin 0 incidents / 16 near-misses (see §8).
+
+Claim wording adjusted to what the fixed test proves: the
+module docstring, §4, §6, and the PR body no longer describe
+the altered payload as an intent a caller constructs; they
+describe bytes mutated in transit, a digest derived from
+the actual bytes at the dispatch boundary, and a denial of
+the act those bytes constitute. One boundary the fix does
+NOT close, stated plainly: the boundary governs the bytes
+presented to it. A route that derives honestly and then
+sends different bytes afterward (a post-boundary swap), or
+that never routes through a governed boundary at all, is
+outside this model — §5 boundary 3, unchanged.
+
+Eight-pass adversarial review of the fix itself:
+
+- Flip — the boundary ignores labels for payload identity
+  in both directions: mutated bytes under the approved
+  label are submitted as the mutated act, and the approved
+  bytes under an altered label are submitted as the
+  approved act (the derivation, not the label, decides).
+  Authorization follows the act, never the label; neither
+  direction lets a caller gain an act that was not
+  approved.
+- Reverse — an effect can be recorded only for the intent
+  actually consumed, and the ledger records the submitted
+  intent's resource. From any recorded consequence, the
+  chain back runs: consumed intent → derived digest →
+  bytes presented. There is no path that records the
+  approved resource for altered bytes under the real
+  kernel.
+- Invert — `execute` returns True only through a successful
+  `kernel.consume` of the submitted intent; there is no
+  second success path, and a boundary-local "match" mints
+  nothing.
+- Inside-Out — the boundary is not an authority plane: it
+  cannot mint, approve, or widen anything; derivation is a
+  pure function of the presented bytes, and every spend
+  still passes the kernel's token authentication and
+  token-to-intent binding (which is exactly what the
+  negative control removes, and execution follows).
+- Darken — worst case inside the model: a route presents
+  bytes to the boundary and sends other bytes afterward.
+  The fix does not govern that swap; it is named above as
+  an open boundary rather than silently claimed. Worst
+  case outside the model is unchanged (§5).
+- Lighten — an honest route that re-encodes or compresses
+  a payload changes its bytes and is denied. That is the
+  intended fail-closed posture, not a defect: approval
+  binds exact bytes, and a transformed payload needs its
+  own approval.
+- Amplify — derivation is per-dispatch and stateless;
+  replicating the attempt multiplies audit records, never
+  authority. Consumption remains single-use (step 4,
+  unchanged).
+- Negate — the smallest clean path is unchanged: approve
+  the exact bytes to the exact endpoint. The fix adds no
+  writer, route, ledger, or state; it removes a modeling
+  shortcut.
+
+Stop/continue decision: CONTINUE in the governed kernel
+path only, as in §4.
