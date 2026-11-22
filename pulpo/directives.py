@@ -384,7 +384,23 @@ class GovernedDirectiveProjection:
             raise RuntimeError("directive_clock_invalid")
         return now_ns
 
-    def evaluate(self, intent: Intent, directive: Directive) -> Decision:
+    def _deny(self, intent: Intent, directive: Directive, reason: str, digest: str) -> Decision:
+        # Kernel build item #2: a directive-scope denial is a
+        # governed effect (evidence production), so it is recorded in
+        # the canonical audit through the kernel's fixed-schema verb
+        # — exactly one record per denied attempt, like kernel-reached
+        # denials. The Decision returned is the one the projection has
+        # always returned; only its visibility changes.
+        self.kernel.record_directive_denial(
+            intent,
+            directive_id=directive.directive_id,
+            version=directive.version,
+            directive_hash=directive.directive_hash,
+            reason=reason,
+        )
+        return Decision("deny", reason, digest)
+
+    def evaluate(self, intent: Intent, directive: Directive, *, presenter: str | None = None) -> Decision:
         status = self.kernel.directive_status(
             directive.directive_id,
             directive.version,
@@ -392,15 +408,15 @@ class GovernedDirectiveProjection:
         )
         digest = self.kernel.intent_hash(intent)
         if status != "active":
-            return Decision("deny", status, digest)
+            return self._deny(intent, directive, status, digest)
         if directive.parent_directive_hash is not None:
             parent_status = self.kernel.directive_hash_status(directive.parent_directive_hash)
             if parent_status != "active":
-                return Decision("deny", parent_status, digest)
+                return self._deny(intent, directive, parent_status, digest)
         now_ns = self._trusted_now()
         failure = directive.permits(intent, now_ns)
         if failure:
-            return Decision("deny", failure, digest)
+            return self._deny(intent, directive, failure, digest)
         budget_key = directive.budget_scope_key(intent)
         if budget_key is not None and directive.aggregate_budget is not None:
             # Early optimization ONLY (build item #1, design point 1):
@@ -411,9 +427,9 @@ class GovernedDirectiveProjection:
             # allowance — so this never substitutes for the decisive
             # atomic check-and-debit at consume time in the backend.
             if self.kernel.budget_spent(budget_key) + intent.cost > directive.aggregate_budget:
-                return Decision("deny", "directive_aggregate_budget_exceeded", digest)
+                return self._deny(intent, directive, "directive_aggregate_budget_exceeded", digest)
 
-        decision = self.kernel.evaluate(intent)
+        decision = self.kernel.evaluate(intent, presenter=presenter)
         if decision.outcome == "allow" and decision.permit is not None:
             binding = directive.permit_binding
             if directive.aggregate_budget is not None:

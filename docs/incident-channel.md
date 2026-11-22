@@ -36,6 +36,7 @@ below), not a decision this module makes.
 | canonical audit | `permit_rejected` | near-miss | not_applicable | audit record hash | hash chain |
 | canonical audit | `decision` with outcome `deny` | near-miss | not_applicable | audit record hash | hash chain |
 | canonical audit | `approval_rejected` | near-miss | not_applicable | audit record hash | hash chain |
+| canonical audit | `directive_denial` | near-miss | not_applicable | audit record hash | hash chain |
 | custody store | attempt `unresolved` | incident | unresolved | attempt authorization hash | authorization hashes only; the resolution is **Recorded** from the store, not anchored to a signed transition |
 | custody store | attempt `reconciliation_required` | incident | unresolved | attempt authorization hash | authorization hashes only; the resolution is **Recorded** from the store, not anchored to a signed transition |
 | custody store | attempt `attempt_authorized` / `attempt_claimed` / `request_transmitted` (latest state, no later state) | incident | unresolved | attempt authorization hash | authorization hashes only; the resolution is **Recorded** from the store, not anchored to a signed transition |
