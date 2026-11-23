@@ -139,11 +139,29 @@ MUTATIONS: tuple[Mutation, ...] = (
         # Phase 2, Item 4: the kernel's consume-time expiry check is the
         # control that refuses a dormant or stolen permit after its TTL.
         # Weakening it must be detected by the token-v2 tests.
+        # Anchor note (Lease port PR 1, 2026-11-22): the bare line
+        # 'if now_ns >= expires_at_ns:' now appears twice in kernel.py --
+        # the lease consume path enforces the same signed expiry with the
+        # same line. The anchor therefore carries the permit-only comment
+        # line that follows it so it stays unique; the lease occurrence
+        # has its own mutation below.
         "permit_expiry_check_removed",
         "pulpo/kernel.py",
-        'if now_ns >= expires_at_ns:',
-        'if False and now_ns >= expires_at_ns:',
+        'if now_ns >= expires_at_ns:\n            # Token v2 (Phase 2, Item 4): the signed expiry is enforced',
+        'if False and now_ns >= expires_at_ns:\n            # Token v2 (Phase 2, Item 4): the signed expiry is enforced',
         ("tests.test_permit_ttl.ExpiryEnforcementTests.test_expired_permit_refused_at_consume_with_recorded_reason",),
+    ),
+    Mutation(
+        # Lease port PR 1 (2026-11-22): the lease consume path enforces
+        # the signed expiry at the kernel layer before the store is
+        # consulted, exactly as the permit path does -- an expired lease
+        # fails closed into its journaled safe fallback. Weakening that
+        # check must be detected by the lease acceptance tests.
+        "lease_expiry_check_removed",
+        "pulpo/kernel.py",
+        'if now_ns >= expires_at_ns:\n            self._append_lease_rejection(lease_digest, lease.intent_hash, command.sequence, "lease_expired")',
+        'if False and now_ns >= expires_at_ns:\n            self._append_lease_rejection(lease_digest, lease.intent_hash, command.sequence, "lease_expired")',
+        ("tests.test_canonical_lease.LeaseAcceptanceTests.test_4_expired_lease_fails_and_journals_the_fallback",),
     ),
     Mutation(
         # Phase 2, Item 4: the state layer's recorded-expiry re-check is

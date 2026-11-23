@@ -411,6 +411,18 @@ class LeaseAcceptanceTests(unittest.TestCase):
             )
         )
         self.assertEqual(rejection_reasons(kernel), ["lease_expired"])
+        # Layer pin (constitutional mutation lease_expiry_check_removed):
+        # the refusal above must come from the KERNEL's signed-expiry
+        # check, which fires before the store is consulted (spec §4
+        # step 2). A store-layer refusal carries the store transition's
+        # markers (directive_status / lease_status) in its rejection
+        # payload; the kernel's rejection payload never does. Without
+        # this assertion the store's second layer produces an identical
+        # evidence trail and the kernel check is unprovable.
+        rejections = events(kernel, "lease_rejected")
+        self.assertEqual(len(rejections), 1)
+        self.assertNotIn("directive_status", rejections[0]["payload"])
+        self.assertNotIn("lease_status", rejections[0]["payload"])
         fallbacks = events(kernel, "lease_fallback")
         self.assertEqual(len(fallbacks), 1)
         self.assertEqual(fallbacks[0]["payload"]["cause"], "lease_expired")

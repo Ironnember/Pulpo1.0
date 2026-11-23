@@ -214,6 +214,59 @@ by the unchanged permit suite passing in the same run. Recording
 the boundary explicitly per the SOP: at-commit executable
 evidence is the whole of the claim.
 
+## 9. Fix cycle — constitutional-survival CI failure (2026-11-22)
+
+The first CI run on this PR failed the `constitutional-survival`
+check (13/14 checks green; the unit suite at the same head was
+1056 OK). Diagnosis and fix, all executed locally at the PR head
+and at the canonical anchor:
+
+- **Reproduction.** `scripts/run_constitutional_mutations.py` at
+  the PR head reported 32 killed, **0 survived, 1 invalid**,
+  result fail. The invalid mutation was
+  `permit_expiry_check_removed`: "expected one mutation anchor,
+  found 2". This PR's lease consume path enforces the signed
+  expiry with the same line as the permit path
+  (`if now_ns >= expires_at_ns:`), so the harness's unique-anchor
+  assumption broke and the proof failed closed.
+- **Causation: PR-caused (Verified).** At the canonical anchor
+  `2726e59` the anchor line occurs exactly once in
+  `pulpo/kernel.py` and the same script reports 33/33 killed,
+  0 invalid, result pass.
+- **Fix, part 1 — harness.** The permit mutation's anchor now
+  carries the permit-only comment line that follows it, keeping
+  it unique; a new mutation `lease_expiry_check_removed` anchors
+  on the lease occurrence (distinguished by the
+  `lease_expired` rejection line that follows it), so the lease
+  path's kernel-layer expiry check has its own constitutional
+  guard, as the permit path and both store layers already did.
+- **Fix, part 2 — the new mutation survived, and that was a real
+  finding.** With the kernel-layer lease expiry check disabled,
+  acceptance test 4 still passed: the store layer refuses the
+  expired lease with the *same* reason (`lease_expired`) and
+  journals a `lease_fallback` with the same payload shape, so
+  the observable evidence trail was identical whichever layer
+  fired. The kernel-layer enforcement claimed by spec §4 step 2
+  (signed expiry enforced *before the store is consulted*) was
+  therefore not independently provable. Test 4 now also asserts
+  the layer: a store-layer refusal carries the store
+  transition's markers (`directive_status` / `lease_status`) in
+  its rejection payload, and the test asserts both are absent —
+  the refusal must be the kernel's. No kernel or store code
+  changed; the two layers' behavior is unchanged, and their
+  evidence is now distinguishable by test.
+- **Final results at the fixed head.** Constitutional mutations:
+  34 total, **34 killed, 0 survived, 0 invalid, result pass**.
+  Full unit suite: **1056 OK, skipped=13** (unchanged counts;
+  the fix strengthened one existing test and the harness).
+- **Boundary.** The mutation suite now guards the lease kernel
+  expiry check. It does not guard the lease store-layer expiry
+  checks with lease-specific mutations; the store layers'
+  refusal behavior is covered by the acceptance tests, and a
+  store-anchor lease mutation pair (mirroring the permit pair)
+  is a candidate for PR 2's reconciliation work, not claimed
+  here.
+
 ## Adversarial transformation review (eight passes)
 
 - **Flip.** A hostile device presenter holds a genuine lease and
