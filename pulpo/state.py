@@ -87,6 +87,56 @@ class ApprovalUse:
 
 
 @dataclass(frozen=True)
+class LeaseIssuance:
+    """The governed facts of one kernel lease issuance.
+
+    A lease (canonical Lease port, PR 1) is recorded atomically with
+    its directive binding at issuance — unlike a permit, whose
+    binding is a separate governed step, a lease's binding is
+    intrinsic: the artifact authorizes bounded physical actuation
+    under exactly one directive, and an unbound lease is precisely
+    the Autonomous shape this port exists to retire. The store
+    records the binding, the signed expiry, the command budget, the
+    sequence floor, and the mandatory safe fallback in the same
+    transition that records the issuance, so the consume-time checks
+    below are computed from governed records, never from quantities
+    a caller presents later.
+    """
+
+    lease_digest: str
+    binding: DirectivePermitBinding
+    expires_at_ns: int
+    max_commands: int
+    sequence_floor: int
+    safe_fallback: str
+
+    def audit_payload(self) -> dict[str, Any]:
+        return {
+            "lease_digest": self.lease_digest,
+            **self.binding.audit_payload(),
+            "expires_at_ns": self.expires_at_ns,
+            "max_commands": self.max_commands,
+            "sequence_floor": self.sequence_floor,
+            "safe_fallback": self.safe_fallback,
+        }
+
+
+@dataclass
+class _LeaseEntry:
+    """Mutable consume-side counters for one issued lease (in-memory)."""
+
+    lease_digest: str
+    intent_hash: str
+    binding: DirectivePermitBinding
+    expires_at_ns: int
+    max_commands: int
+    sequence_floor: int
+    safe_fallback: str
+    commands_used: int = 0
+    last_sequence: int | None = None
+
+
+@dataclass(frozen=True)
 class DirectivePermitBinding:
     directive_id: str
     version: int
@@ -456,6 +506,8 @@ class KernelState(Protocol):
     def issue_permit(self, permit: str, intent_hash: str, decision_reason: str, timestamp_ns: int, approval: ApprovalUse | None = None, expires_at_ns: int | None = None) -> str | None: ...
     def bind_permit_to_directive(self, permit: str, intent_hash: str, binding: DirectivePermitBinding, timestamp_ns: int) -> None: ...
     def consume_permit(self, permit: str, intent_hash: str, timestamp_ns: int) -> bool: ...
+    def issue_lease(self, lease: str, intent_hash: str, issuance: LeaseIssuance, timestamp_ns: int, approval: ApprovalUse | None = None, decision_reason: str = "policy_satisfied") -> str | None: ...
+    def consume_lease_command(self, lease: str, lease_digest: str, intent_hash: str, sequence: int, timestamp_ns: int) -> bool: ...
     def budget_spent(self, scope_key: str) -> int: ...
     def activate_directive(self, directive: Any, authority_evidence: VerifiedAuthorityEvidence, timestamp_ns: int) -> None: ...
     def revoke_directive(self, directive_id: str, version: int, authority_evidence: VerifiedAuthorityEvidence, timestamp_ns: int) -> None: ...
@@ -505,6 +557,11 @@ class InMemoryKernelState:
         # root); the directive records themselves stay immutable.
         self._directive_parents: dict[tuple[str, int], str | None] = {}
         self._permit_directives: dict[str, DirectivePermitBinding] = {}
+        # Leases (canonical Lease port, PR 1): issued lease tokens and
+        # their consume-side counters, recorded at issuance inside the
+        # same locked transitions as permits — there is no second
+        # ledger; the audit appends below are the evidence.
+        self._leases: dict[str, _LeaseEntry] = {}
         self._audit: list[dict[str, Any]] = []
         self._audit_lock = RLock()
 
@@ -714,6 +771,98 @@ class InMemoryKernelState:
             self.append("permit_consumed" if valid else "permit_rejected", payload, timestamp_ns)
             return valid
 
+    def issue_lease(self, lease: str, intent_hash: str, issuance: LeaseIssuance, timestamp_ns: int, approval: ApprovalUse | None = None, decision_reason: str = "policy_satisfied") -> str | None:
+        # Mirrors issue_permit's locked transition: the approval
+        # replay checks, the approval record, the lease record, and
+        # the issuance audit record land atomically, so a lease can
+        # never exist without its governed issuance record (and an
+        # approval can never be spent twice minting leases).
+        with self._audit_lock:
+            if approval is not None:
+                replay = self.approval_replay_reason(approval.approval_id, approval.nonce)
+                if replay: return replay
+                if approval.ceremony_evidence_id is not None:
+                    ceremony_replay = self.ceremony_replay_reason(approval.ceremony_evidence_id)
+                    if ceremony_replay: return ceremony_replay
+                    self._ceremony_evidence_ids.add(approval.ceremony_evidence_id)
+                self._approval_ids.add(approval.approval_id); self._approval_nonces.add(approval.nonce)
+                self.append("approval_verified", approval.audit_payload, timestamp_ns)
+            if lease in self._leases: return "lease_token_replayed"
+            self._leases[lease] = _LeaseEntry(
+                lease_digest=issuance.lease_digest,
+                intent_hash=intent_hash,
+                binding=issuance.binding,
+                expires_at_ns=issuance.expires_at_ns,
+                max_commands=issuance.max_commands,
+                sequence_floor=issuance.sequence_floor,
+                safe_fallback=issuance.safe_fallback,
+            )
+            self.append("lease_issued", {"intent_hash": intent_hash, "reason": decision_reason, **issuance.audit_payload()}, timestamp_ns)
+            return None
+
+    def consume_lease_command(self, lease: str, lease_digest: str, intent_hash: str, sequence: int, timestamp_ns: int) -> bool:
+        # The store layer of lease verification, serialized under the
+        # same lock as consume_permit: the directive status, the
+        # stored expiry (second layer behind the kernel's signed
+        # expiry), the sequence monotonicity, and the command budget
+        # are checked and debited in one transition, so two concurrent
+        # commands can never both observe the same remaining budget or
+        # the same last sequence. The kernel has already authenticated
+        # the token, its signed expiry, the presenter, and the exact
+        # command binding before this layer is consulted.
+        with self._audit_lock:
+            entry = self._leases.get(lease)
+            payload: dict[str, Any] = {"lease_digest": lease_digest, "intent_hash": intent_hash, "sequence": sequence}
+            reason: str | None = None
+            if entry is None:
+                reason = "lease_not_issued"
+            else:
+                payload.update(entry.binding.audit_payload())
+                if entry.lease_digest != lease_digest or entry.intent_hash != intent_hash:
+                    reason = "lease_binding_mismatch"
+                else:
+                    status = self.directive_status(entry.binding.directive_id, entry.binding.version, entry.binding.directive_hash)
+                    if status == "active" and entry.binding.parent_directive_hash is not None:
+                        status = self.directive_hash_status(entry.binding.parent_directive_hash)
+                    if status == "active" and not (entry.binding.issued_at_ns <= timestamp_ns < entry.binding.expires_at_ns):
+                        status = "directive_inactive"
+                    payload["directive_status"] = status
+                    if status != "active":
+                        reason = status
+                    elif timestamp_ns >= entry.expires_at_ns:
+                        reason = "lease_expired"
+                        payload["lease_status"] = reason
+                    elif entry.last_sequence is not None and sequence <= entry.last_sequence:
+                        reason = "lease_replayed"
+                        payload["lease_status"] = reason
+                    elif entry.commands_used >= entry.max_commands:
+                        reason = "lease_budget_exhausted"
+                        payload["lease_status"] = reason
+            if reason is None:
+                assert entry is not None
+                entry.commands_used += 1
+                entry.last_sequence = sequence
+                payload["commands_used"] = entry.commands_used
+                payload["commands_remaining"] = entry.max_commands - entry.commands_used
+                self.append("lease_command_consumed", payload, timestamp_ns)
+                return True
+            payload["reason"] = reason
+            self.append("lease_rejected", payload, timestamp_ns)
+            if reason in ("lease_expired", "lease_budget_exhausted") and entry is not None:
+                # Expiry and budget exhaustion terminate the lease
+                # into its safe fallback (spec §6): the termination
+                # is an actuation event, journaled here in the same
+                # transition that refused the command — not a silent
+                # lapse. Executing the fallback on a device is the
+                # device layer's duty (PR 2); this record is the
+                # governed evidence that termination was reached.
+                self.append(
+                    "lease_fallback",
+                    {"lease_digest": lease_digest, "intent_hash": intent_hash, "safe_fallback": entry.safe_fallback, "cause": reason},
+                    timestamp_ns,
+                )
+            return False
+
     def budget_spent(self, scope_key: str) -> int:
         with self._audit_lock:
             return self._budget_spent.get(scope_key, 0)
@@ -886,6 +1035,7 @@ class SQLiteKernelState:
                 CREATE TABLE IF NOT EXISTS permit_directives (permit TEXT PRIMARY KEY REFERENCES permits(permit) ON DELETE CASCADE, directive_id TEXT NOT NULL, directive_version INTEGER NOT NULL, directive_hash TEXT NOT NULL, directive_issued_at_ns INTEGER NOT NULL, directive_expires_at_ns INTEGER NOT NULL, parent_directive_hash TEXT);
                 CREATE TABLE IF NOT EXISTS directive_budgets (directive_id TEXT NOT NULL, version INTEGER NOT NULL, ceiling INTEGER NOT NULL, scope_json TEXT NOT NULL, session_reset INTEGER NOT NULL, PRIMARY KEY (directive_id, version));
                 CREATE TABLE IF NOT EXISTS budget_spend (scope_key TEXT PRIMARY KEY, spent INTEGER NOT NULL);
+                CREATE TABLE IF NOT EXISTS leases (lease TEXT PRIMARY KEY, lease_digest TEXT NOT NULL, intent_hash TEXT NOT NULL, directive_id TEXT NOT NULL, directive_version INTEGER NOT NULL, directive_hash TEXT NOT NULL, directive_issued_at_ns INTEGER NOT NULL, directive_expires_at_ns INTEGER NOT NULL, parent_directive_hash TEXT, expires_at_ns INTEGER NOT NULL, max_commands INTEGER NOT NULL, commands_used INTEGER NOT NULL DEFAULT 0, sequence_floor INTEGER NOT NULL, last_sequence INTEGER, safe_fallback TEXT NOT NULL);
                 CREATE TABLE IF NOT EXISTS audit (sequence INTEGER PRIMARY KEY, event TEXT NOT NULL, payload_json TEXT NOT NULL, previous_hash TEXT NOT NULL, timestamp_ns INTEGER NOT NULL, hash TEXT NOT NULL, signature TEXT);
             """)
             columns = {row[1] for row in self._connection.execute("PRAGMA table_info(permit_directives)").fetchall()}
@@ -957,6 +1107,14 @@ class SQLiteKernelState:
         self._directives_has_parent = "parent_directive_hash" in directive_columns
         table_names = {row[0] for row in self._connection.execute("SELECT name FROM sqlite_master WHERE type = 'table'").fetchall()}
         self._has_budget_tables = "directive_budgets" in table_names and "budget_spend" in table_names
+        # Same treatment for the leases table (canonical Lease port,
+        # PR 1): a legacy database opened without migration has no
+        # leases table. No lease can exist in such a database —
+        # issuance requires a mutating open, which creates the
+        # table — so the consume path treats every presented lease
+        # there as not issued, exactly as it was before leases
+        # existed, and issuance fails loudly (below).
+        self._has_lease_table = "leases" in table_names
 
     @property
     def audit(self) -> list[dict[str, Any]]:
@@ -1226,6 +1384,100 @@ class SQLiteKernelState:
                     entry["budget_spent"] = total
             self._append("permit_consumed" if valid else "permit_rejected", payload, timestamp_ns)
         return valid
+
+    def issue_lease(self, lease: str, intent_hash: str, issuance: LeaseIssuance, timestamp_ns: int, approval: ApprovalUse | None = None, decision_reason: str = "policy_satisfied") -> str | None:
+        if not self._has_lease_table:
+            # Fail loudly rather than record a lease this schema
+            # cannot store (the issue_permit expiry posture). Mutating
+            # opens always create the table, so this is reachable only
+            # on a read-only open misused for issuance.
+            raise RuntimeError("leases table is missing; open with schema migration to issue leases")
+        binding = issuance.binding
+        with self._connection:
+            self._connection.execute("BEGIN IMMEDIATE")
+            if approval is not None:
+                replay = self._approval_replay_reason(approval.approval_id, approval.nonce)
+                if replay: return replay
+                if approval.ceremony_evidence_id is not None:
+                    ceremony_replay = self._ceremony_replay_reason(approval.ceremony_evidence_id)
+                    if ceremony_replay: return ceremony_replay
+                    self._connection.execute("INSERT INTO ceremony_evidence (evidence_id) VALUES (?)", (approval.ceremony_evidence_id,))
+                self._connection.execute("INSERT INTO approvals (approval_id, nonce) VALUES (?, ?)", (approval.approval_id, approval.nonce))
+            existing = self._connection.execute("SELECT 1 FROM leases WHERE lease = ?", (lease,)).fetchone()
+            if existing: return "lease_token_replayed"
+            self._connection.execute(
+                "INSERT INTO leases (lease, lease_digest, intent_hash, directive_id, directive_version, directive_hash, directive_issued_at_ns, directive_expires_at_ns, parent_directive_hash, expires_at_ns, max_commands, commands_used, sequence_floor, last_sequence, safe_fallback) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, NULL, ?)",
+                (lease, issuance.lease_digest, intent_hash, binding.directive_id, binding.version, binding.directive_hash, binding.issued_at_ns, binding.expires_at_ns, binding.parent_directive_hash, issuance.expires_at_ns, issuance.max_commands, issuance.sequence_floor, issuance.safe_fallback),
+            )
+            if approval is not None: self._append("approval_verified", approval.audit_payload, timestamp_ns)
+            self._append("lease_issued", {"intent_hash": intent_hash, "reason": decision_reason, **issuance.audit_payload()}, timestamp_ns)
+        return None
+
+    def consume_lease_command(self, lease: str, lease_digest: str, intent_hash: str, sequence: int, timestamp_ns: int) -> bool:
+        # Mirrors the in-memory backend inside one BEGIN IMMEDIATE
+        # transaction: directive status, stored expiry, sequence
+        # monotonicity, and the command-budget check-and-debit are
+        # atomic against the row the debit lands on.
+        with self._connection:
+            self._connection.execute("BEGIN IMMEDIATE")
+            row = None
+            if self._has_lease_table:
+                row = self._connection.execute("SELECT lease_digest, intent_hash, directive_id, directive_version, directive_hash, directive_issued_at_ns, directive_expires_at_ns, parent_directive_hash, expires_at_ns, max_commands, commands_used, last_sequence, safe_fallback FROM leases WHERE lease = ?", (lease,)).fetchone()
+            payload: dict[str, Any] = {"lease_digest": lease_digest, "intent_hash": intent_hash, "sequence": sequence}
+            reason: str | None = None
+            safe_fallback: str | None = None
+            commands_used = 0
+            max_commands = 0
+            if row is None:
+                reason = "lease_not_issued"
+            else:
+                (row_digest, row_intent_hash, d_id, d_version, d_hash, d_issued, d_expires, d_parent, row_expiry, max_commands, commands_used, last_sequence, safe_fallback) = row
+                binding = DirectivePermitBinding(d_id, d_version, d_hash, d_issued, d_expires, d_parent)
+                payload.update(binding.audit_payload())
+                if row_digest != lease_digest or row_intent_hash != intent_hash:
+                    reason = "lease_binding_mismatch"
+                else:
+                    directive = self._connection.execute("SELECT directive_hash, revoked FROM directives WHERE directive_id = ? AND version = ?", (d_id, d_version)).fetchone()
+                    if directive is None: status = "directive_not_authorized"
+                    elif directive[0] != d_hash: status = "directive_version_mismatch"
+                    elif directive[1] != 0: status = "directive_revoked"
+                    elif d_parent is not None: status = self.directive_hash_status(d_parent)
+                    else: status = "active"
+                    if status == "active" and not (d_issued <= timestamp_ns < d_expires): status = "directive_inactive"
+                    payload["directive_status"] = status
+                    if status != "active":
+                        reason = status
+                    elif timestamp_ns >= row_expiry:
+                        reason = "lease_expired"
+                        payload["lease_status"] = reason
+                    elif last_sequence is not None and sequence <= last_sequence:
+                        reason = "lease_replayed"
+                        payload["lease_status"] = reason
+                    elif commands_used >= max_commands:
+                        reason = "lease_budget_exhausted"
+                        payload["lease_status"] = reason
+            if reason is None:
+                cursor = self._connection.execute("UPDATE leases SET commands_used = commands_used + 1, last_sequence = ? WHERE lease = ?", (sequence, lease))
+                if cursor.rowcount != 1:
+                    reason = "lease_not_issued"
+                    payload["reason"] = reason
+                    self._append("lease_rejected", payload, timestamp_ns)
+                    return False
+                payload["commands_used"] = commands_used + 1
+                payload["commands_remaining"] = max_commands - (commands_used + 1)
+                self._append("lease_command_consumed", payload, timestamp_ns)
+                return True
+            payload["reason"] = reason
+            self._append("lease_rejected", payload, timestamp_ns)
+            if reason in ("lease_expired", "lease_budget_exhausted") and safe_fallback is not None:
+                # Spec §6 termination journaling, mirroring the
+                # in-memory backend.
+                self._append(
+                    "lease_fallback",
+                    {"lease_digest": lease_digest, "intent_hash": intent_hash, "safe_fallback": safe_fallback, "cause": reason},
+                    timestamp_ns,
+                )
+            return False
 
     def budget_spent(self, scope_key: str) -> int:
         if not self._has_budget_tables:
