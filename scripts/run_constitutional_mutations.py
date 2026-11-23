@@ -164,6 +164,40 @@ MUTATIONS: tuple[Mutation, ...] = (
         ("tests.test_canonical_lease.LeaseAcceptanceTests.test_4_expired_lease_fails_and_journals_the_fallback",),
     ),
     Mutation(
+        # Codex P1 fix on PR #383: lease issuance through the approval
+        # path must verify the envelope against the lease approval
+        # hash (every authority-bearing claim), not the bare intent
+        # hash. Reverting to the intent hash must be detected by the
+        # approval-binding tests.
+        "lease_approval_claims_binding_removed",
+        "pulpo/kernel.py",
+        "            approval_digest=approval_digest,",
+        "            approval_digest=digest,",
+        (
+            "tests.test_canonical_lease.LeaseApprovalBindingTests.test_each_altered_claim_under_a_genuine_approval_is_refused",
+            "tests.test_canonical_lease.LeaseIssuanceTests.test_approval_action_mints_only_through_the_approval_path",
+        ),
+    ),
+    Mutation(
+        # Codex P2 fix on PR #383: the in-memory store's own consume
+        # transition enforces the signed sequence floor, so a direct
+        # store call cannot record consumption below it.
+        "lease_store_floor_check_removed_inmemory",
+        "pulpo/state.py",
+        "elif sequence < entry.sequence_floor:",
+        "elif False and sequence < entry.sequence_floor:",
+        ("tests.test_canonical_lease.LeaseStoreFloorTests.test_inmemory_store_rejects_first_consume_below_floor",),
+    ),
+    Mutation(
+        # Codex P2 fix on PR #383: the same floor enforcement on the
+        # SQLite backend's consume transition.
+        "lease_store_floor_check_removed_sqlite",
+        "pulpo/state.py",
+        "elif sequence < sequence_floor:",
+        "elif False and sequence < sequence_floor:",
+        ("tests.test_canonical_lease.LeaseStoreFloorTests.test_sqlite_store_rejects_first_consume_below_floor",),
+    ),
+    Mutation(
         # Phase 2, Item 4: the state layer's recorded-expiry re-check is
         # the second layer, binding direct handle-level consume calls.
         "permit_store_expiry_check_removed_inmemory",

@@ -267,6 +267,120 @@ and at the canonical anchor:
   is a candidate for PR 2's reconciliation work, not claimed
   here.
 
+## 10. Fix cycle — Codex review findings P1 and P2 (2026-11-22)
+
+Two unresolved Codex threads on this PR, both verified real
+against the code before fixing:
+
+- **P1 — the lease approval bound only the intent.** In
+  `issue_lease_with_approval`, the signed envelope authenticated
+  `intent_hash`, but an `Intent` carries no payload digest,
+  command budget, presenter, or deployment; those
+  authority-bearing claims were supplied by the caller after
+  approval verification. A caller holding one genuine approval
+  could therefore choose an unapproved payload digest, an
+  arbitrarily large `max_commands`, or a different deployment
+  and still receive a genuine consumable lease. This violated
+  the AGENTS.md invariant that approval bind the exact context
+  it authorizes.
+- **P2 — the store transition ignored the sequence floor.** The
+  public `KernelState.consume_lease_command` surface, in both
+  backends, enforced only `last_sequence`; a first consume with
+  a sequence below the lease entry's `sequence_floor` was
+  recorded as consumed, creating canonical consumption evidence
+  outside the lease's signed sequence bounds. The kernel funnel
+  checked the floor (spec §4 step 4); the store — itself a
+  governed capability under the AGENTS.md invariant
+  `CANONICAL_STATE_MUTATION == GOVERNED_CAPABILITY` — did not.
+
+**Fix, P1.** A new pure function,
+`GovernanceKernel.lease_approval_hash(intent, directive, …)`,
+computes the approval context digest for a lease issuance: the
+intent hash plus every authority-bearing claim the issued lease
+will carry — the governing directive's identity (id, version,
+hash, parent hash), the payload digest, the command budget, the
+disconnected window, the safe fallback, the deployment, the
+bound presenter, the boot counter, the sequence floor, and the
+requested TTL (the issued expiry is the admission time plus
+that TTL, clamped by the policy cap; the clamp only narrows).
+`_verify_approval` gains a keyword-only `approval_digest`
+parameter: when supplied, the envelope — and any ceremony
+evidence — must bind that digest instead of the bare intent
+hash, and every denial and audit record of the verification
+speaks about that one approval context. `issue_lease_with_approval`
+computes the digest from the exact parameters it was called
+with and passes it in. The permit path is untouched
+(`approval_digest=None` reproduces the prior behavior exactly).
+Kernel-minted claims (nonce, issue time) are not approval
+material and are not covered. Authority effect: **narrowed** —
+an approval now authorizes one exact lease claim set, nothing
+choosable after the fact.
+
+**Fix, P2.** Both backends' `consume_lease_command` transitions
+now refuse `sequence < sequence_floor` with reason
+`lease_sequence_below_floor` (the kernel layer's reason),
+checked after the stored expiry and before the replay check,
+inside the same atomic transition; the SQLite backend now also
+selects the stored `sequence_floor` column. No debit occurs on
+the refusal. Authority effect: none gained; the store surface's
+acceptance set is narrowed to the lease's signed bounds.
+
+**Evidence.** New tests in `tests/test_canonical_lease.py`:
+`LeaseApprovalBindingTests` — a genuine approval for the exact
+claims issues a consumable lease (positive control), and each
+single-claim alteration under a genuine approval for the
+original claims (budget 2→99, presenter, deployment, payload
+digest) is refused with `approval_intent_mismatch` and no lease
+issued; the pre-existing approval-path issuance test now also
+asserts an envelope binding only the bare intent hash is
+refused. `LeaseStoreFloorTests` — calling the store surface
+directly with a genuine issued token (floor 5): a first consume
+at sequence 3 is rejected with `lease_sequence_below_floor` in
+both backends, and a first consume at sequence 5 then succeeds
+as command one (the refusal debited nothing). Three new
+constitutional mutations guard the fixes —
+`lease_approval_claims_binding_removed`,
+`lease_store_floor_check_removed_inmemory`,
+`lease_store_floor_check_removed_sqlite` — each killed by the
+tests above. Final results at the fixed head: full unit suite
+**1060 OK, skipped=13**; constitutional mutations **37 total,
+37 killed, 0 survived, 0 invalid, result pass**.
+
+**Eight-pass deltas for this cycle.** Flip: the approval holder
+is now confined to the claim set the authority signed — the
+attack the finding describes is the test. Reverse: every claim
+on an issued lease is either approval-bound (all caller-supplied
+claims), kernel-minted (nonce, issue time), or policy-clamped
+(expiry); no fourth source exists. Invert: a lease issued under
+claims no approval bound is a failure by definition, and the
+`approval_verified` record now carries the lease approval hash,
+so what was approved is provable after the fact. Inside-Out:
+computing the digest is public and grants nothing — the
+authority remains the external signature over an envelope
+binding it, exactly as the intent hash works for permits.
+Darken: an authority that signs a digest without inspecting the
+claims is a presentation-layer property of the approval
+ceremony, identical in kind to permit approvals (which sign an
+intent hash); the digest makes the claim set committable and
+auditable rather than choosable. Lighten: the permit path is
+behavior-identical; the store change only narrows acceptance.
+Amplify: no new capability or state mutation is introduced —
+the digest is a pure function and the floor check adds a
+refusal, not a transition. Negate: leaving the approval bound
+to the intent alone is the finding itself.
+
+**Boundary.** The digest binds the claim set as *requested*;
+claim validation still happens in `_mint_lease` after
+verification (an approval spent on malformed claims is consumed
+and the issuance denied — the pre-existing posture, unchanged).
+The store floor check is guarded by lease-specific mutations;
+the store-layer lease *expiry* checks remain guarded only by
+the acceptance tests, as recorded in §9.
+
+**Claim classification.** Both findings and both fixes:
+**Verified** (reproduced against the code and pinned by the
+tests above at the fixed head).
+
 ## Adversarial transformation review (eight passes)
 
 - **Flip.** A hostile device presenter holds a genuine lease and

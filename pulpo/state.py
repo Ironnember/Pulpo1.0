@@ -804,12 +804,18 @@ class InMemoryKernelState:
         # The store layer of lease verification, serialized under the
         # same lock as consume_permit: the directive status, the
         # stored expiry (second layer behind the kernel's signed
-        # expiry), the sequence monotonicity, and the command budget
-        # are checked and debited in one transition, so two concurrent
-        # commands can never both observe the same remaining budget or
-        # the same last sequence. The kernel has already authenticated
-        # the token, its signed expiry, the presenter, and the exact
-        # command binding before this layer is consulted.
+        # expiry), the signed sequence floor and monotonicity, and
+        # the command budget are checked and debited in one
+        # transition, so two concurrent commands can never both
+        # observe the same remaining budget or the same last
+        # sequence. The kernel has already authenticated the token,
+        # its signed expiry, the presenter, and the exact command
+        # binding before this layer is consulted — but this surface
+        # is itself a governed capability, reachable without the
+        # kernel funnel, so the floor is enforced here too: a first
+        # consume below the floor must not record consumption
+        # evidence outside the lease's signed sequence bounds
+        # (Codex P2 on PR #383).
         with self._audit_lock:
             entry = self._leases.get(lease)
             payload: dict[str, Any] = {"lease_digest": lease_digest, "intent_hash": intent_hash, "sequence": sequence}
@@ -831,6 +837,9 @@ class InMemoryKernelState:
                         reason = status
                     elif timestamp_ns >= entry.expires_at_ns:
                         reason = "lease_expired"
+                        payload["lease_status"] = reason
+                    elif sequence < entry.sequence_floor:
+                        reason = "lease_sequence_below_floor"
                         payload["lease_status"] = reason
                     elif entry.last_sequence is not None and sequence <= entry.last_sequence:
                         reason = "lease_replayed"
@@ -1415,14 +1424,16 @@ class SQLiteKernelState:
 
     def consume_lease_command(self, lease: str, lease_digest: str, intent_hash: str, sequence: int, timestamp_ns: int) -> bool:
         # Mirrors the in-memory backend inside one BEGIN IMMEDIATE
-        # transaction: directive status, stored expiry, sequence
-        # monotonicity, and the command-budget check-and-debit are
-        # atomic against the row the debit lands on.
+        # transaction: directive status, stored expiry, the signed
+        # sequence floor and monotonicity, and the command-budget
+        # check-and-debit are atomic against the row the debit lands
+        # on. The floor is enforced at this surface for the same
+        # reason as in the in-memory backend (Codex P2 on PR #383).
         with self._connection:
             self._connection.execute("BEGIN IMMEDIATE")
             row = None
             if self._has_lease_table:
-                row = self._connection.execute("SELECT lease_digest, intent_hash, directive_id, directive_version, directive_hash, directive_issued_at_ns, directive_expires_at_ns, parent_directive_hash, expires_at_ns, max_commands, commands_used, last_sequence, safe_fallback FROM leases WHERE lease = ?", (lease,)).fetchone()
+                row = self._connection.execute("SELECT lease_digest, intent_hash, directive_id, directive_version, directive_hash, directive_issued_at_ns, directive_expires_at_ns, parent_directive_hash, expires_at_ns, max_commands, commands_used, sequence_floor, last_sequence, safe_fallback FROM leases WHERE lease = ?", (lease,)).fetchone()
             payload: dict[str, Any] = {"lease_digest": lease_digest, "intent_hash": intent_hash, "sequence": sequence}
             reason: str | None = None
             safe_fallback: str | None = None
@@ -1431,7 +1442,7 @@ class SQLiteKernelState:
             if row is None:
                 reason = "lease_not_issued"
             else:
-                (row_digest, row_intent_hash, d_id, d_version, d_hash, d_issued, d_expires, d_parent, row_expiry, max_commands, commands_used, last_sequence, safe_fallback) = row
+                (row_digest, row_intent_hash, d_id, d_version, d_hash, d_issued, d_expires, d_parent, row_expiry, max_commands, commands_used, sequence_floor, last_sequence, safe_fallback) = row
                 binding = DirectivePermitBinding(d_id, d_version, d_hash, d_issued, d_expires, d_parent)
                 payload.update(binding.audit_payload())
                 if row_digest != lease_digest or row_intent_hash != intent_hash:
@@ -1449,6 +1460,9 @@ class SQLiteKernelState:
                         reason = status
                     elif timestamp_ns >= row_expiry:
                         reason = "lease_expired"
+                        payload["lease_status"] = reason
+                    elif sequence < sequence_floor:
+                        reason = "lease_sequence_below_floor"
                         payload["lease_status"] = reason
                     elif last_sequence is not None and sequence <= last_sequence:
                         reason = "lease_replayed"

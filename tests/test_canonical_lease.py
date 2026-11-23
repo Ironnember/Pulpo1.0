@@ -15,6 +15,13 @@ presenter), 13 (positive control: legitimate authority passes, up
 to the budget). A system that rejects everything is trivially
 "secure"; test 13 is the proof the boundary also admits.
 
+Two further classes pin the Codex review fixes on this PR:
+LeaseApprovalBindingTests (P1 — a lease approval must bind every
+authority-bearing claim the lease will carry, not only the intent)
+and LeaseStoreFloorTests (P2 — the store's own consume transition
+enforces the signed sequence floor in both backends, without the
+kernel funnel in front of it).
+
 Honesty label: presenter verifiers here are same-process HMAC test
 doubles (tests/presenter_support.py), as with the permit fixtures.
 """
@@ -223,10 +230,6 @@ class LeaseIssuanceTests(unittest.TestCase):
         self.assertEqual(
             (decision.outcome, decision.reason), ("require_approval", "approval_required")
         )
-        envelope = signed_envelope(
-            kernel, INTENT, verifier, now_ns=NOW - 10,
-            approval_id="lease-approval-1", nonce="lease-nonce-1",
-        )
         params = dict(
             presenter=DEVICE,
             payload_digest=PAYLOAD_DIGEST,
@@ -236,6 +239,24 @@ class LeaseIssuanceTests(unittest.TestCase):
             deployment_id="deployment:mine-1",
             boot_counter=7,
         )
+        # The envelope must bind the lease approval hash of the exact
+        # claim set: an envelope binding only the bare intent hash
+        # (the pre-Codex-P1 shape) authenticates the intent but none
+        # of the claims the lease will carry, and no longer issues.
+        bare = signed_envelope(
+            kernel, INTENT, verifier, now_ns=NOW - 10,
+            approval_id="lease-approval-bare", nonce="lease-nonce-bare",
+        )
+        decision = kernel.issue_lease_with_approval(INTENT, d, bare, **params)
+        self.assertEqual(
+            (decision.outcome, decision.reason), ("deny", "approval_intent_mismatch")
+        )
+        self.assertIsNone(decision.lease)
+        envelope = signed_envelope(
+            kernel, INTENT, verifier, now_ns=NOW - 10,
+            approval_id="lease-approval-1", nonce="lease-nonce-1",
+            intent_hash=GovernanceKernel.lease_approval_hash(INTENT, d, **params),
+        )
         decision = kernel.issue_lease_with_approval(INTENT, d, envelope, **params)
         self.assertEqual(decision.outcome, "allow")
         cmd = command(0)
@@ -244,6 +265,101 @@ class LeaseIssuanceTests(unittest.TestCase):
                 decision.lease, cmd, presenter=DEVICE, presenter_proof=proof_for(kernel, decision.lease, cmd)
             )
         )
+
+
+class LeaseApprovalBindingTests(unittest.TestCase):
+    """Codex P1 on PR #383: the approval binds every lease claim.
+
+    An approval envelope authenticates the digest in its
+    ``intent_hash`` field. For a lease that digest must be the lease
+    approval hash of the exact claim set — otherwise a caller
+    holding one genuine approval could choose an unapproved payload
+    digest, an arbitrarily large command budget, a different
+    presenter, or a different deployment after verification and
+    still receive a genuine consumable lease.
+    """
+
+    CLAIMS = dict(
+        presenter=DEVICE,
+        payload_digest=PAYLOAD_DIGEST,
+        max_commands=2,
+        max_disconnected_ns=600_000_000_000,
+        safe_fallback="valve:close-and-hold",
+        deployment_id="deployment:mine-1",
+        boot_counter=7,
+    )
+
+    def setUp(self):
+        verifier = HmacTestVerifier()
+        policy = Policy(
+            frozenset({"actuate", "activate_directive", "revoke_directive"}),
+            100,
+            frozenset({"actuate", "activate_directive", "revoke_directive"}),
+            authority_trust=trust_for(verifier),
+        )
+        self.kernel, _ = governed_kernel(policy=policy, verifier=verifier)
+        self.verifier = verifier
+        self.directive = make_directive()
+        activate(self.kernel, verifier, self.directive)
+        self.counter = 0
+
+    def envelope_for(self, claims):
+        self.counter += 1
+        return signed_envelope(
+            self.kernel,
+            INTENT,
+            self.verifier,
+            now_ns=NOW - 10,
+            approval_id=f"lease-approval-{self.counter}",
+            nonce=f"lease-nonce-{self.counter}",
+            intent_hash=GovernanceKernel.lease_approval_hash(
+                INTENT, self.directive, **claims
+            ),
+        )
+
+    def test_approval_for_the_exact_claims_issues_a_consumable_lease(self):
+        kernel = self.kernel
+        envelope = self.envelope_for(self.CLAIMS)
+        decision = kernel.issue_lease_with_approval(
+            INTENT, self.directive, envelope, **self.CLAIMS
+        )
+        self.assertEqual(decision.outcome, "allow")
+        self.assertIsNotNone(decision.lease)
+        cmd = command(0)
+        self.assertTrue(
+            kernel.consume_lease_command(
+                decision.lease,
+                cmd,
+                presenter=DEVICE,
+                presenter_proof=proof_for(kernel, decision.lease, cmd),
+            )
+        )
+
+    def test_each_altered_claim_under_a_genuine_approval_is_refused(self):
+        kernel = self.kernel
+        alterations = {
+            "max_commands": 99,
+            "presenter": OTHER_DEVICE,
+            "deployment_id": "deployment:mine-2",
+            "payload_digest": sha256(b"rotate-valve:open:43").hexdigest(),
+        }
+        for field, value in alterations.items():
+            with self.subTest(field=field):
+                altered = dict(self.CLAIMS, **{field: value})
+                # A genuine, validly signed approval — for the
+                # ORIGINAL claims. Issuing with any one claim altered
+                # must fail the approval binding, before any lease
+                # exists.
+                envelope = self.envelope_for(self.CLAIMS)
+                decision = kernel.issue_lease_with_approval(
+                    INTENT, self.directive, envelope, **altered
+                )
+                self.assertEqual(
+                    (decision.outcome, decision.reason),
+                    ("deny", "approval_intent_mismatch"),
+                )
+                self.assertIsNone(decision.lease)
+        self.assertEqual(events(kernel, "lease_issued"), [])
 
 
 class LeaseAcceptanceTests(unittest.TestCase):
@@ -518,6 +634,58 @@ class LeaseAcceptanceTests(unittest.TestCase):
         report = kernel.verify_audit_report()
         self.assertTrue(report["ok"])
         self.assertTrue(report["signing_enabled"])
+
+
+class LeaseStoreFloorTests(unittest.TestCase):
+    """Codex P2 on PR #383: the store transition enforces the floor.
+
+    These call the public ``KernelState.consume_lease_command``
+    surface directly, bypassing the kernel funnel (which already
+    checks the floor at spec §4 step 4). The store is a governed
+    capability in its own right, so its atomic transition must
+    refuse a first consume below the lease's signed sequence floor
+    rather than record canonical consumption evidence outside the
+    lease's sequence bounds — in both backends.
+    """
+
+    def assert_store_floor_enforced(self, kernel, directive):
+        lease = issue(kernel, directive, sequence_floor=5).lease
+        state = kernel._state
+        self.assertFalse(
+            state.consume_lease_command(
+                lease.token, lease.lease_digest, lease.intent_hash, 3, NOW
+            )
+        )
+        rejected = events(kernel, "lease_rejected")
+        self.assertEqual(len(rejected), 1)
+        self.assertEqual(
+            rejected[0]["payload"]["reason"], "lease_sequence_below_floor"
+        )
+        # The refused attempt debited nothing: the first in-bounds
+        # consume at the floor spends as command one.
+        self.assertTrue(
+            state.consume_lease_command(
+                lease.token, lease.lease_digest, lease.intent_hash, 5, NOW
+            )
+        )
+        consumed = events(kernel, "lease_command_consumed")
+        self.assertEqual(len(consumed), 1)
+        self.assertEqual(consumed[0]["payload"]["commands_used"], 1)
+
+    def test_inmemory_store_rejects_first_consume_below_floor(self):
+        kernel, verifier = governed_kernel()
+        directive = make_directive()
+        activate(kernel, verifier, directive)
+        self.assert_store_floor_enforced(kernel, directive)
+
+    def test_sqlite_store_rejects_first_consume_below_floor(self):
+        with tempfile.TemporaryDirectory() as directory:
+            state = SQLiteKernelState(f"{directory}/lease-state.db")
+            kernel, verifier = governed_kernel(state=state)
+            directive = make_directive()
+            activate(kernel, verifier, directive)
+            self.assert_store_floor_enforced(kernel, directive)
+            state.close()
 
 
 class SQLiteLeaseTests(unittest.TestCase):

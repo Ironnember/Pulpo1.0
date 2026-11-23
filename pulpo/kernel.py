@@ -723,6 +723,8 @@ class GovernanceKernel:
         envelope: ApprovalEnvelope,
         ceremony_evidence: CeremonyEvidence | None,
         finisher: Callable[[ApprovalUse, int], Any],
+        *,
+        approval_digest: str | None = None,
     ) -> Any:
         """The approval verification path, shared by permits and leases.
 
@@ -737,10 +739,23 @@ class GovernanceKernel:
         PR 1). One verification implementation — a second,
         lease-only copy would be a second authority plane in
         everything but name.
+
+        ``approval_digest`` is the digest the envelope (and any
+        ceremony evidence) must bind. For permits it is the intent
+        hash itself. For lease issuance it is the lease approval
+        hash (``lease_approval_hash``): the intent hash authenticates
+        only the intent, but a lease's authority-bearing claims —
+        payload digest, command budget, presenter, deployment,
+        TTL — ride outside the Intent, so an approval binding only
+        the intent would leave every one of them choosable by the
+        caller after verification (Codex P1 on PR #383). Every
+        check, denial, and audit record below then speaks about
+        that one approval context, exactly as the permit path
+        speaks about the intent.
         """
 
         self._require_pinned_policy()
-        digest = self.intent_hash(intent)
+        digest = self.intent_hash(intent) if approval_digest is None else approval_digest
         failure = self._policy_failure(intent)
         if failure:
             return self._decide("deny", failure, digest)
@@ -1418,6 +1433,61 @@ class GovernanceKernel:
         )
         return LeaseDecision("deny", reason, digest)
 
+    @staticmethod
+    def lease_approval_hash(
+        intent: Intent,
+        directive: Any,
+        *,
+        presenter: str | None,
+        payload_digest: str,
+        max_commands: int,
+        max_disconnected_ns: int,
+        safe_fallback: str,
+        deployment_id: str,
+        boot_counter: int,
+        sequence_floor: int = 0,
+        ttl_ns: int | None = None,
+    ) -> str:
+        """The approval context digest for one lease issuance.
+
+        The hash an approval envelope must bind (in its
+        ``intent_hash`` field) before ``issue_lease_with_approval``
+        will mint. It covers the intent and every authority-bearing
+        claim the issued lease will carry: the governing directive's
+        identity, the payload digest, the command budget, the
+        disconnected window, the safe fallback, the deployment, the
+        bound presenter, the boot counter, the sequence floor, and
+        the requested TTL — the issued expiry is the admission time
+        plus that TTL, clamped by the policy cap, and the clamp only
+        ever narrows what was approved. The kernel-minted claims
+        (nonce, issue time) are not approval material and are not
+        covered. Computing the digest is public and harmless: the
+        authority is the external signature over an envelope binding
+        it, exactly as the intent hash is for permits.
+        """
+
+        return sha256(
+            _canonical(
+                {
+                    "schema": "pulpo.lease-approval.v1",
+                    "intent_hash": GovernanceKernel.intent_hash(intent),
+                    "directive_id": directive.directive_id,
+                    "directive_version": directive.version,
+                    "directive_hash": directive.directive_hash,
+                    "parent_directive_hash": directive.parent_directive_hash,
+                    "presenter": presenter,
+                    "payload_digest": payload_digest,
+                    "max_commands": max_commands,
+                    "max_disconnected_ns": max_disconnected_ns,
+                    "safe_fallback": safe_fallback,
+                    "deployment_id": deployment_id,
+                    "boot_counter": boot_counter,
+                    "sequence_floor": sequence_floor,
+                    "ttl_ns": ttl_ns,
+                }
+            )
+        ).hexdigest()
+
     def issue_lease(
         self,
         intent: Intent,
@@ -1493,6 +1563,13 @@ class GovernanceKernel:
         ceremony path for lease issuance exactly as for permits
         (spec §3). The directive gate runs first, as it does in the
         projection's composition.
+
+        The envelope must bind the lease approval hash of the exact
+        claim set requested here (``lease_approval_hash``), not the
+        bare intent hash: the approval authenticates the claims, so
+        a caller holding a valid approval cannot substitute a
+        different payload digest, command budget, presenter,
+        deployment, or TTL after verification (Codex P1 on PR #383).
         """
 
         self._require_pinned_policy()
@@ -1503,6 +1580,19 @@ class GovernanceKernel:
         directive_failure = self._lease_directive_failure(intent, directive)
         if directive_failure is not None:
             return self._record_lease_directive_denial(intent, directive, digest, directive_failure)
+        approval_digest = self.lease_approval_hash(
+            intent,
+            directive,
+            presenter=presenter,
+            payload_digest=payload_digest,
+            max_commands=max_commands,
+            max_disconnected_ns=max_disconnected_ns,
+            safe_fallback=safe_fallback,
+            deployment_id=deployment_id,
+            boot_counter=boot_counter,
+            sequence_floor=sequence_floor,
+            ttl_ns=ttl_ns,
+        )
         result = self._verify_approval(
             intent,
             envelope,
@@ -1525,6 +1615,7 @@ class GovernanceKernel:
                 sequence_floor=sequence_floor,
                 ttl_ns=ttl_ns,
             ),
+            approval_digest=approval_digest,
         )
         if isinstance(result, Decision):
             return LeaseDecision(result.outcome, result.reason, digest)
