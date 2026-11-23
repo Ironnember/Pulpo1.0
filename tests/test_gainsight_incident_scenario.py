@@ -1,9 +1,9 @@
 """Scenario test: the Gainsight / Salesforce connected-app
-abuse (publicized 2026-11-20).
+abuse (publicized 2025-11-20).
 
 Incident (Recorded, from Salesforce's security advisory of
-2026-11-20 and Gainsight's customer FAQ, first posted
-2026-11-20): Salesforce identified unusual activity
+2025-11-20 and Gainsight's customer FAQ, first posted
+2025-11-20): Salesforce identified unusual activity
 involving Gainsight-published applications connected to
 Salesforce, and assessed that the activity may have enabled
 unauthorized access to certain customers' Salesforce data
@@ -13,22 +13,24 @@ Salesforce platform; the activity appears related to the
 app's external connection. As a precaution Salesforce
 revoked the access and refresh tokens for all Gainsight
 applications, removed them from AppExchange, and disabled
-the connections on 2026-11-20. Gainsight's FAQ records that
+the connections on 2025-11-20. Gainsight's FAQ records that
 Salesforce initially listed 3 impacted customers, that the
 list was then expanded to a larger undisclosed number, and
 that affected customers were notified by Salesforce on
-2026-11-21; Gainsight engaged Mandiant for the forensic
+2025-11-21; Gainsight engaged Mandiant for the forensic
 investigation, and its Customer Success, Community,
 Customer Education, Skilljar, and Staircase products
 temporarily lost Salesforce read/write. Per Salesforce's
 indicators of compromise shared through the FAQ, the first
-unauthorized access dates to 2026-11-08. Google Threat
+unauthorized access dates to 2025-11-08. Google Threat
 Intelligence (Austin Larsen, via reporting) puts
 potentially affected Salesforce instances at more than
 200. The Scattered Lapsus$ Hunters collective claimed
 responsibility (via DataBreaches.net reporting). How the
-app's connection was abused at the root is not yet public
-(Unknown); the investigation is ongoing. The pattern is
+app's connection was abused at the root -- the original
+token-leak vector -- is still not public (Unknown). The
+investigation itself has concluded (Gainsight's January
+2026 technical explanation). The pattern is
 the August Salesloft Drift campaign's: a third-party app's
 standing, broadly scoped connection into each customer's
 org, exercised far outside the app's intended function --

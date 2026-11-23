@@ -7,10 +7,17 @@ only; no kernel change)
 `2726e59e0aed6f3ba9c6c1108712fbab26bc1f36` (suite 1036 OK, skipped=13 in
 CI; reproduced locally in this VM as 1036 OK, skipped=25 — the skip delta
 is environmental and identical at base and at head)
+**Correction (2026-11-23, on review):** the incident chronology in
+the original version of this record and of the scenario docstring
+was a year off — the incident is November 2025, not November
+2026 — and the investigation was described as ongoing when it had
+concluded (Gainsight, January 2026). Both files are corrected; the
+original token-leak vector remains Unknown. The replay substance
+is unchanged.
 
 ## 1. Invariant or failure mode addressed
 
-The Gainsight / Salesforce connected-app abuse, publicized 2026-11-20
+The Gainsight / Salesforce connected-app abuse, publicized 2025-11-20
 (Salesforce security advisory; Gainsight customer FAQ). Attackers abused
 the trusted connection between Gainsight-published applications and
 customers' Salesforce instances — a standing, broadly scoped,
@@ -21,14 +28,16 @@ indication the issue resulted from any vulnerability in the Salesforce
 platform; the activity appears related to the app's external
 connection. Salesforce revoked the access and refresh tokens for all
 Gainsight applications, removed them from AppExchange, and disabled
-the connections on 2026-11-20; affected customers were notified
-2026-11-21; Gainsight engaged Mandiant. Per Salesforce's indicators of
+the connections on 2025-11-20; affected customers were notified
+2025-11-21; Gainsight engaged Mandiant. Per Salesforce's indicators of
 compromise shared through the FAQ, the first unauthorized access dates
-to 2026-11-08. Google Threat Intelligence (Austin Larsen, via
+to 2025-11-08. Google Threat Intelligence (Austin Larsen, via
 reporting) puts potentially affected Salesforce instances at more than
 200. The Scattered Lapsus$ Hunters collective claimed responsibility
 (via DataBreaches.net reporting). How the app's connection was abused
-at the root is not yet public (Unknown); the investigation is ongoing.
+at the root — the original token-leak vector — is still not
+public (Unknown). The investigation itself has concluded
+(Gainsight's January 2026 technical explanation).
 
 The failure is a trust-scope failure, not an authentication failure:
 the connection was genuine, its holder reached the platform
@@ -212,8 +221,8 @@ base and head (§8).
   semantics; it does not prove any production presenter's key
   custody, device attestation, or enrollment ceremony.
 - The incident facts are as publicized by Salesforce and Gainsight
-  on 2026-11-20 (Recorded). The root cause of how the app's
-  connection was abused is not yet public (Unknown); the replay
+  on 2025-11-20 (Recorded). The root cause of how the app's
+  connection was abused is still not public (Unknown); the replay
   exercises the trust-scope failure both sources describe, not a
   reconstructed exploit chain. No claim is made about what Pulpo
   would have done inside any real Salesforce org — no such
@@ -228,10 +237,11 @@ base and head (§8).
 - Incident facts (revocation, AppExchange removal, notification
   dates, Mandiant engagement, first-access date, affected-instance
   estimate, claim of responsibility): **Recorded** — Salesforce
-  security advisory and Gainsight customer FAQ, 2026-11-20, and
+  security advisory and Gainsight customer FAQ, 2025-11-20, and
   reporting citing Google Threat Intelligence and DataBreaches.net.
-- Root cause of the connection's abuse: **Unknown** — investigation
-  ongoing, not public as of this record.
+- Root cause of the connection's abuse: **Unknown** — the
+  investigation has concluded (Gainsight, January 2026) without
+  the original token-leak vector becoming public.
 - Any application of this evidence to a real Salesforce/Gainsight
   deployment: **Proposed** at most — no such deployment is in
   evidence.
