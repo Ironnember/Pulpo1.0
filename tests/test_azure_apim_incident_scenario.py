@@ -621,9 +621,10 @@ class AzureApimIncidentScenarioTests(unittest.TestCase):
     # Entra replays' boundary, issue #375).
     #
     # The frozen sequence is the full attempt sequence of
-    # steps 1-4, not a subset: the stolen credentials and the
-    # wrong-secret permit against every exposed secret class,
-    # the out-of-scope minting attempts, the one legitimate
+    # steps 1-4, not a subset: the stolen credentials against
+    # the target read and every exposed secret class, the
+    # wrong-secret permit against the target read, the
+    # out-of-scope minting attempts, the one legitimate
     # execution, the spent-permit replay, and the
     # post-retirement attempts.
 
@@ -650,6 +651,14 @@ class AzureApimIncidentScenarioTests(unittest.TestCase):
             for token in STOLEN_TOKENS:
                 self.assertFalse(self.kernel.consume(token, intent))
             self.assertFalse(self.kernel.consume(target_permit, intent))
+        # The step-1 read itself, under the stolen material:
+        # both stolen credentials presented for the one
+        # authorized read, as the incident's first move
+        # presented them. The genuine permit is not presented
+        # against its own intent here -- it would spend, and
+        # that spend is the one legitimate execution below.
+        for token in STOLEN_TOKENS:
+            self.assertFalse(self.kernel.consume(token, TARGET_INTENT))
         # The wrong-secret permit against the target read.
         self.assertFalse(self.kernel.consume(other_permit, TARGET_INTENT))
         # The one legitimate read still executes; the campaign
@@ -680,14 +689,15 @@ class AzureApimIncidentScenarioTests(unittest.TestCase):
         directive_denials = _events(self.kernel, "directive_denial")
         # Pinned from the executed run: 5 attack intents x
         # (2 stolen tokens + 1 wrong-intent permit) = 15
-        # consume rejections, plus the wrong-secret permit
+        # consume rejections, plus the stolen tokens against
+        # the target read itself (2), the wrong-secret permit
         # against the target (1), the spent-permit replay (1),
-        # and the post-revocation consume (1) = 18.
+        # and the post-revocation consume (1) = 20.
         # Projection denials: the attacker's own minting
         # attempt (1), the cross-instance read (1), the write
         # action (1), and the post-revocation issuance attempt
         # (1) = 4.
-        self.assertEqual(18, len(permit_rejected))
+        self.assertEqual(20, len(permit_rejected))
         self.assertEqual(4, len(directive_denials))
         # Every derived near-miss is accounted for by the event
         # classes the channel derives -- no more, no fewer. On
@@ -697,7 +707,7 @@ class AzureApimIncidentScenarioTests(unittest.TestCase):
             len(permit_rejected) + len(directive_denials),
             report.near_misses,
         )
-        self.assertEqual(22, report.near_misses)
+        self.assertEqual(24, report.near_misses)
         self.assertEqual(report.near_misses, len(report.records))
         for record in report.records:
             self.assertEqual("near_miss", record.kind)
@@ -730,6 +740,16 @@ class AzureApimIncidentScenarioTests(unittest.TestCase):
         later_read = Intent(
             AGENT, "read_secret_value", TARGET_RESOURCE, 0, LATER_SESSION
         )
+        # Advance the shared clock past the engagement window
+        # before building the fresh kernel: the persistence
+        # claim is about time passing -- the flaw mitigated,
+        # the engagement window closed -- and a fresh kernel
+        # still reading T0 would exercise a new session at the
+        # same moment, not a later time. (The projection
+        # denial below is unaffected: on this kernel the
+        # directive was never activated, so its status is
+        # "directive_not_authorized" at any time.)
+        self.clock.advance_to(T0 + ENGAGEMENT_WINDOW_NS + 100)
         fresh = self._kernel()
         fresh_ledger = ConsequenceLedger()
         for token in STOLEN_TOKENS:
