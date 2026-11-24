@@ -35,7 +35,7 @@ else holding it, the failure modeled here is identical --
 the account's possession was the only authority the
 distribution path asked for.
 
-THE CAVEAT, FIRST (Verified, from the same Wordfence
+THE CAVEAT, FIRST (Recorded, from the same Wordfence
 report): the backdoored versions were NEVER released to
 sites. WordPress.org's Protect The Shire cooling-off
 release hold, together with its Gandalf automated reviewer,
@@ -88,16 +88,20 @@ the archive's file list plus its patch lines), and the
 digest bound in the intent is the SHA-256 of those exact
 bytes, derived from them -- never a caller-supplied label
 for them. The scenario's distribution boundary
-(``DistributionGate``) is presented with three things: the
-permit, the intent the caller claims to be executing, and
-the actual artifact bytes about to be distributed. The
-boundary derives the digest of those bytes at distribution
-time and submits the act the bytes actually constitute: if
-the derived digest is not the digest bound in the presented
-intent, the intent is rebuilt from the derived digest
-before anything is consumed, so a tampered artifact is
-authorized, if at all, as itself -- never under the
-approved artifact's label.
+(``DistributionGate``) is presented with four things: the
+permit, the intent the caller claims to be executing, the
+actual artifact bytes about to be distributed, and the
+actual distribution target -- the release coordinates
+(plugin and version) of the slot those bytes are about to
+be published into, a fact of the distribution path rather
+than of the caller's claim. The boundary derives the act
+actually being attempted from those actuals -- the target
+coordinates and the digest of the bytes, both derived at
+distribution time -- and submits THAT act: a tampered
+artifact is authorized, if at all, as itself, and a publish
+whose actual target is a different version than the claimed
+intent names is submitted as the publish it actually is --
+never under the approved release's label.
 
 Setup: the release publisher holds exactly one legitimate
 permit: one exact release -- one exact plugin, one exact
@@ -285,6 +289,15 @@ ATTACK_INTENTS = (
     SUFFIXED_INTENT,
 )
 
+# The actual distribution targets: the release coordinates
+# (plugin and version) of the slot a publish is actually
+# aimed at, as the distribution gate takes them -- facts of
+# the distribution path, stated separately from any intent a
+# caller claims, so a claimed label cannot set them.
+RELEASE_TARGET = f"{PLUGIN}/version:2.9.0"
+VERSION_TARGET = f"{PLUGIN}/version:2.9.1"
+OTHER_PLUGIN_TARGET = "plugin:wp-sync-for-notion/version:1.7.4"
+
 # The developer's WordPress.org account credential, presented
 # as if it were a permit. Holding the account is evidence the
 # caller can reach the publishing path; it is not an approval
@@ -298,22 +311,27 @@ ACCOUNT_CREDENTIAL = "wordpress.org:developer-account-credential"
 class DistributionGate:
     """The governed distribution boundary, and what it actually released.
 
-    A publish is presented to this boundary as three things:
+    A publish is presented to this boundary as four things:
     a permit, the intent the caller claims to be executing,
-    and the ACTUAL artifact bytes about to be distributed.
-    The boundary does not trust the caller's label for the
-    artifact. It derives the SHA-256 digest of the bytes
-    presented, at the boundary, and compares it against the
-    digest bound in the presented intent. On a mismatch, the
-    act actually being attempted is the publish of the
-    derived artifact, so the boundary rebuilds the intent
-    from the derived digest and submits THAT act to the
-    kernel: a tampered artifact cannot ride the approved
-    intent's label, and the genuine permit -- bound to the
-    approved intent -- rejects the derived act at consume,
-    where the rejection lands in the audit. On an exact match
-    the presented intent is submitted as-is; plugin scope,
-    version, and the remaining bindings are the kernel's to
+    the ACTUAL artifact bytes about to be distributed, and
+    the ACTUAL distribution target -- the release coordinates
+    (plugin and version) of the slot those bytes are about
+    to be published into. The boundary does not trust the
+    caller's claim for either the artifact or the target. It
+    derives the SHA-256 digest of the bytes presented, at the
+    boundary, and builds the submitted intent from the
+    actual target coordinates and that derived digest
+    (preserving any trailing suffix of the claimed resource
+    beyond the digest); the claimed intent supplies only the
+    principal, the action, the cost, and the session. The
+    act submitted is therefore the publish actually being
+    attempted: a tampered artifact cannot ride the approved
+    intent's label, a publish actually targeting a different
+    version than the claimed intent names is submitted as
+    that version's publish, and the genuine permit -- bound
+    to the approved intent -- rejects the derived act at
+    consume, where the rejection lands in the audit. Plugin
+    scope and the remaining bindings are the kernel's to
     check, as they are on every route. The boundary holds no
     authority of its own: it cannot mint, approve, or spend
     except through ``kernel.consume``.
@@ -346,6 +364,7 @@ class DistributionGate:
         permit: str | None,
         intent: Intent,
         artifact: bytes,
+        target_prefix: str,
     ) -> bool:
         if permit is None:
             return False
@@ -353,16 +372,20 @@ class DistributionGate:
         if bound is None:
             return False
         derived = "sha256:" + hashlib.sha256(artifact).hexdigest()
-        submitted = intent
-        if derived != bound:
-            prefix = intent.resource.split("/artifact:", 1)[0]
-            submitted = Intent(
-                intent.principal,
-                intent.action,
-                f"{prefix}/artifact:{derived}",
-                intent.cost,
-                intent.session_id,
-            )
+        # The claimed resource beyond its bound digest (a
+        # trailing suffix, if any) is part of the act the
+        # caller is attempting, so it carries into the
+        # submitted intent unchanged; the coordinates and the
+        # digest do not -- they are derived at the gate, from
+        # the actual distribution target and the actual bytes.
+        trailing = intent.resource.partition("/artifact:")[2][len(bound):]
+        submitted = Intent(
+            intent.principal,
+            intent.action,
+            f"{target_prefix}/artifact:{derived}{trailing}",
+            intent.cost,
+            intent.session_id,
+        )
         if not kernel.consume(permit, submitted):
             return False
         self.distributed.append((submitted.action, submitted.resource))
@@ -469,14 +492,14 @@ class WordPressPluginsIncidentScenarioTests(unittest.TestCase):
     def test_positive_control_permitted_release_distributes_exactly_once(self) -> None:
         permit = self._issue_release_permit(self.kernel)
         self.assertTrue(
-            self.gate.distribute(self.kernel, permit, RELEASE_INTENT, ARTIFACT_BYTES)
+            self.gate.distribute(self.kernel, permit, RELEASE_INTENT, ARTIFACT_BYTES, RELEASE_TARGET)
         )
         self.assertEqual([(ACTION, RELEASE_RESOURCE)], self.gate.distributed)
         # The same permit cannot distribute the same release
         # twice -- a publish authorization is not a standing
         # publishing credential.
         self.assertFalse(
-            self.gate.distribute(self.kernel, permit, RELEASE_INTENT, ARTIFACT_BYTES)
+            self.gate.distribute(self.kernel, permit, RELEASE_INTENT, ARTIFACT_BYTES, RELEASE_TARGET)
         )
         self.assertEqual([(ACTION, RELEASE_RESOURCE)], self.gate.distributed)
         self.assertEqual(1, len(_events(self.kernel, "approval_verified")))
@@ -498,7 +521,7 @@ class WordPressPluginsIncidentScenarioTests(unittest.TestCase):
         self.assertIsNone(decision.permit)
         self.assertFalse(
             self.gate.distribute(
-                self.kernel, decision.permit, BACKDOORED_INTENT, BACKDOORED_BYTES
+                self.kernel, decision.permit, BACKDOORED_INTENT, BACKDOORED_BYTES, RELEASE_TARGET
             )
         )
         # The caller presents its account credential itself as
@@ -509,7 +532,7 @@ class WordPressPluginsIncidentScenarioTests(unittest.TestCase):
         # in the incident; authority for this publish did not.
         self.assertFalse(
             self.gate.distribute(
-                self.kernel, ACCOUNT_CREDENTIAL, BACKDOORED_INTENT, BACKDOORED_BYTES
+                self.kernel, ACCOUNT_CREDENTIAL, BACKDOORED_INTENT, BACKDOORED_BYTES, RELEASE_TARGET
             )
         )
         self.assertEqual([], self.gate.distributed)
@@ -550,7 +573,7 @@ class WordPressPluginsIncidentScenarioTests(unittest.TestCase):
         self.assertNotEqual(ARTIFACT_BYTES, BACKDOORED_BYTES)
         self.assertFalse(
             self.gate.distribute(
-                self.kernel, permit, RELEASE_INTENT, BACKDOORED_BYTES
+                self.kernel, permit, RELEASE_INTENT, BACKDOORED_BYTES, RELEASE_TARGET
             )
         )
         self.assertEqual([], self.gate.distributed)
@@ -569,7 +592,7 @@ class WordPressPluginsIncidentScenarioTests(unittest.TestCase):
         # spends on the exact release it was issued for, when
         # the bytes presented are the bytes that were approved.
         self.assertTrue(
-            self.gate.distribute(self.kernel, permit, RELEASE_INTENT, ARTIFACT_BYTES)
+            self.gate.distribute(self.kernel, permit, RELEASE_INTENT, ARTIFACT_BYTES, RELEASE_TARGET)
         )
         self.assertEqual([(ACTION, RELEASE_RESOURCE)], self.gate.distributed)
         self.assertTrue(self.kernel.verify_audit())
@@ -591,7 +614,7 @@ class WordPressPluginsIncidentScenarioTests(unittest.TestCase):
             (decision.outcome, decision.reason),
         )
         self.assertFalse(
-            self.gate.distribute(self.kernel, permit, VERSION_INTENT, ARTIFACT_BYTES)
+            self.gate.distribute(self.kernel, permit, VERSION_INTENT, ARTIFACT_BYTES, VERSION_TARGET)
         )
         # (b) The different plugin: WP Sync for Notion is
         # outside the grant's plugin scope, so the kernel
@@ -607,12 +630,12 @@ class WordPressPluginsIncidentScenarioTests(unittest.TestCase):
         self.assertIsNone(decision.permit)
         self.assertFalse(
             self.gate.distribute(
-                self.kernel, decision.permit, OTHER_PLUGIN_INTENT, ARTIFACT_BYTES
+                self.kernel, decision.permit, OTHER_PLUGIN_INTENT, ARTIFACT_BYTES, OTHER_PLUGIN_TARGET
             )
         )
         self.assertFalse(
             self.gate.distribute(
-                self.kernel, permit, OTHER_PLUGIN_INTENT, ARTIFACT_BYTES
+                self.kernel, permit, OTHER_PLUGIN_INTENT, ARTIFACT_BYTES, OTHER_PLUGIN_TARGET
             )
         )
         # (c) The suffixed resource: the authorized release
@@ -633,11 +656,27 @@ class WordPressPluginsIncidentScenarioTests(unittest.TestCase):
             (decision.outcome, decision.reason),
         )
         self.assertFalse(
-            self.gate.distribute(self.kernel, permit, SUFFIXED_INTENT, ARTIFACT_BYTES)
+            self.gate.distribute(self.kernel, permit, SUFFIXED_INTENT, ARTIFACT_BYTES, RELEASE_TARGET)
+        )
+        # (d) The label/target swap: the caller claims the
+        # approved release itself -- the genuine permit, the
+        # approved 2.9.0 intent, the approved artifact's exact
+        # bytes -- but the actual distribution target is
+        # version 2.9.1. The gate derives the submitted act
+        # from the ACTUAL target coordinates, not from the
+        # claimed intent, so the act submitted is the 2.9.1
+        # publish itself (the VERSION intent above), and the
+        # genuine permit -- bound to the 2.9.0 intent --
+        # rejects it. A caller-supplied label does not set the
+        # target the gate derives from.
+        self.assertFalse(
+            self.gate.distribute(
+                self.kernel, permit, RELEASE_INTENT, ARTIFACT_BYTES, VERSION_TARGET
+            )
         )
         self.assertEqual([], self.gate.distributed)
         rejected = _events(self.kernel, "permit_rejected")
-        self.assertEqual(3, len(rejected))
+        self.assertEqual(4, len(rejected))
         rejected_hashes = {record["payload"]["intent_hash"] for record in rejected}
         self.assertEqual(
             {
@@ -658,7 +697,7 @@ class WordPressPluginsIncidentScenarioTests(unittest.TestCase):
         # The denials did not burn the permit: the exact
         # approved release still spends.
         self.assertTrue(
-            self.gate.distribute(self.kernel, permit, RELEASE_INTENT, ARTIFACT_BYTES)
+            self.gate.distribute(self.kernel, permit, RELEASE_INTENT, ARTIFACT_BYTES, RELEASE_TARGET)
         )
         self.assertEqual([(ACTION, RELEASE_RESOURCE)], self.gate.distributed)
         self.assertTrue(self.kernel.verify_audit())
@@ -668,7 +707,7 @@ class WordPressPluginsIncidentScenarioTests(unittest.TestCase):
     def test_step4_spent_permit_replay_denied(self) -> None:
         permit = self._issue_release_permit(self.kernel)
         self.assertTrue(
-            self.gate.distribute(self.kernel, permit, RELEASE_INTENT, ARTIFACT_BYTES)
+            self.gate.distribute(self.kernel, permit, RELEASE_INTENT, ARTIFACT_BYTES, RELEASE_TARGET)
         )
         # A consumed permit is not a reusable publishing
         # credential: re-presenting it for the same release
@@ -677,11 +716,11 @@ class WordPressPluginsIncidentScenarioTests(unittest.TestCase):
         # over tampered bytes, which the gate derives into the
         # backdoored intent -- gets nothing either.
         self.assertFalse(
-            self.gate.distribute(self.kernel, permit, RELEASE_INTENT, ARTIFACT_BYTES)
+            self.gate.distribute(self.kernel, permit, RELEASE_INTENT, ARTIFACT_BYTES, RELEASE_TARGET)
         )
         self.assertFalse(
             self.gate.distribute(
-                self.kernel, permit, RELEASE_INTENT, BACKDOORED_BYTES
+                self.kernel, permit, RELEASE_INTENT, BACKDOORED_BYTES, RELEASE_TARGET
             )
         )
         self.assertEqual([(ACTION, RELEASE_RESOURCE)], self.gate.distributed)
@@ -810,14 +849,14 @@ class WordPressPluginsIncidentScenarioTests(unittest.TestCase):
         # sequence.
         self.assertFalse(
             self.gate.distribute(
-                self.kernel, permit, RELEASE_INTENT, BACKDOORED_BYTES
+                self.kernel, permit, RELEASE_INTENT, BACKDOORED_BYTES, RELEASE_TARGET
             )
         )
         self.assertEqual([], self.gate.distributed)
         # The one legitimate release still distributes; the
         # campaign did not.
         self.assertTrue(
-            self.gate.distribute(self.kernel, permit, RELEASE_INTENT, ARTIFACT_BYTES)
+            self.gate.distribute(self.kernel, permit, RELEASE_INTENT, ARTIFACT_BYTES, RELEASE_TARGET)
         )
         self.assertEqual([(ACTION, RELEASE_RESOURCE)], self.gate.distributed)
         # Step 4's attempts, also replayed into the frozen
@@ -907,21 +946,21 @@ class WordPressPluginsIncidentScenarioTests(unittest.TestCase):
         # version under the genuine permit. All refused.
         self.assertFalse(
             self.gate.distribute(
-                self.kernel, permit, RELEASE_INTENT, BACKDOORED_BYTES
+                self.kernel, permit, RELEASE_INTENT, BACKDOORED_BYTES, RELEASE_TARGET
             )
         )
         self.assertFalse(
             self.gate.distribute(
-                self.kernel, ACCOUNT_CREDENTIAL, BACKDOORED_INTENT, BACKDOORED_BYTES
+                self.kernel, ACCOUNT_CREDENTIAL, BACKDOORED_INTENT, BACKDOORED_BYTES, RELEASE_TARGET
             )
         )
         self.assertFalse(
-            self.gate.distribute(self.kernel, permit, VERSION_INTENT, ARTIFACT_BYTES)
+            self.gate.distribute(self.kernel, permit, VERSION_INTENT, ARTIFACT_BYTES, VERSION_TARGET)
         )
         # The permitted side: exactly one distribution, the
         # approved release.
         self.assertTrue(
-            self.gate.distribute(self.kernel, permit, RELEASE_INTENT, ARTIFACT_BYTES)
+            self.gate.distribute(self.kernel, permit, RELEASE_INTENT, ARTIFACT_BYTES, RELEASE_TARGET)
         )
         self.assertEqual([(ACTION, RELEASE_RESOURCE)], self.gate.distributed)
 
@@ -985,7 +1024,7 @@ class WordPressPluginsIncidentScenarioTests(unittest.TestCase):
         permit = self._issue_release_permit(blind_kernel)
         self.assertTrue(
             self.gate.distribute(
-                blind_kernel, permit, RELEASE_INTENT, BACKDOORED_BYTES
+                blind_kernel, permit, RELEASE_INTENT, BACKDOORED_BYTES, RELEASE_TARGET
             )
         )
         self.assertEqual(
@@ -997,7 +1036,7 @@ class WordPressPluginsIncidentScenarioTests(unittest.TestCase):
         real_gate = DistributionGate()
         self.assertFalse(
             real_gate.distribute(
-                self.kernel, real_permit, RELEASE_INTENT, BACKDOORED_BYTES
+                self.kernel, real_permit, RELEASE_INTENT, BACKDOORED_BYTES, RELEASE_TARGET
             )
         )
         self.assertEqual([], real_gate.distributed)
