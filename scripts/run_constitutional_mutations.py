@@ -139,11 +139,63 @@ MUTATIONS: tuple[Mutation, ...] = (
         # Phase 2, Item 4: the kernel's consume-time expiry check is the
         # control that refuses a dormant or stolen permit after its TTL.
         # Weakening it must be detected by the token-v2 tests.
+        # Anchor note (Lease port PR 1, 2026-11-22): the bare line
+        # 'if now_ns >= expires_at_ns:' now appears twice in kernel.py --
+        # the lease consume path enforces the same signed expiry with the
+        # same line. The anchor therefore carries the permit-only comment
+        # line that follows it so it stays unique; the lease occurrence
+        # has its own mutation below.
         "permit_expiry_check_removed",
         "pulpo/kernel.py",
-        'if now_ns >= expires_at_ns:',
-        'if False and now_ns >= expires_at_ns:',
+        'if now_ns >= expires_at_ns:\n            # Token v2 (Phase 2, Item 4): the signed expiry is enforced',
+        'if False and now_ns >= expires_at_ns:\n            # Token v2 (Phase 2, Item 4): the signed expiry is enforced',
         ("tests.test_permit_ttl.ExpiryEnforcementTests.test_expired_permit_refused_at_consume_with_recorded_reason",),
+    ),
+    Mutation(
+        # Lease port PR 1 (2026-11-22): the lease consume path enforces
+        # the signed expiry at the kernel layer before the store is
+        # consulted, exactly as the permit path does -- an expired lease
+        # fails closed into its journaled safe fallback. Weakening that
+        # check must be detected by the lease acceptance tests.
+        "lease_expiry_check_removed",
+        "pulpo/kernel.py",
+        'if now_ns >= expires_at_ns:\n            self._append_lease_rejection(lease_digest, lease.intent_hash, command.sequence, "lease_expired")',
+        'if False and now_ns >= expires_at_ns:\n            self._append_lease_rejection(lease_digest, lease.intent_hash, command.sequence, "lease_expired")',
+        ("tests.test_canonical_lease.LeaseAcceptanceTests.test_4_expired_lease_fails_and_journals_the_fallback",),
+    ),
+    Mutation(
+        # Codex P1 fix on PR #383: lease issuance through the approval
+        # path must verify the envelope against the lease approval
+        # hash (every authority-bearing claim), not the bare intent
+        # hash. Reverting to the intent hash must be detected by the
+        # approval-binding tests.
+        "lease_approval_claims_binding_removed",
+        "pulpo/kernel.py",
+        "            approval_digest=approval_digest,",
+        "            approval_digest=digest,",
+        (
+            "tests.test_canonical_lease.LeaseApprovalBindingTests.test_each_altered_claim_under_a_genuine_approval_is_refused",
+            "tests.test_canonical_lease.LeaseIssuanceTests.test_approval_action_mints_only_through_the_approval_path",
+        ),
+    ),
+    Mutation(
+        # Codex P2 fix on PR #383: the in-memory store's own consume
+        # transition enforces the signed sequence floor, so a direct
+        # store call cannot record consumption below it.
+        "lease_store_floor_check_removed_inmemory",
+        "pulpo/state.py",
+        "elif sequence < entry.sequence_floor:",
+        "elif False and sequence < entry.sequence_floor:",
+        ("tests.test_canonical_lease.LeaseStoreFloorTests.test_inmemory_store_rejects_first_consume_below_floor",),
+    ),
+    Mutation(
+        # Codex P2 fix on PR #383: the same floor enforcement on the
+        # SQLite backend's consume transition.
+        "lease_store_floor_check_removed_sqlite",
+        "pulpo/state.py",
+        "elif sequence < sequence_floor:",
+        "elif False and sequence < sequence_floor:",
+        ("tests.test_canonical_lease.LeaseStoreFloorTests.test_sqlite_store_rejects_first_consume_below_floor",),
     ),
     Mutation(
         # Phase 2, Item 4: the state layer's recorded-expiry re-check is
