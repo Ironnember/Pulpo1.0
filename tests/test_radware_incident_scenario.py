@@ -216,6 +216,18 @@ CONTACT_EXPORT_INTENT = Intent(
 # what it is.
 CHANNEL_TOKEN = "radware:internal-network-management-channel"
 
+# Token presented to ``GovernanceKernel.consume`` when the
+# executor holds no permit at all. The kernel's consume
+# contract takes a permit string; issued permits are
+# ``<intent-hash>:<nonce>:<signature>`` and are never empty,
+# so the empty string is a never-issued token that
+# represents unavailable authority -- as distinct from a
+# fabricated token such as CHANNEL_TOKEN above, which
+# represents forged authority. Presenting it lets the
+# KERNEL, not this harness, reject the attempt and write
+# the canonical ``permit_rejected`` audit record for it.
+NO_PERMIT_TOKEN: str = ""
+
 
 class ManagementApiExecutor:
     """Consequences on the management plane, reachable only via consume.
@@ -231,15 +243,22 @@ class ManagementApiExecutor:
     merely as a returned status. (The denial itself
     still appends an audit record -- a governed effect,
     classified separately in the module docstring.)
+
+    The harness never denies on its own: every attempt
+    -- including one holding no permit (``permit=None``)
+    -- is presented to ``GovernanceKernel.consume``,
+    with the never-issued ``NO_PERMIT_TOKEN`` standing
+    in for the absent permit, so a regression in the
+    kernel's handling of unavailable authority fails
+    this scenario instead of being masked by a
+    harness-side short-circuit.
     """
 
     def __init__(self) -> None:
         self.effects: list[tuple[str, str]] = []
 
     def execute(self, kernel: GovernanceKernel, permit: str | None, intent: Intent) -> bool:
-        if permit is None:
-            return False
-        if not kernel.consume(permit, intent):
+        if not kernel.consume(NO_PERMIT_TOKEN if permit is None else permit, intent):
             return False
         self.effects.append((intent.action, intent.resource))
         return True
@@ -380,6 +399,15 @@ class RadwareIncidentScenarioTests(unittest.TestCase):
             (decision.outcome, decision.reason),
         )
         self.assertIsNone(decision.permit)
+        # The attempt is still presented for dispatch, and
+        # the executor routes it through the canonical
+        # kernel with the never-issued NO_PERMIT_TOKEN
+        # standing in for the absent permit, so the
+        # kernel's own rejection path is exercised and the
+        # refusal lands in the audit -- the fail-closed
+        # result below is the kernel's, not a harness-side
+        # short-circuit on permit=None (Codex P2 on
+        # PR #394).
         self.assertFalse(self.executor.execute(self.kernel, decision.permit, EXPORT_INTENT))
         # The plane presents its presumed-internal channel
         # itself as its authority -- the incident's exact
@@ -390,12 +418,20 @@ class RadwareIncidentScenarioTests(unittest.TestCase):
         self.assertFalse(self.executor.execute(self.kernel, CHANNEL_TOKEN, EXPORT_INTENT))
         self.assertEqual([], self.executor.effects)
         self.assertEqual(0, len(_events(self.kernel, "permit_consumed")))
+        # Both presentations were refused by the kernel at
+        # consume, and each refusal is in the audit: the
+        # never-issued token standing in for the absent
+        # permit, and the channel token. Neither carries a
+        # state row or an authentic signature, and both
+        # rejections are bound to the export's intent hash.
         rejected = _events(self.kernel, "permit_rejected")
-        self.assertEqual(1, len(rejected))
-        self.assertEqual(
-            self.kernel.intent_hash(EXPORT_INTENT),
-            rejected[0]["payload"]["intent_hash"],
-        )
+        self.assertEqual(2, len(rejected))
+        for record in rejected:
+            self.assertEqual(
+                self.kernel.intent_hash(EXPORT_INTENT),
+                record["payload"]["intent_hash"],
+            )
+            self.assertEqual("permit_signature_invalid", record["payload"]["reason"])
         decisions = [
             record["payload"]
             for record in _events(self.kernel, "decision")
@@ -564,9 +600,14 @@ class RadwareIncidentScenarioTests(unittest.TestCase):
     #
     # The counts below were confirmed by the executed run
     # of this module at this head and at the clean base
-    # checkpoint 9aca02e (see the change record, section
-    # 8): 5 permit_rejected, 2 approval_rejected, 2 denied
-    # decisions, 9 near-misses, 0 incidents.
+    # checkpoint 9aca02e (see the change record, sections
+    # 8 and 9): 6 permit_rejected, 2 approval_rejected, 2
+    # denied decisions, 10 near-misses, 0 incidents. The
+    # sixth permit_rejected is the no-permit route's
+    # kernel refusal of the never-issued token, added by
+    # the post-review fix recorded in section 9; before
+    # that fix the harness short-circuited the route and
+    # the counts were 5 and 9.
 
     def test_step6_incident_channel_surfaces_the_attempts(self) -> None:
         # Each envelope carries its own approval_id and
@@ -591,6 +632,7 @@ class RadwareIncidentScenarioTests(unittest.TestCase):
         # trusted channel as a token, the different-action
         # permit, and the different-resource permit.
         self.kernel.evaluate(EXPORT_INTENT)
+        self.assertFalse(self.executor.execute(self.kernel, None, EXPORT_INTENT))
         self.assertFalse(self.executor.execute(self.kernel, CHANNEL_TOKEN, EXPORT_INTENT))
         self.assertFalse(self.executor.execute(self.kernel, read_permit, EXPORT_INTENT))
         self.assertFalse(self.executor.execute(self.kernel, contact_permit, EXPORT_INTENT))
@@ -661,7 +703,7 @@ class RadwareIncidentScenarioTests(unittest.TestCase):
             for record in _events(self.kernel, "decision")
             if record["payload"]["outcome"] == "require_approval"
         ]
-        self.assertEqual(5, len(permit_rejected))
+        self.assertEqual(6, len(permit_rejected))
         self.assertEqual(2, len(approval_rejected))
         self.assertEqual(2, len(denied_decisions))
         self.assertEqual(1, len(require_approval_decisions))
@@ -674,7 +716,7 @@ class RadwareIncidentScenarioTests(unittest.TestCase):
             len(permit_rejected) + len(approval_rejected) + len(denied_decisions),
             report.near_misses,
         )
-        self.assertEqual(9, report.near_misses)
+        self.assertEqual(10, report.near_misses)
         self.assertEqual(report.near_misses, len(report.records))
         for record in report.records:
             self.assertEqual("near_miss", record.kind)

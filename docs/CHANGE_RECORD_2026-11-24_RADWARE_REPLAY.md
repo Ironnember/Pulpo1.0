@@ -124,13 +124,20 @@ Scenario module
   the spent permit is denied; the audit chain
   verifies.
 - step 1: with no permit at all, `evaluate` returns
-  `require_approval` with no permit minted, and
-  nothing executes; and the presumed-internal
+  `require_approval` with no permit minted; the
+  attempt is still presented for dispatch and the
+  kernel itself refuses it at consume -- the
+  executor presents the never-issued
+  `NO_PERMIT_TOKEN` for the absent permit, and the
+  refusal is recorded as a `permit_rejected`
+  (`permit_signature_invalid`) bound to the
+  export's intent hash; and the presumed-internal
   channel itself, presented as the permit, is
-  rejected at consume as a fabricated token, bound
-  to the export's intent hash. Arrival over the
-  trusted path is not an approval -- the incident's
-  route (a), closed.
+  rejected at consume the same way, as a fabricated
+  token. Arrival over the trusted path is not an
+  approval -- the incident's route (a), closed.
+  (The no-permit routing is the post-review fix in
+  section 9.)
 - step 2: a genuine permit to read the configuration
   of the same resource spends on the credential
   export not at all (exact-intent binding, action
@@ -157,15 +164,16 @@ Scenario module
   still admits afterward.
 - step 6: the incident channel sees the attempts --
   freezing a report over the full attempt sequence
-  of steps 1-5 (the no-permit evaluation, the
-  channel token, the different-action permit, the
+  of steps 1-5 (the no-permit evaluation and its
+  consume presentation, the channel token, the
+  different-action permit, the
   different-resource permit, both approval-envelope
   attempts, the one legitimate export, and the
   spent-permit replays) yields zero incidents and
   exactly the near-miss records the channel's
-  derivation produces from the audit: 5
+  derivation produces from the audit: 6
   `permit_rejected`, 2 `approval_rejected`, and 2
-  denied `decision` records (9 near-misses in
+  denied `decision` records (10 near-misses in
   total), each classified Recorded under a valid
   audit chain; the freeze appends nothing. The step
   also pins the surfacing boundary stated in
@@ -427,7 +435,7 @@ Results (Verified -- executed at both states):
   different-resource permit denials, the
   exact-permit single execution and spent-permit
   replays, the forged/mismatched approval denials,
-  the incident channel's 0 incidents / 9
+  the incident channel's 0 incidents / 10
   near-misses, and the negative control executing
   under the unguarded-consume doubles. Full suite
   at checkpoint-plus-lesson: 1114 OK (skipped=25),
@@ -450,3 +458,68 @@ Results (Verified -- executed at both states):
 The evidence is therefore valid at the checkpoint
 and at the worktree head; reuse of the lesson at a
 later commit still requires re-evaluation there.
+
+## 9. Post-review fix (Codex P2 on PR #394)
+
+After the original head `fc2055c` was reported,
+Codex review (2026-11-24) raised a P2 on
+`tests/test_radware_incident_scenario.py`: "Route
+absent permits through the kernel." In step 1 the
+unauthenticated-input case produced `permit=None`
+from `evaluate`, and the scenario's executor
+returned `False` on `permit is None` before
+`GovernanceKernel.consume` ran -- so the claimed
+fail-closed result for the central case was
+enforced by the test harness rather than verified
+through the canonical kernel. The negative control
+could not catch it, because it supplies a genuine
+issued read permit: the scenario could keep passing
+without demonstrating kernel rejection of
+unavailable authority.
+
+Fix (approved by Austin 2026-11-24; the same
+construction as the Chevrolet scenario's
+`NO_PERMIT_TOKEN` and the WPpConnect scenario's
+sentinel presentation, the latter itself a Codex
+P2 fix on its PR):
+
+- The executor no longer returns early on
+  `permit=None`. Every attempt is presented to
+  `GovernanceKernel.consume`; for an absent permit
+  the executor presents `NO_PERMIT_TOKEN` (the
+  empty string -- issued permits are
+  `<intent-hash>:<nonce>:<signature>` and are never
+  empty), a never-issued sentinel with no state row
+  behind it. The kernel refuses it at consume and
+  writes the `permit_rejected` record itself
+  (reason `permit_signature_invalid`).
+- Step 1 now asserts both kernel refusals -- the
+  never-issued token and the channel token -- each
+  bound to the export's intent hash with reason
+  `permit_signature_invalid`.
+- Step 6's frozen sequence now includes the
+  no-permit dispatch presentation, as step 1
+  exercises it. The near-miss accounting therefore
+  changes: 6 `permit_rejected` (was 5), 2
+  `approval_rejected`, 2 denied decisions -- 10
+  near-misses (was 9), 0 incidents. The bare
+  `require_approval` decision still contributes
+  zero near-miss records; the section 5 surfacing
+  boundary (issue #375) is unchanged -- what
+  changed is that the dispatch attempt now reaches
+  consume, whose rejection the channel does derive.
+- No other case was weakened; the negative control
+  is unchanged. No production code is touched;
+  `authority_effect=none`.
+
+Evidence (Verified -- executed 2026-11-24):
+scenario 8/8 at the post-fix head; full suite 1114
+OK (skipped=25) at the post-fix head. Temporal
+replay re-run with the fixed module at the clean
+base checkpoint `9aca02e` (worktree reconstructed
+by exact SHA; the only delta was the copied
+scenario module): scenario 8/8 and
+checkpoint-plus-lesson full suite 1114 OK
+(skipped=25) -- identical to the post-fix head, no
+negative transfer. Sections 4 and 8 above state
+the post-fix counts.
