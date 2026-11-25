@@ -488,3 +488,90 @@ Results (Verified — executed at both states):
 The evidence is therefore valid at the checkpoint and
 at the worktree head; reuse of the lesson at a later
 commit still requires re-evaluation there.
+
+## 9. Fix pass — 2026-11-25 (Codex review of PR #397; multiplicity pass)
+
+Review finding (Codex, P1, on
+`tests/test_xen_orchestra_incident_scenario.py`):
+the reconciliation helper collapses repeated attempts
+into unique intent hashes. The step-5 reconciliation
+derived **sets** of intent hashes from the audit and
+converted the claimed values to sets as well, collapsing
+every occurrence of a hash to one. A claimed history
+listing a hash once therefore reconciled successfully
+even when the audit held further attempts — or further
+executions under separately issued permits — for that
+same hash: the claim could underreport repeated activity
+while returning `ok=True`. The finding is correct. It
+was reproduced before the fix at head `3633b4b`: three
+empty-object-token attempts on the target intent and two
+legitimate inventory reads under separate permits (audit
+truth: attempts {target: 3}, consequences {legit: 2})
+reconciled `ok=True` under a claim listing each hash
+once. Step 5's own sequence already held the proof in
+embryo: its target intent is attempted six times under
+one hash, and the presence-only comparison could not see
+any of the six as more than one.
+
+Change (test module only; no production code, no claim
+narrowed — the reconciliation claim is strengthened, and
+the prior presence-only limitation is recorded here
+rather than smoothed over):
+
+- `audited_sets` is replaced by `audited_counts`: the
+  audit side now yields occurrence counts (multisets) per
+  intent hash for consequences and attempts alike.
+- `reconcile_against_audit` counts the claim's lists the
+  same way (a hash listed twice claims two occurrences)
+  and flags a hash in each direction whenever the counts
+  diverge: underreported attempts are
+  `undisclosed_attempts`, underreported executions are
+  `missing_consequences`, and overreported claims are
+  `phantom_attempts` / `unbacked_consequences`. `ok`
+  requires exact count equality for every hash, on top of
+  the unchanged fail-closed audit-chain verification.
+- Step 5's assertions were updated to the count form
+  without weakening — and strengthened in one place: the
+  sequence's attempt counts are now asserted exactly
+  (target 6, unknown 1, legit 1) instead of as a mere
+  presence set, and its honest and inflated claims now
+  carry the attempts at full multiplicity.
+- New step 5b pins the behavior: the empty-object token
+  presented three times (3 rejections, one hash) and the
+  legitimate inventory read executed twice under two
+  separately issued permits (2 consumptions, one hash).
+  A claim collapsing each hash to a single listing fails
+  on exactly the two underreported hashes; the same
+  history with multiplicity reported honestly reconciles
+  exactly; overreporting fails in each direction on its
+  own hash.
+
+Evidence (Verified, executed at the fix-pass head):
+
+- Scenario: **8/8 pass** (was 7/7 at head `3633b4b`;
+  the delta is exactly step 5b). The pre-fix reproduction
+  now fails reconciliation on exactly the two
+  underreported hashes.
+- Full suite at the fix-pass head: **1114 tests ran, OK
+  (skipped=13)** in this environment; the pristine
+  original head measured in the same environment at
+  **1113 ran, OK (skipped=13)** — the delta is again
+  exactly the new test. (Skip counts are
+  environment-dependent; the +1 test delta is not.)
+- Temporal replay of the fix, per §8's method: a clean
+  worktree reconstructed at exactly `9aca02e` with the
+  updated module copied in (the only delta) passes the
+  scenario identically, 8/8; the full suite at
+  checkpoint-plus-lesson is **1114 ran, OK (skipped=13)**,
+  identical to the fix-pass head. The multiplicity
+  comparison is a property of this branch's test-level
+  helper over the public audit read path; no kernel
+  behavior is exercised differently at the two states,
+  and consequential authority is unchanged
+  (`authority_effect=none`).
+
+Out of scope, recorded not smoothed: this pass does not
+touch the review's separate P1 on the negative control
+(the modeled malformed-input lookup). That finding
+stands as reported; it is a different defect class and
+awaits its own pass.
