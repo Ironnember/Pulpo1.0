@@ -68,11 +68,13 @@ Setup: the dispatcher reconciles BEFORE it consumes.
 For a mint, it requires a source record -- a lock on
 the source side -- that matches the intent exactly
 (record identity, amount, target) and is unspent. For
-a release, it requires that every backing mint it is
-presented with actually executed through the governed
-path, that their amounts sum exactly to the release
-amount, and that none of them has already backed a
-release. Only then does the dispatcher present the
+a release, it requires that the backing mints it is
+presented with are distinct -- a repeated identifier
+is a malformed presentation, not additional backing --
+that every one of them actually executed through the
+governed path, that their amounts sum exactly to the
+release amount, and that none of them has already
+backed a release. Only then does the dispatcher present the
 permit to ``GovernanceKernel.consume``, and only a
 successful consume records a consequence. The incident's
 acts are then attempted on every route: unbacked mints
@@ -299,6 +301,15 @@ class BridgeDispatcher:
     def _release_refusal(
         self, presentation_id: str, mint_ids: list[str], amount: int
     ) -> str | None:
+        # Malformed before semantic: a repeated identifier
+        # would be counted once per occurrence by the
+        # backing sum below but recorded once by the spent
+        # set, so one executed mint could satisfy a release
+        # worth multiples of its value. A duplicate is not
+        # more backing; the presentation is rejected as
+        # malformed before any backing is evaluated.
+        if len(set(mint_ids)) != len(mint_ids):
+            return "backing_duplicate_mint"
         if presentation_id in self._released_presentations:
             return "backing_already_released"
         if any(mint_id not in self.executed_mints for mint_id in mint_ids):
@@ -861,6 +872,84 @@ class FusionistAceIncidentScenarioTests(unittest.TestCase):
         self.assertEqual(
             ("release", "pres-3", "backing_already_released"),
             self.dispatcher.reconciliation_log[-1],
+        )
+        self.assertEqual(2, len(_events(self.kernel, "permit_consumed")))
+        self.assertTrue(self.kernel.verify_audit())
+
+    # -- step 6b: a duplicated backing mint is not more backing --------------
+
+    def test_step6b_duplicated_backing_mint_refused_as_malformed(self) -> None:
+        # One genuine mint of 50 units, executed through
+        # the governed path.
+        self.ledger.record_lock("lock-50", 50, TARGET_A)
+        mint_intent = _mint_intent("lock-50", 50, TARGET_A)
+        mint_permit = self._issue_permit(
+            self.kernel, mint_intent, approval_id="approval-50", nonce="nonce-50"
+        )
+        self.assertTrue(
+            self.dispatcher.dispatch_mint(
+                self.kernel,
+                mint_permit,
+                mint_id="mint-50",
+                lock_id="lock-50",
+                amount=50,
+                target=TARGET_A,
+            )
+        )
+        # The same executed mint presented TWICE as the
+        # backing for a release of 100 -- double its real
+        # value -- under a genuine release permit. Summed
+        # naively, the presentation reaches 100; counted
+        # honestly, the backing is one mint of 50. A
+        # repeated identifier is a malformed presentation,
+        # refused at reconciliation before any consume:
+        # repetition is not backing.
+        dup_intent = _release_intent("pres-dup", 100, RESERVE_TARGET)
+        dup_permit = self._issue_permit(
+            self.kernel,
+            dup_intent,
+            approval_id="approval-release-dup",
+            nonce="nonce-release-dup",
+        )
+        self.assertFalse(
+            self.dispatcher.dispatch_release(
+                self.kernel,
+                dup_permit,
+                presentation_id="pres-dup",
+                mint_ids=["mint-50", "mint-50"],
+                amount=100,
+                target=RESERVE_TARGET,
+            )
+        )
+        self.assertEqual(
+            ("release", "pres-dup", "backing_duplicate_mint"),
+            self.dispatcher.reconciliation_log[-1],
+        )
+        self.assertEqual([("mint", mint_intent.resource)], self.dispatcher.effects)
+        self.assertEqual(1, len(_events(self.kernel, "permit_consumed")))
+        # The refusal spent nothing: the same mint,
+        # presented once, still backs a release of exactly
+        # its own amount.
+        single_intent = _release_intent("pres-single", 50, RESERVE_TARGET)
+        single_permit = self._issue_permit(
+            self.kernel,
+            single_intent,
+            approval_id="approval-release-single",
+            nonce="nonce-release-single",
+        )
+        self.assertTrue(
+            self.dispatcher.dispatch_release(
+                self.kernel,
+                single_permit,
+                presentation_id="pres-single",
+                mint_ids=["mint-50"],
+                amount=50,
+                target=RESERVE_TARGET,
+            )
+        )
+        self.assertEqual(
+            [("mint", mint_intent.resource), ("release", single_intent.resource)],
+            self.dispatcher.effects,
         )
         self.assertEqual(2, len(_events(self.kernel, "permit_consumed")))
         self.assertTrue(self.kernel.verify_audit())

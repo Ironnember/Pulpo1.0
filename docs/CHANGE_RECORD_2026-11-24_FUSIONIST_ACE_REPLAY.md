@@ -465,3 +465,66 @@ Results (Verified — executed at both states):
 The evidence is therefore valid at the checkpoint and
 at the worktree head; reuse of the lesson at a later
 commit still requires re-evaluation there.
+
+## 9. Fix pass — Codex review, 2026-11-25
+
+Review finding (Recorded): one unresolved P2 thread
+from `chatgpt-codex-connector` on the release
+reconciliation gate in
+`tests/test_fusionist_ace_incident_scenario.py` —
+"Reject duplicate mint IDs when summing release
+backing." When the presented `mint_ids` contained the
+same executed mint more than once, the backing sum
+counted its value once per occurrence while
+`_release_spent_mints.update(...)` recorded it once:
+one executed 50-unit mint presented as
+`["mint", "mint"]` satisfied a 100-unit release, so
+the modeled reserve could pay out twice the actual
+backing. The finding was correct; the defect was
+reproduced before it was fixed (below).
+
+Fix (this pass; harness-only, `authority_effect=none`,
+no production code touched):
+
+- `_release_refusal` now rejects a presentation whose
+  mint identifiers are not distinct, before any
+  backing is evaluated, with the refusal reason
+  `backing_duplicate_mint` — a repeated identifier is
+  a malformed presentation, not additional backing.
+- New scenario test (step 6b) exercises the
+  reviewer's exact shape: one executed 50-unit mint
+  presented twice against a 100-unit release under a
+  genuine release permit is refused at reconciliation
+  (`backing_duplicate_mint`; no consume attempted, no
+  consequence recorded), and the same mint presented
+  once still backs a release of exactly 50 — the
+  refusal spends nothing and is precision, not
+  lockout. The module docstring's setup paragraph now
+  states the distinctness requirement the gate
+  enforces.
+- Defect confirmation: run against the pre-fix gate,
+  step 6b fails at the duplicated dispatch — the
+  release EXECUTES (`dispatch_release` returns True) —
+  so the new test pins the defect, not merely the fix.
+
+Claim effect: none narrowed. The release-leg claim
+("one executed mint backs exactly one release") was,
+as the code stood, overstated for the
+duplicated-presentation shape; the fix restores the
+code to the claim rather than narrowing the claim to
+the code. Sections 4 and 8 stand as written for the
+original 11 tests; this section records the twelfth.
+
+Evidence (Verified — executed 2026-11-25): scenario
+12/12 at the fix-pass head; full suite **1101 OK
+(skipped=25)** at the fix-pass head — the recorded
+1100 OK (skipped=25) at the original head plus exactly
+the one new test. Temporal transfer: at the §8
+checkpoint `5297d1c`, with only the fixed scenario
+module copied in (the §8 method), the scenario runs
+12/12 identically — the fix is harness-local, the
+kernel bindings it composes with are unchanged, and
+consequential authority is unchanged at both states
+(`authority_effect=none`). The Codex thread is left
+open for the reviewer to resolve on re-review; this
+pass does not resolve it.
