@@ -164,27 +164,44 @@ Scenario module
   passed is denied (`approval_expired`). The denials
   do not poison the path — the same permit then
   performs its own appointment exactly once.
-- step 5 (migration): the portal's data is copied
-  into a fresh system of record (same policy, same
-  enrolled resident authority, same deployment
-  secret — a faithful migration). The standing
-  record carried across is refused as a permit
+- step 5 (migration, two shapes asserted separately
+  for exactly what each proves): (i) a FAITHFUL
+  migration — the new system is built over the old
+  system's canonical state backend, carried across
+  intact, with the same policy, the same enrolled
+  resident authority, and the same deployment
+  secret. The standing record, copied across with
+  the portal's data, is refused as a permit
   (`permit_signature_invalid`) and denied as an
   approval signature (`approval_signature_invalid`)
-  exactly as in the old system. Even the genuine
-  permit issued pre-migration does not spend in the
-  new system: its token is well-formed and its
-  signature genuine, but no issuance row stands
-  behind it in the new system of record and consume
-  re-checks the row; the refusal is recorded against
-  the intent with no signature-failure reason — a
-  state absence, not a forgery (Verified by
-  executable probe at the base commit; the payload
-  shape is pinned by the test). The migrated
-  system's own genuine flow then works end to end,
-  and the old permit still spends in the old system
-  where its row lives: state carried over is not
-  authority carried over, in either direction.
+  exactly as in the old system: it was never in the
+  canonical state as an issuance, and carrying the
+  state that exists does not add it. The genuine
+  permit issued pre-migration DOES spend in the
+  migrated system — exactly once, with replay
+  refused — because the issuance row is part of the
+  state carried; that continuity is what makes the
+  migration faithful, and the step asserts it rather
+  than smoothing it over. The migrated system also
+  mints and executes under a fresh approval. The
+  dividing line is issued-vs-recorded, not
+  old-system-vs-new: migration carries authority the
+  kernel actually issued and manufactures none for
+  the record. (ii) a LEDGER-DISCARDING replacement —
+  a new kernel with a fresh, empty state (same
+  policy, authority, and secret; the canonical state
+  NOT carried): a second genuine pre-migration
+  permit, unspent, does not spend there — no
+  issuance row stands behind it in that system and
+  consume re-checks the row; the refusal is recorded
+  against the intent with no signature-failure
+  reason — a state absence, not a forgery (the
+  payload shape is pinned by the test). What this
+  second shape proves is only that discarding the
+  authority ledger drops unspent issuance rows; it
+  is recorded as a reset, not as evidence about
+  faithful migration. The stranded permit still
+  spends in the old system, where its row lives.
 - step 6: the incident channel sees the attempts —
   freezing a report over the full attempt sequence
   in the class's own order (the no-artifact probe,
@@ -206,9 +223,18 @@ Scenario module
   near-miss records. The counts are from the
   executed run at this head, not estimates. The
   provenance defect is named in the record the
-  channel derives: every near-miss in the sequence
-  traces to an authorization claimed by state and
-  absent in provenance.
+  channel derives — for the near-misses that carry
+  it: the record-derived attempts (the record spent
+  as a permit, and the record offered as an
+  approval signature, with its denied decision)
+  trace to an authorization claimed by state and
+  absent in provenance. The remaining near-misses
+  are different rejection classes and are recorded
+  as such, not folded into the provenance claim:
+  the unlisted-act denial (`action_not_allowed`),
+  the genuine approval rejected on session mismatch,
+  the genuine permit rejected on intent mismatch,
+  and the spent-permit replay.
 - step 7 (reconciliation, class-specific): after
   the attempt sequence, the consequence ledger
   contains exactly the one legitimate effect (one
@@ -223,7 +249,15 @@ Scenario module
   Mythos and hexpm scenarios — reconciles exactly
   for the honest claim (no undisclosed attempts, no
   unbacked or missing consequences, no phantom
-  attempts). The portal's own claim — the standing
+  attempts). The comparison is by MULTISET, not by
+  set: distinct audited events sharing one intent
+  hash are distinct attempts (in this sequence the
+  appointment hash carries three audited attempt
+  events — the bare evaluation's `require_approval`
+  decision, the record spent as a permit, and the
+  denied decision accompanying the rejected
+  approval), and a claim must account for each
+  hash's full count. The portal's own claim — the standing
   "Yes" read as the portal reads it (permission to
   enter, unbound to the one appointment the resident
   actually approved, so the unscheduled entry stands
@@ -232,8 +266,18 @@ Scenario module
   hash): a standing permission with no matching
   authorization in the ledger, surfaced rather than
   silently accepted. A claim omitting the attempts
-  fails by name (`undisclosed_attempts` = the full
-  audited attempt set). What this proves, precisely:
+  fails by name (`undisclosed_attempts` = every
+  audited attempt hash). A claim disclosing the
+  appointment hash only ONCE — the set-shaped claim
+  — also fails by name (`undisclosed_attempts` =
+  the appointment hash): three distinct audited
+  attempts stand under that hash, disclosing it once
+  accounts for one of them, and the other two are
+  undisclosed by count. (Under a set construction
+  that claim reconciled; the multiset comparison
+  closes exactly that collapse — a claim, like the
+  portal's record, must not stand in for acts it
+  does not enumerate.) What this proves, precisely:
   on the governed path, every standing permission
   can be matched to the act of consent that stands
   behind it, or flagged. It proves it by the
@@ -304,10 +348,15 @@ Adversarial transformation review (eight passes per
   at evaluate (step 3), the portal's self-attestation
   fails at verification (step 3), the genuine grant
   fails to stretch at session binding, intent
-  binding, and expiry (step 4), the carried-over
-  artifacts fail at the state-row re-check in the
-  new system (step 5), and the spent permit cannot
-  be replayed (positive control, step 6).
+  binding, and expiry (step 4), the record fails
+  identically after a faithful migration that
+  carries the canonical state (step 5), the issued
+  grant that migration carries spends exactly once
+  there and cannot be replayed (step 5), an unspent
+  grant stranded by a ledger-discarding replacement
+  fails at the state-row re-check (step 5), and the
+  spent permit cannot be replayed (positive control,
+  step 6).
 - Invert — outcome is not legitimacy: inside the
   class, the portal's "success" (a complete record,
   a dispatched work order, a door opened) is an
@@ -405,7 +454,8 @@ Pulpo's claim here is only about the gate it sits on:
 had the actor reached an entry boundary routing its
 consequential acts through this kernel, the record,
 the garbage string, the portal's self-attestation,
-and the stretched or carried-over grants would each
+the stretched grants, and the record carried across
+a migration in either of step 5's shapes would each
 have failed closed, for the reasons the steps record.
 The replay does not speak to the parts of the class
 outside the gate: the interface design that produced
@@ -462,12 +512,22 @@ by silently engineering around it.
   **Verified** (executable probe plus the channel's
   derivation source at the base commit, pinned by
   step 6).
-- The step-5 migration refusal shapes (the
-  carried-over record's `permit_signature_invalid`;
-  the carried-over genuine permit's refusal recorded
-  with no signature-failure reason, a state-row
-  absence): **Verified** (executable probe at the
-  base commit, pinned by step 5's assertions).
+- The step-5 migration shapes (under a faithful
+  migration carrying the canonical state backend:
+  the carried-over record's `permit_signature_invalid`
+  and `approval_signature_invalid` refusals, and the
+  carried-over genuine permit's single spend with
+  replay refused; under a ledger-discarding
+  replacement: the stranded genuine permit's refusal
+  recorded with no signature-failure reason, a
+  state-row absence): **Verified** (executable probe
+  at the base commit, pinned by step 5's assertions).
+- The step-7 reconciliation multiplicity semantics
+  (attempts and consequences compared as multisets;
+  a claim disclosing an intent hash once while the
+  audit holds three distinct attempts under it fails
+  as undisclosed by count): **Verified** (executable
+  at this head, pinned by step 7's assertions).
 - The step-7 reconciliation semantics (test-level,
   against the public audit read path; the shipped
   reconcilers' actual scopes as described in §4):
@@ -533,14 +593,18 @@ Results (Verified — executed at both states):
   denials, the record's consume refusals, the
   record / garbage / portal-key / missing-signature
   denials, the genuine grant's refusal to stretch
-  across session, intent, and expiry, the migration
-  carryover refusals in both shapes alongside the
+  across session, intent, and expiry, the record's
+  refusals in both migration shapes, the genuine
+  grant's single spend under the faithful migration
+  and its state-absence refusal under the
+  ledger-discarding replacement, alongside the
   migrated system's own working genuine flow, the
   incident channel's 0 incidents / 8 near-misses,
   the step-7 reconciliation reconciling the honest
-  claim and failing the portal's claim and the quiet
-  claim by name, and the negative control executing
-  under the record-trusting double. Full suite at
+  claim and failing the portal's claim, the quiet
+  claim, and the once-disclosed claim by name, and
+  the negative control executing under the
+  record-trusting double. Full suite at
   checkpoint-plus-lesson: 1115 OK (skipped=25),
   identical to the worktree head; the delta over the
   1106 baseline is exactly the 9 scenario tests.
@@ -560,3 +624,28 @@ Results (Verified — executed at both states):
 The evidence is therefore valid at the checkpoint
 and at the worktree head; reuse of the lesson at a
 later commit still requires re-evaluation there.
+
+Fix pass (Codex review on PR #401 — three threads,
+two P1 and one P2): the scenario module and this
+record were corrected after the run above, and the
+checkpoint comparison was RE-RUN with the corrected
+module at exactly `9aca02e` by the same method
+(clean worktree; the copied scenario module the
+only delta). Result: all 9 scenario tests pass
+identically at the checkpoint, and the
+checkpoint-plus-lesson full suite is again 1115 OK
+(skipped=25), identical to the corrected worktree
+head. The corrections: step 5 now exercises a
+faithful migration over the carried canonical state
+backend (the original construction asserted a
+genuine permit's refusal against a fresh empty
+store — a state reset; that shape is retained only
+as the explicitly labeled ledger-discarding
+replacement, claiming only what it proves); step
+7's reconciliation compares multisets, with the
+once-disclosed claim pinned as failing by count;
+and the provenance claim in §4 step 6 is narrowed
+to the record-derived near-misses, with the other
+rejection classes described separately. The fix
+pass changed no kernel code; `authority_effect=none`
+at both states, as before.

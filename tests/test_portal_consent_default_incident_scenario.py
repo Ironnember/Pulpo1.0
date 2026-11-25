@@ -62,13 +62,19 @@ act the policy does not contain, with the portal
 record spent as a permit, with the record and other
 non-authorities offered as approvals, with the one
 genuine grant stretched to an unscheduled entry and
-past its window, and with the record and artifacts
-carried across a system migration. The kernel must
-deny each one, the consequence ledger must stay empty
-for all of them, and every denial must land in the
-audit record. The genuine approval authorizes exactly
-one execution of exactly its own appointment, and then
-spends.
+past its window, and with the record carried across a
+system migration. The kernel must deny each one, the
+consequence ledger must stay empty for all of them, and
+every denial must land in the audit record. The genuine
+approval authorizes exactly one execution of exactly
+its own appointment, and then spends. The genuine
+grant's own behavior under migration is asserted
+separately, exactly as it holds in step 5: a faithful
+migration -- canonical state carried intact -- carries
+the issued grant with it (it spends there, once) and
+manufactures nothing for the record; a replacement
+that discards the state drops the unspent grant with
+the ledger, which proves a reset, not a migration.
 
 Reconciliation (class-specific): the portal's standing
 "Yes" is a claim about the unit -- entry stands
@@ -145,10 +151,12 @@ from __future__ import annotations
 
 import hmac
 import unittest
+from collections import Counter
 from dataclasses import dataclass, replace
 
 from pulpo import (
     GovernanceKernel,
+    InMemoryKernelState,
     Intent,
     Policy,
     PulpoOrchestrator,
@@ -260,14 +268,24 @@ def _events(kernel: GovernanceKernel, name: str) -> list[dict]:
 
 # -- test-level reconciliation against the kernel audit --------------------
 #
-# Compared sets, defined once and used for the kernel audit
-# throughout:
-#   consequences -- acts that executed (audit:
-#                   permit_consumed records)
+# Compared multisets, defined once and used for the kernel
+# audit throughout. Multiplicity is load-bearing, not a
+# refinement: distinct audited events that share one intent
+# hash are DISTINCT attempts -- a bare evaluation's
+# decision, a rejected permit, and a denied decision for
+# the same intent are three events, not one -- so a claim
+# discloses the audit only by accounting for each hash's
+# full count. Under a set construction, a claim
+# could disclose a hash once and silently absorb every
+# other attempt recorded under it; that collapse is the
+# same shape as the class itself (a record standing in for
+# acts it does not enumerate), and step 7 pins its refusal.
+#   consequences -- acts that executed, counted per
+#                   permit_consumed record
 #   attempts     -- acts that did NOT execute and must be
-#                   disclosed (audit: permit_rejected
-#                   records, plus decision records with
-#                   outcome require_approval / deny)
+#                   disclosed, counted per permit_rejected
+#                   record and per decision record with
+#                   outcome require_approval / deny
 # Authorization-side records (approval_verified, allow
 # decisions) are the authority's own trail, not entry
 # acts, and are excluded by design. This reconciliation is
@@ -285,28 +303,55 @@ def _events(kernel: GovernanceKernel, name: str) -> list[dict]:
 # no more.
 
 
-def audited_sets(audit: list[dict]) -> tuple[set[str], set[str]]:
-    consequences: set[str] = set()
-    attempts: set[str] = set()
+def audited_sets(audit: list[dict]) -> tuple[Counter, Counter]:
+    consequences: Counter = Counter()
+    attempts: Counter = Counter()
     for record in audit:
         payload = record.get("payload") or {}
         intent_hash = payload.get("intent_hash")
         if intent_hash is None:
             continue
         if record["event"] == "permit_consumed":
-            consequences.add(intent_hash)
+            consequences[intent_hash] += 1
         elif record["event"] == "permit_rejected":
-            attempts.add(intent_hash)
+            attempts[intent_hash] += 1
         elif record["event"] == "decision" and payload.get("outcome") in {
             "require_approval",
             "deny",
         }:
-            attempts.add(intent_hash)
+            attempts[intent_hash] += 1
     return consequences, attempts
+
+
+def _multiplicity(value) -> Counter:
+    """The multiplicity a claim discloses for one category.
+
+    A mapping (hash -> count) states counts directly; any
+    other iterable of hashes counts its occurrences, so a
+    plain set discloses each hash exactly once -- which is
+    precisely the under-disclosure the multiset comparison
+    exists to catch when the audit holds more than one
+    distinct attempt under the same hash.
+    """
+    if value is None:
+        return Counter()
+    if isinstance(value, dict):
+        return Counter(
+            {key: int(count) for key, count in value.items() if count}
+        )
+    return Counter(value)
 
 
 @dataclass(frozen=True)
 class ClaimReconciliation:
+    # Each field names the intent hashes at which the
+    # claim's disclosed multiplicity diverges from the
+    # audit's in that direction: undisclosed / missing
+    # (the audit holds more than the claim accounts for),
+    # unbacked / phantom (the claim asserts more than the
+    # audit holds). A hash appears when ANY event under
+    # it is unaccounted for, not only when it is absent
+    # outright.
     ok: bool
     undisclosed_attempts: frozenset[str]
     unbacked_consequences: frozenset[str]
@@ -326,12 +371,28 @@ def reconcile_against_audit(kernel: GovernanceKernel, claim: dict) -> ClaimRecon
     except Exception:
         audit_valid = False
     consequences, attempts = audited_sets(kernel.audit)
-    claimed_consequences = set(claim.get("consequences", ()))
-    claimed_attempts = set(claim.get("attempts", ()))
-    undisclosed = frozenset(attempts - claimed_attempts)
-    unbacked = frozenset(claimed_consequences - consequences)
-    missing = frozenset(consequences - claimed_consequences)
-    phantom = frozenset(claimed_attempts - attempts)
+    claimed_consequences = _multiplicity(claim.get("consequences"))
+    claimed_attempts = _multiplicity(claim.get("attempts"))
+    undisclosed = frozenset(
+        intent_hash
+        for intent_hash, count in attempts.items()
+        if claimed_attempts[intent_hash] < count
+    )
+    unbacked = frozenset(
+        intent_hash
+        for intent_hash, count in claimed_consequences.items()
+        if count > consequences[intent_hash]
+    )
+    missing = frozenset(
+        intent_hash
+        for intent_hash, count in consequences.items()
+        if claimed_consequences[intent_hash] < count
+    )
+    phantom = frozenset(
+        intent_hash
+        for intent_hash, count in claimed_attempts.items()
+        if count > attempts[intent_hash]
+    )
     ok = audit_valid and not (undisclosed or unbacked or missing or phantom)
     return ClaimReconciliation(
         ok=ok,
@@ -354,6 +415,7 @@ class PortalConsentDefaultIncidentScenarioTests(unittest.TestCase):
         *,
         verifier: HmacTestVerifier | None = None,
         clock_now: int = NOW,
+        state: InMemoryKernelState | None = None,
     ) -> GovernanceKernel:
         verifier = self.verifier if verifier is None else verifier
         policy = Policy(
@@ -367,6 +429,7 @@ class PortalConsentDefaultIncidentScenarioTests(unittest.TestCase):
             secret=b"unit-test-secret",
             approval_verifier=verifier,
             clock=lambda: clock_now,
+            state=state,
         )
 
     def _issue_permit(
@@ -670,41 +733,66 @@ class PortalConsentDefaultIncidentScenarioTests(unittest.TestCase):
         self.assertFalse(self.executor.execute(self.kernel, permit, APPOINTMENT_INTENT))
         self.assertTrue(self.kernel.verify_audit())
 
-    # -- step 5: migration carries the state, not the authority ---------------
+    # -- step 5: migration carries state; it manufactures nothing -------------
     #
-    # The class's systems change hands: the portal's data
-    # -- including the standing record -- is copied into a
-    # new system of record. Everything the old system
-    # *stored* arrives. The question the step answers is
-    # whether anything the old system stored was ever
-    # authority, and whether authority issued in the old
-    # system spends in the new one. It does not: state
-    # carried over is not authority carried over.
+    # The class's systems change hands, in two shapes
+    # that must not be conflated:
+    #
+    # (i) A FAITHFUL migration: the new system is built
+    # over the old system's canonical state backend,
+    # carried across intact, with the same policy, the
+    # same enrolled resident authority, and the same
+    # deployment secret. What the kernel issued, it still
+    # honors -- that continuity is what makes the
+    # migration faithful. The question is whether the
+    # portal record, copied across with the portal's own
+    # data, gains anything from the move. It does not: it
+    # was never in the canonical state as an issuance,
+    # and carrying the state that exists does not add it.
+    #
+    # (ii) A LEDGER-DISCARDING replacement: a new system
+    # with a fresh, empty state. There the old system's
+    # unspent permit refuses -- but the refusal proves
+    # only that discarding the authority ledger drops its
+    # issuance rows. A state reset is not evidence about
+    # migration. The two shapes are asserted separately,
+    # for exactly what each proves.
 
     def test_step5_migration_carryover_still_refuses(self) -> None:
+        # The old system, on an explicit state backend so
+        # the backend itself can be carried across.
+        state = InMemoryKernelState()
+        old = self._kernel(state=state)
+        old_executor = UnitEntryExecutor()
         # A genuine permit issued in the old system, for
         # the legitimate appointment.
         old_permit = self._issue_permit(
-            self.kernel,
+            old,
             APPOINTMENT_INTENT,
             approval_id="approval-pre-migration",
             nonce="nonce-pre-migration",
         )
-        # The migrated system: a fresh kernel with the
-        # same policy, the same enrolled resident
-        # authority, and the same deployment secret -- the
-        # migration was faithful. Its state contains only
-        # what it issues itself.
-        migrated = self._kernel()
+        # (i) The faithful migration: a new kernel over
+        # the SAME carried backend -- same policy, same
+        # enrolled resident authority, same deployment
+        # secret. Everything the old system canonically
+        # stored arrives, because it never left.
+        migrated = self._kernel(state=state)
         migrated_executor = UnitEntryExecutor()
         # (a) The standing record, copied across with the
-        # rest of the portal's data, presented as a permit
-        # in the new system: refused exactly as in the old
-        # -- copying the field did not mint an issuance.
+        # portal's data, presented as a permit in the new
+        # system: refused exactly as in the old -- the
+        # record is not in the carried state as an
+        # issuance, and carrying the state does not add it.
         self.assertFalse(
             migrated_executor.execute(migrated, PORTAL_RECORD, UNSCHEDULED_INTENT)
         )
-        rejected = _events(migrated, "permit_rejected")
+        rejected = [
+            record
+            for record in _events(migrated, "permit_rejected")
+            if record["payload"]["intent_hash"]
+            == migrated.intent_hash(UNSCHEDULED_INTENT)
+        ]
         self.assertEqual(1, len(rejected))
         self.assertEqual("permit_signature_invalid", rejected[0]["payload"]["reason"])
         # (b) The record offered as an approval signature
@@ -720,31 +808,30 @@ class PortalConsentDefaultIncidentScenarioTests(unittest.TestCase):
         self.assertEqual(
             ("deny", "approval_signature_invalid"), (decision.outcome, decision.reason)
         )
-        # (c) Even the genuine permit from the old system
-        # does not spend in the new one: its token is
-        # well-formed and its signature genuine, but no
-        # issuance row stands behind it in this system of
-        # record, and consume re-checks the row. The
-        # refusal is recorded against the intent with no
-        # signature-failure reason -- a state absence, not
-        # a forgery.
+        # (c) The genuine permit, under the same faithful
+        # migration, DOES spend -- exactly once, and the
+        # replay of it refuses. That is the honest
+        # contrast, asserted rather than smoothed over: a
+        # faithful migration carries authority the kernel
+        # actually issued, because the issuance row is
+        # part of the state carried. What migration cannot
+        # carry is authority the record never had. The
+        # dividing line is issued-vs-recorded, not
+        # old-system-vs-new.
+        self.assertTrue(
+            migrated_executor.execute(migrated, old_permit, APPOINTMENT_INTENT)
+        )
         self.assertFalse(
             migrated_executor.execute(migrated, old_permit, APPOINTMENT_INTENT)
         )
-        rejected = [
-            record
-            for record in _events(migrated, "permit_rejected")
-            if record["payload"]["intent_hash"]
-            == migrated.intent_hash(APPOINTMENT_INTENT)
-        ]
-        self.assertEqual(1, len(rejected))
-        self.assertIsNone(rejected[0]["payload"].get("reason"))
-        self.assertEqual([], migrated_executor.effects)
-        # (d) The refusals are about provenance, not a
-        # dead system: the migrated system's own genuine
-        # flow works end to end -- the resident approves
-        # the appointment in the new system, and the entry
-        # executes exactly once.
+        self.assertEqual(
+            [("enter_unit", "dwelling:unit")], migrated_executor.effects
+        )
+        # (d) The migrated system also mints under a fresh
+        # approval: the resident approves the appointment
+        # in the new system, and the entry executes exactly
+        # once. The migration is a live system, not a
+        # museum of the old one.
         new_permit = self._issue_permit(
             migrated,
             APPOINTMENT_INTENT,
@@ -755,15 +842,48 @@ class PortalConsentDefaultIncidentScenarioTests(unittest.TestCase):
             migrated_executor.execute(migrated, new_permit, APPOINTMENT_INTENT)
         )
         self.assertEqual(
-            [("enter_unit", "dwelling:unit")], migrated_executor.effects
+            [("enter_unit", "dwelling:unit")] * 2, migrated_executor.effects
         )
-        # And the old system's permit still spends in the
-        # old system, where its issuance row lives: the
-        # migration changed which system holds the state,
-        # not what the grant was.
-        self.assertTrue(self.executor.execute(self.kernel, old_permit, APPOINTMENT_INTENT))
+        # (ii) The ledger-discarding replacement: a new
+        # kernel with a fresh, empty state -- same policy,
+        # same authority, same secret, but the canonical
+        # state was NOT carried. A second genuine permit
+        # from the old system, unspent, does not spend
+        # here: no issuance row stands behind it in this
+        # system, and consume re-checks the row. The
+        # refusal is recorded against the intent with no
+        # signature-failure reason -- a state absence, not
+        # a forgery. What this shape proves is only that
+        # discarding the ledger drops unspent issuance
+        # rows; it is asserted as a reset, not as evidence
+        # about faithful migration.
+        stranded_permit = self._issue_permit(
+            old,
+            APPOINTMENT_INTENT,
+            approval_id="approval-pre-migration-2",
+            nonce="nonce-pre-migration-2",
+        )
+        reset = self._kernel()
+        reset_executor = UnitEntryExecutor()
+        self.assertFalse(
+            reset_executor.execute(reset, stranded_permit, APPOINTMENT_INTENT)
+        )
+        rejected = [
+            record
+            for record in _events(reset, "permit_rejected")
+            if record["payload"]["intent_hash"] == reset.intent_hash(APPOINTMENT_INTENT)
+        ]
+        self.assertEqual(1, len(rejected))
+        self.assertIsNone(rejected[0]["payload"].get("reason"))
+        self.assertEqual([], reset_executor.effects)
+        # And the stranded permit still spends in the old
+        # system, where its issuance row lives: the
+        # replacement changed which system holds the
+        # state, not what the grant was.
+        self.assertTrue(old_executor.execute(old, stranded_permit, APPOINTMENT_INTENT))
         self.assertTrue(migrated.verify_audit())
-        self.assertTrue(self.kernel.verify_audit())
+        self.assertTrue(old.verify_audit())
+        self.assertTrue(reset.verify_audit())
 
     # -- step 6: the incident channel sees the attempts ----------------------
     #
@@ -934,7 +1054,18 @@ class PortalConsentDefaultIncidentScenarioTests(unittest.TestCase):
         consequences, attempts = audited_sets(self.kernel.audit)
         appointment_hash = self.kernel.intent_hash(APPOINTMENT_INTENT)
         unscheduled_hash = self.kernel.intent_hash(UNSCHEDULED_INTENT)
-        self.assertEqual({appointment_hash}, consequences)
+        self.assertEqual(Counter({appointment_hash: 1}), consequences)
+        # Attempts are a multiset: the appointment intent
+        # carries THREE distinct audited attempt events --
+        # the bare evaluation's require_approval decision,
+        # the record spent as a permit (permit_rejected),
+        # and the denied decision that accompanies the
+        # rejected approval -- not one. Collapsing them to
+        # a set would let a claim disclose the hash once
+        # and silently absorb the other two.
+        self.assertEqual(
+            Counter({appointment_hash: 3, unscheduled_hash: 1}), attempts
+        )
         self.assertIn(unscheduled_hash, attempts)
         self.assertNotIn(unscheduled_hash, consequences)
 
@@ -976,6 +1107,25 @@ class PortalConsentDefaultIncidentScenarioTests(unittest.TestCase):
         result = reconcile_against_audit(self.kernel, quiet_claim)
         self.assertFalse(result.ok)
         self.assertEqual(frozenset(attempts), result.undisclosed_attempts)
+
+        # And a claim that discloses the appointment hash
+        # ONCE -- the set-shaped claim -- does NOT
+        # reconcile either: three distinct audited attempts
+        # stand under that hash, and disclosing it once
+        # accounts for one of them. The other two are
+        # undisclosed, by count. Under a set construction
+        # this claim reconciled; the multiset exists to
+        # close exactly that collapse.
+        once_claim = {
+            "consequences": {appointment_hash: 1},
+            "attempts": {appointment_hash: 1, unscheduled_hash: 1},
+        }
+        result = reconcile_against_audit(self.kernel, once_claim)
+        self.assertFalse(result.ok)
+        self.assertEqual(
+            frozenset({appointment_hash}), result.undisclosed_attempts
+        )
+        self.assertEqual(frozenset(), result.phantom_attempts)
         self.assertTrue(self.kernel.verify_audit())
 
     # -- negative control ----------------------------------------------------
