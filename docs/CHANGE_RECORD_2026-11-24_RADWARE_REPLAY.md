@@ -523,3 +523,37 @@ checkpoint-plus-lesson full suite 1114 OK
 (skipped=25) -- identical to the post-fix head, no
 negative transfer. Sections 4 and 8 above state
 the post-fix counts.
+
+## 10. Second pass (2026-11-25): PR-body reconciliation and re-verification
+
+The Codex P2 thread remained unresolved after the
+section 9 fix (the reviewer resolves after
+re-review; the fix author does not self-resolve).
+A second pass over the live PR on 2026-11-25 found
+the section 9 code fix in place at head `eb78304`
+and re-verified it by execution in a fresh
+worktree: scenario 8/8; full suite 1114 OK
+(skipped=25) -- identical to the section 9
+numbers.
+
+One artifact still asserted the pre-fix evidence:
+the PR body. It stated the incident-channel result
+as "0 incidents, 9 near-misses (5
+`permit_rejected`, ...)" -- the counts from before
+the fix -- and its no-permit bullet did not state
+that the dispatch attempt is presented to the
+kernel with the never-issued sentinel and refused
+by the kernel at consume. The scenario code and
+this record (sections 4, 8, 9) already stated the
+post-fix counts; the body did not.
+
+This pass corrects the PR body explicitly (the
+correction is noted in the body itself, not made
+silently): the channel counts now read 10
+near-misses (6 `permit_rejected`, 2
+`approval_rejected`, 2 denied decisions), and the
+no-permit bullet states the kernel routing. No
+test or production code changes in this pass; no
+claim is weakened -- the body's claims are brought
+up to the evidence the code already produces.
+`authority_effect=none`.
