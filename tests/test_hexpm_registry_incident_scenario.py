@@ -145,6 +145,7 @@ from __future__ import annotations
 
 import hmac
 import unittest
+from collections import Counter
 from dataclasses import dataclass, replace
 
 from pulpo import (
@@ -257,14 +258,25 @@ def _events(kernel: GovernanceKernel, name: str) -> list[dict]:
 
 # -- test-level reconciliation against the kernel audit --------------------
 #
-# Compared sets, defined once and used for the kernel audit
-# throughout:
+# Compared occurrence counts (multisets), defined once and
+# used for the kernel audit throughout:
 #   consequences -- acts that executed (audit:
 #                   permit_consumed records)
 #   attempts     -- acts that did NOT execute and must be
 #                   disclosed (audit: permit_rejected
 #                   records, plus decision records with
 #                   outcome require_approval / deny)
+# Counts, not mere presence: the incident fired the same
+# forged shape 69 times in 13 minutes, and a maintainer may
+# legitimately publish more than once under separately
+# issued permits, so an intent attempted three times, or
+# executed twice, contributes that many occurrences, and a
+# claim reconciles only if it reports the same count for
+# every hash. A presence-only (set) comparison would
+# collapse repeats to one and let a claim underreport
+# repeated activity while still returning ok -- the failure
+# the Codex review of this module identified, and the one
+# step 6b pins shut.
 # Authorization-side records (approval_verified, allow
 # decisions) are the authority's own trail, not registry
 # acts, and are excluded by design. This reconciliation is
@@ -282,39 +294,39 @@ def _events(kernel: GovernanceKernel, name: str) -> list[dict]:
 # record, and no more.
 
 
-def audited_sets(audit: list[dict]) -> tuple[set[str], set[str]]:
-    consequences: set[str] = set()
-    attempts: set[str] = set()
+def audited_counts(audit: list[dict]) -> tuple[Counter, Counter]:
+    consequences: Counter = Counter()
+    attempts: Counter = Counter()
     for record in audit:
         payload = record.get("payload") or {}
         intent_hash = payload.get("intent_hash")
         if intent_hash is None:
             continue
         if record["event"] == "permit_consumed":
-            consequences.add(intent_hash)
+            consequences[intent_hash] += 1
         elif record["event"] == "permit_rejected":
-            attempts.add(intent_hash)
+            attempts[intent_hash] += 1
         elif record["event"] == "decision" and payload.get("outcome") in {
             "require_approval",
             "deny",
         }:
-            attempts.add(intent_hash)
+            attempts[intent_hash] += 1
     return consequences, attempts
 
 
 @dataclass(frozen=True)
 class ClaimReconciliation:
     ok: bool
-    undisclosed_attempts: frozenset[str]
-    unbacked_consequences: frozenset[str]
-    missing_consequences: frozenset[str]
-    phantom_attempts: frozenset[str]
+    undisclosed_attempts: frozenset[str]  # in the record, missing or undercounted in the claim
+    unbacked_consequences: frozenset[str]  # claimed beyond the record's executed count
+    missing_consequences: frozenset[str]  # executed per the record, missing or undercounted in the claim
+    phantom_attempts: frozenset[str]  # claimed as attempted beyond the record's count
     audit_valid: bool = True
 
 
 def reconcile_against_audit(kernel: GovernanceKernel, claim: dict) -> ClaimReconciliation:
     # Fail closed: reconciliation must verify the audit chain
-    # FIRST. Deriving sets from an invalid chain would accept
+    # FIRST. Deriving counts from an invalid chain would accept
     # fabricated provenance -- the exact gap (unlogged reads
     # that cannot be ruled out) this scenario exists to close
     # for the governed path.
@@ -322,13 +334,33 @@ def reconcile_against_audit(kernel: GovernanceKernel, claim: dict) -> ClaimRecon
         audit_valid = kernel.verify_audit()
     except Exception:
         audit_valid = False
-    consequences, attempts = audited_sets(kernel.audit)
-    claimed_consequences = set(claim.get("consequences", ()))
-    claimed_attempts = set(claim.get("attempts", ()))
-    undisclosed = frozenset(attempts - claimed_attempts)
-    unbacked = frozenset(claimed_consequences - consequences)
-    missing = frozenset(consequences - claimed_consequences)
-    phantom = frozenset(claimed_attempts - attempts)
+    consequences, attempts = audited_counts(kernel.audit)
+    # The claim's lists carry multiplicity by repetition: a hash
+    # listed twice claims two occurrences. Compare counts per
+    # hash, so a claim that lists a repeated hash only once
+    # underreports it and fails.
+    claimed_consequences = Counter(claim.get("consequences", ()))
+    claimed_attempts = Counter(claim.get("attempts", ()))
+    undisclosed = frozenset(
+        intent_hash
+        for intent_hash, count in attempts.items()
+        if claimed_attempts[intent_hash] < count
+    )
+    unbacked = frozenset(
+        intent_hash
+        for intent_hash, count in claimed_consequences.items()
+        if consequences[intent_hash] < count
+    )
+    missing = frozenset(
+        intent_hash
+        for intent_hash, count in consequences.items()
+        if claimed_consequences[intent_hash] < count
+    )
+    phantom = frozenset(
+        intent_hash
+        for intent_hash, count in claimed_attempts.items()
+        if attempts[intent_hash] < count
+    )
     ok = audit_valid and not (undisclosed or unbacked or missing or phantom)
     return ClaimReconciliation(
         ok=ok,
@@ -782,10 +814,10 @@ class HexpmRegistryIncidentScenarioTests(unittest.TestCase):
             [("publish_release", "hexpm:package/maintainer-own")], self.executor.effects
         )
         self.assertEqual(1, len(_events(self.kernel, "permit_consumed")))
-        consequences, attempts = audited_sets(self.kernel.audit)
+        consequences, attempts = audited_counts(self.kernel.audit)
         legit_hash = self.kernel.intent_hash(LEGIT_INTENT)
         target_hash = self.kernel.intent_hash(TARGET_INTENT)
-        self.assertEqual({legit_hash}, consequences)
+        self.assertEqual({legit_hash: 1}, dict(consequences))
         self.assertIn(target_hash, attempts)
         self.assertNotIn(target_hash, consequences)
 
@@ -793,7 +825,10 @@ class HexpmRegistryIncidentScenarioTests(unittest.TestCase):
         # every attempt disclosed -- reconciles exactly:
         # no divergence between the claimed canonical
         # state and the audit.
-        honest_claim = {"consequences": consequences, "attempts": attempts}
+        honest_claim = {
+            "consequences": sorted(consequences.elements()),
+            "attempts": sorted(attempts.elements()),
+        }
         result = reconcile_against_audit(self.kernel, honest_claim)
         self.assertTrue(result.ok)
         self.assertTrue(result.audit_valid)
@@ -807,8 +842,8 @@ class HexpmRegistryIncidentScenarioTests(unittest.TestCase):
         # support) -- does NOT reconcile: the consequence
         # is unbacked by any consumed permit.
         inflated_claim = {
-            "consequences": {legit_hash, target_hash},
-            "attempts": attempts,
+            "consequences": [legit_hash, target_hash],
+            "attempts": sorted(attempts.elements()),
         }
         result = reconcile_against_audit(self.kernel, inflated_claim)
         self.assertFalse(result.ok)
@@ -817,10 +852,97 @@ class HexpmRegistryIncidentScenarioTests(unittest.TestCase):
         # And a claim that omits the attempts -- the
         # attack never happened, on paper -- does NOT
         # reconcile either: the attempts are undisclosed.
-        quiet_claim = {"consequences": {legit_hash}, "attempts": set()}
+        quiet_claim = {"consequences": [legit_hash], "attempts": []}
         result = reconcile_against_audit(self.kernel, quiet_claim)
         self.assertFalse(result.ok)
         self.assertEqual(frozenset(attempts), result.undisclosed_attempts)
+        self.assertTrue(self.kernel.verify_audit())
+
+    # -- step 6b: reconciliation preserves multiplicity -----------------------
+    #
+    # The incident did not strike once: the same forged
+    # shape arrived 69 times in 13 minutes, and a maintainer
+    # may legitimately publish more than once under
+    # separately issued permits. Reconciliation must
+    # therefore compare occurrence counts, not mere
+    # presence: a claim that lists a thrice-attempted intent
+    # once, or a twice-executed publish once, underreports
+    # the record and must fail -- in both directions, on
+    # exactly the underreported hashes.
+
+    def test_step6b_reconciliation_preserves_multiplicity(self) -> None:
+        # The governed record: the forged struct presented
+        # as a permit three times (3 rejections, one hash),
+        # and the legitimate publish executed twice under
+        # two separately issued permits (2 consumptions,
+        # one hash).
+        for _ in range(3):
+            self.assertFalse(
+                self.executor.execute(self.kernel, FORGED_STRUCT, TARGET_INTENT)
+            )
+        for i in (1, 2):
+            permit = self._issue_permit(
+                self.kernel,
+                LEGIT_INTENT,
+                approval_id=f"approval-rec6b-{i}",
+                nonce=f"nonce-rec6b-{i}",
+            )
+            self.assertTrue(self.executor.execute(self.kernel, permit, LEGIT_INTENT))
+        self.assertEqual(
+            [("publish_release", "hexpm:package/maintainer-own")] * 2,
+            self.executor.effects,
+        )
+
+        legit_hash = self.kernel.intent_hash(LEGIT_INTENT)
+        target_hash = self.kernel.intent_hash(TARGET_INTENT)
+        consequences, attempts = audited_counts(self.kernel.audit)
+        self.assertEqual({legit_hash: 2}, dict(consequences))
+        self.assertEqual({target_hash: 3}, dict(attempts))
+
+        # A claim collapsing each hash to a single listing
+        # -- the presence-only history -- does NOT
+        # reconcile: it underreports both the attempts and
+        # the executions, flagged on exactly those hashes.
+        collapsed_claim = {"consequences": [legit_hash], "attempts": [target_hash]}
+        result = reconcile_against_audit(self.kernel, collapsed_claim)
+        self.assertFalse(result.ok)
+        self.assertTrue(result.audit_valid)
+        self.assertEqual(frozenset({target_hash}), result.undisclosed_attempts)
+        self.assertEqual(frozenset({legit_hash}), result.missing_consequences)
+        self.assertEqual(frozenset(), result.unbacked_consequences)
+        self.assertEqual(frozenset(), result.phantom_attempts)
+
+        # The same history with multiplicity reported
+        # honestly -- each hash listed once per occurrence
+        # -- reconciles exactly.
+        honest_claim = {
+            "consequences": [legit_hash, legit_hash],
+            "attempts": [target_hash, target_hash, target_hash],
+        }
+        result = reconcile_against_audit(self.kernel, honest_claim)
+        self.assertTrue(result.ok)
+        self.assertEqual(frozenset(), result.undisclosed_attempts)
+        self.assertEqual(frozenset(), result.unbacked_consequences)
+        self.assertEqual(frozenset(), result.missing_consequences)
+        self.assertEqual(frozenset(), result.phantom_attempts)
+
+        # Overreporting fails too, in each direction on its
+        # own hash: a fourth claimed attempt is a phantom,
+        # a third claimed execution is unbacked.
+        padded_attempts = {
+            "consequences": [legit_hash, legit_hash],
+            "attempts": [target_hash] * 4,
+        }
+        result = reconcile_against_audit(self.kernel, padded_attempts)
+        self.assertFalse(result.ok)
+        self.assertEqual(frozenset({target_hash}), result.phantom_attempts)
+        padded_consequences = {
+            "consequences": [legit_hash] * 3,
+            "attempts": [target_hash] * 3,
+        }
+        result = reconcile_against_audit(self.kernel, padded_consequences)
+        self.assertFalse(result.ok)
+        self.assertEqual(frozenset({legit_hash}), result.unbacked_consequences)
         self.assertTrue(self.kernel.verify_audit())
 
     # -- negative control ----------------------------------------------------
