@@ -392,3 +392,65 @@ Results (Verified — executed at both states):
 The evidence is therefore valid at the checkpoint and at
 the worktree head; reuse of the lesson at a later commit
 still requires re-evaluation there.
+
+## 9. Fix pass — 2026-11-25 (Codex review of PR #390)
+
+Review finding (Codex, P2, on
+`tests/test_polinrider_incident_scenario.py`):
+"Preserve event multiplicity during reconciliation." The
+step-6 reconciliation derived **sets** of intent hashes
+from the audit and converted the claimed values to sets
+as well, collapsing every occurrence of a hash to one. A
+claimed history listing a hash once therefore reconciled
+successfully even when the audit held further attempts —
+or further executions under separately issued permits —
+for that same hash: the claim could underreport repeated
+activity while returning `ok=True`. The finding is
+correct, and it is the forgery class this replay exists
+to expose, pointed at the replay's own checker.
+
+Change (test module only; no production code, no claim
+narrowed — the reconciliation claim is strengthened, and
+the prior presence-only limitation is recorded here
+rather than smoothed over):
+
+- `audited_sets` is replaced by `audited_counts`: the
+  audit side now yields occurrence counts (multisets) per
+  intent hash for consequences and attempts alike.
+- `reconcile_against_audit` counts the claim's lists the
+  same way (a hash listed twice claims two occurrences)
+  and flags a hash in each direction whenever the counts
+  diverge: underreported attempts are
+  `undisclosed_attempts`, underreported executions are
+  `missing_consequences`, and overreported claims are
+  `phantom_attempts` / `unbacked_consequences`. `ok`
+  requires exact count equality for every hash, on top of
+  the unchanged fail-closed audit-chain verification.
+- New step 6b pins the behavior: the payload attempted
+  three times on the channel route (3 rejections, one
+  hash) and the approved build executed twice under two
+  separately issued permits (2 consumptions, one hash). A
+  claim collapsing each hash to a single listing fails on
+  exactly the two underreported hashes; the same history
+  with multiplicity reported honestly reconciles exactly;
+  overreporting fails in each direction on its own hash.
+  Step 6's assertions were updated to the count form
+  (each count 1) without weakening.
+
+Evidence (Verified, executed at the fix-pass head):
+
+- Scenario: **10/10 pass** (was 9/9 at head `6db6767`;
+  the delta is exactly step 6b).
+- Full suite at the fix-pass head: **1099 tests, OK
+  (skipped=25)** — one more than the 1098 recorded in §4
+  for the original head, the delta again exactly the new
+  test.
+- Temporal replay of the fix, per §8's method: a clean
+  worktree reconstructed at exactly `5297d1c` with the
+  updated module copied in (the only delta) passes the
+  scenario identically, 10/10; the checkpoint worktree
+  was removed afterward. The multiplicity comparison is a
+  property of this branch's test-level helper over the
+  public audit read path; no kernel behavior is exercised
+  differently at the two states, and consequential
+  authority is unchanged (`authority_effect=none`).

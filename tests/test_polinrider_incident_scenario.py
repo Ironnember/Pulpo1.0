@@ -66,6 +66,9 @@ the attacker's rewritten history claims a clean record
 kernel, and no attempts at all), and reconciliation against
 the audit flags both directions of the forgery -- attempts
 the history hides, and a consequence the history invents.
+Reconciliation compares occurrence counts per intent hash,
+not mere presence, so a history cannot pass by listing a
+repeated act once (step 6b).
 
 Incident-channel surfacing (Verified at this commit, by
 executable probe and by the channel's derivation rules):
@@ -119,6 +122,7 @@ ledger), never audit growth.
 
 from __future__ import annotations
 
+from collections import Counter
 from dataclasses import dataclass
 import unittest
 
@@ -284,11 +288,19 @@ def _events(kernel: GovernanceKernel, name: str) -> list[dict]:
 
 # -- test-level reconciliation ------------------------------------------------
 #
-# Compared sets, defined once and used for the kernel audit throughout:
+# Compared occurrence counts (multisets), defined once and used for the
+# kernel audit throughout:
 #   consequences  — steps that executed (audit: permit_consumed records)
 #   attempts      — runner steps that did NOT execute and must be disclosed
 #                   (audit: permit_rejected records, plus decision records
 #                   with outcome require_approval / deny)
+# Counts, not mere presence: an intent attempted three times, or executed
+# twice under separately issued permits, contributes that many occurrences,
+# and a claim reconciles only if it reports the same count for every hash.
+# A presence-only (set) comparison would collapse repeats to one and let a
+# claim underreport repeated activity while still returning ok -- the
+# failure the Codex review of this module identified, and the one step 6b
+# pins shut.
 # Authorization-side records (approval_verified, allow decisions) are the
 # authority's own trail, not runner steps, and are excluded by design.
 # This reconciliation is TEST-LEVEL, implemented against the public
@@ -298,33 +310,33 @@ def _events(kernel: GovernanceKernel, name: str) -> list[dict]:
 # audit trail.
 
 
-def audited_sets(audit: list[dict]) -> tuple[set[str], set[str]]:
-    consequences: set[str] = set()
-    attempts: set[str] = set()
+def audited_counts(audit: list[dict]) -> tuple[Counter, Counter]:
+    consequences: Counter = Counter()
+    attempts: Counter = Counter()
     for record in audit:
         payload = record.get("payload") or {}
         intent_hash = payload.get("intent_hash")
         if intent_hash is None:
             continue
         if record["event"] == "permit_consumed":
-            consequences.add(intent_hash)
+            consequences[intent_hash] += 1
         elif record["event"] == "permit_rejected":
-            attempts.add(intent_hash)
+            attempts[intent_hash] += 1
         elif record["event"] == "decision" and payload.get("outcome") in {
             "require_approval",
             "deny",
         }:
-            attempts.add(intent_hash)
+            attempts[intent_hash] += 1
     return consequences, attempts
 
 
 @dataclass(frozen=True)
 class ClaimReconciliation:
     ok: bool
-    undisclosed_attempts: frozenset[str]  # in the record, missing from the claim
-    unbacked_consequences: frozenset[str]  # claimed, never executed per the record
-    missing_consequences: frozenset[str]  # executed per the record, missing from the claim
-    phantom_attempts: frozenset[str]  # claimed as attempted, absent from the record
+    undisclosed_attempts: frozenset[str]  # in the record, missing or undercounted in the claim
+    unbacked_consequences: frozenset[str]  # claimed beyond the record's executed count
+    missing_consequences: frozenset[str]  # executed per the record, missing or undercounted in the claim
+    phantom_attempts: frozenset[str]  # claimed as attempted beyond the record's count
     audit_valid: bool = True  # False when verify_audit() fails / the chain is invalid
 
 
@@ -336,13 +348,32 @@ def reconcile_against_audit(kernel: GovernanceKernel, claim: dict) -> ClaimRecon
         audit_valid = kernel.verify_audit()
     except Exception:
         audit_valid = False
-    consequences, attempts = audited_sets(kernel.audit)
-    claimed_consequences = set(claim.get("consequences", ()))
-    claimed_attempts = set(claim.get("attempts", ()))
-    undisclosed = frozenset(attempts - claimed_attempts)
-    unbacked = frozenset(claimed_consequences - consequences)
-    missing = frozenset(consequences - claimed_consequences)
-    phantom = frozenset(claimed_attempts - attempts)
+    consequences, attempts = audited_counts(kernel.audit)
+    # The claim's lists carry multiplicity by repetition: a hash listed
+    # twice claims two occurrences. Compare counts per hash, so a claim
+    # that lists a repeated hash only once underreports it and fails.
+    claimed_consequences = Counter(claim.get("consequences", ()))
+    claimed_attempts = Counter(claim.get("attempts", ()))
+    undisclosed = frozenset(
+        intent_hash
+        for intent_hash, count in attempts.items()
+        if claimed_attempts[intent_hash] < count
+    )
+    unbacked = frozenset(
+        intent_hash
+        for intent_hash, count in claimed_consequences.items()
+        if consequences[intent_hash] < count
+    )
+    missing = frozenset(
+        intent_hash
+        for intent_hash, count in consequences.items()
+        if claimed_consequences[intent_hash] < count
+    )
+    phantom = frozenset(
+        intent_hash
+        for intent_hash, count in claimed_attempts.items()
+        if attempts[intent_hash] < count
+    )
     ok = audit_valid and not (undisclosed or unbacked or missing or phantom)
     return ClaimReconciliation(
         ok=ok,
@@ -383,6 +414,25 @@ class PolinriderIncidentScenarioTests(unittest.TestCase):
 
     def _issue_build_permit(self, kernel: GovernanceKernel) -> str:
         envelope = signed_envelope(kernel, BUILD_INTENT, self.verifier, now_ns=NOW)
+        decision = kernel.evaluate_with_approval(BUILD_INTENT, envelope)
+        self.assertEqual(("allow", "verified_approval"), (decision.outcome, decision.reason))
+        self.assertIsNotNone(decision.permit)
+        return decision.permit  # type: ignore[return-value]
+
+    def _issue_second_build_permit(self, kernel: GovernanceKernel) -> str:
+        # A second, separately approved issuance for the same
+        # build intent, carrying its own approval_id and
+        # nonce as a second real approval would: the
+        # helper's fixed defaults would collide with the
+        # first issuance and be denied as an approval replay.
+        envelope = signed_envelope(
+            kernel,
+            BUILD_INTENT,
+            self.verifier,
+            now_ns=NOW,
+            approval_id="approval-2",
+            nonce="nonce-2",
+        )
         decision = kernel.evaluate_with_approval(BUILD_INTENT, envelope)
         self.assertEqual(("allow", "verified_approval"), (decision.outcome, decision.reason))
         self.assertIsNotNone(decision.permit)
@@ -585,9 +635,9 @@ class PolinriderIncidentScenarioTests(unittest.TestCase):
         payload_hash = self.kernel.intent_hash(PAYLOAD_INTENT)
         shell_hash = self.kernel.intent_hash(SHELL_INTENT)
         removal_hash = self.kernel.intent_hash(REMOVAL_INTENT)
-        consequences, attempts = audited_sets(self.kernel.audit)
-        self.assertEqual({build_hash}, consequences)
-        self.assertEqual({payload_hash, shell_hash}, attempts)
+        consequences, attempts = audited_counts(self.kernel.audit)
+        self.assertEqual({build_hash: 1}, dict(consequences))
+        self.assertEqual({payload_hash: 1, shell_hash: 1}, dict(attempts))
 
         # The history as the forged commits present it: the
         # clean build, a "removal" of the loader -- and
@@ -618,6 +668,87 @@ class PolinriderIncidentScenarioTests(unittest.TestCase):
         }
         honest = reconcile_against_audit(self.kernel, honest_claim)
         self.assertTrue(honest.ok)
+        self.assertTrue(self.kernel.verify_audit())
+
+    # -- step 6b: reconciliation preserves multiplicity -------------------------
+    #
+    # The wave did not strike once per repository: the same
+    # loader fired on every import, and a maintainer may
+    # legitimately run the approved build more than once
+    # under separately issued permits. Reconciliation must
+    # therefore compare occurrence counts, not mere
+    # presence: a history that lists a thrice-attempted
+    # intent once, or a twice-executed build once, is
+    # underreporting the record and must fail -- in both
+    # directions, since overreporting is the same forgery
+    # with the sign flipped.
+
+    def test_step6b_reconciliation_preserves_multiplicity(self) -> None:
+        permit = self._issue_build_permit(self.kernel)
+        second_permit = self._issue_second_build_permit(self.kernel)
+        # The payload attempted three times on the channel
+        # route: three rejections, one intent hash.
+        for _ in range(3):
+            self.assertFalse(
+                self.ledger.execute(self.kernel, CHANNEL_TOKEN, PAYLOAD_INTENT)
+            )
+        # The approved build executed twice, once under each
+        # separately issued permit: two consumptions, one
+        # intent hash.
+        self.assertTrue(self.ledger.execute(self.kernel, permit, BUILD_INTENT))
+        self.assertTrue(self.ledger.execute(self.kernel, second_permit, BUILD_INTENT))
+        self.assertEqual(
+            [("execute_process", BUILD_RESOURCE)] * 2, self.ledger.effects
+        )
+
+        build_hash = self.kernel.intent_hash(BUILD_INTENT)
+        payload_hash = self.kernel.intent_hash(PAYLOAD_INTENT)
+        consequences, attempts = audited_counts(self.kernel.audit)
+        self.assertEqual({build_hash: 2}, dict(consequences))
+        self.assertEqual({payload_hash: 3}, dict(attempts))
+
+        # A history that collapses each repeated hash to a
+        # single listing underreports both the attempts and
+        # the consequences, and fails on exactly those two
+        # hashes.
+        collapsed_claim = {
+            "consequences": [build_hash],
+            "attempts": [payload_hash],
+        }
+        collapsed = reconcile_against_audit(self.kernel, collapsed_claim)
+        self.assertFalse(collapsed.ok)
+        self.assertTrue(collapsed.audit_valid)
+        self.assertEqual({payload_hash}, set(collapsed.undisclosed_attempts))
+        self.assertEqual({build_hash}, set(collapsed.missing_consequences))
+        self.assertEqual(frozenset(), collapsed.unbacked_consequences)
+        self.assertEqual(frozenset(), collapsed.phantom_attempts)
+
+        # The same history with multiplicity reported
+        # honestly -- each hash listed once per occurrence --
+        # reconciles exactly.
+        full_claim = {
+            "consequences": [build_hash, build_hash],
+            "attempts": [payload_hash, payload_hash, payload_hash],
+        }
+        self.assertTrue(reconcile_against_audit(self.kernel, full_claim).ok)
+
+        # Overreporting is forgery too: a fourth claimed
+        # attempt is phantom, a third claimed execution is
+        # unbacked, and each fails on its own hash.
+        inflated_attempts = {
+            "consequences": [build_hash, build_hash],
+            "attempts": [payload_hash] * 4,
+        }
+        inflated_a = reconcile_against_audit(self.kernel, inflated_attempts)
+        self.assertFalse(inflated_a.ok)
+        self.assertEqual({payload_hash}, set(inflated_a.phantom_attempts))
+        inflated_consequences = {
+            "consequences": [build_hash] * 3,
+            "attempts": [payload_hash] * 3,
+        }
+        inflated_c = reconcile_against_audit(self.kernel, inflated_consequences)
+        self.assertFalse(inflated_c.ok)
+        self.assertEqual({build_hash}, set(inflated_c.unbacked_consequences))
         self.assertTrue(self.kernel.verify_audit())
 
     # -- step 7: the incident channel sees the wave ------------------------------
