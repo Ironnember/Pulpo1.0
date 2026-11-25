@@ -528,3 +528,78 @@ consequential authority is unchanged at both states
 (`authority_effect=none`). The Codex thread is left
 open for the reviewer to resolve on re-review; this
 pass does not resolve it.
+
+## 10. Fix pass 2 — 2026-11-25 (multiplicity pass: `executed_mints` overwrite)
+
+A dedicated multiplicity sweep of the replay suite
+characterized a second counting defect in this module,
+distinct from §9's release-presentation duplicate: the
+dispatcher's governed-execution record,
+`executed_mints`, is keyed by `mint_id`, and a second
+governed mint reusing an executed ID overwrote the
+recorded backing. Reproduced before the fix at head
+`d28f05a`: two governed mints under one ID — 100 via
+lock-a, 250 via lock-b, each under its own permit — both
+execute; the effects log holds both (true total 350),
+but `executed_mints` keeps only the last write
+(`{"mint-x": 250}`). A release against the first mint's
+true value (100) is refused `backing_amount_mismatch`;
+a release of the true total (350) is refused; only the
+surviving entry's amount reconciles. The failure
+direction is conservative for value — a release can
+never exceed the single surviving entry, so the
+overwrite cannot inflate a release — but it corrupts
+the accounting: one real mint's backing record is
+destroyed and its legitimate release becomes
+impossible. The defect is in this scenario's dispatcher
+stand-in, not the kernel: no `executed_mints` symbol
+exists in `pulpo/`.
+
+Change (test module only; no production code, no claim
+narrowed):
+
+- `dispatch_mint` now refuses a `mint_id` that has
+  already executed — `mint_already_executed`, recorded
+  in the reconciliation log — as its first gate, before
+  the backing check and before any consume. An entry in
+  `executed_mints` is therefore never overwritten, and
+  the refusal spends nothing: the second lock stays
+  unspent, its permit unconsumed, and the mint still
+  executes under its own identifier. Summing under one
+  ID was considered and rejected: it would silently
+  merge two distinct executions under one identity and
+  let a release draw against their sum — the identity
+  collapse this pass exists to hunt.
+- New step 6c pins the behavior end-to-end: the reused
+  ID is refused with the log entry; the first mint's
+  backing record is intact (`{"mint-x": 100}`); a
+  release of the combined 350 is a mismatch against the
+  one governed mint; a release of exactly 100
+  reconciles; the refused mint then executes under its
+  own ID.
+
+Evidence (Verified, executed at the fix-pass head):
+
+- Scenario: **13/13 pass** (was 12/12 at head
+  `d28f05a`; the delta is exactly step 6c). The pre-fix
+  reproduction now refuses the second dispatch and
+  admits the first mint's release at its true value.
+- Full suite at the fix-pass head: **1102 tests ran, OK
+  (skipped=13)** in this environment; the pristine
+  `d28f05a` head measured in the same environment at
+  **1101 ran, OK (skipped=13)** — the delta is again
+  exactly the new test. (Skip counts are
+  environment-dependent; the +1 test delta is not.)
+- Temporal replay of the fix, per §8's method: a clean
+  worktree reconstructed at exactly `5297d1c` with the
+  updated module copied in (the only delta) passes the
+  scenario identically, 13/13; the full suite at
+  checkpoint-plus-lesson is **1102 ran, OK
+  (skipped=13)**, identical to the fix-pass head. The
+  refusal is a property of this branch's test-level
+  dispatcher; the kernel bindings it composes with are
+  unchanged, and consequential authority is unchanged
+  (`authority_effect=none`). The Codex thread from §9
+  and this pass's findings are left open for the
+  reviewers on re-review; this pass does not resolve
+  them.

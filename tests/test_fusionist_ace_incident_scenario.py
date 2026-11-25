@@ -278,7 +278,10 @@ class BridgeDispatcher:
         # Governed executions only: mint_id -> amount. A
         # mint that never executed through this path is
         # not in this map, which is what a release's
-        # backing is checked against.
+        # backing is checked against. One governed
+        # execution per mint_id: dispatch refuses an ID
+        # that has already executed, so an entry in this
+        # map is never overwritten.
         self.executed_mints: dict[str, int] = {}
         self._release_spent_mints: set[str] = set()
         self._released_presentations: set[str] = set()
@@ -333,7 +336,19 @@ class BridgeDispatcher:
         target: str,
     ) -> bool:
         intent = _mint_intent(lock_id, amount, target)
-        refusal = self._mint_refusal(lock_id, amount, target)
+        # Identity before backing: a mint_id names ONE
+        # governed execution. A second dispatch reusing an
+        # executed ID would overwrite the recorded backing
+        # (executed_mints is keyed by ID), silently
+        # destroying the first mint's backing record while
+        # both mints stand in the effects log. Refused at
+        # reconciliation, before any consume: identity
+        # reuse is not a second mint under this ID.
+        refusal = (
+            "mint_already_executed"
+            if mint_id in self.executed_mints
+            else self._mint_refusal(lock_id, amount, target)
+        )
         if refusal is not None:
             self.reconciliation_log.append(("mint", mint_id, refusal))
             return False
@@ -952,6 +967,115 @@ class FusionistAceIncidentScenarioTests(unittest.TestCase):
             self.dispatcher.effects,
         )
         self.assertEqual(2, len(_events(self.kernel, "permit_consumed")))
+        self.assertTrue(self.kernel.verify_audit())
+
+    def test_step6c_reused_mint_id_refused_backing_record_intact(self) -> None:
+        # Two genuine source locks, two genuine permits --
+        # and the second mint presented under the FIRST
+        # mint's identifier. Executed naively, both mints
+        # stand in the effects log (100 + 250 = 350 minted)
+        # while the backing record, keyed by mint_id, keeps
+        # only the last write (250): the first mint's
+        # backing is destroyed, a release of the true total
+        # no longer reconciles, and only the surviving
+        # entry's amount does. Identity reuse is refused at
+        # reconciliation instead, before any consume.
+        self.ledger.record_lock("lock-a", 100, TARGET_A)
+        self.ledger.record_lock("lock-b", 250, TARGET_A)
+        intent_a = _mint_intent("lock-a", 100, TARGET_A)
+        permit_a = self._issue_permit(
+            self.kernel, intent_a, approval_id="approval-a", nonce="nonce-a"
+        )
+        self.assertTrue(
+            self.dispatcher.dispatch_mint(
+                self.kernel,
+                permit_a,
+                mint_id="mint-x",
+                lock_id="lock-a",
+                amount=100,
+                target=TARGET_A,
+            )
+        )
+        intent_b = _mint_intent("lock-b", 250, TARGET_A)
+        permit_b = self._issue_permit(
+            self.kernel, intent_b, approval_id="approval-b", nonce="nonce-b"
+        )
+        self.assertFalse(
+            self.dispatcher.dispatch_mint(
+                self.kernel,
+                permit_b,
+                mint_id="mint-x",
+                lock_id="lock-b",
+                amount=250,
+                target=TARGET_A,
+            )
+        )
+        self.assertEqual(
+            ("mint", "mint-x", "mint_already_executed"),
+            self.dispatcher.reconciliation_log[-1],
+        )
+        # The first mint's backing record is intact, and it
+        # is the only mint effect.
+        self.assertEqual({"mint-x": 100}, self.dispatcher.executed_mints)
+        self.assertEqual([("mint", intent_a.resource)], self.dispatcher.effects)
+        # A release of the combined 350 the reused ID tried
+        # to manufacture is a mismatch against the one
+        # governed mint; a release of exactly the first
+        # mint's amount reconciles.
+        total_intent = _release_intent("pres-total", 350, RESERVE_TARGET)
+        total_permit = self._issue_permit(
+            self.kernel,
+            total_intent,
+            approval_id="approval-release-total",
+            nonce="nonce-release-total",
+        )
+        self.assertFalse(
+            self.dispatcher.dispatch_release(
+                self.kernel,
+                total_permit,
+                presentation_id="pres-total",
+                mint_ids=["mint-x"],
+                amount=350,
+                target=RESERVE_TARGET,
+            )
+        )
+        self.assertEqual(
+            ("release", "pres-total", "backing_amount_mismatch"),
+            self.dispatcher.reconciliation_log[-1],
+        )
+        exact_intent = _release_intent("pres-exact", 100, RESERVE_TARGET)
+        exact_permit = self._issue_permit(
+            self.kernel,
+            exact_intent,
+            approval_id="approval-release-exact",
+            nonce="nonce-release-exact",
+        )
+        self.assertTrue(
+            self.dispatcher.dispatch_release(
+                self.kernel,
+                exact_permit,
+                presentation_id="pres-exact",
+                mint_ids=["mint-x"],
+                amount=100,
+                target=RESERVE_TARGET,
+            )
+        )
+        # The refusal spent nothing: lock-b was never spent
+        # and its permit never consumed, so the second mint
+        # still executes under its OWN identifier.
+        self.assertTrue(
+            self.dispatcher.dispatch_mint(
+                self.kernel,
+                permit_b,
+                mint_id="mint-y",
+                lock_id="lock-b",
+                amount=250,
+                target=TARGET_A,
+            )
+        )
+        self.assertEqual(
+            {"mint-x": 100, "mint-y": 250}, self.dispatcher.executed_mints
+        )
         self.assertTrue(self.kernel.verify_audit())
 
     # -- step 7: forged and mismatched approvals ----------------------------
