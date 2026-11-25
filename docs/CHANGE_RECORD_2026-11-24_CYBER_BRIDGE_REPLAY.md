@@ -480,3 +480,83 @@ Results (Verified — executed at both states):
   both states and are recorded, not smoothed over.
   Reuse of the lesson at a later commit requires
   re-evaluation there in any case.
+
+## 9. Review fix pass — 2026-11-25 (Codex P2: make source reconciliation and spending atomic)
+
+Finding (Recorded — Codex review thread on
+`tests/test_cyber_bridge_incident_scenario.py`,
+2026-11-24, P2): when two valid permits exist for the
+same source message and dispatches run concurrently,
+both calls could observe the source record as unspent,
+both consume their distinct permits, and both append
+the destination effect before either observed the spent
+state — so the sequential replay test did not
+substantiate the claimed exactly-once behavior. The
+reviewer asked for the source record to be reserved or
+spent atomically with dispatch, rolled back if permit
+consumption fails.
+
+Defect reproduced at the pre-fix head `6ff58c3`
+(Verified — executed): two permits for message 329
+dispatched concurrently through a barrier-wrapped
+kernel that forces the two consumes to overlap returned
+`[True, True]`, the dispatcher's effects contained
+message 329 twice, and the audit held two
+`permit_consumed` records. The reviewer's reproduction
+claim was exact.
+
+Fix (test-harness only; no production code touched;
+`authority_effect=none`): `BridgeDispatcher.dispatch`
+now holds a dispatch lock across the whole
+reconcile -> reserve -> consume -> record sequence,
+reserves the source record (`mark_spent`) before the
+permit is presented to the kernel, and rolls the
+reservation back (`SourceLedger.mark_unspent`,
+dispatcher-only, called only under the lock) if the
+consume fails. Two new scenario tests (step 7) pin the
+governed shape:
+
+- Concurrent dispatches of one source record execute
+  once: two distinct valid permits for message 329,
+  dispatched on two threads through a
+  rendezvous-wrapped kernel, yield exactly one success
+  and one effect; the losing dispatch is refused at
+  reconciliation (`source_record_spent`) and never
+  reaches consume — its permit is neither consumed nor
+  rejected, because the gate, not the kernel, turned it
+  away (one `permit_consumed`, zero `permit_rejected`).
+- A failed consume rolls the reservation back: message
+  329 dispatched under message 328's permit reconciles,
+  reserves, and is rejected at consume on the intent
+  binding; the record is unspent afterward, and the
+  genuine dispatch under 329's own permit still
+  executes exactly once. A denial is not a lockout.
+
+Evidence (Verified — executed at the fix head,
+2026-11-25): scenario 10/10; full suite 1099 OK
+(skipped=25) — the delta over the pre-fix head's 1097
+OK (skipped=25) is exactly the two step-7 tests. The
+standalone reproduction re-run against the fixed
+dispatcher returns `[False, True]`, one effect, one
+`permit_consumed`.
+
+Boundary the fix does not prove: the atomicity is
+established for ONE dispatcher instance mediating every
+execution against its ledger — a single dispatch
+boundary, in-process. Two independent dispatcher
+processes sharing a ledger would need the reservation
+itself to live in the shared store; nothing here proves
+that shape, and the scenario and PR language scope the
+exactly-once claim accordingly. Claim classification:
+kernel behavior unchanged and **Verified** as in §6; the
+concurrency behavior of the harness dispatcher is
+**Verified** at the fix head by the step-7 tests; the
+multi-process boundary above is stated, not claimed.
+
+Temporal transfer: no separate checkpoint replay was
+run for this fix pass. The artifact changed is this
+branch's own harness, which does not exist at the base
+checkpoint `5297d1c`, so a checkpoint comparison of the
+fixed harness is not constructible; this is recorded
+explicitly rather than manufactured (per AGENTS.md).
+The §8 replay stands for the unchanged kernel paths.

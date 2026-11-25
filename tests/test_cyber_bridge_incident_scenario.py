@@ -59,11 +59,19 @@ source record whose sequence does not exceed the
 reconciled counter and that matches the presented
 message exactly (sequence, amount, recipient) and is
 unspent. A sequence beyond the counter is refused by
-construction -- there is no record it could match. Only
-after reconciliation does the dispatcher present the
-permit to ``GovernanceKernel.consume``, and only a
-successful consume records a consequence (and spends
-the source record). The forged messages are then
+construction -- there is no record it could match. The
+reconcile-check and the spend are atomic with respect
+to concurrent dispatches through this dispatcher: the
+dispatcher holds its dispatch lock across the whole
+reconcile -> reserve -> consume -> record sequence,
+reserves the source record before presenting the
+permit to ``GovernanceKernel.consume``, and rolls the
+reservation back if the consume fails -- so two valid
+permits for the same message, dispatched concurrently,
+cannot both observe the record unspent and execute it
+twice, and a failed consume neither spends the record
+nor locks it against the message's genuine permit.
+Only a successful consume records a consequence. The forged messages are then
 attempted on every route: at the gated dispatcher with
 no permit and with a genuine permit; and at the kernel
 directly -- with no permit, with the message's own valid
@@ -74,7 +82,15 @@ and mismatched approval envelopes. The governed path
 must refuse each one, and the legitimate path -- a
 message matching its source record exactly, under a
 single-use permit bound to that exact act -- must
-execute exactly once.
+execute exactly once, sequentially and under concurrent
+dispatch alike (step 7). The atomicity the scenario
+proves is scoped to this one dispatch boundary: a
+single dispatcher instance mediating every execution
+against its ledger. Two independent dispatchers sharing
+a ledger across processes would need the reservation
+itself to live in the shared store; that shape is
+outside this evidence, and the scenario claims nothing
+about it.
 
 Distinction from the Fusionist ACE replay (built the
 same day from the same scan): there, the bridge's OWN
@@ -160,6 +176,7 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import threading
 import unittest
 from dataclasses import dataclass
 
@@ -311,6 +328,14 @@ class SourceLedger:
     def mark_spent(self, seq: int) -> None:
         self._records[seq][2] = True
 
+    def mark_unspent(self, seq: int) -> None:
+        # Release a reservation the dispatcher took before
+        # presenting a permit whose consume then failed.
+        # Only the dispatcher calls this, and only while
+        # holding its dispatch lock, so a release can never
+        # un-spend a record whose execution was recorded.
+        self._records[seq][2] = False
+
 
 class BridgeDispatcher:
     """Consequences on the destination side, reachable only via reconciliation + consume.
@@ -321,8 +346,16 @@ class BridgeDispatcher:
     execution request must name a source record that
     exists, matches it exactly, and is unspent. Only then
     is the permit presented to the kernel, and only a
-    successful consume records an effect (and spends the
-    source record). A reconciliation refusal is recorded
+    successful consume records an effect. The check and
+    the spend are atomic: the dispatcher holds its
+    dispatch lock across reconcile, reservation, consume,
+    and effect recording, reserves the source record
+    before the permit is presented, and rolls the
+    reservation back if the consume fails. Two permits
+    for the same message therefore cannot both pass the
+    unspent check under concurrency (step 7), and a
+    failed consume leaves the record unspent rather than
+    locked (step 7). A reconciliation refusal is recorded
     in this dispatcher's own log and touches the kernel
     not at all -- the module docstring classifies that
     growth separately, and step 6 pins it.
@@ -332,6 +365,7 @@ class BridgeDispatcher:
         self.ledger = ledger
         self.effects: list[tuple[int, int, str]] = []
         self.reconciliation_log: list[tuple[int, str]] = []
+        self._dispatch_lock = threading.Lock()
 
     def reconcile(self, message: BridgeMessage) -> str | None:
         """None if the message reconciles; otherwise the refusal reason."""
@@ -350,17 +384,30 @@ class BridgeDispatcher:
     def dispatch(
         self, kernel: GovernanceKernel, permit: str | None, message: BridgeMessage
     ) -> bool:
-        reason = self.reconcile(message)
-        if reason is not None:
-            self.reconciliation_log.append((message.seq, reason))
-            return False
-        if permit is None:
-            return False
-        if not kernel.consume(permit, _intent_for(message)):
-            return False
-        self.ledger.mark_spent(message.seq)
-        self.effects.append((message.seq, message.amount, message.recipient))
-        return True
+        # The lock is held across the whole sequence so
+        # the reconcile-check, the reservation, the
+        # consume, and the effect recording are one atomic
+        # step with respect to any other dispatch through
+        # this dispatcher: no second dispatch can observe
+        # this message's source record between the check
+        # and the spend.
+        with self._dispatch_lock:
+            reason = self.reconcile(message)
+            if reason is not None:
+                self.reconciliation_log.append((message.seq, reason))
+                return False
+            if permit is None:
+                return False
+            # Reserve the source record before the permit
+            # is presented; roll the reservation back if
+            # consumption fails, so a denied consume is
+            # neither a spend nor a lockout of the record.
+            self.ledger.mark_spent(message.seq)
+            if not kernel.consume(permit, _intent_for(message)):
+                self.ledger.mark_unspent(message.seq)
+                return False
+            self.effects.append((message.seq, message.amount, message.recipient))
+            return True
 
 
 class _AttestationOnlyExecutor:
@@ -427,6 +474,33 @@ class _UnguardedConsumeKernel(GovernanceKernel):
         return self._state.consume_permit(
             permit, self.intent_hash(intent), self._clock()
         )
+
+
+class _RendezvousConsumeKernel:
+    """Timing double wrapping the real kernel, for step 7.
+
+    The first consume call waits at a two-party barrier
+    for a second concurrent consume call, so if two
+    racing dispatches both reach the spend path, both are
+    inside it at once and both permits spend -- the race
+    is forced to overlap rather than left to scheduler
+    luck. If only one dispatch reaches consume (the
+    governed shape), the barrier times out and that
+    single consume proceeds alone. Every decision is
+    still made by the wrapped real kernel; the wrapper
+    controls nothing but timing.
+    """
+
+    def __init__(self, kernel: GovernanceKernel) -> None:
+        self._kernel = kernel
+        self._barrier = threading.Barrier(2)
+
+    def consume(self, permit: str, intent: Intent) -> bool:
+        try:
+            self._barrier.wait(timeout=1.0)
+        except threading.BrokenBarrierError:
+            pass
+        return self._kernel.consume(permit, intent)
 
 
 def _events(kernel: GovernanceKernel, name: str) -> list[dict]:
@@ -893,6 +967,99 @@ class CyberBridgeIncidentScenarioTests(unittest.TestCase):
             },
             detail_counts,
         )
+        self.assertTrue(self.kernel.verify_audit())
+
+    # -- step 7: concurrent dispatch and reservation rollback -----------------
+    #
+    # The sequential tests above pin exactly-once for
+    # replayed presentations. Exactly-once must also hold
+    # when the presentations are concurrent: two distinct
+    # valid permits for the same source message, dispatched
+    # at the same time, are two approvals of the same act,
+    # not two acts. Before the fix pass this scenario's
+    # dispatcher checked the record's spent flag, consumed,
+    # and only then marked the record spent, so both
+    # dispatches could observe the record unspent and both
+    # execute -- reproduced at the pre-fix head with a
+    # barrier-wrapped kernel: both dispatches returned
+    # True and message 329 appeared twice in the effects.
+    # These two tests pin the governed shape: the spend is
+    # atomic with the check, and a failed consume rolls
+    # its reservation back.
+
+    def test_step7_concurrent_dispatches_of_one_source_record_execute_once(self) -> None:
+        permit_a = self._issue_permit(
+            self.kernel, INTENT_329, approval_id="approval-329-a", nonce="nonce-329-a"
+        )
+        permit_b = self._issue_permit(
+            self.kernel, INTENT_329, approval_id="approval-329-b", nonce="nonce-329-b"
+        )
+        # The rendezvous wrapper forces any two consumes
+        # that both reach the spend path to overlap inside
+        # it: on the unfixed dispatcher both permits spend
+        # and the message executes twice.
+        racing_kernel = _RendezvousConsumeKernel(self.kernel)
+        results: list[bool] = []
+        threads = [
+            threading.Thread(
+                target=lambda p=p: results.append(
+                    self.dispatcher.dispatch(racing_kernel, p, SEND_329)
+                )
+            )
+            for p in (permit_a, permit_b)
+        ]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join()
+        # Exactly one dispatch executes the message. The
+        # loser is refused at reconciliation -- by the time
+        # it can look, the source record is spent -- and
+        # never reaches consume at all: its permit is
+        # neither consumed nor rejected, because the gate,
+        # not the kernel, turned it away.
+        self.assertEqual([False, True], sorted(results))
+        self.assertEqual(
+            [(329, 500_000, "solana-recipient-c")], self.dispatcher.effects
+        )
+        self.assertEqual(
+            [(329, "source_record_spent")], self.dispatcher.reconciliation_log
+        )
+        self.assertEqual(1, len(_events(self.kernel, "permit_consumed")))
+        self.assertEqual(0, len(_events(self.kernel, "permit_rejected")))
+        self.assertTrue(self.kernel.verify_audit())
+
+    def test_step7_failed_consume_rolls_back_the_source_reservation(self) -> None:
+        permit_328 = self._issue_permit(
+            self.kernel,
+            _intent_for(SEND_328),
+            approval_id="approval-328-r",
+            nonce="nonce-328-r",
+        )
+        permit_329 = self._issue_permit(
+            self.kernel, INTENT_329, approval_id="approval-329-r", nonce="nonce-329-r"
+        )
+        # Message 329 reconciles, so the dispatcher
+        # reserves its source record and presents the
+        # permit -- the wrong message's permit, which
+        # consume rejects on the intent binding. The
+        # reservation must roll back: a failed consume is
+        # a denial, not a spend, and not a lockout of the
+        # record against the message's genuine permit.
+        self.assertFalse(self.dispatcher.dispatch(self.kernel, permit_328, SEND_329))
+        self.assertEqual([], self.dispatcher.effects)
+        self.assertEqual([], self.dispatcher.reconciliation_log)
+        self.assertEqual(
+            (500_000, "solana-recipient-c", False), self.ledger.lookup(329)
+        )
+        self.assertEqual(1, len(_events(self.kernel, "permit_rejected")))
+        # The true message still executes under its own
+        # permit, exactly once.
+        self.assertTrue(self.dispatcher.dispatch(self.kernel, permit_329, SEND_329))
+        self.assertEqual(
+            [(329, 500_000, "solana-recipient-c")], self.dispatcher.effects
+        )
+        self.assertEqual(1, len(_events(self.kernel, "permit_consumed")))
         self.assertTrue(self.kernel.verify_audit())
 
     # -- negative control ------------------------------------------------------
