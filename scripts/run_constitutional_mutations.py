@@ -139,11 +139,63 @@ MUTATIONS: tuple[Mutation, ...] = (
         # Phase 2, Item 4: the kernel's consume-time expiry check is the
         # control that refuses a dormant or stolen permit after its TTL.
         # Weakening it must be detected by the token-v2 tests.
+        # Anchor note (Lease port PR 1, 2026-11-22): the bare line
+        # 'if now_ns >= expires_at_ns:' now appears twice in kernel.py --
+        # the lease consume path enforces the same signed expiry with the
+        # same line. The anchor therefore carries the permit-only comment
+        # line that follows it so it stays unique; the lease occurrence
+        # has its own mutation below.
         "permit_expiry_check_removed",
         "pulpo/kernel.py",
-        'if now_ns >= expires_at_ns:',
-        'if False and now_ns >= expires_at_ns:',
+        'if now_ns >= expires_at_ns:\n            # Token v2 (Phase 2, Item 4): the signed expiry is enforced',
+        'if False and now_ns >= expires_at_ns:\n            # Token v2 (Phase 2, Item 4): the signed expiry is enforced',
         ("tests.test_permit_ttl.ExpiryEnforcementTests.test_expired_permit_refused_at_consume_with_recorded_reason",),
+    ),
+    Mutation(
+        # Lease port PR 1 (2026-11-22): the lease consume path enforces
+        # the signed expiry at the kernel layer before the store is
+        # consulted, exactly as the permit path does -- an expired lease
+        # fails closed into its journaled safe fallback. Weakening that
+        # check must be detected by the lease acceptance tests.
+        "lease_expiry_check_removed",
+        "pulpo/kernel.py",
+        'if now_ns >= expires_at_ns:\n            self._append_lease_rejection(lease_digest, lease.intent_hash, command.sequence, "lease_expired")',
+        'if False and now_ns >= expires_at_ns:\n            self._append_lease_rejection(lease_digest, lease.intent_hash, command.sequence, "lease_expired")',
+        ("tests.test_canonical_lease.LeaseAcceptanceTests.test_4_expired_lease_fails_and_journals_the_fallback",),
+    ),
+    Mutation(
+        # Codex P1 fix on PR #383: lease issuance through the approval
+        # path must verify the envelope against the lease approval
+        # hash (every authority-bearing claim), not the bare intent
+        # hash. Reverting to the intent hash must be detected by the
+        # approval-binding tests.
+        "lease_approval_claims_binding_removed",
+        "pulpo/kernel.py",
+        "            approval_digest=approval_digest,",
+        "            approval_digest=digest,",
+        (
+            "tests.test_canonical_lease.LeaseApprovalBindingTests.test_each_altered_claim_under_a_genuine_approval_is_refused",
+            "tests.test_canonical_lease.LeaseIssuanceTests.test_approval_action_mints_only_through_the_approval_path",
+        ),
+    ),
+    Mutation(
+        # Codex P2 fix on PR #383: the in-memory store's own consume
+        # transition enforces the signed sequence floor, so a direct
+        # store call cannot record consumption below it.
+        "lease_store_floor_check_removed_inmemory",
+        "pulpo/state.py",
+        "elif sequence < entry.sequence_floor:",
+        "elif False and sequence < entry.sequence_floor:",
+        ("tests.test_canonical_lease.LeaseStoreFloorTests.test_inmemory_store_rejects_first_consume_below_floor",),
+    ),
+    Mutation(
+        # Codex P2 fix on PR #383: the same floor enforcement on the
+        # SQLite backend's consume transition.
+        "lease_store_floor_check_removed_sqlite",
+        "pulpo/state.py",
+        "elif sequence < sequence_floor:",
+        "elif False and sequence < sequence_floor:",
+        ("tests.test_canonical_lease.LeaseStoreFloorTests.test_sqlite_store_rejects_first_consume_below_floor",),
     ),
     Mutation(
         # Phase 2, Item 4: the state layer's recorded-expiry re-check is
@@ -248,6 +300,124 @@ MUTATIONS: tuple[Mutation, ...] = (
         (
             "tests.test_capability_facade.HonestFacadeFlowTests.test_kernel_verb_outcome_memory_refuses_self_asserted_payloads",
             "tests.test_capability_facade.HonestFacadeFlowTests.test_forged_outcome_memory_is_not_returned_by_latest",
+        ),
+    ),
+    Mutation(
+        # Kernel build item #2: the projection's denial record call is
+        # what makes a directive-scope denial visible to the canonical
+        # audit. Removing it must be detected by the item #2 tests.
+        "projection_denial_record_removed",
+        "pulpo/directives.py",
+        '        self.kernel.record_directive_denial(\n            intent,',
+        '        None and self.kernel.record_directive_denial(\n            intent,',
+        (
+            "tests.test_projection_denial_audit.ProjectionDenialRecordTests.test_unknown_directive_denial_is_recorded_with_fixed_schema",
+            "tests.test_projection_denial_audit.ProjectionDenialRecordTests.test_mandate_failures_are_recorded",
+        ),
+    ),
+    Mutation(
+        # PR #372 Codex P1 fix: the incident channel's near-miss
+        # classification of directive_denial is what makes a recorded
+        # projection denial visible in a frozen incident report.
+        # Dropping the event from the set must be detected.
+        "incident_channel_directive_denial_unclassified",
+        "pulpo/incident_channel.py",
+        '_AUDIT_NEAR_MISS_EVENTS = frozenset({"purchase_revalidation_failed", "permit_rejected", "approval_rejected", "directive_denial"})',
+        '_AUDIT_NEAR_MISS_EVENTS = frozenset({"purchase_revalidation_failed", "permit_rejected", "approval_rejected"})',
+        (
+            "tests.test_incident_channel.IncidentChannelAuditFeedTests.test_directive_denial_audit_event_is_a_near_miss",
+            "tests.test_projection_denial_audit.ProjectionDenialIncidentReportTests.test_unknown_directive_denial_is_a_near_miss_in_the_report",
+        ),
+    ),
+    Mutation(
+        # PR #372 Codex P2 fix: the denial verb's trusted-time
+        # resolution is what keeps an unavailable clock from breaking
+        # the fail-closed Decision. Restoring the raw clock read must
+        # be detected by the clock-posture tests.
+        "directive_denial_clock_unchecked",
+        "pulpo/kernel.py",
+        "        trusted_time = self._trusted_now()\n        record_time = 0 if trusted_time is None else trusted_time",
+        "        record_time = self._clock()",
+        (
+            "tests.test_projection_denial_audit.ProjectionDenialClockPostureTests.test_raising_clock_unknown_directive_still_denies_and_records",
+            "tests.test_projection_denial_audit.ProjectionDenialClockPostureTests.test_none_clock_records_zero_timestamp_in_memory",
+            "tests.test_projection_denial_audit.ProjectionDenialClockPostureTests.test_unavailable_clock_records_zero_timestamp_in_sqlite",
+        ),
+    ),
+    Mutation(
+        # Phase 3, Item 3B: the service boundary's request MAC is the
+        # authentication control — a request that does not authenticate
+        # must never reach a verb. Weakening it must be detected by the
+        # boundary tests.
+        "service_request_mac_check_removed",
+        "pulpo/service.py",
+        '            if not isinstance(claimed_mac, str) or not hmac.compare_digest(claimed_mac, expected):\n                raise ServiceRefusal("request_mac_invalid")',
+        '            if False and (not isinstance(claimed_mac, str) or not hmac.compare_digest(claimed_mac, expected)):\n                raise ServiceRefusal("request_mac_invalid")',
+        (
+            "tests.test_service_boundary.AdversarialBoundaryTests.test_wrong_secret_and_tampered_args_refused_without_state_change",
+        ),
+    ),
+    Mutation(
+        # Phase 3, Item 3B: the nonce replay check is what makes a
+        # captured request frame single-use at the protocol layer, on
+        # top of the kernel's own permit single-use.
+        "service_replay_check_removed",
+        "pulpo/service.py",
+        '                if nonce in self._seen_nonces:\n                    raise ServiceRefusal("request_replayed")',
+        '                if False and nonce in self._seen_nonces:\n                    raise ServiceRefusal("request_replayed")',
+        (
+            "tests.test_service_boundary.AdversarialBoundaryTests.test_replayed_request_refused",
+        ),
+    ),
+    Mutation(
+        # Phase 3, Item 3B: request freshness — an expired request must
+        # fail closed before any verb runs.
+        "service_expiry_check_removed",
+        "pulpo/service.py",
+        '            if expires <= now_ns:\n                raise ServiceRefusal("request_expired")',
+        '            if False and expires <= now_ns:\n                raise ServiceRefusal("request_expired")',
+        (
+            "tests.test_service_boundary.AdversarialBoundaryTests.test_expired_and_not_yet_valid_requests_refused",
+        ),
+    ),
+    Mutation(
+        # Phase 3, Item 3B: the client verifies the response MAC
+        # before trusting any result; a tampered response must be
+        # refused, never consumed.
+        "service_response_mac_check_removed",
+        "pulpo/service.py",
+        '        if not isinstance(claimed_mac, str) or not hmac.compare_digest(claimed_mac, expected):\n            raise ServiceRefusal("response_mac_invalid")',
+        '        if False and (not isinstance(claimed_mac, str) or not hmac.compare_digest(claimed_mac, expected)):\n            raise ServiceRefusal("response_mac_invalid")',
+        (
+            "tests.test_service_boundary.AdversarialBoundaryTests.test_response_tampering_detected_by_client",
+        ),
+    ),
+    Mutation(
+        # Codex P1 fix on PR #371: the principal-binding check is what
+        # stops a credential holder from acting for a principal
+        # outside its configured set — the MAC authenticates the
+        # credential, this check binds it to its principals.
+        # Weakening it must be detected by the boundary tests.
+        "service_principal_binding_check_removed",
+        "pulpo/service.py",
+        '                if not claimed_principals <= bound_principals:\n                    raise ServiceRefusal("request_principal_not_bound")',
+        '                if False and not claimed_principals <= bound_principals:\n                    raise ServiceRefusal("request_principal_not_bound")',
+        (
+            "tests.test_service_boundary.CredentialBindingTests.test_credential_cannot_act_for_unbound_principal",
+            "tests.test_service_boundary.CredentialBindingTests.test_second_credential_cannot_spend_first_principals_permit",
+        ),
+    ),
+    Mutation(
+        # Phase 3, Item 4B: the consume-side presenter gate is what
+        # makes a bound permit unspendable by a token thief. Removing
+        # it must be detected by the presenter-binding tests.
+        "presenter_binding_check_removed",
+        "pulpo/kernel.py",
+        "        refusal = self._presenter_refusal(claims, digest, permit, presenter, presenter_proof)",
+        "        refusal = None and self._presenter_refusal(claims, digest, permit, presenter, presenter_proof)",
+        (
+            "tests.test_presenter_binding.BoundConsumeTests.test_wrong_presenter_refused_and_permit_not_burned",
+            "tests.test_presenter_binding.BoundConsumeTests.test_missing_proof_refused_and_permit_not_burned",
         ),
     ),
 )
