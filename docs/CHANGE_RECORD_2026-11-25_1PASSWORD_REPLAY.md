@@ -57,17 +57,22 @@ account is fully controlled by an attacker.
 Failure addressed: **a trusted account is not an
 authorization to deploy.** This is a trusted-path
 execution failure: code was pushed to production
-backend services and executed because it arrived
-through a trusted channel — a genuine corporate
-account on the corporate code host. The channel's
-trust WAS the authorization: a push from the right
-account deployed, with no per-action authorization
+backend services and executed after arriving through
+a trusted channel — a genuine corporate account on
+the corporate code host. What the post establishes
+(Recorded) is the push and its consequences. The
+deployment pipeline's authorization mechanism is
+not described in the post: that the channel's trust
+was itself the authorization — a push from the right
+account deploying with no per-action authorization
 by a named accountable human bound to the exact
-change. Account identity answered "who pushed";
-nothing answered "was THIS change, exactly, approved
-by the human accountable for it" — and under full
-account compromise the first answer is the
-attacker's to give. The governing invariants are
+change — is **Inferred**, and it is the model this
+scenario tests (classified in §6). On that model,
+account identity answered "who pushed"; nothing
+answered "was THIS change, exactly, approved by the
+human accountable for it" — and under full account
+compromise the first answer is the attacker's to
+give. The governing invariants are
 the fail-closed rule of AGENTS.md (unknown,
 malformed, untrusted, expired, replayed, or
 unavailable authority fails closed through the
@@ -107,7 +112,10 @@ and adds no writer, route, ledger, executor, or
 state backend. The scenario's `DeployExecutor` is a
 test harness: it records a consequence only after a
 successful kernel consume and holds no canonical
-state. The incident-channel freeze is asserted
+state. (At the §9 fix-pass head the executor also
+derives the artifact identity from the presented
+bytes before consume — a harness-local comparison
+against the intent's bound hash; it writes nothing.) The incident-channel freeze is asserted
 read-only in the scenario itself (audit length
 unchanged across the freeze). Audit growth is
 classified in the module docstring per AGENTS.md
@@ -149,14 +157,25 @@ Scenario module
   signal identical, only the change different), is
   denied (`approval_intent_mismatch`); the genuine
   pair still admits afterward.
-- step 3: the genuine approval presented for the
+- step 3: the substitution in both of its forms.
+  Declared: the genuine approval presented for the
   reviewed commit identifier carrying the attacker's
   substituted content hash is denied
   (`approval_intent_mismatch`) — the label a reviewer
-  saw, with content no reviewer saw; a check that
-  consults the account, the repository, or the
-  commit label passes it, the exact binding does
-  not.
+  saw, with content no reviewer saw. Undeclared: the
+  approved intent itself, with its genuine permit,
+  but the attacker's bytes handed to the deployer —
+  every declared signal genuine, only the content
+  false — is refused at the consequence boundary:
+  the executor derives the artifact identity from
+  the actual bytes (SHA-256) and compares it against
+  the content hash bound in the intent, refusing
+  before any permit is consumed. The refusal spends
+  nothing: the genuine bytes then deploy under the
+  same permit, exactly once. (This form was added in
+  the §9 fix pass; at the original head the executor
+  trusted the intent's declared resource string and
+  this catch did not exist.)
 - step 4: an approval envelope for the attacker's
   change signed with an unauthorized (attacker) key
   is denied (`approval_signature_invalid`). Whoever
@@ -191,12 +210,13 @@ Scenario module
   near-miss records. The counts are from the executed
   run at this head, not estimates.
 - negative control: with the governed boundary
-  swapped for the incident's own rule — a test-local
-  deployer that authorizes deployment by the pushing
-  account alone, as a trusted-channel pipeline does —
-  the attacker's change DEPLOYS, and so does the
-  reviewed commit carrying substituted content,
-  while an outside account does not pass. The
+  swapped for the inferred model of the incident — a
+  test-local deployer that authorizes deployment by
+  the pushing account alone, as a trusted-channel
+  pipeline on that model does — the attacker's
+  change DEPLOYS, and so does the reviewed commit
+  carrying substituted content, while an outside
+  account does not pass. The
   double's defect is that the account is all it
   checks: it cannot tell a reviewed change from an
   attacker's change arriving through the same
@@ -268,7 +288,7 @@ Adversarial transformation review (eight passes per
   bare-evaluate and consume routes, two on the
   denied approval-envelope route — and zero
   consequences. Outside the governed path stands
-  the incident's real worst case — a pipeline that
+  the inferred model's worst case — a pipeline that
   deploys on account trust — and this replay does
   not mitigate it; it is the boundary in §5.
 - Lighten — minimum benign interpretation: employees
@@ -410,6 +430,14 @@ by silently engineering around it.
   distinct intent through the same account):
   **Inferred** — the harness's modeling choices,
   stated in the module docstring.
+- The deployment pipeline's authorization mechanism
+  (account trust alone authorizing deployment, a
+  push deploying automatically, no per-action
+  approval in the loop): **Inferred** — the post
+  does not describe the mechanism; the negative
+  control reproduces this inferred model, not a
+  verified property of 1Password's pipeline.
+  (Classified explicitly in the §9 fix pass.)
 - Any claim that this prevents the incident class
   in a deployed system: **Proposed** — not made by
   this change.
@@ -483,6 +511,57 @@ Results (Verified — executed at both states):
 The evidence is therefore valid at the checkpoint
 and at the worktree head; reuse of the lesson at a
 later commit still requires re-evaluation there.
+
+## 9. Post-review fix pass (Codex P1 + P2 on PR #404, 2026-11-25)
+
+Two Codex findings on the original head `df69a76`,
+both accepted and fixed in the scenario module and
+this record; no kernel code touched
+(`authority_effect=none` throughout).
+
+- **P1 — bind the deployed bytes, not
+  caller-supplied metadata.** At the original head
+  the `DeployExecutor` received only the caller's
+  `Intent` and recorded its declared resource
+  string, so step 3 caught only an attacker who
+  truthfully declared the substituted hash. The
+  executor now takes the actual artifact bytes,
+  derives their SHA-256 at the consequence
+  boundary, and compares it against the content
+  hash bound in the intent before consume; the
+  scenario's content hashes are now the real
+  digests of the harness byte strings, computed in
+  the module. Step 3 exercises both substitution
+  forms: the declared form (a substituted-hash
+  intent under the genuine approval —
+  `approval_intent_mismatch`, unchanged) and the
+  undeclared form (the approved intent and its
+  genuine permit presented with the attacker's
+  bytes — refused at the boundary before consume,
+  the permit unspent, the genuine bytes then
+  deploying under the same permit exactly once).
+- **P2 — classify the account-only deploy rule as
+  Inferred.** The incident post establishes the
+  push and its consequences (Recorded); it does
+  not establish that account trust was the
+  pipeline's authorization mechanism, that a push
+  deployed automatically, or that no per-action
+  approval existed. §1, §4, §6, the module
+  docstring, and the negative-control wording now
+  classify that mechanism as **Inferred** — the
+  model the scenario tests and the negative
+  control reproduces — not incident fact.
+
+Re-verification at the fix-pass head: scenario 8/8;
+full suite 1147 OK (skipped=13) in this
+environment — identical totals to the original
+head (the pass changed test internals and wording,
+added no tests), delta over the `d7b7506` baseline
+still exactly the 8 scenario tests. Temporal
+transfer re-run per §8's method: the amended
+scenario passes 8/8 at the exact base `d7b7506`,
+so the §8 transfer result stands for the amended
+module.
 
 ## Sources
 

@@ -42,16 +42,25 @@ account is fully controlled by an attacker.
 
 The failure class (trusted-path execution): code was
 pushed to production backend services and executed
-because it arrived through a trusted channel -- a
+after arriving through a trusted channel -- a
 genuine corporate account on the corporate code host.
-The channel's trust WAS the authorization: a push
-from the right account deployed, with no per-action
-authorization by a named accountable human bound to
-the exact change being deployed. Account identity
-answered "who pushed"; nothing answered "was THIS
-change, exactly, approved by the human accountable
-for it" -- and under full account compromise the
-first answer is the attacker's to give.
+What the post establishes (Recorded) is the push and
+its consequences: the actor used the compromised
+account to push malicious code to backend services,
+and the pushed code ran and downloaded data. The
+post does NOT describe the deployment pipeline's
+authorization mechanism: that the channel's trust
+was itself the authorization -- that a push from the
+right account deployed automatically, with no
+per-action authorization by a named accountable
+human bound to the exact change being deployed --
+is **Inferred**, and it is the model this scenario
+tests, not a verified property of 1Password's
+pipeline. On that model, account identity answered
+"who pushed"; nothing answered "was THIS change,
+exactly, approved by the human accountable for it"
+-- and under full account compromise the first
+answer is the attacker's to give.
 
 This module models that failure mode against the
 canonical kernel API. It does NOT reproduce
@@ -75,7 +84,13 @@ human's key, which account control does not confer.
 The only route from a push to a deployment is a
 successful ``GovernanceKernel.consume`` of a permit
 issued through a verified approval envelope for that
-exact change.
+exact change -- and the executor does not take the
+intent's declared identity on faith: it hashes the
+actual artifact bytes presented at the consequence
+boundary and compares the derived hash against the
+content hash bound in the intent, so the approved
+label presented with different bytes is refused
+before any permit is consumed.
 
 A note on the artifact identities, stated plainly
 (the wording discipline of PR #403 applied from the
@@ -182,6 +197,7 @@ consequence ledger), never audit growth.
 from __future__ import annotations
 
 from collections import Counter
+import hashlib
 import unittest
 
 from pulpo import (
@@ -209,7 +225,7 @@ SESSION = "backend-deploy-session-2026-11-19"
 # The trusted account of the incident: a genuine
 # employee corporate GitHub account. In the negative
 # control it is the ONLY thing checked -- which is
-# the incident.
+# the incident, on the inferred model.
 TRUSTED_ACCOUNT = "employee-corporate-github-account"
 
 ACTION = "deploy_backend_code"
@@ -222,8 +238,17 @@ ACTION = "deploy_backend_code"
 # any change, reviewed or malicious.
 REVIEWED_COMMIT = "3f8a1c94b7d2e6059a4f1c8b3d7e9a0b5c6d2e4f"
 MALICIOUS_COMMIT = "c41d77a02b9e83f5a6d1c0e2948b3f57a6d9e1c3"
-REVIEWED_HASH = "9be7c3d5a1f04862b8d7e3c5a9f1d4b6e8a2c7f05d3b9a1e6c4f7d2a5b8e3c6f"
-MALICIOUS_HASH = "e57a02c9d4b681f3a5c7e9d2b4f6081a3c5e7d9b2f4a6081c3e5d7f9a2b4c608"
+# The artifact byte strings themselves (harness
+# constructions). The content hashes are their real
+# SHA-256 digests, computed here -- not declared
+# strings -- so the deploy executor can derive an
+# artifact's identity from the bytes actually
+# presented at the consequence boundary instead of
+# trusting caller-supplied metadata.
+REVIEWED_ARTIFACT = b"reviewed backend change (harness bytes)"
+MALICIOUS_ARTIFACT = b"attacker backend change (harness bytes)"
+REVIEWED_HASH = hashlib.sha256(REVIEWED_ARTIFACT).hexdigest()
+MALICIOUS_HASH = hashlib.sha256(MALICIOUS_ARTIFACT).hexdigest()
 
 # The reviewed change: the one change a named
 # accountable human has reviewed and approved for
@@ -286,9 +311,10 @@ class DeployExecutor:
     """Backend deployment, reachable only via consume.
 
     This is the scenario's execution path -- the
-    dispatch boundary the incident's pipeline did not
-    have: in the incident, the trusted account's push
-    WAS the deployment path, and the code followed
+    dispatch boundary that, under the inferred model
+    of the incident, the incident's pipeline lacked:
+    on that model the trusted account's push WAS the
+    deployment path, and the code followed
     immediately. Here the harness records an effect
     only when the kernel consumes a permit for the
     exact intent. A denial is therefore directly
@@ -297,13 +323,34 @@ class DeployExecutor:
     denial itself still appends an audit record -- a
     governed effect, classified separately in the
     module docstring.)
+
+    The executor does not trust the intent's declared
+    identity. It derives the artifact identity from
+    the actual bytes presented at the consequence
+    boundary -- SHA-256 over ``artifact`` -- and
+    compares it against the content hash bound in the
+    intent's resource string. Declared metadata that
+    disagrees with the bytes is refused before any
+    permit is consumed, and the refusal spends
+    nothing: the genuine bytes can still deploy under
+    the same permit afterward.
     """
 
     def __init__(self) -> None:
         self.effects: list[tuple[str, str]] = []
 
-    def execute(self, kernel: GovernanceKernel, permit: str | None, intent: Intent) -> bool:
+    def execute(
+        self,
+        kernel: GovernanceKernel,
+        permit: str | None,
+        intent: Intent,
+        artifact: bytes,
+    ) -> bool:
         if permit is None:
+            return False
+        derived_hash = hashlib.sha256(artifact).hexdigest()
+        bound_hash = intent.resource.rsplit("sha256:", 1)[-1]
+        if derived_hash != bound_hash:
             return False
         if not kernel.consume(permit, intent):
             return False
@@ -315,13 +362,15 @@ class AccountTrustDeployer:
     """The incident's ungoverned baseline, as a test-local double.
 
     Authorizes deployment by the pushing ACCOUNT
-    alone -- the trusted-channel rule the incident ran
-    on. The change being pushed is never consulted:
-    no commit, no hash, no approval. Any change the
-    genuine corporate account pushes deploys, which is
-    why an attacker holding that account needed
-    nothing else. Test-local; never imported by
-    runtime code.
+    alone -- the trusted-channel rule of the inferred
+    model of the incident (the post does not establish
+    that account trust was the pipeline's authorization
+    mechanism; see the module docstring). The change
+    being pushed is never consulted: no commit, no
+    hash, no approval. Any change the genuine
+    corporate account pushes deploys, which is why an
+    attacker holding that account needed nothing else.
+    Test-local; never imported by runtime code.
     """
 
     def __init__(self) -> None:
@@ -386,12 +435,16 @@ class OnePasswordBackendIntrusionIncidentScenarioTests(unittest.TestCase):
         # The one legitimate act: deployment of the
         # exact reviewed change under a genuine,
         # well-formed, verified approval executes once.
-        self.assertTrue(self.executor.execute(self.kernel, permit, APPROVED_INTENT))
+        self.assertTrue(
+            self.executor.execute(self.kernel, permit, APPROVED_INTENT, REVIEWED_ARTIFACT)
+        )
         self.assertEqual([(ACTION, APPROVED_CHANGE)], self.executor.effects)
         # The same permit cannot deploy it twice -- a
         # verified approval is not a standing deploy
         # permission for the account or the pipeline.
-        self.assertFalse(self.executor.execute(self.kernel, permit, APPROVED_INTENT))
+        self.assertFalse(
+            self.executor.execute(self.kernel, permit, APPROVED_INTENT, REVIEWED_ARTIFACT)
+        )
         self.assertEqual([(ACTION, APPROVED_CHANGE)], self.executor.effects)
         self.assertEqual(1, len(_events(self.kernel, "approval_verified")))
         self.assertEqual(1, len(_events(self.kernel, "permit_consumed")))
@@ -411,7 +464,11 @@ class OnePasswordBackendIntrusionIncidentScenarioTests(unittest.TestCase):
             (decision.outcome, decision.reason),
         )
         self.assertIsNone(decision.permit)
-        self.assertFalse(self.executor.execute(self.kernel, decision.permit, MALICIOUS_INTENT))
+        self.assertFalse(
+            self.executor.execute(
+                self.kernel, decision.permit, MALICIOUS_INTENT, MALICIOUS_ARTIFACT
+            )
+        )
         self.assertEqual([], self.executor.effects)
         self.assertEqual(0, len(_events(self.kernel, "permit_consumed")))
         decisions = [
@@ -441,7 +498,11 @@ class OnePasswordBackendIntrusionIncidentScenarioTests(unittest.TestCase):
             ("deny", "approval_intent_mismatch"), (decision.outcome, decision.reason)
         )
         self.assertIsNone(decision.permit)
-        self.assertFalse(self.executor.execute(self.kernel, decision.permit, MALICIOUS_INTENT))
+        self.assertFalse(
+            self.executor.execute(
+                self.kernel, decision.permit, MALICIOUS_INTENT, MALICIOUS_ARTIFACT
+            )
+        )
         self.assertEqual([], self.executor.effects)
         self.assertEqual(0, len(_events(self.kernel, "approval_verified")))
         self.assertEqual(1, len(_events(self.kernel, "approval_rejected")))
@@ -453,12 +514,19 @@ class OnePasswordBackendIntrusionIncidentScenarioTests(unittest.TestCase):
 
     # -- step 3: the reviewed commit, substituted content ---------------------
     #
-    # The reviewed commit identifier, carrying the
-    # attacker's content hash. A check that consults
-    # the commit label (or the account, or the
-    # repository) passes this; the exact binding does
-    # not, because the change presented is not the
-    # change reviewed.
+    # The substitution in both of its forms. Declared:
+    # an intent naming the reviewed commit identifier
+    # carrying the attacker's content hash -- a
+    # different intent, which the genuine approval does
+    # not cover. Undeclared, and more dangerous: the
+    # approved intent itself, with its genuine permit,
+    # but the bytes actually handed to the deployer are
+    # the attacker's -- every declared signal (account,
+    # repository, commit, permit) genuine, only the
+    # content false. A boundary that trusts the
+    # declared identity deploys it; this executor
+    # derives the identity from the bytes and refuses
+    # before consume.
 
     def test_step3_reviewed_commit_substituted_content_denied(self) -> None:
         genuine_envelope = signed_envelope(
@@ -471,9 +539,24 @@ class OnePasswordBackendIntrusionIncidentScenarioTests(unittest.TestCase):
             ("deny", "approval_intent_mismatch"), (decision.outcome, decision.reason)
         )
         self.assertIsNone(decision.permit)
-        self.assertEqual([], self.executor.effects)
-        self.assertEqual(0, len(_events(self.kernel, "approval_verified")))
         self.assertEqual(1, len(_events(self.kernel, "approval_rejected")))
+        # Undeclared substitution at the consequence
+        # boundary: the genuine permit for the approved
+        # intent, presented with the attacker's bytes.
+        permit = self._issue_permit(self.kernel, APPROVED_INTENT)
+        self.assertFalse(
+            self.executor.execute(self.kernel, permit, APPROVED_INTENT, MALICIOUS_ARTIFACT)
+        )
+        self.assertEqual([], self.executor.effects)
+        self.assertEqual(0, len(_events(self.kernel, "permit_consumed")))
+        # The boundary refusal spent nothing: the
+        # genuine bytes still deploy under the same
+        # permit, exactly once.
+        self.assertTrue(
+            self.executor.execute(self.kernel, permit, APPROVED_INTENT, REVIEWED_ARTIFACT)
+        )
+        self.assertEqual([(ACTION, APPROVED_CHANGE)], self.executor.effects)
+        self.assertEqual(1, len(_events(self.kernel, "permit_consumed")))
         self.assertTrue(self.kernel.verify_audit())
 
     # -- step 4: forged approval for the attacker's change --------------------
@@ -504,11 +587,15 @@ class OnePasswordBackendIntrusionIncidentScenarioTests(unittest.TestCase):
 
     def test_step5_duplicate_presentation_never_double_counts(self) -> None:
         permit = self._issue_permit(self.kernel, APPROVED_INTENT)
-        self.assertTrue(self.executor.execute(self.kernel, permit, APPROVED_INTENT))
+        self.assertTrue(
+            self.executor.execute(self.kernel, permit, APPROVED_INTENT, REVIEWED_ARTIFACT)
+        )
         # The same change presented a second time under
         # the same (spent) permit: no second deployment,
         # no second consumption.
-        self.assertFalse(self.executor.execute(self.kernel, permit, APPROVED_INTENT))
+        self.assertFalse(
+            self.executor.execute(self.kernel, permit, APPROVED_INTENT, REVIEWED_ARTIFACT)
+        )
         self.assertEqual([(ACTION, APPROVED_CHANGE)], self.executor.effects)
         approved_hash = self.kernel.intent_hash(APPROVED_INTENT)
         # An exact per-item claim reconciles.
@@ -568,7 +655,9 @@ class OnePasswordBackendIntrusionIncidentScenarioTests(unittest.TestCase):
         # confusion, presented at the boundary in its
         # purest form.
         self.assertFalse(
-            self.executor.execute(self.kernel, TRUSTED_ACCOUNT, MALICIOUS_INTENT)
+            self.executor.execute(
+                self.kernel, TRUSTED_ACCOUNT, MALICIOUS_INTENT, MALICIOUS_ARTIFACT
+            )
         )
         # The one legitimate deployment still lands; the
         # attack routes did not.
@@ -578,10 +667,14 @@ class OnePasswordBackendIntrusionIncidentScenarioTests(unittest.TestCase):
             approval_id="approval-seq-run",
             nonce="nonce-seq-run",
         )
-        self.assertTrue(self.executor.execute(self.kernel, permit, APPROVED_INTENT))
+        self.assertTrue(
+            self.executor.execute(self.kernel, permit, APPROVED_INTENT, REVIEWED_ARTIFACT)
+        )
         self.assertEqual([(ACTION, APPROVED_CHANGE)], self.executor.effects)
         # The spent permit re-presented: single-use.
-        self.assertFalse(self.executor.execute(self.kernel, permit, APPROVED_INTENT))
+        self.assertFalse(
+            self.executor.execute(self.kernel, permit, APPROVED_INTENT, REVIEWED_ARTIFACT)
+        )
         self.assertEqual([(ACTION, APPROVED_CHANGE)], self.executor.effects)
 
         audit_len_before = len(self.kernel.audit)
@@ -639,14 +732,15 @@ class OnePasswordBackendIntrusionIncidentScenarioTests(unittest.TestCase):
 
     def test_negative_control_account_trust_deployer_would_execute(self) -> None:
         # Same scenario, the governed boundary swapped
-        # for the incident's own rule: authorize
-        # deployment by the pushing account alone, as a
-        # trusted-channel pipeline does. The account is
-        # genuine, so the attacker's change DEPLOYS --
-        # and so does the reviewed commit carrying
-        # substituted content. That is the incident,
-        # reproduced at the exact layer it happened: not
-        # the account compromise (Unknown), not the
+        # for the inferred model of the incident:
+        # authorize deployment by the pushing account
+        # alone, as a trusted-channel pipeline on that
+        # model does. The account is genuine, so the
+        # attacker's change DEPLOYS -- and so does the
+        # reviewed commit carrying substituted content.
+        # That is the incident under the inferred model,
+        # reproduced at the layer the model locates it:
+        # not the account compromise (Unknown), not the
         # network -- the authorization check that
         # consulted an identity instead of the change.
         # The denials in the steps above therefore come
