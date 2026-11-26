@@ -20,6 +20,13 @@ Bearer semantics inside the deployment domain are otherwise unchanged
 and are the accepted posture (memo 4C): possession + deployment access
 spends a permit for its exact authorized intent, once, inside its TTL
 window. Presenter binding (4B) is Phase 3 and is not built here.
+
+Item 4B addendum (Phase 3): tokens are now v3
+(``digest:nonce:issued:expiry:presenter_hash:signature``) — the signed
+presenter claim rides in the same HMAC, and v2 tokens fail closed at
+the cutover exactly as v1 did here. The shape assertions below follow
+the current format; every expiry assertion is unchanged. Presenter
+binding itself is pinned in tests/test_presenter_binding.py.
 """
 
 from __future__ import annotations
@@ -87,16 +94,19 @@ class TokenV2ShapeTests(unittest.TestCase):
         kernel = make_kernel(T0, policy=make_policy(max_permit_ttl_ns=2 * HOUR_NS))
         token = kernel.evaluate(INTENT).permit
         parts = token.split(":")
-        self.assertEqual(5, len(parts))
-        digest, _nonce, issued_raw, expires_raw, _signature = parts
+        self.assertEqual(6, len(parts))
+        digest, _nonce, issued_raw, expires_raw, presenter_hash, _signature = parts
         self.assertEqual(kernel.intent_hash(INTENT), digest)
         self.assertEqual(T0, int(issued_raw))
         self.assertEqual(T0 + 2 * HOUR_NS, int(expires_raw))
+        # Unbound issuance (Item 4B): the presenter claim is the hash
+        # of the empty string — the signed bearer marker.
+        self.assertEqual(sha256(b"").hexdigest(), presenter_hash)
 
     def test_default_policy_stamps_the_default_cap(self):
         kernel = make_kernel(T0)
         token = kernel.evaluate(INTENT).permit
-        _digest, _nonce, issued_raw, expires_raw, _sig = token.split(":")
+        _digest, _nonce, issued_raw, expires_raw, _presenter, _sig = token.split(":")
         self.assertEqual(DEFAULT_MAX_PERMIT_TTL_NS, int(expires_raw) - int(issued_raw))
 
     def test_policy_ttl_cap_validated_at_construction(self):
@@ -142,10 +152,10 @@ class ExpiryEnforcementTests(unittest.TestCase):
     def test_tampered_expiry_rejected_as_inauthentic(self):
         kernel = make_kernel(T0)
         token = kernel.evaluate(INTENT).permit
-        digest, nonce, issued_raw, _expires_raw, signature = token.split(":")
+        digest, nonce, issued_raw, _expires_raw, presenter, signature = token.split(":")
         # Extend the expiry a century; keep the original signature.
         forged = ":".join(
-            [digest, nonce, issued_raw, str(T0 + 100 * YEAR_NS), signature]
+            [digest, nonce, issued_raw, str(T0 + 100 * YEAR_NS), presenter, signature]
         )
         self.assertFalse(kernel.consume(forged, INTENT))
         self.assertIn("permit_signature_invalid", rejection_reasons(kernel))
@@ -155,9 +165,9 @@ class ExpiryEnforcementTests(unittest.TestCase):
     def test_tampered_issued_at_rejected_as_inauthentic(self):
         kernel = make_kernel(T0)
         token = kernel.evaluate(INTENT).permit
-        digest, nonce, _issued_raw, expires_raw, signature = token.split(":")
+        digest, nonce, _issued_raw, expires_raw, presenter, signature = token.split(":")
         forged = ":".join(
-            [digest, nonce, str(T0 - 10 * YEAR_NS), expires_raw, signature]
+            [digest, nonce, str(T0 - 10 * YEAR_NS), expires_raw, presenter, signature]
         )
         self.assertFalse(kernel.consume(forged, INTENT))
         self.assertIn("permit_signature_invalid", rejection_reasons(kernel))
@@ -172,16 +182,16 @@ class MalformedTokenTests(unittest.TestCase):
 
     def malformed_variants(self, kernel):
         token = kernel.evaluate(INTENT).permit
-        digest, nonce, issued, expiry, signature = token.split(":")
+        digest, nonce, issued, expiry, presenter, signature = token.split(":")
         return {
-            "unicode_digit_issued": ":".join([digest, nonce, "²", expiry, signature]),
-            "unicode_digit_expiry": ":".join([digest, nonce, issued, "²", signature]),
-            "overlong_expiry": ":".join([digest, nonce, issued, "9" * 5000, signature]),
-            "empty_issued": ":".join([digest, nonce, "", expiry, signature]),
-            "negative_expiry": ":".join([digest, nonce, issued, "-1", signature]),
-            "decimal_issued": ":".join([digest, nonce, "1.5", expiry, signature]),
+            "unicode_digit_issued": ":".join([digest, nonce, "²", expiry, presenter, signature]),
+            "unicode_digit_expiry": ":".join([digest, nonce, issued, "²", presenter, signature]),
+            "overlong_expiry": ":".join([digest, nonce, issued, "9" * 5000, presenter, signature]),
+            "empty_issued": ":".join([digest, nonce, "", expiry, presenter, signature]),
+            "negative_expiry": ":".join([digest, nonce, issued, "-1", presenter, signature]),
+            "decimal_issued": ":".join([digest, nonce, "1.5", expiry, presenter, signature]),
             "expiry_not_after_issued": ":".join(
-                [digest, nonce, expiry, issued, signature]
+                [digest, nonce, expiry, issued, presenter, signature]
             ),
         }
 
@@ -426,7 +436,7 @@ class OpsLifecycleTests(unittest.TestCase):
         self.assertEqual("allow", report["outcome"])
         permit_path = Path(report["permit_path"])
         token = permit_path.read_text(encoding="utf-8").strip()
-        self.assertEqual(5, len(token.split(":")))
+        self.assertEqual(6, len(token.split(":")))
 
         # Honest consume through the CLI works exactly once.
         consume_argv = [
