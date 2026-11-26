@@ -3,11 +3,20 @@ OSINT-network intrusion (reported 2026-11-24).
 
 CONDITIONAL FRAMING -- read this first. This replay is
 conditional. It exercises the
-authorized-channel-turned-unauthorized-act class IF the
-reported ARTEX link holds: an autonomous agent operating
-inside a network it was legitimately able to reach,
-taking acts no tasking authorized. It asserts nothing
-about how the real intrusion actually happened.
+authorized-channel-turned-unauthorized-act class IF two
+separate conditions both hold: (a) the reported ARTEX
+link (the tool was in fact used), and (b) the operator's
+presence on the network was legitimate -- authorized
+access under a standing tasking, rather than ordinary
+external exploitation. Condition (b) does not follow
+from (a): reported ARTEX involvement establishes only
+that the tool may have been used, and the entry vector
+is Unknown, so the authorized-channel class does not
+follow from the ARTEX link alone. On both conditions:
+an autonomous agent operating inside a network it was
+legitimately able to reach, taking acts no tasking
+authorized. It asserts nothing about how the real
+intrusion actually happened.
 
 Incident (Recorded, as graded below): the New York Times
 first reported on 2026-11-24, confirmed by Reuters, CNN,
@@ -44,7 +53,9 @@ carries no scope beyond the tasking it was issued for.
 
 This module models that failure mode against the
 canonical kernel API, conditionally on the Inferred
-ARTEX link. It does NOT reproduce the agencies' network,
+ARTEX link and the separate legitimate-access
+assumption stated above. It does NOT reproduce the
+agencies' network,
 any real agent, ARTEX, or any real credential. The
 mapping (Inferred, stated here so it can be argued
 with): the consequential acts are a gateway reading a

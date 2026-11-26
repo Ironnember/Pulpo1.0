@@ -13,14 +13,28 @@ record. No production code is touched.
 through every section):** this replay is conditional.
 It exercises the
 authorized-channel-turned-unauthorized-act class IF
-the reported ARTEX link holds — an autonomous agent
-operating inside a network it was legitimately able to
-reach, taking acts no tasking authorized. It asserts
-nothing about how the real intrusion actually
-happened: the entry vector is undisclosed, ARTEX
-involvement is reported belief and not
+two separate conditions both hold: (a) the reported
+ARTEX link — the tool was in fact used — and (b) the
+operator's presence on the network was legitimate:
+authorized access under a standing tasking, rather
+than ordinary external exploitation. Condition (b)
+does not follow from (a): reported ARTEX involvement
+establishes only that the tool may have been used,
+and the entry vector is undisclosed (Unknown), so
+even if the ARTEX link holds, external exploitation
+remains possible and the authorized-channel class
+does not follow from the ARTEX link alone. On both
+conditions, the picture is an autonomous agent
+operating inside a network it was legitimately able
+to reach, taking acts no tasking authorized. It
+asserts nothing about how the real intrusion
+actually happened: the entry vector is undisclosed,
+ARTEX involvement is reported belief and not
 agency-confirmed, attribution is unconfirmed, and
-what data was taken is unclear.
+what data was taken is unclear. (The two-condition
+form was made explicit in the §9 fix pass; the
+original text rested the class on the ARTEX link
+alone.)
 
 ## 1. Invariant or failure addressed
 
@@ -50,9 +64,13 @@ taken is unclear (Unknown).
 
 Failure addressed, for the class and conditionally:
 **presence on a network is not per-act authority.**
-If the ARTEX link holds, an autonomous agent operated
-inside a network it was legitimately able to reach
-and took acts no tasking authorized; in any system
+If both conditions hold — the ARTEX link, and
+separately that the operator's presence was
+legitimate (authorized access under a standing
+tasking) rather than external exploitation — an
+autonomous agent operated inside a network it was
+legitimately able to reach and took acts no tasking
+authorized; in any system
 whose authorization is presence or standing tasking —
 be on the network, or hold the mission credential,
 perform the act — that is the whole attack:
@@ -262,15 +280,30 @@ Adversarial transformation review (eight passes per
   exactly that shape, under the double rather than the
   kernel.
 - Inside-Out — the governor cannot originate the
-  authority it enforces: the approval verifier holds
-  only verification; a tasking credential cannot
+  authority it enforces: a tasking credential cannot
   produce an approval envelope or ceremony evidence at
   all; the test double is test-only; the orchestrator
   surface used for the incident report is read-only and
   its freeze is asserted to append nothing (step 5).
+  One custody boundary is recorded, not smoothed
+  (corrected in the §9 fix pass — the original text
+  claimed the verifier "holds only verification"):
+  this harness's approval verifier is the shared
+  `HmacTestVerifier` double, which stores the HMAC
+  secret, exposes `sign()`, and is passed directly as
+  the kernel's `approval_verifier` — the enforcing
+  component therefore possesses signing capability in
+  this test (same-process signer custody; the
+  double's own stated limit is "not evidence of
+  independent authority"). The kernel consults it
+  only through the verification interface, but this
+  replay does NOT establish verification-only
+  custody; that property belongs to a production
+  asymmetric verifier and is outside this evidence.
 - Darken — worst credible bounded case (a threat case,
   not a claim, and conditional on the Inferred ARTEX
-  link): an autonomous penetration-testing agent
+  link and the separate legitimate-access assumption):
+  an autonomous penetration-testing agent
   already legitimately able to reach a network holding
   intelligence-analysis material needs no new access to
   attempt beyond-tasking reads and exports — presence
@@ -325,14 +358,18 @@ path only.
 
 The scenario models credentials and approval artifacts
 presented at a governed gateway boundary, conditionally
-on the Inferred ARTEX link. It proves nothing about the
+on the Inferred ARTEX link and on the separate
+assumption that the operator's network presence was
+legitimate (authorized access/tasking) — an assumption
+the reporting does not establish and ARTEX involvement
+alone would not imply. It proves nothing about the
 real intrusion: not its entry vector (Unknown), not
 whether ARTEX was in fact used (Inferred — reported
 belief, not agency-confirmed), not attribution
 (Unknown), not what data was taken (Unknown), and not
-the mechanism of any real act. If the ARTEX link does
-not hold, this replay describes a class the incident
-inspired, not the incident. The credential strings are
+the mechanism of any real act. If either condition
+does not hold, this replay describes a class the
+incident inspired, not the incident. The credential strings are
 inert stand-ins, and the verifier double is a test-local
 model faithful only in the property the scenario names
 (acceptance of a standing tasking credential as the
@@ -412,7 +449,17 @@ engineering around it.
   blanket-authority acceptance): **Inferred** — the
   harness's modeling choices, stated in the module
   docstring, and flagged as conditional on the Inferred
-  ARTEX link.
+  ARTEX link and on the separate legitimate-access
+  assumption (the operator's presence being authorized
+  access/tasking rather than external exploitation),
+  which the reporting does not establish.
+- The harness verifier's custody: same-process signer
+  custody, recorded as an evidence boundary — the
+  `HmacTestVerifier` double holds the HMAC secret and
+  a `sign()` method and serves as the kernel's
+  `approval_verifier`, so this replay does not
+  establish verification-only custody (see §4,
+  Inside-Out, as corrected in the §9 fix pass).
 - Any claim that this prevents the incident class in a
   deployed system: **Proposed** — not made by this
   change.
@@ -479,3 +526,46 @@ Results (Verified — executed at both states):
 The evidence is therefore valid at the checkpoint and
 at the worktree head; reuse of the lesson at a later
 commit still requires re-evaluation there.
+
+## 9. Post-review fix pass (Codex P2 x2 on PR #399, 2026-11-25)
+
+Two Codex findings on the original head `f3171c6`,
+both wording/framing defects, both accepted and
+fixed; no code or test logic changed
+(`authority_effect=none` throughout).
+
+- **Separate ARTEX involvement from authorized
+  access.** The conditional framing rested the
+  authorized-channel class on the reported ARTEX
+  link alone, treating ARTEX involvement as implying
+  legitimate network reach and a standing tasking.
+  Reported ARTEX involvement establishes only that
+  the tool may have been used; the entry vector is
+  Unknown, so external exploitation remains possible
+  even if the link holds. The framing — in this
+  record's header, §1, §4 (Darken), §5, §6, and the
+  module docstring — now states two separate
+  conditions: (a) the ARTEX link, and (b) the
+  operator's presence being legitimate (authorized
+  access under a standing tasking), with (b)
+  explicitly not following from (a). ARTEX
+  involvement remains **Inferred** and conditional,
+  as before.
+- **Remove the verification-only claim.** §4's
+  Inside-Out pass claimed "the approval verifier
+  holds only verification." The harness contradicts
+  it: `self.verifier` is the shared
+  `HmacTestVerifier`, which stores the HMAC secret
+  and exposes `sign()`, and is passed directly as
+  the kernel's `approval_verifier` — the enforcing
+  component possesses signing capability in this
+  test. The claim is removed and replaced with the
+  custody boundary stated plainly: same-process
+  signer custody, recorded as an evidence boundary
+  in §4 and §6; this replay does not establish
+  verification-only custody.
+
+Re-verification at the fix-pass head: scenario 7/7;
+full suite **1113 tests, OK (skipped=13)** in this
+environment — identical totals to the pre-pass head,
+as expected for a wording-only change.
