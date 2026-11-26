@@ -81,11 +81,22 @@ consequential action requiring a permit issued only
 after a verified approval bound to the exact
 artifact — name, version, source, and hash, all
 carried in the intent's resource string so the
-intent hash binds all four. A `github:` redirect
-changes the source; a same-name substitution changes
-the hash; either makes a different intent whose
-approval does not exist, so execution is refused and
-the refusal is recorded.
+intent hash binds the identity as stated. That
+four-field identity is exact and complete for the
+reviewed registry artifact, whose hashes are real
+SHA-256s. The GitHub payload's recorded identity is
+narrower: name, the `github:` source, and the
+abbreviated commit `240aa9b685e2` observed on
+2026-11-12, with its content hash **Unknown** (never
+recovered; the repository is deleted). A `github:`
+redirect changes the source; a same-name substitution
+changes the hash; either makes a different intent
+whose approval does not exist, so execution is
+refused and the refusal is recorded. The evidence
+below attributes each limb accordingly: the hash
+limb is proven only by the registry hash-substitution
+test (step 3), and the Git-redirect test (step 2)
+proves the source limb only.
 
 ## 2. Authority gained, narrowed, or left unchanged
 
@@ -149,13 +160,20 @@ Scenario module
   artifact at the same name (the `github:` redirect
   — same name, different source and content), is
   denied (`approval_intent_mismatch`); the genuine
-  pair still admits afterward.
+  pair still admits afterward. This is the
+  source-limb test: the denial turns on the changed
+  source (the Git identity's hash field is
+  **Unknown**, not a digest), so it proves nothing
+  about a hash for the Git payload.
 - step 3: the genuine approval presented for an
   artifact at the same name, version, and source
   with a substituted hash is denied
   (`approval_intent_mismatch`) — the same-name decoy
   in its hash form; a name-based check would pass
-  it, the exact binding does not.
+  it, the exact binding does not. This is the
+  hash-limb test — the only hash-limb evidence in
+  the scenario, both registry hashes being real
+  SHA-256s.
 - step 4: an approval envelope for the GitHub
   artifact signed with an unauthorized (attacker)
   key is denied (`approval_signature_invalid`).
@@ -200,9 +218,10 @@ Scenario module
   exactly the decoy's design target: it cannot tell
   the reviewed artifact from any other artifact at
   the same name. The denials in the steps above
-  therefore come from the exact binding (name +
-  version + source + hash), not from a harness that
-  denies by construction.
+  therefore come from the exact binding over the
+  stated identity — the source limb for the GitHub
+  route, the hash limb for the registry substitution
+  — not from a harness that denies by construction.
 
 Full suite at the worktree head: **1147 tests, OK
 (skipped=25)** in this environment — the recorded
@@ -221,8 +240,9 @@ Adversarial transformation review (eight passes per
   never inspected, the two swapped by a source
   redirect under one name. On the governed path the
   flip has nowhere to live: source and hash are
-  inside the bound identity (steps 2–3), so swapping
-  either swaps the intent and voids the approval.
+  inside the bound identity (the source in step 2,
+  the hash in step 3), so swapping either swaps the
+  intent and voids the approval.
 - Reverse — the consequence requires a consumed
   permit; the permit requires a verified approval;
   the approval binds the exact artifact identity.
@@ -283,11 +303,15 @@ Adversarial transformation review (eight passes per
 - Negate — the smallest clean path: install-time
   execution must be authorized against the exact
   artifact that will run — name, version, source,
-  and hash — by a named accountable human. A name,
-  and a registry listing under that name, are both
-  unnecessary as authority on the execution path —
-  remove name-as-authority and the incident does
-  not happen.
+  and hash — by a named accountable human. (That is
+  the standard; for the incident's Git payload the
+  full identity is unrecoverable — its hash is
+  **Unknown** — which is itself the point: nothing
+  bound it because nothing about it was ever pinned.)
+  A name, and a registry listing under that name, are
+  both unnecessary as authority on the execution
+  path — remove name-as-authority and the incident
+  does not happen.
 
 Stop/continue decision: CONTINUE in the governed
 kernel path only.
@@ -321,6 +345,26 @@ installer; this scenario pins only that the
 canonical kernel's exact-intent binding gives a
 source redirect and a same-name substitution
 nothing to travel on.
+
+One identity boundary, stated as plainly: the Git
+payload's identity in this scenario is the recorded
+one — name, the `github:` source, and the
+abbreviated commit `240aa9b685e2` observed on
+2026-11-12 — and its content hash is **Unknown**.
+The repository, account, and commit were deleted
+before any digest was recovered, and the sources
+record no archive copy, so no full revision or
+digest can be stated and none is attempted. The
+scenario therefore proves the source limb for the
+Git route (a genuine approval for the registry
+artifact does not transfer to a differently-sourced
+intent at the same name) and proves the hash limb
+only for registry artifacts, where both hashes are
+real SHA-256s. It does not prove an exact-identity
+binding for the Git payload, and the recorded commit
+does not cover other revisions the dependency's
+default-branch resolution may have fetched during
+the ~16-day exposure window.
 
 One surfacing boundary, stated plainly rather than
 smoothed over (Verified at this commit, by
@@ -362,6 +406,12 @@ by silently engineering around it.
   described in the sources).
 - Stage-2 payload behavior: **Unknown** — never
   recovered or analyzed.
+- The Git payload's content hash and full commit
+  SHA: **Unknown** — never recovered; the repository
+  was deleted and the sources record no archive
+  copy. The scenario's Git identity is the recorded
+  abbreviated commit only, and no hash claim is made
+  for it.
 - Victims: none confirmed in the sources
   (**Recorded** as an absence, not a proof of none).
   Download figures: **Recorded** as reported, and
@@ -376,13 +426,15 @@ by silently engineering around it.
   step 6).
 - The mapping from the incident's pattern to kernel
   artifacts (install-time hook execution modeled as
-  the consequential act; artifact identity — name,
-  version, source, hash — carried in the intent's
-  resource string; the registry decoy modeled as the
-  approved artifact and the GitHub copy as a
-  distinct intent at the same name): **Inferred** —
-  the harness's modeling choices, stated in the
-  module docstring.
+  the consequential act; artifact identity carried
+  in the intent's resource string — name, version,
+  source, and hash for the registry artifacts; name,
+  source, and the recorded abbreviated commit for
+  the GitHub copy, its hash **Unknown**; the
+  registry decoy modeled as the approved artifact
+  and the GitHub copy as a distinct intent at the
+  same name): **Inferred** — the harness's modeling
+  choices, stated in the module docstring.
 - Any claim that this prevents the incident class
   in a deployed system: **Proposed** — not made by
   this change.

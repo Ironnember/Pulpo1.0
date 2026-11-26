@@ -83,15 +83,32 @@ package, the install hook, or the payload. The mapping
 (Inferred, stated here so it can be argued with): the
 consequential act is executing install-time code
 fetched for a package install. That act requires a
-permit bound to the exact artifact -- name, version,
-source, and hash, all carried in the intent's resource
-string, so the kernel's exact-intent hash binds all
-four. An approval for the reviewed registry artifact
-(the decoy identity) therefore cannot authorize
-execution of the GitHub artifact at the same name: the
-``github:`` redirect changes the source, and a hash
-substitution changes the hash, and either change makes
-a different intent whose approval does not exist. The
+permit bound to the artifact's identity -- name,
+version, source, and hash, all carried in the intent's
+resource string, so the kernel's exact-intent hash
+binds the identity as stated. For the reviewed
+registry artifact that identity is exact and complete:
+its hash is a real SHA-256, and the hash limb of the
+binding is proven against the registry artifacts
+(the hash-substitution step below, where both hashes
+are real). The GitHub payload's recorded identity is
+narrower, and this module does not pretend otherwise:
+it carries the package name, the ``github:`` source,
+and the abbreviated commit ``240aa9b685e2`` Kitsunox
+observed on 2026-11-12, and its content hash is
+**Unknown** -- never recovered, because the
+repository was deleted. An approval for the reviewed
+registry artifact (the decoy identity) therefore
+cannot authorize execution of the GitHub artifact at
+the same name: the ``github:`` redirect changes the
+source, and a hash substitution changes the hash, and
+either change makes a different intent whose approval
+does not exist. The Git-redirect step proves the
+source limb only; it proves nothing about a hash for
+the Git payload, and the recorded commit does not
+cover other revisions the dependency's
+default-branch resolution may have fetched during
+the exposure window. The
 only route from an install request to a consequence is
 a successful ``GovernanceKernel.consume`` of a permit
 issued through a verified approval envelope for that
@@ -105,7 +122,8 @@ per-action authorization actually granted. The
 incident's routes are then attempted: install-time
 execution with no approval at all; the genuine
 approval for the registry artifact presented for the
-GitHub artifact (the ``github:`` redirect); the
+GitHub artifact (the ``github:`` redirect -- the
+source-limb test); the
 same-name decoy in its second form, an approval for
 the reviewed artifact presented for an artifact at the
 same name, version, and source but with a substituted
@@ -211,9 +229,15 @@ SESSION = "install-session-2026-11-09"
 
 ACTION = "execute_install_hook"
 
-# The exact artifacts, each identity carrying name,
-# version, source, and hash -- the four fields the
-# incident proved a name alone cannot stand in for.
+# The artifact identities. The registry identities
+# carry name, version, source, and hash -- the four
+# fields the incident proved a name alone cannot
+# stand in for -- with real SHA-256 hashes. The
+# GitHub payload's identity carries name, source, and
+# the abbreviated commit recorded on 2026-11-12; its
+# content hash is Unknown (see its definition below),
+# so no hash claim is made for it anywhere in this
+# module.
 DECOY_HASH = "62405e794b8cb35d52589f783ffda8eb758e04263ab5aa6eef803a8a348457d9"
 WEB3_HASH = "05d193d87e03221b68cac57c7048c45c82cb55a43e9c56f600ca973add67c8ed"
 
@@ -226,10 +250,15 @@ APPROVED_ARTIFACT = (
 )
 # The payload carrier: same package name, fetched from
 # a GitHub repository instead of the registry, at the
-# commit Kitsunox recorded. Its content hash was never
-# recovered (the repository is deleted), which is
-# itself part of the point: nothing about it was ever
-# reviewed.
+# abbreviated commit Kitsunox recorded on 2026-11-12.
+# Its content hash was never recovered (the repository
+# is deleted), which is itself part of the point:
+# nothing about it was ever reviewed. The identity is
+# therefore name + source + recorded commit only --
+# the ``sha256:unknown`` field states that the hash is
+# Unknown; it is not a digest -- and it does not cover
+# other revisions the default-branch resolution may
+# have fetched during the exposure window.
 GIT_ARTIFACT = (
     "github:outgoingyang/multicall-error-decoder"
     "@240aa9b685e2:git:sha256:unknown"
@@ -425,6 +454,11 @@ class Web3MevErrorDecoderIncidentScenarioTests(unittest.TestCase):
     # the content) while keeping the name the reviewer
     # saw; the exact-intent binding compares the whole
     # artifact identity, so the approval does not travel.
+    # This is the source-limb test: the Git identity's
+    # hash field is Unknown, not a digest, so this step
+    # proves nothing about a hash for the Git payload --
+    # the hash limb is proven only by step 3, where both
+    # registry hashes are real SHA-256s.
 
     def test_step2_github_redirect_fails_the_binding(self) -> None:
         genuine_envelope = signed_envelope(
@@ -634,8 +668,10 @@ class Web3MevErrorDecoderIncidentScenarioTests(unittest.TestCase):
         # hook -- the authorization check that consulted
         # a name instead of the artifact. The denials in
         # the steps above therefore come from the exact
-        # binding (name + version + source + hash), not
-        # from a harness that denies by construction.
+        # binding over the stated identity -- the source
+        # limb for the GitHub route, the hash limb for
+        # the registry substitution -- not from a harness
+        # that denies by construction.
         blind = NameOnlyInstaller()
         self.assertTrue(blind.install("multicall-error-decoder", GIT_INTENT))
         self.assertTrue(blind.install("multicall-error-decoder", HASH_SUBSTITUTED_INTENT))
