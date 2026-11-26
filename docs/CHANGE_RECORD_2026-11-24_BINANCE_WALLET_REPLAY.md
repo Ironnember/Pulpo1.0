@@ -24,8 +24,11 @@ interview and ran a malicious coding "assignment" that
 replaced pyenv with a poisoned binary. On Oct 20 the
 attackers used a compromised machine and an internal
 AI tool to take control of two engineers' computers.
-On Oct 29, 17:15–19:56 UTC, the attackers used Engineer
-A's container-deployment token on Engineer C's machine
+On Oct 29, 17:15–19:56 (the report states this
+window with no timezone; its explicit UTC labels
+attach to specific transaction times elsewhere), the
+attackers used Engineer A's container-deployment
+token on Engineer C's machine
 to deploy a container and trigger a script that
 exploited unauthorized access to the internal
 wallet-signing service, moving ~$6.34B (233.46M XRP in
@@ -362,8 +365,9 @@ engineering around it.
   exposure, the September fake-recruitment interview
   and poisoned pyenv, the Oct 20 takeover of two
   engineers' computers using a compromised machine and
-  an internal AI tool, the Oct 29 17:15–19:56 UTC use
-  of Engineer A's container-deployment token on
+  an internal AI tool, the Oct 29 17:15–19:56 use
+  (window timezone not stated in the report) of
+  Engineer A's container-deployment token on
   Engineer C's machine to deploy a container and trigger
   a script exploiting unauthorized access to the
   internal wallet-signing service, and the final
@@ -375,6 +379,13 @@ engineering around it.
   (FBI attribution as reported by Binance).
 - The internal AI tool's lateral-movement mechanism:
   **Unknown** (Binance does not explain it).
+- The timezone of the Oct 29 17:15–19:56 deployment
+  window: **Unknown** — the report appends UTC
+  explicitly to the XRP and final-ETH transaction
+  times but gives the window itself with no timezone;
+  no timezone is attributed to it anywhere in this
+  change. (Corrected in the §9 fix pass; the original
+  text asserted UTC.)
 - Kernel behavior asserted by the scenario tests:
   **Verified** (executable evidence at the worktree head
   commit, including the revocation-at-consume payload
@@ -460,3 +471,26 @@ Results (Verified — executed at both states):
 The evidence is therefore valid at the checkpoint and
 at the worktree head; reuse of the lesson at a later
 commit still requires re-evaluation there.
+
+## 9. Post-review fix pass (Codex P2 on PR #398, 2026-11-25)
+
+Review finding (Codex, P2): the change record and
+module docstring attributed **UTC** to the Oct 29
+17:15–19:56 deployment window and classified the
+narrative as Recorded wholesale. Binance's report
+gives that window with no timezone, appending UTC
+explicitly only to the XRP and final-ETH transaction
+times elsewhere. The finding is correct.
+
+Change (wording only; no code, no test logic): the
+window is now stated with no timezone in §1, §6, and
+the module docstring, each noting the report's
+silence; §6 classifies the window's timezone as
+**Unknown**. The transaction times the report does
+label UTC (including the final 2,961.9 ETH at 23:56
+UTC) keep their labels.
+
+Re-verification at the fix-pass head: scenario 8/8;
+full suite **1114 tests, OK (skipped=13)** in this
+environment — identical totals to the pre-pass head,
+as expected for a wording-only change.

@@ -13,8 +13,10 @@ interview and ran a malicious coding "assignment" that
 replaced pyenv with a poisoned binary. On Oct 20 the
 attackers used a compromised machine and an internal AI
 tool to take control of two engineers' computers. On
-Oct 29, 17:15-19:56 UTC, the attackers used Engineer A's
-container-deployment token ON Engineer C's machine to
+Oct 29, 17:15-19:56 (the report states this window with
+no timezone; its UTC labels attach to specific
+transaction times elsewhere), the attackers used
+Engineer A's container-deployment token ON Engineer C's machine to
 deploy a container and trigger a script that exploited
 unauthorized access to the internal wallet-signing
 service, moving ~$6.34B (233.46M XRP in 4 minutes;
