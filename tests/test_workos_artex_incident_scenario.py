@@ -261,27 +261,82 @@ def reconcile_releases(
 ) -> dict:
     """Observer-side release reconciliation: count what ACTUALLY
     left, from the store's release log — never the caller's
-    declared cost — and check it against the kernel audit. A
-    served release with no consumed act is unaccounted; a release
-    whose actual count differs from the consumed intent's
-    declared cost is overstated; and the aggregate of actual
-    releases is compared against the disclosure limit a single
-    bulk intent would be refused for crossing."""
-    consumed = {
+    declared cost — and check it against the kernel audit, WITH
+    occurrence counts in both directions, mirroring
+    ``reconcile_activity`` above. Each served occurrence is
+    accounted against one consumed occurrence of the same intent
+    hash: a served occurrence beyond the consumed count for its
+    hash is unaccounted (an extra copy of an already-consumed act
+    is flagged here, by the per-item check itself — not only when
+    it happens to overflow the aggregate limit, as the original
+    set-membership check allowed); a consumed occurrence, for an
+    intent hash the release log addresses, with no served
+    occurrence to account for it is a missing release. (The
+    missing direction is scoped to release-log hashes because
+    the audit also records consumptions that are not releases at
+    all — directive activation and revocation in Setup A consume
+    permits and release no records; counting those here would
+    flag every governed run. They are accounted by the directive
+    tests, not by release reconciliation.) A set-based check
+    would miss both directions. A release whose actual count differs from
+    the consumed intent's declared cost is overstated; and the
+    aggregate of actual releases is compared against the
+    disclosure limit a single bulk intent would be refused for
+    crossing."""
+    consumed_counts = Counter(
         record["payload"]["intent_hash"]
         for record in kernel.audit
         if record["event"] == "permit_consumed"
-    }
+    )
     served = [entry for entry in store.release_log if entry["served"]]
-    unaccounted = [e for e in served if e["intent_hash"] not in consumed]
+    served_counts = Counter(entry["intent_hash"] for entry in served)
+    unaccounted_counts = served_counts - consumed_counts
+    release_log_hashes = {entry["intent_hash"] for entry in store.release_log}
+    missing_counts = Counter(
+        {
+            intent_hash: consumed_counts[intent_hash] - served_counts[intent_hash]
+            for intent_hash in release_log_hashes
+            if consumed_counts[intent_hash] > served_counts[intent_hash]
+        }
+    )
+    # Per-item accounting: walk the served entries in log order,
+    # spending one consumed occurrence per entry; entries that
+    # arrive after their hash's consumed count is spent are the
+    # unaccounted excess occurrences themselves.
+    unaccounted = []
+    remaining = Counter(consumed_counts)
+    for entry in served:
+        if remaining[entry["intent_hash"]] > 0:
+            remaining[entry["intent_hash"]] -= 1
+        else:
+            unaccounted.append(entry)
+    missing = [
+        {
+            "intent_hash": intent_hash,
+            "consumed_occurrences": consumed_counts[intent_hash],
+            "served_occurrences": served_counts[intent_hash],
+            "missing_occurrences": count,
+        }
+        for intent_hash, count in sorted(missing_counts.items())
+    ]
     overstated = [e for e in served if e["actual_records"] != e["declared_cost"]]
     total = sum(e["actual_records"] for e in served)
     return {
-        "ok": not unaccounted and not overstated and total <= disclosure_limit,
+        "ok": (
+            not unaccounted
+            and not missing
+            and not overstated
+            and total <= disclosure_limit
+        ),
         "unaccounted_releases": unaccounted,
+        "unaccounted_counts": dict(unaccounted_counts),
+        "missing_releases": missing,
+        "missing_counts": dict(missing_counts),
         "overstated_releases": overstated,
         "total_actual_released": total,
         "aggregate_breach": total > disclosure_limit,
+        "consumed_counts": dict(consumed_counts),
+        "served_counts": dict(served_counts),
     }
 
 
@@ -732,6 +787,78 @@ class WorkosRevocationReconciliationTests(unittest.TestCase):
         self.assertEqual(250, entry["actual_records"])
         self.assertEqual([], result["unaccounted_releases"])
         self.assertFalse(result["aggregate_breach"])
+        self.assertTrue(kernel.verify_audit())
+
+    # -- release reconciliation: multiplicity in both directions ------------
+
+    def test_release_reconciliation_counts_multiplicity_in_both_directions(self) -> None:
+        kernel = _approval_kernel(self.verifier)
+        store = RecordsStore()
+        bench_hash = kernel.intent_hash(BENCH_QUERY)
+
+        permit = self._issue(kernel, BENCH_QUERY)
+        self.assertTrue(store.access(kernel, permit, BENCH_QUERY))
+        served_entry = store.release_log[-1]
+
+        # LEGITIMATELY REPEATED event — PASS: a second, separately
+        # permitted consumption of the same intent, served once,
+        # reconciles exactly at its true multiplicity (2 consumed,
+        # 2 served), with the honest total.
+        permit_2 = self._issue(kernel, BENCH_QUERY)
+        self.assertTrue(store.access(kernel, permit_2, BENCH_QUERY))
+        result = reconcile_releases(kernel, store, 5_000)
+        self.assertTrue(result["ok"])
+        self.assertEqual({bench_hash: 2}, result["consumed_counts"])
+        self.assertEqual({bench_hash: 2}, result["served_counts"])
+        self.assertEqual(20, result["total_actual_released"])
+        self.assertEqual([], result["unaccounted_releases"])
+        self.assertEqual([], result["missing_releases"])
+        self.assertFalse(result["aggregate_breach"])
+
+        # EXTRA COPY — FAIL via the per-item/unaccounted check, not
+        # the aggregate sum: a duplicate serve of an already-consumed
+        # intent is appended to the observer's release log (the data
+        # plane served the same act a third time; the audit still
+        # holds exactly 2 consumptions). The disclosure limit is
+        # roomy and the reported total stays honest at 30, so the
+        # aggregate check cannot be what catches this — the
+        # unaccounted check itself must, naming exactly the one
+        # excess occurrence. (Pre-fix, the set-membership check
+        # returned ok=True here.)
+        store.release_log.append(dict(served_entry))
+        result = reconcile_releases(kernel, store, 5_000)
+        self.assertFalse(result["ok"])
+        self.assertEqual(1, len(result["unaccounted_releases"]))
+        self.assertEqual(served_entry, result["unaccounted_releases"][0])
+        self.assertEqual({bench_hash: 1}, result["unaccounted_counts"])
+        self.assertEqual([], result["missing_releases"])
+        self.assertFalse(result["aggregate_breach"])
+        self.assertEqual(30, result["total_actual_released"])
+        store.release_log.pop()
+
+        # MISSING event — FAIL: a consumed occurrence with no served
+        # occurrence in the release log (the log claims 1 serve
+        # against an audit holding 2 consumptions) does not pass;
+        # the missing check names exactly the one unserved
+        # consumption.
+        dropped = store.release_log.pop()
+        result = reconcile_releases(kernel, store, 5_000)
+        self.assertFalse(result["ok"])
+        self.assertEqual({bench_hash: 1}, result["missing_counts"])
+        self.assertEqual(1, len(result["missing_releases"]))
+        self.assertEqual(bench_hash, result["missing_releases"][0]["intent_hash"])
+        self.assertEqual(2, result["missing_releases"][0]["consumed_occurrences"])
+        self.assertEqual(1, result["missing_releases"][0]["served_occurrences"])
+        self.assertEqual([], result["unaccounted_releases"])
+        self.assertFalse(result["aggregate_breach"])
+        store.release_log.append(dropped)
+
+        # Restored to the true multiplicity, the same history
+        # reconciles again — the failures above are the counts,
+        # not the history.
+        result = reconcile_releases(kernel, store, 5_000)
+        self.assertTrue(result["ok"])
+        self.assertEqual(20, result["total_actual_released"])
         self.assertTrue(kernel.verify_audit())
 
     # -- negative control ---------------------------------------------------
