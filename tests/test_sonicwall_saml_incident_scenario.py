@@ -11,8 +11,13 @@ ALTERNATE authentication method could bypass SAML
 authentication controls on SSL-VPN, skipping the MFA
 that the SAML path enforces. The flaw affects Gen7
 firmware up to 7.3.3-7015 and Gen8 firmware up to
-8.2.2-8015, and SonicWall stated there is no
-workaround. SonicWall investigated a report indicating
+8.2.2-8015, only where SAML is enabled for SSL-VPN
+logins. The advisory as first published (2026-11-06)
+stated there was no workaround; the 2026-11-09
+revision added an interim workaround for SAML
+deployments that cannot upgrade (disable or delete
+active LDAP, RADIUS, and TACACS+ authentication
+servers). SonicWall investigated a report indicating
 potential exploitation; CISA added the CVE to the
 Known Exploited Vulnerabilities catalog on 2026-11-06,
 with a federal remediation due date of November 20.

@@ -23,8 +23,18 @@ authentication method could bypass SAML authentication
 controls on SSL-VPN, skipping the MFA that the SAML
 path enforces. The flaw affects Gen7 firmware up to
 7.3.3-7015 and Gen8 firmware up to 8.2.2-8015, and
-SonicWall stated there is no workaround. SonicWall
-investigated a report indicating potential
+only where SAML is enabled for SSL-VPN logins (the
+advisory's own scope note). On remediation: the
+advisory as first published (2026-11-06) stated
+there was no workaround; the advisory was revised
+on 2026-11-09 to add an interim workaround for SAML
+deployments that cannot upgrade — disable or delete
+any active LDAP, RADIUS, and TACACS+ authentication
+servers configured on the firewall (Recorded,
+advisory as revised; the "no workaround" form in
+the original text of this record was advisory
+v1.0's statement, corrected in the §9 fix pass).
+SonicWall investigated a report indicating potential
 exploitation; CISA added the CVE to the Known
 Exploited Vulnerabilities catalog on 2026-11-06, with
 a federal remediation due date of November 20. No
@@ -257,8 +267,10 @@ Adversarial transformation review (eight passes per
   for a weaker configured method — credentials a user
   may legitimately hold — and skips the MFA that is
   often the only barrier between a phished password and
-  a network foothold; SonicWall stated there is no
-  workaround, and CISA's KEV listing records the flaw as
+  a network foothold; remediation at the time of the
+  original advisory was upgrade-only (the 2026-11-09
+  revision added the interim workaround recorded in
+  §1), and CISA's KEV listing records the flaw as
   exploited. Inside the governed path the maximum
   consequence per approval remains the one authorized
   act; every unauthorized attempt produces audit
@@ -281,14 +293,22 @@ Adversarial transformation review (eight passes per
   authentication treated as another path's
   authorization — not any user, and claims no harm the
   record does not show.
-- Amplify — the flaw is fleet-shaped: every Gen7 and
-  Gen8 device at or below the affected versions carries
-  the same confusion, and one set of alternate-method
-  credentials is reusable against each of them.
-  Approvals are per-intent, per-path-authority, and
-  permits single-use, so replication multiplies
-  attempts, never authority; denial volume produces
-  audit growth only, bounded per attempt.
+- Amplify — the flaw is fleet-shaped within the
+  affected configurations: Gen7 and Gen8 devices at or
+  below the affected versions WITH SAML enabled for
+  SSL-VPN logins (the advisory's scope) carry the same
+  confusion, and one set of alternate-method
+  credentials is reusable against an appliance only
+  where that appliance accepts the same alternate
+  authentication backend/account — across a fleet
+  sharing a credential domain, not against every
+  device in the version range. (Scoped in the §9 fix
+  pass; the original text claimed every device and
+  every credential set.) Approvals are per-intent,
+  per-path-authority, and permits single-use, so
+  replication multiplies attempts, never authority;
+  denial volume produces audit growth only, bounded
+  per attempt.
 - Negate — the smallest clean path: a consequential
   session needs no fallback-accepting route at all. A
   verified approval bound to the exact intent, checked
@@ -364,9 +384,26 @@ engineering around it.
   controls on SSL-VPN bypassable with valid credentials
   for an alternate authentication method, skipping
   SAML-enforced MFA; Gen7 ≤7.3.3-7015 and Gen8
-  ≤8.2.2-8015 affected; no workaround): **Verified**
-  (SonicWall advisory SNWLID-2026-0014; CISA KEV
-  listing 2026-11-06).
+  ≤8.2.2-8015 affected, only where SAML is enabled for
+  SSL-VPN logins): **Verified** (SonicWall advisory
+  SNWLID-2026-0014; CISA KEV listing 2026-11-06).
+- Remediation: upgrade, per the advisory; the
+  advisory as first published (2026-11-06) stated no
+  workaround existed, and the 2026-11-09 revision
+  added the interim workaround (disable or delete
+  active LDAP, RADIUS, and TACACS+ authentication
+  servers) for SAML deployments that cannot upgrade:
+  **Recorded** (advisory as revised; verified against
+  the advisory in the §9 fix pass). The unqualified
+  "no workaround" in the original text was advisory
+  v1.0's statement and is superseded.
+- Fleet-wide credential portability (one credential
+  set working across many appliances): **Inferred** —
+  it holds only where the appliances share the same
+  alternate authentication backend/account (a shared
+  credential domain); the advisory establishes the
+  per-device mechanism and the SAML-enabled scope,
+  not fleet-wide portability.
 - Exploitation: **Recorded** (the CISA KEV listing and
   SonicWall's statement that it investigated a report
   indicating potential exploitation; no victim or
@@ -453,3 +490,41 @@ Results (Verified — executed at both states):
 The evidence is therefore valid at the checkpoint and
 at the worktree head; reuse of the lesson at a later
 commit still requires re-evaluation there.
+
+## 9. Post-review fix pass (Codex P2 x2 on PR #400, 2026-11-25)
+
+Two Codex findings on the original head `724c3a0`,
+both verified against the primary source (advisory
+SNWLID-2026-0014 as it currently stands: first
+published 2026-11-06, last updated 2026-11-09,
+Workaround: true) and fixed; wording only, no code
+or test logic changed (`authority_effect=none`).
+
+- **The no-workaround claim was obsolete.** The
+  original text presented "no workaround" as a
+  current Verified fact. That was advisory v1.0's
+  statement (2026-11-06); the 2026-11-09 revision
+  added an interim workaround for SAML deployments
+  that cannot upgrade — disable or delete any active
+  LDAP, RADIUS, and TACACS+ authentication servers
+  configured on the firewall. §1, §4 (Darken), §6,
+  and the module docstring now carry the
+  time-scoped, corrected statement, classified
+  Recorded (advisory as revised).
+- **The fleet amplification was overgeneralized.**
+  §4's Amplify pass claimed every Gen7/Gen8 device
+  in the version range carries the confusion and
+  one credential set works against each. The
+  advisory scopes the vulnerability to devices
+  where SAML is enabled for SSL-VPN logins, and a
+  credential is reusable only where appliances
+  accept the same alternate authentication
+  backend/account. Amplify and §6 now state the
+  scoped form, and §6 classifies fleet-wide
+  credential portability as **Inferred** (shared
+  credential domain only).
+
+Re-verification at the fix-pass head: scenario 7/7;
+full suite **1113 tests, OK (skipped=13)** in this
+environment — identical totals to the pre-pass head,
+as expected for a wording-only change.
