@@ -21,8 +21,11 @@ installer did not install a snipping tool; it directed
 the user to `Setup Assistant`, a genuine Microsoft
 Store app published by ETPS Ltd. and built with
 Electron — package metadata indicated a June 1, 2026
-release, so the app had been listed for about five
-months before the investigation. Once installed, Setup
+release (Recorded); eSentire suggests from that date
+that the app remained available for at least five
+months — a continuous listing over that span is
+Inferred from the release metadata, not a listing
+record. Once installed, Setup
 Assistant contacted a command-and-control server,
 monitored the Downloads folder for specific filenames,
 and could run PowerShell or JavaScript supplied by the
@@ -185,12 +188,15 @@ Scenario module
   `require_approval` decisions are present in the audit
   and contribute zero near-miss records.
 - step 7: in a later session on a fresh kernel, the
-  app's listing record — genuinely listed since
-  2026-06-01 — presented as standing authority for the
-  reverse shell mints nothing (`require_approval` at
-  evaluate, `permit_rejected` at consume). Five months
-  of trusted presence is a record about the artifact,
-  not an approval of its acts.
+  app's listing record — the June 1, 2026 release
+  metadata, with continuous availability since then
+  Inferred (eSentire's suggestion from that date) —
+  presented as standing authority for the reverse
+  shell mints nothing (`require_approval` at
+  evaluate, `permit_rejected` at consume). The
+  inferred five months of trusted presence is a
+  record about the artifact, not an approval of its
+  acts.
 - negative control: with consume unguarded at both
   layers — a kernel double skipping token authentication
   and the token-to-intent binding, over a state double
@@ -224,8 +230,9 @@ Adversarial transformation review (eight passes per
   the app's cooperation: no approval (step 1), the
   channel artifact as a token (step 1), the genuine
   permit stretched (steps 2, 3), a forged approval
-  (step 5), and five months of listing history (step 7)
-  are the same denial, and flipping the presenter
+  (step 5), and the (inferred) five months of listing
+  history (step 7) are the same denial, and flipping
+  the presenter
   changes nothing without the enrolled key.
 - Reverse — the consequence (a script execution, a
   shell, a persistence registration) requires a consumed
@@ -263,7 +270,9 @@ Adversarial transformation review (eight passes per
   its freeze is asserted to append nothing (step 6).
 - Darken — worst credible bounded case (a threat case,
   not a claim): the lure costs a web page and a store
-  listing that survived about five months, including an
+  listing that, on eSentire's inference from the
+  release metadata, survived about five months,
+  including an
   abuse report answered with "no violation"; the same
   listing serves every user who finds it, and each
   install runs the full chain unattended. Inside the
@@ -374,6 +383,15 @@ engineering around it.
   task, the reverse shell capability, the isolation and
   response, and Microsoft's initial no-violation reply
   to the abuse report).
+- Continuous availability of the Store listing from
+  the June 1, 2026 release until the investigation:
+  **Inferred** (eSentire's suggestion from the package
+  release date; the release metadata itself is
+  Recorded, per the bullet above). Step 7 models only
+  the release metadata as the presented record.
+  (Classified explicitly in the §9 fix pass; the
+  original text stated the five-month listing as
+  fact.)
 - Total victim count beyond the one investigated
   intrusion: **Unknown** (eSentire states the report
   does not establish how many other Windows PCs were
@@ -464,3 +482,32 @@ Results (Verified — executed at both states):
 The evidence is therefore valid at the checkpoint and
 at the worktree head; reuse of the lesson at a later
 commit still requires re-evaluation there.
+
+## 9. Post-review fix pass (Codex P2 on PR #402, 2026-11-25)
+
+Review finding (Codex, P2): step 7's premise stated
+the app was "genuinely listed since" June 1, 2026.
+The cited eSentire report says the June 1 package
+release date merely *suggests* the app remained
+available for at least five months; it does not
+establish a continuous listing record. The finding
+is correct.
+
+Change (wording only; no code or test logic): the
+June 1, 2026 release metadata stays **Recorded**;
+continuous availability from that date until the
+investigation is now classified **Inferred**
+(eSentire's suggestion from the release date) in
+§1, §4 (step 7, the Flip pass, the Darken pass),
+§6 (new classification bullet), the module
+docstring, and the step-7 comments — and step 7 is
+described as modeling only the release metadata as
+the presented record. The step's governed claim is
+unchanged: a listing record, however long, is not
+standing authority.
+
+Re-verification at the fix-pass head: scenario 9/9;
+full suite **1148 tests, OK (skipped=13)** in this
+environment — the same test total as the pre-pass
+head (skipped counts are environment-dependent), as
+expected for a wording-only change.

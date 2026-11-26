@@ -10,8 +10,11 @@ been directed to a fake download page that served
 installer did not install a snipping tool; it directed the
 user to ``Setup Assistant``, a genuine Microsoft Store app
 published by ETPS Ltd. and built with Electron -- package
-metadata indicated a June 1, 2026 release, so the app had
-been listed for about five months before the investigation.
+metadata indicated a June 1, 2026 release (Recorded);
+eSentire suggests from that date that the app remained
+available for at least five months -- a continuous
+listing over that span is Inferred from the release
+metadata, not a listing record.
 Once installed, Setup Assistant contacted a
 command-and-control server, monitored the Downloads folder
 for specific filenames, and could run PowerShell or
@@ -55,8 +58,9 @@ Windows behavior. The "app" is this harness holding intents;
 the only route from intent to consequence is a successful
 ``GovernanceKernel.consume`` of a permit bound to the exact
 intent hash. A store artifact -- the signed installer, the
-genuine listing, the app's five months of listed presence --
-is modeled as exactly what it is in Pulpo's terms: evidence
+genuine listing, the app's inferred five months of listed
+presence -- is modeled as exactly what it is in Pulpo's
+terms: evidence
 that an artifact arrived over a trusted channel. It is not
 an approval envelope, not ceremony evidence, and not a
 permit, and the kernel has no verb that derives execution
@@ -235,12 +239,14 @@ OUT_OF_SCOPE_INTENTS = (
 # because that is what it is.
 CHANNEL_TOKEN = "microsoft-store-signed-listing:etps-ltd/setup-assistant"
 
-# The app's listing record -- genuinely listed since
-# 2026-06-01, still listed when eSentire reported it --
-# presented in a later session as if five months of trusted
-# presence were standing authority. A track record is not an
-# approval envelope and never was one; that the channel kept
-# the app listed changes nothing about what the record is.
+# The app's listing record -- the June 1, 2026 release
+# metadata eSentire recorded, with continuous availability
+# since then Inferred (eSentire's suggestion from that
+# date, not a listing record) -- presented in a later
+# session as if five months of trusted presence were
+# standing authority. A track record is not an approval
+# envelope and never was one; that the channel kept the
+# app listed changes nothing about what the record is.
 TRUST_RECORD_TOKEN = "microsoft-store:listing-record-etps-ltd-setup-assistant-since-2026-06-01"
 
 
@@ -681,16 +687,18 @@ class VinciMicrosoftStoreIncidentScenarioTests(unittest.TestCase):
     # -- step 7: the listing record is not standing authority -----------------
     #
     # The incident's quietest mechanism: nothing about the app
-    # changed between June and November. It sat in the Store,
-    # listed and trusted, for about five months -- and when
-    # eSentire reported it, the channel's first answer was
-    # that it violated no terms. A long, uneventful listing is
-    # a record about the artifact, not an approval of its acts.
-    # In a later session on a fresh kernel, the listing record
-    # presented as authority for the reverse shell mints
-    # exactly as much as it should: none -- it is not a permit,
-    # was never issued by the host owner, and its five months
-    # of trusted presence change nothing about what it is.
+    # changed between June and November. On eSentire's
+    # inference from the June 1 release metadata, it sat in
+    # the Store, listed and trusted, for about five months --
+    # and when eSentire reported it, the channel's first
+    # answer was that it violated no terms. A long, uneventful
+    # listing is a record about the artifact, not an approval
+    # of its acts. In a later session on a fresh kernel, the
+    # listing record presented as authority for the reverse
+    # shell mints exactly as much as it should: none -- it is
+    # not a permit, was never issued by the host owner, and
+    # its inferred five months of trusted presence change
+    # nothing about what it is.
 
     def test_step7_listing_record_is_not_standing_authority(self) -> None:
         later_shell = Intent(
