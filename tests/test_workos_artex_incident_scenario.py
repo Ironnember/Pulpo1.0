@@ -269,16 +269,33 @@ def reconcile_releases(
     hash is unaccounted (an extra copy of an already-consumed act
     is flagged here, by the per-item check itself — not only when
     it happens to overflow the aggregate limit, as the original
-    set-membership check allowed); a consumed occurrence, for an
-    intent hash the release log addresses, with no served
-    occurrence to account for it is a missing release. (The
-    missing direction is scoped to release-log hashes because
-    the audit also records consumptions that are not releases at
-    all — directive activation and revocation in Setup A consume
-    permits and release no records; counting those here would
-    flag every governed run. They are accounted by the directive
-    tests, not by release reconciliation.) A set-based check
-    would miss both directions. A release whose actual count differs from
+    set-membership check allowed); a consumed occurrence of a
+    release-eligible intent with no served occurrence to account
+    for it is a missing release.
+
+    The expected release obligations are derived from the
+    governed record — the kernel audit — independently of the
+    release log under reconciliation: release-eligible consumed
+    hashes are the consumed hashes MINUS the administrative
+    consumptions, which the audit itself distinguishes.
+    Directive activation and revocation in Setup A consume
+    permits and release no records; each such consumption is
+    bound, in the audit's ``directive_activated`` /
+    ``directive_revoked`` record, to verified authority evidence
+    whose operation is ``activate_directive`` / ``revoke_directive``
+    and whose intent hash is exactly the administrative
+    consumption's hash. Subtracting those hashes — and only
+    those — keeps administrative permit consumption
+    distinguishable from consumption associated with external
+    disclosure, without letting the observer's log define the
+    expectation: deleting EVERY release-log entry for a release
+    identity therefore cannot make that identity vanish from
+    the comparison (the complete-omission case Codex's P2
+    finding on PR #407 identified; the earlier scoping to
+    release-log hashes let it reconcile clean). Administrative
+    consumptions are accounted by the directive tests, not by
+    release reconciliation. A set-based check would miss both
+    directions. A release whose actual count differs from
     the consumed intent's declared cost is overstated; and the
     aggregate of actual releases is compared against the
     disclosure limit a single bulk intent would be refused for
@@ -288,17 +305,33 @@ def reconcile_releases(
         for record in kernel.audit
         if record["event"] == "permit_consumed"
     )
+    administrative_hashes = {
+        record["payload"]["authority_evidence"]["intent_hash"]
+        for record in kernel.audit
+        if record["event"] in ("directive_activated", "directive_revoked")
+        and record["payload"].get("authority_evidence", {}).get("operation")
+        in ("activate_directive", "revoke_directive")
+        and record["payload"].get("authority_evidence", {}).get("intent_hash")
+        is not None
+    }
+    administrative_counts = Counter(
+        {
+            intent_hash: consumed_counts[intent_hash]
+            for intent_hash in administrative_hashes
+            if intent_hash in consumed_counts
+        }
+    )
+    expected_release_counts = Counter(
+        {
+            intent_hash: count
+            for intent_hash, count in consumed_counts.items()
+            if intent_hash not in administrative_hashes
+        }
+    )
     served = [entry for entry in store.release_log if entry["served"]]
     served_counts = Counter(entry["intent_hash"] for entry in served)
     unaccounted_counts = served_counts - consumed_counts
-    release_log_hashes = {entry["intent_hash"] for entry in store.release_log}
-    missing_counts = Counter(
-        {
-            intent_hash: consumed_counts[intent_hash] - served_counts[intent_hash]
-            for intent_hash in release_log_hashes
-            if consumed_counts[intent_hash] > served_counts[intent_hash]
-        }
-    )
+    missing_counts = expected_release_counts - served_counts
     # Per-item accounting: walk the served entries in log order,
     # spending one consumed occurrence per entry; entries that
     # arrive after their hash's consumed count is spent are the
@@ -313,7 +346,7 @@ def reconcile_releases(
     missing = [
         {
             "intent_hash": intent_hash,
-            "consumed_occurrences": consumed_counts[intent_hash],
+            "consumed_occurrences": expected_release_counts[intent_hash],
             "served_occurrences": served_counts[intent_hash],
             "missing_occurrences": count,
         }
@@ -337,6 +370,8 @@ def reconcile_releases(
         "aggregate_breach": total > disclosure_limit,
         "consumed_counts": dict(consumed_counts),
         "served_counts": dict(served_counts),
+        "expected_release_counts": dict(expected_release_counts),
+        "administrative_consumed_counts": dict(administrative_counts),
     }
 
 
@@ -613,6 +648,59 @@ class WorkosDirectiveScopeTests(unittest.TestCase):
         self.assertEqual([], result["unaccounted_releases"])
         self.assertTrue(kernel.verify_audit())
 
+    # -- release reconciliation: administrative consumption is not a release
+
+    def test_release_reconciliation_admin_consumption_distinguished_and_complete_omission_fails(
+        self,
+    ) -> None:
+        kernel, state, d, controller = self._run()
+        projection = GovernedDirectiveProjection(kernel)
+        admin_hash = kernel.intent_hash(
+            DirectiveAuthorityController.authority_intent(
+                controller.ACTIVATE, d, operator_principal=OPERATOR
+            )
+        )
+        bench_hash = kernel.intent_hash(BENCH_QUERY)
+        for intent in (BENCH_QUERY, BENCH_QUERY_SMALL):
+            decision = projection.evaluate(intent, d)
+            self.assertEqual("allow", decision.outcome)
+            self.assertTrue(self.store.access(kernel, decision.permit, intent))
+
+        # The audit holds THREE consumptions: one administrative
+        # (directive activation, external disclosure: none) and
+        # two releases. Release reconciliation keeps them
+        # distinguishable: the administrative consumption is
+        # reported as such, is NOT an expected release, and does
+        # not make the honest history fail as a missing release.
+        result = reconcile_releases(kernel, self.store, 5_000)
+        self.assertTrue(result["ok"])
+        self.assertEqual({admin_hash: 1}, result["administrative_consumed_counts"])
+        self.assertNotIn(admin_hash, result["expected_release_counts"])
+        self.assertEqual(
+            {bench_hash: 1, kernel.intent_hash(BENCH_QUERY_SMALL): 1},
+            result["expected_release_counts"],
+        )
+        self.assertEqual([], result["missing_releases"])
+
+        # Complete omission under the directive path — FAIL:
+        # every release-log observation for BENCH_QUERY is
+        # removed; that identity is still expected (from the
+        # audit), exactly one occurrence is missing, and the
+        # administrative consumption is still not a release.
+        saved_log = self.store.release_log
+        self.store.release_log = [
+            entry for entry in saved_log if entry["intent_hash"] != bench_hash
+        ]
+        result = reconcile_releases(kernel, self.store, 5_000)
+        self.assertFalse(result["ok"])
+        self.assertEqual({bench_hash: 1}, result["missing_counts"])
+        self.assertEqual({admin_hash: 1}, result["administrative_consumed_counts"])
+        self.assertNotIn(admin_hash, result["missing_counts"])
+        self.store.release_log = saved_log
+        result = reconcile_releases(kernel, self.store, 5_000)
+        self.assertTrue(result["ok"])
+        self.assertTrue(kernel.verify_audit())
+
 
 class WorkosRevocationReconciliationTests(unittest.TestCase):
     """Setup B: owner-approved staging lookups; revocation of the
@@ -859,6 +947,57 @@ class WorkosRevocationReconciliationTests(unittest.TestCase):
         result = reconcile_releases(kernel, store, 5_000)
         self.assertTrue(result["ok"])
         self.assertEqual(20, result["total_actual_released"])
+        self.assertTrue(kernel.verify_audit())
+
+    # -- release reconciliation: COMPLETE omission of one hash --------------
+
+    def test_release_reconciliation_complete_omission_of_one_hash_fails(self) -> None:
+        kernel = _approval_kernel(self.verifier)
+        store = RecordsStore()
+        bench_hash = kernel.intent_hash(BENCH_QUERY)
+        small_hash = kernel.intent_hash(BENCH_QUERY_SMALL)
+
+        # Two authorized release identities, honestly served:
+        # BENCH_QUERY twice, BENCH_QUERY_SMALL once.
+        for intent in (BENCH_QUERY, BENCH_QUERY, BENCH_QUERY_SMALL):
+            permit = self._issue(kernel, intent)
+            self.assertTrue(store.access(kernel, permit, intent))
+        result = reconcile_releases(kernel, store, 5_000)
+        self.assertTrue(result["ok"])
+        self.assertEqual(
+            {bench_hash: 2, small_hash: 1}, result["expected_release_counts"]
+        )
+        self.assertEqual({}, result["administrative_consumed_counts"])
+
+        # COMPLETE OMISSION — FAIL (Codex P2 on PR #407): EVERY
+        # release-log observation for the BENCH_QUERY identity is
+        # removed. The expectation is derived from the kernel
+        # audit, not from the log under reconciliation, so the
+        # identity does NOT vanish from the comparison: both
+        # consumed occurrences are missing, the result does not
+        # reconcile, and the surviving identity is unaffected.
+        saved_log = store.release_log
+        store.release_log = [
+            entry for entry in saved_log if entry["intent_hash"] != bench_hash
+        ]
+        result = reconcile_releases(kernel, store, 5_000)
+        self.assertFalse(result["ok"])
+        self.assertEqual({bench_hash: 2}, result["missing_counts"])
+        self.assertEqual(1, len(result["missing_releases"]))
+        self.assertEqual(bench_hash, result["missing_releases"][0]["intent_hash"])
+        self.assertEqual(2, result["missing_releases"][0]["consumed_occurrences"])
+        self.assertEqual(0, result["missing_releases"][0]["served_occurrences"])
+        self.assertEqual(2, result["missing_releases"][0]["missing_occurrences"])
+        self.assertEqual({small_hash: 1}, result["served_counts"])
+        self.assertEqual([], result["unaccounted_releases"])
+        self.assertFalse(result["aggregate_breach"])
+        self.assertEqual(5, result["total_actual_released"])
+
+        # Restoring the full log reconciles the same history again.
+        store.release_log = saved_log
+        result = reconcile_releases(kernel, store, 5_000)
+        self.assertTrue(result["ok"])
+        self.assertEqual(25, result["total_actual_released"])
         self.assertTrue(kernel.verify_audit())
 
     # -- negative control ---------------------------------------------------

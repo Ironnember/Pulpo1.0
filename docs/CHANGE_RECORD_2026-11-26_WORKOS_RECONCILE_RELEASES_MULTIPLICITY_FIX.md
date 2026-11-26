@@ -215,3 +215,178 @@ modification), and the scenario was run there.
   (directive administration consumptions exist at the base
   exactly as at the head) and is recorded, not introduced,
   by this change.
+
+---
+
+## Fix-pass addendum (2026-11-26) — complete-omission evasion of the missing direction (PR #407, Codex P2)
+
+Authority: Austin directed this fix pass on 2026-11-26.
+Scope: scenario/test layer only — `reconcile_releases` and
+tests in the same module, plus this addendum. No kernel or
+core-module changes; no merge; the review thread is answered
+and left open.
+
+### A1. Invariant or failure addressed
+
+Codex P2 on PR #407 (review thread, first comment 4710033122,
+**Verified** by reading the thread and the code at the synced
+branch head `f64f989`): the missing direction derived its
+scope from the log under reconciliation —
+`release_log_hashes = {entry["intent_hash"] for entry in
+store.release_log}` — and computed `missing_counts` only over
+those hashes. If EVERY release-log entry for one consumed
+release identity was omitted, that identity vanished from the
+comparison itself: `missing_counts` stayed empty and `ok`
+stayed `True`. The original regression removed only one of
+two entries, so it never exercised complete omission.
+Reproduced by executed probe at `f64f989` before this fix:
+old `reconcile_releases` on a 2-consumption history with all
+entries for the hash deleted returned `ok=True`,
+`missing_counts={}`.
+
+### A2. Authority gained, narrowed, or left unchanged
+
+Unchanged. `authority_effect=none`. Same reasoning as §2:
+the reconciler is a test-level pure read; this pass changes
+how its expectation is derived, nothing it can effect.
+
+### A3. Canonical state mutations introduced or exposed
+
+None. The function remains a pure read over the public
+`kernel.audit` path and the store's release log; it writes
+nothing, and no writer, route, ledger, or state backend is
+added.
+
+### A4. Exact success and adversarial evidence
+
+Correction (`reconcile_releases`):
+
+- Expected release obligations are now derived from the
+  governed record — the kernel audit — independently of the
+  release log: `expected_release_counts` = consumed
+  occurrences per intent hash (Counter over `permit_consumed`
+  records, unchanged) MINUS the administrative consumptions.
+- Administrative consumptions are distinguished from the
+  audit itself, preserving the distinction the original
+  scoping protected: a consumed hash is administrative iff
+  the audit's `directive_activated` / `directive_revoked`
+  record binds it, via verified authority evidence, to
+  operation `activate_directive` / `revoke_directive`. Those
+  hashes are reported separately as
+  `administrative_consumed_counts` and are never expected
+  releases; every other consumed hash is an expected release
+  obligation. `missing_counts = expected_release_counts -
+  served_counts` (Counter difference), so complete omission
+  of an identity now reports all of its consumed occurrences
+  as missing.
+- The multiplicity counting this PR originally added is
+  preserved: per-item unaccounted accounting (served entries
+  spend consumed occurrences in log order), `unaccounted_counts`,
+  overstated and aggregate checks are unchanged, and
+  `reconcile_activity` remains byte-unchanged.
+
+New regressions (one line each):
+
+- `test_release_reconciliation_complete_omission_of_one_hash_fails`
+  — two authorized identities served honestly (BENCH_QUERY ×2,
+  BENCH_QUERY_SMALL ×1) reconcile; deleting EVERY release-log
+  entry for BENCH_QUERY yields `ok=False`,
+  `missing_counts={bench_hash: 2}` (consumed 2 / served 0),
+  the surviving identity unaffected; restoring the log
+  reconciles again.
+- `test_release_reconciliation_admin_consumption_distinguished_and_complete_omission_fails`
+  — under Setup A, the activation consumption is reported as
+  `administrative_consumed_counts={admin_hash: 1}`, is absent
+  from `expected_release_counts` and never counts as missing
+  on the honest history; deleting every BENCH_QUERY log entry
+  there yields `ok=False`, `missing_counts={bench_hash: 1}`,
+  with the administrative hash still not a release.
+
+Evidence (Verified, executed):
+
+- Probe at `f64f989`: OLD function on the complete-omission
+  history returned `ok=True`, `missing_counts={}`; the NEW
+  function on the identical history returns `ok=False`,
+  `missing_counts={bench_hash: 2}`.
+- Baseline at the synced branch head `f64f989` (before this
+  fix): scenario **13/13**; full suite **1148 ran, OK
+  (skipped=13)** (`python -W error -m unittest discover -s
+  tests`; the venv carries no pytest module, and CI uses
+  unittest discover). Test-loader discovery at the same head
+  counts 1148, matching. (A first baseline run reported 1163
+  ran, also OK (skipped=13); the re-run and the loader count
+  both give 1148, so 1148 is the recorded baseline and the
+  1163 figure is treated as a transient run anomaly, not a
+  property of the tree.)
+- After this fix: scenario **15/15**; full suite **1150
+  ran, OK (skipped=13)**, confirmed on two consecutive runs;
+  loader discovery counts 1150. The delta against baseline
+  is exactly the two new tests, by both measures. All
+  pre-existing assertions pass unmodified, including the
+  multiplicity test, the positive control, the
+  cumulative-sequence test, and the over-releasing-store
+  test.
+- Temporal replay: a clean worktree reconstructed at the
+  recorded branch head `226ce92` with only the updated
+  scenario module copied in runs the scenario **15/15** —
+  TRANSFERS identically; NO EFFECT on authority
+  (`authority_effect=none` at both states); NEGATIVE
+  TRANSFER: none observed.
+
+Adversarial passes for this correction: Flip — expectation
+now flows from the governed audit to the log, never the
+reverse. Reverse — a pass requires every expected release
+occurrence to be matched by a served occurrence. Invert —
+deleting evidence can no longer manufacture `ok=True`; it
+manufactures a named missing count. Inside-Out — the
+reconciler still holds and writes no state. Darken — worst
+case in scope (an identity both duplicated and partially
+omitted) flags in both directions independently, as before.
+Lighten — the honest directive-path history still passes,
+with its administrative consumption visible but not counted
+as a release. Amplify — replicating a serve multiplies only
+the unaccounted count. Negate — the smallest fix is taken:
+derive the expectation from a record already in the
+function's hands (the audit), no new mechanism or parameter.
+
+Stop/continue decision: CONTINUE — test-level checker only.
+
+### A5. Boundary the evidence does not prove
+
+The complete-omission hole recorded in §5 is CLOSED for the
+consumption classes this scenario contains: within this
+module, the only non-release consumptions are directive
+activation/revocation, and both are evidenced as
+administrative in the audit. A hypothetical future
+consumption class that is neither a release nor evidenced
+as administrative in the audit would be treated as an
+expected release (fail-closed direction: it would flag as
+missing, not pass silently). Nothing here proves anything
+about WorkOS's actual systems or about any shipped
+reconciler (see §5). Cumulative disclosure remains
+detected-not-prevented, unchanged.
+
+### A6. Claim classification
+
+- The Codex P2 finding and its reproduction at `f64f989`:
+  **Verified** (thread read + code read + executed probe).
+- The correction's behavior, before/after counts, and the
+  temporal replay at `226ce92`: **Verified** (executable
+  evidence at the exact states named).
+- "No authorization outcome is affected": **Verified**
+  (same basis as §6; the change is confined to a test-level
+  checker and its tests).
+
+### A7. Legacy behavior source
+
+None. The derivation uses the audit's existing
+`authority_evidence` binding for directive administration —
+read, not copied from any control path.
+
+### A8. Temporal-transfer evidence
+
+See §A4: replay at exact checkpoint `226ce92` (the recorded
+branch head before the merge of `main` at `e42f929` that
+produced `f64f989`), scenario 15/15 with only the updated
+module copied in; the lesson transfers, with no authority
+effect and no negative transfer observed.
