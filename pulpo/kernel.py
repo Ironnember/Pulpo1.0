@@ -11,7 +11,7 @@ from pathlib import Path
 import secrets
 import stat
 import time
-from typing import Any, Callable
+from typing import Any, Callable, Protocol
 
 from .authority import ApprovalEnvelope, ApprovalVerifier, AuthorityTrust
 from .ceremony import CeremonyEvidence, CeremonyTrust, CeremonyVerifier
@@ -21,6 +21,7 @@ from .state import (
     DirectivePermitBinding,
     InMemoryKernelState,
     KernelState,
+    LeaseIssuance,
     SQLiteKernelState,
     VerifiedAuthorityEvidence,
 )
@@ -39,6 +40,60 @@ _CANONICAL_ENCODER = json.JSONEncoder(sort_keys=True, separators=(",", ":"))
 # bearer-token repro: a bare copied token consumed ten years later).
 DEFAULT_MAX_PERMIT_TTL_NS = 4 * 3600 * 1_000_000_000  # 4 hours
 PERMIT_TTL_CEILING_NS = 24 * 3600 * 1_000_000_000  # 24 hours
+
+# Presenter binding (Phase 3, Item 4B — token v3). A permit may be
+# bound at issuance to one presenter identity; the token's signed
+# claims then carry the SHA-256 of that identity, and consumption
+# requires a proof, signed by the presenter's key over the exact
+# token and intent, that the kernel verifies against the presenter
+# verifier registered for that identity at construction. An unbound
+# permit carries the hash of the empty string as its presenter
+# claim and remains a bearer <redacted> exactly as in token v2 —
+# unless the policy requires binding, in which case unbound permits
+# are neither minted nor spent. Token v2 strings fail closed at
+# consume under this format (the Item 4 hard-cutover precedent).
+PRESENTER_PROOF_SCHEMA = "pulpo.presenter-proof.v1"
+UNBOUND_PRESENTER_HASH = sha256(b"").hexdigest()
+
+# Leases (canonical Lease port, PR 1). A lease is the physical
+# analogue of a permit: a kernel-issued authorization artifact for
+# bounded physical actuation, minted only from an evaluated intent
+# under an active directive and always bound to a named device
+# presenter. Its token follows the v3 discipline — the signed claims
+# are ``digest:nonce:issued_at_ns:expires_at_ns:presenter_hash:
+# signature`` — except the digest is the lease digest, a hash over
+# every lease claim, so no claim (budget, expiry, fallback, binding)
+# can be altered without invalidating the artifact. This is the
+# binding the Autonomous physical layer lacked: its leases were
+# locally mintable dataclasses any caller could construct.
+LEASE_SCHEMA = "pulpo.lease.v1"
+LEASE_COMMAND_SCHEMA = "pulpo.lease-command.v1"
+LEASE_PROOF_SCHEMA = "pulpo.lease-proof.v1"
+
+
+def _is_digest(value: object) -> bool:
+    return (
+        isinstance(value, str)
+        and len(value) == 64
+        and value.isascii()
+        and all(char in "0123456789abcdef" for char in value)
+    )
+
+
+class PresenterVerifier(Protocol):
+    """Verification-only adapter for one presenter's key.
+
+    Structurally the approval verifier's shape: the presenter signs
+    ``GovernanceKernel.presenter_proof_payload(...)`` bytes with its
+    own key; the kernel holds only verification. A deployment
+    registers one verifier per presenter identity at kernel
+    construction; the registry is deployment configuration, never
+    policy, and never enters the audit chain.
+    """
+
+    def verify(self, payload: bytes, signature: str) -> bool:
+        """Return true only for a proof signed by this presenter."""
+        ...
 
 
 def _token_time_ns(raw: str) -> int | None:
@@ -226,8 +281,15 @@ class Policy:
     # ``issued_at + max_permit_ttl_ns`` as its signed expiry and refuses
     # consumption at or after it; no issuance path may exceed this cap.
     max_permit_ttl_ns: int = DEFAULT_MAX_PERMIT_TTL_NS
+    # Presenter binding (Phase 3, Item 4B): when true, every permit
+    # this policy issues must be bound to a registered presenter, and
+    # unbound permits are refused at consume. Default false keeps the
+    # token-v2 bearer posture for policies that do not opt in.
+    require_presenter_binding: bool = False
 
     def __post_init__(self) -> None:
+        if not isinstance(self.require_presenter_binding, bool):
+            raise ValueError("require_presenter_binding must be a bool")
         if (
             isinstance(self.max_permit_ttl_ns, bool)
             or not isinstance(self.max_permit_ttl_ns, int)
@@ -267,6 +329,126 @@ class Decision:
     permit: str | None = None
 
 
+@dataclass(frozen=True)
+class Lease:
+    """A kernel-issued authorization artifact for bounded actuation.
+
+    The claims are the artifact: ``lease_digest`` hashes every field
+    except the token, and the token's HMAC signs that digest together
+    with the nonce, issue time, expiry, and presenter hash — so the
+    object is self-authenticating in exactly the way a permit token
+    is, extended to the full claim set a physical deployment needs
+    (command budget, disconnected window, safe fallback, sequence
+    floor, boot counter, directive binding). The dataclass has a
+    public constructor, as ``ApprovalEnvelope`` does; what a local
+    constructor cannot produce is a *valid* lease, because validity
+    requires a token signed under the kernel secret and a governed
+    issuance record in the kernel's state. A locally assembled lease
+    fails verification at the signature step (acceptance test 1).
+    """
+
+    intent_hash: str
+    principal: str
+    action: str
+    resource: str
+    payload_digest: str
+    directive_id: str
+    directive_version: int
+    directive_hash: str
+    parent_directive_hash: str | None
+    policy_hash: str
+    deployment_id: str
+    presenter: str
+    session_id: str
+    nonce: str
+    max_commands: int
+    max_disconnected_ns: int
+    safe_fallback: str
+    sequence_floor: int
+    boot_counter: int
+    issued_at_ns: int
+    expires_at_ns: int
+    token: str
+    schema: str = LEASE_SCHEMA
+
+    def __post_init__(self) -> None:
+        if self.schema != LEASE_SCHEMA:
+            raise ValueError("unsupported lease schema")
+        if not _is_digest(self.intent_hash) or not _is_digest(self.payload_digest) or not _is_digest(self.directive_hash):
+            raise ValueError("lease digests must be SHA-256 hex")
+        if self.parent_directive_hash is not None and not _is_digest(self.parent_directive_hash):
+            raise ValueError("lease parent directive hash must be SHA-256 hex")
+        if not self.principal or not self.action or not self.resource or not self.deployment_id or not self.presenter or not self.session_id or not self.nonce or not self.token:
+            raise ValueError("lease identity fields must be non-empty")
+        if not self.directive_id or self.directive_version <= 0:
+            raise ValueError("lease directive identity must be valid")
+        if not self.safe_fallback:
+            raise ValueError("lease safe fallback is mandatory")
+        if isinstance(self.max_commands, bool) or not isinstance(self.max_commands, int) or self.max_commands <= 0:
+            raise ValueError("lease command budget must be positive")
+        if isinstance(self.max_disconnected_ns, bool) or not isinstance(self.max_disconnected_ns, int) or self.max_disconnected_ns <= 0:
+            raise ValueError("lease disconnected window must be positive")
+        if isinstance(self.sequence_floor, bool) or not isinstance(self.sequence_floor, int) or self.sequence_floor < 0:
+            raise ValueError("lease sequence floor must be non-negative")
+        if isinstance(self.boot_counter, bool) or not isinstance(self.boot_counter, int) or self.boot_counter < 0:
+            raise ValueError("lease boot counter must be non-negative")
+        if self.issued_at_ns <= 0 or self.expires_at_ns <= self.issued_at_ns:
+            raise ValueError("lease validity window must be valid")
+
+    def claims(self) -> dict[str, Any]:
+        """Every claim the lease digest binds — all fields but the token."""
+
+        payload = asdict(self)
+        payload.pop("token")
+        return payload
+
+    @property
+    def lease_digest(self) -> str:
+        return sha256(_canonical(self.claims())).hexdigest()
+
+
+@dataclass(frozen=True)
+class LeaseCommand:
+    """One actuation command presented under a lease.
+
+    The command binds by exact equality to the lease's intent: the
+    action, the target (resource), and the digest of the exact
+    command payload. A substituted payload — same length, different
+    bytes — has a different digest and is refused at verification
+    (acceptance test 6, the #382 boundary lesson). ``sequence`` is
+    the command's position under the lease: strictly increasing,
+    at or above the lease's sequence floor.
+    """
+
+    action: str
+    resource: str
+    payload_digest: str
+    sequence: int
+    schema: str = LEASE_COMMAND_SCHEMA
+
+    def __post_init__(self) -> None:
+        if self.schema != LEASE_COMMAND_SCHEMA:
+            raise ValueError("unsupported lease command schema")
+        if not self.action or not self.resource:
+            raise ValueError("lease command identity fields must be non-empty")
+        if not _is_digest(self.payload_digest):
+            raise ValueError("lease command payload digest must be SHA-256 hex")
+        if isinstance(self.sequence, bool) or not isinstance(self.sequence, int) or self.sequence < 0:
+            raise ValueError("lease command sequence must be non-negative")
+
+    @property
+    def command_hash(self) -> str:
+        return sha256(_canonical(asdict(self))).hexdigest()
+
+
+@dataclass(frozen=True)
+class LeaseDecision:
+    outcome: str
+    reason: str
+    intent_hash: str
+    lease: Lease | None = None
+
+
 class StateIntegrityError(RuntimeError):
     """Raised when persisted audit state cannot be trusted at bootstrap."""
 
@@ -289,6 +471,7 @@ class GovernanceKernel:
         ceremony_verifier: CeremonyVerifier | None = None,
         audit_signer: AuditSigner | None = None,
         legacy_audit_records: int = 0,
+        presenter_verifiers: dict[str, PresenterVerifier] | None = None,
     ) -> None:
         self.policy = policy
         # Pin the exact policy this kernel was constructed under. Every
@@ -302,6 +485,11 @@ class GovernanceKernel:
         self._secret = secret or secrets.token_bytes(32)
         self._approval_verifier = approval_verifier
         self._ceremony_verifier = ceremony_verifier
+        # Presenter registry (Item 4B): presenter identity -> verifier.
+        # Deployment configuration injected at construction, like the
+        # approval verifier; copied so later mutation of the caller's
+        # dict cannot change who this kernel will accept proofs from.
+        self._presenter_verifiers: dict[str, PresenterVerifier] = dict(presenter_verifiers or {})
         self._clock = clock or time.time_ns
         if state is not None and (audit_signer is not None or legacy_audit_records):
             # The signer lives in the state layer (it signs at append);
@@ -361,6 +549,12 @@ class GovernanceKernel:
             # into the policy hash. Policies at the default keep the exact
             # pre-Item-4 hash, so their envelopes and behavior are unchanged.
             payload["max_permit_ttl_ns"] = self.policy.max_permit_ttl_ns
+        if self.policy.require_presenter_binding:
+            # Requiring presenter binding is an authority-relevant
+            # policy choice (it retires the bearer posture), so it
+            # binds into the policy hash. Policies that do not require
+            # it keep the exact pre-Item-4B hash.
+            payload["require_presenter_binding"] = True
         return sha256(_canonical(payload)).hexdigest()
 
     def lock_target(self, target_id: str, intent: Intent, *, version: int = 1) -> LockedTarget:
@@ -470,15 +664,16 @@ class GovernanceKernel:
         expected_target_hash: str,
         *,
         version: int = 1,
+        presenter: str | None = None,
     ) -> tuple[TargetResolution, Decision | None]:
         """Resolve an exact target, then delegate authority to the normal evaluator."""
 
         resolution = self.resolve_locked_target(target_id, expected_target_hash, version=version)
         if resolution.outcome != "match" or resolution.target is None:
             return resolution, None
-        return resolution, self.evaluate(resolution.target.intent)
+        return resolution, self.evaluate(resolution.target.intent, presenter=presenter)
 
-    def evaluate(self, intent: Intent) -> Decision:
+    def evaluate(self, intent: Intent, *, presenter: str | None = None) -> Decision:
         self._require_pinned_policy()
         digest = self.intent_hash(intent)
         failure = self._policy_failure(intent)
@@ -487,7 +682,7 @@ class GovernanceKernel:
         if intent.action in self.policy.approval_actions:
             return self._decide("require_approval", "approval_required", digest)
 
-        return self._issue_permit(digest)
+        return self._issue_permit(digest, presenter=presenter)
 
     def evaluate_with_approval(
         self,
@@ -495,6 +690,7 @@ class GovernanceKernel:
         envelope: ApprovalEnvelope,
         *,
         ceremony_evidence: CeremonyEvidence | None = None,
+        presenter: str | None = None,
     ) -> Decision:
         """Issue a permit only after verification by the configured authority.
 
@@ -507,8 +703,59 @@ class GovernanceKernel:
         parameter entirely and behave exactly as before.
         """
 
+        return self._verify_approval(
+            intent,
+            envelope,
+            ceremony_evidence,
+            lambda approval, verified_at_ns: self._issue_permit(
+                self.intent_hash(intent),
+                reason="verified_approval",
+                approval=approval,
+                envelope=envelope,
+                timestamp_ns=verified_at_ns,
+                presenter=presenter,
+            ),
+        )
+
+    def _verify_approval(
+        self,
+        intent: Intent,
+        envelope: ApprovalEnvelope,
+        ceremony_evidence: CeremonyEvidence | None,
+        finisher: Callable[[ApprovalUse, int], Any],
+        *,
+        approval_digest: str | None = None,
+    ) -> Any:
+        """The approval verification path, shared by permits and leases.
+
+        Every check and every recorded denial below is the permit
+        path's, unchanged: failures return the denial Decision
+        produced by ``_approval_decide`` / ``_decide`` exactly as
+        before. On success the verified ``ApprovalUse`` and the
+        admission time (the completion of every required
+        verification, ceremony included) are handed to ``finisher``,
+        whose return value becomes the caller's: the permit path
+        issues a permit, the lease path issues a lease (Lease port
+        PR 1). One verification implementation — a second,
+        lease-only copy would be a second authority plane in
+        everything but name.
+
+        ``approval_digest`` is the digest the envelope (and any
+        ceremony evidence) must bind. For permits it is the intent
+        hash itself. For lease issuance it is the lease approval
+        hash (``lease_approval_hash``): the intent hash authenticates
+        only the intent, but a lease's authority-bearing claims —
+        payload digest, command budget, presenter, deployment,
+        TTL — ride outside the Intent, so an approval binding only
+        the intent would leave every one of them choosable by the
+        caller after verification (Codex P1 on PR #383). Every
+        check, denial, and audit record below then speaks about
+        that one approval context, exactly as the permit path
+        speaks about the intent.
+        """
+
         self._require_pinned_policy()
-        digest = self.intent_hash(intent)
+        digest = self.intent_hash(intent) if approval_digest is None else approval_digest
         failure = self._policy_failure(intent)
         if failure:
             return self._decide("deny", failure, digest)
@@ -645,13 +892,7 @@ class GovernanceKernel:
             },
             ceremony_evidence_id=ceremony_evidence_id,
         )
-        return self._issue_permit(
-            digest,
-            reason="verified_approval",
-            approval=approval,
-            envelope=envelope,
-            timestamp_ns=verified_at_ns,
-        )
+        return finisher(approval, verified_at_ns)
 
     def _verifier_matches_trust(self, verifier: ApprovalVerifier) -> bool:
         trust = self.policy.authority_trust
@@ -818,10 +1059,24 @@ class GovernanceKernel:
         approval: ApprovalUse | None = None,
         envelope: ApprovalEnvelope | None = None,
         timestamp_ns: int | None = None,
+        presenter: str | None = None,
     ) -> Decision:
         # The issuance funnel re-checks the pin itself: no permit is minted
         # under a drifted policy regardless of which entry path reached here.
         self._require_pinned_policy()
+        # Presenter binding (Phase 3, Item 4B) is enforced in this
+        # funnel so every issuance path inherits it: a policy that
+        # requires binding mints no unbound permit, and a permit is
+        # never bound to a presenter this kernel could not verify a
+        # proof from at consume time — such a permit would be
+        # unspendable by construction, so it is not minted.
+        if presenter is None and self.policy.require_presenter_binding:
+            return self._decide("deny", "presenter_binding_required", digest)
+        if presenter is not None:
+            if not isinstance(presenter, str) or not presenter:
+                return self._decide("deny", "presenter_invalid", digest)
+            if presenter not in self._presenter_verifiers:
+                return self._decide("deny", "presenter_not_registered", digest)
         issued_at_ns = self._clock() if timestamp_ns is None else timestamp_ns
         # Token v2 (Phase 2, Item 4): the expiry is inside the signed
         # payload, so it cannot be extended without the kernel secret.
@@ -830,7 +1085,15 @@ class GovernanceKernel:
         # above the absolute ceiling (see Policy.__post_init__).
         expires_at_ns = issued_at_ns + self.policy.max_permit_ttl_ns
         nonce = secrets.token_hex(16)
-        payload = f"{digest}:{nonce}:{issued_at_ns}:{expires_at_ns}"
+        # Token v3 (Item 4B): the presenter claim — the SHA-256 of the
+        # bound presenter identity, or of the empty string for an
+        # unbound (bearer) permit — is inside the signed payload too,
+        # so the binding cannot be stripped or swapped without the
+        # kernel secret.
+        presenter_hash = (
+            UNBOUND_PRESENTER_HASH if presenter is None else sha256(presenter.encode()).hexdigest()
+        )
+        payload = f"{digest}:{nonce}:{issued_at_ns}:{expires_at_ns}:{presenter_hash}"
         signature = hmac.new(self._secret, payload.encode(), sha256).hexdigest()
         permit = f"{payload}:{signature}"
         replay = self._state.issue_permit(
@@ -894,50 +1157,128 @@ class GovernanceKernel:
                 "kernel policy does not match the policy pinned at construction"
             )
 
-    def _permit_token_claims(self, permit: object) -> tuple[str, int, int] | None:
-        """Authenticate a v2 permit token and return its signed claims.
+    def _permit_token_claims(self, permit: object) -> tuple[str, int, int, str] | None:
+        """Authenticate a v3 permit token and return its signed claims.
 
         Tokens are minted in ``_issue_permit`` as
-        ``digest:nonce:issued_at_ns:expires_at_ns:signature`` with the
-        signature an HMAC of the first four fields under the kernel
-        secret. Verification recomputes that HMAC over the token's own
-        presented fields and compares in constant time: it proves the
-        token was minted under this kernel's secret and is unaltered —
-        including its expiry, which therefore cannot be extended by a
-        holder. Returns ``(intent_digest, issued_at_ns, expires_at_ns)``
-        for an authentic v2 token, else None.
+        ``digest:nonce:issued_at_ns:expires_at_ns:presenter_hash:signature``
+        with the signature an HMAC of the first five fields under the
+        kernel secret. Verification recomputes that HMAC over the
+        token's own presented fields and compares in constant time: it
+        proves the token was minted under this kernel's secret and is
+        unaltered — including its expiry, which therefore cannot be
+        extended by a holder, and its presenter claim (Item 4B), which
+        therefore cannot be stripped or swapped by a holder. Returns
+        ``(intent_digest, issued_at_ns, expires_at_ns, presenter_hash)``
+        for an authentic v3 token, else None.
 
-        v1 tokens (``digest:nonce:signature``, minted before token v2)
-        fail closed here: this is the cutover. An outstanding v1 permit
-        is refused at consume, never silently accepted — the Phase 1
-        (#355) precedent for outstanding tokens at a format change.
-        Malformed tokens and tokens minted under any other secret fail
-        closed the same way.
+        v1 tokens (``digest:nonce:signature``) and v2 tokens (no
+        presenter field) fail closed here: this is the cutover. An
+        outstanding pre-v3 permit is refused at consume, never
+        silently accepted — the Phase 1 (#355) precedent for
+        outstanding tokens at a format change, applied at Item 4 for
+        v1 and here for v2. Malformed tokens and tokens minted under
+        any other secret fail closed the same way.
         """
 
         if not isinstance(permit, str):
             return None
         parts = permit.split(":")
-        if len(parts) != 5:
+        if len(parts) != 6:
             return None
-        token_digest, nonce, issued_raw, expires_raw, signature = parts
+        token_digest, nonce, issued_raw, expires_raw, presenter_hash, signature = parts
         issued_at_ns = _token_time_ns(issued_raw)
         expires_at_ns = _token_time_ns(expires_raw)
         if issued_at_ns is None or expires_at_ns is None:
             return None
         if expires_at_ns <= issued_at_ns:
             return None
+        if len(presenter_hash) != 64 or not presenter_hash.isascii() or not all(
+            char in "0123456789abcdef" for char in presenter_hash
+        ):
+            return None
         expected = hmac.new(
             self._secret,
-            f"{token_digest}:{nonce}:{issued_raw}:{expires_raw}".encode(),
+            f"{token_digest}:{nonce}:{issued_raw}:{expires_raw}:{presenter_hash}".encode(),
             sha256,
         ).hexdigest()
         if not hmac.compare_digest(signature.encode(), expected.encode()):
             return None
-        return token_digest, issued_at_ns, expires_at_ns
+        return token_digest, issued_at_ns, expires_at_ns, presenter_hash
+
+    @staticmethod
+    def presenter_proof_payload(permit: str, intent_digest: str, presenter: str) -> bytes:
+        """The exact bytes a presenter signs to prove a consumption.
+
+        One canonical construction, shared by presenters and the
+        kernel: the proof binds the presenter identity to the exact
+        permit token and the exact intent digest, so a proof captured
+        for one permit or intent verifies for no other. The permit's
+        own single-use semantics bound replay of a valid proof.
+        """
+
+        return _canonical(
+            {
+                "schema": PRESENTER_PROOF_SCHEMA,
+                "permit": permit,
+                "intent_hash": intent_digest,
+                "presenter": presenter,
+            }
+        )
+
+    def _presenter_refusal(
+        self,
+        claims: tuple[str, int, int, str],
+        digest: str,
+        permit: str,
+        presenter: str | None,
+        presenter_proof: str | None,
+    ) -> str | None:
+        """The Item 4B consume gate: a refusal reason, or None to proceed.
+
+        Runs after the token is authenticated and bound to the
+        presented intent, before the store is consulted — so a
+        refusal here never burns the permit, and the bound presenter
+        can still spend it. An unbound permit proceeds exactly as a
+        token-v2 bearer <redacted> unless the pinned policy requires
+        binding. A bound permit requires the named presenter's valid
+        proof under the verifier registered for that identity; every
+        failure mode is a distinct recorded reason. Verification
+        follows the approval path's discipline: only the literal
+        ``True`` is a verdict in favor — a verifier that raises, or
+        that returns anything other than a bool, has not verified
+        (``permit_presenter_unverifiable``); a verifier that returns
+        ``False`` has verified and refused the proof
+        (``permit_presenter_mismatch``).
+        """
+
+        presenter_hash = claims[3]
+        if presenter_hash == UNBOUND_PRESENTER_HASH:
+            if self.policy.require_presenter_binding:
+                return "permit_presenter_unbound"
+            return None
+        if presenter is None or presenter_proof is None:
+            return "permit_presenter_proof_required"
+        if not isinstance(presenter, str) or not isinstance(presenter_proof, str):
+            return "permit_presenter_mismatch"
+        if not hmac.compare_digest(sha256(presenter.encode()).hexdigest(), presenter_hash):
+            return "permit_presenter_mismatch"
+        verifier = self._presenter_verifiers.get(presenter)
+        if verifier is None:
+            return "permit_presenter_unverifiable"
+        payload = self.presenter_proof_payload(permit, digest, presenter)
+        try:
+            verified = verifier.verify(payload, presenter_proof)
+        except Exception:
+            return "permit_presenter_unverifiable"
+        if verified is True:
+            return None
+        if verified is False:
+            return "permit_presenter_mismatch"
+        return "permit_presenter_unverifiable"
 
     def _permit_token_valid(self, permit: object) -> bool:
-        """Whether ``permit`` is an authentic v2 token (see _permit_token_claims).
+        """Whether ``permit`` is an authentic v3 token (see _permit_token_claims).
 
         On its own this authenticates provenance only, but ``consume``
         no longer stops there: since the 2026-11-13 layering change it
@@ -950,7 +1291,14 @@ class GovernanceKernel:
 
         return self._permit_token_claims(permit) is not None
 
-    def consume(self, permit: str, intent: Intent) -> bool:
+    def consume(
+        self,
+        permit: str,
+        intent: Intent,
+        *,
+        presenter: str | None = None,
+        presenter_proof: str | None = None,
+    ) -> bool:
         self._require_pinned_policy()
         digest = self.intent_hash(intent)
         claims = self._permit_token_claims(permit)
@@ -973,7 +1321,7 @@ class GovernanceKernel:
                 self._clock(),
             )
             return False
-        _token_digest, _issued_at_ns, expires_at_ns = claims
+        _token_digest, _issued_at_ns, expires_at_ns, _presenter_hash = claims
         now_ns = self._clock()
         if now_ns >= expires_at_ns:
             # Token v2 (Phase 2, Item 4): the signed expiry is enforced
@@ -1011,7 +1359,558 @@ class GovernanceKernel:
                 self._clock(),
             )
             return False
+        # Presenter binding (Phase 3, Item 4B): the authenticated
+        # token's presenter claim is enforced HERE, at the same layer
+        # as the expiry and intent bindings — the claim lives in the
+        # signed token, not in any store row a writer could edit. A
+        # refusal is recorded and the store is never consulted, so a
+        # failed presenter attempt does not burn the permit.
+        refusal = self._presenter_refusal(claims, digest, permit, presenter, presenter_proof)
+        if refusal is not None:
+            self._state.append(
+                "permit_rejected",
+                {"intent_hash": digest, "reason": refusal},
+                self._clock(),
+            )
+            return False
         return self._state.consume_permit(permit, digest, now_ns)
+
+    # ------------------------------------------------------------------
+    # Leases (canonical Lease port, PR 1)
+    #
+    # A lease is a permit's physical analogue: minted only here, from
+    # an evaluated intent under an active directive, always bound to
+    # a named device presenter, and verified in the spec's §4 order —
+    # token signature, signed expiry, presenter proof, exact command
+    # binding — at this layer, before the store's directive, expiry,
+    # sequence, and budget transition. PR 1 is the binding itself:
+    # the offline state machine, consumption records, and
+    # reconciliation are PR 2; bounded intake, boot attestation, and
+    # domain-safety composition are PR 3.
+    # ------------------------------------------------------------------
+
+    def _lease_decide(self, outcome: str, reason: str, digest: str) -> LeaseDecision:
+        decision = LeaseDecision(outcome, reason, digest)
+        self._append("decision", {"outcome": outcome, "reason": reason, "intent_hash": digest})
+        return decision
+
+    def _lease_directive_failure(self, intent: Intent, directive: Any) -> str | None:
+        """The directive gate for lease issuance: a deny reason or None.
+
+        Mirrors ``GovernedDirectiveProjection.evaluate``'s checks —
+        the directive is active, its parent (if any) is active, and
+        its mandate permits the intent — with one lease-specific
+        refusal: a directive carrying an aggregate budget cannot
+        govern a lease in PR 1, because lease commands debit the
+        lease's own command budget and never the directive's
+        cumulative ceiling; issuing anyway would let actuation escape
+        the ceiling entirely (the Amplify pass). Budgeted-directive
+        leases are a PR 2 reconciliation design question, refused
+        here rather than silently unaccounted.
+        """
+
+        status = self.directive_status(directive.directive_id, directive.version, directive.directive_hash)
+        if status != "active":
+            return status
+        if directive.parent_directive_hash is not None:
+            parent_status = self.directive_hash_status(directive.parent_directive_hash)
+            if parent_status != "active":
+                return parent_status
+        if directive.aggregate_budget is not None:
+            return "lease_directive_budget_unsupported"
+        now_ns = self._trusted_now()
+        if now_ns is None:
+            return "directive_clock_invalid"
+        return directive.permits(intent, now_ns)
+
+    def _record_lease_directive_denial(self, intent: Intent, directive: Any, digest: str, reason: str) -> LeaseDecision:
+        self.record_directive_denial(
+            intent,
+            directive_id=directive.directive_id,
+            version=directive.version,
+            directive_hash=directive.directive_hash,
+            reason=reason,
+        )
+        return LeaseDecision("deny", reason, digest)
+
+    @staticmethod
+    def lease_approval_hash(
+        intent: Intent,
+        directive: Any,
+        *,
+        presenter: str | None,
+        payload_digest: str,
+        max_commands: int,
+        max_disconnected_ns: int,
+        safe_fallback: str,
+        deployment_id: str,
+        boot_counter: int,
+        sequence_floor: int = 0,
+        ttl_ns: int | None = None,
+    ) -> str:
+        """The approval context digest for one lease issuance.
+
+        The hash an approval envelope must bind (in its
+        ``intent_hash`` field) before ``issue_lease_with_approval``
+        will mint. It covers the intent and every authority-bearing
+        claim the issued lease will carry: the governing directive's
+        identity, the payload digest, the command budget, the
+        disconnected window, the safe fallback, the deployment, the
+        bound presenter, the boot counter, the sequence floor, and
+        the requested TTL — the issued expiry is the admission time
+        plus that TTL, clamped by the policy cap, and the clamp only
+        ever narrows what was approved. The kernel-minted claims
+        (nonce, issue time) are not approval material and are not
+        covered. Computing the digest is public and harmless: the
+        authority is the external signature over an envelope binding
+        it, exactly as the intent hash is for permits.
+        """
+
+        return sha256(
+            _canonical(
+                {
+                    "schema": "pulpo.lease-approval.v1",
+                    "intent_hash": GovernanceKernel.intent_hash(intent),
+                    "directive_id": directive.directive_id,
+                    "directive_version": directive.version,
+                    "directive_hash": directive.directive_hash,
+                    "parent_directive_hash": directive.parent_directive_hash,
+                    "presenter": presenter,
+                    "payload_digest": payload_digest,
+                    "max_commands": max_commands,
+                    "max_disconnected_ns": max_disconnected_ns,
+                    "safe_fallback": safe_fallback,
+                    "deployment_id": deployment_id,
+                    "boot_counter": boot_counter,
+                    "sequence_floor": sequence_floor,
+                    "ttl_ns": ttl_ns,
+                }
+            )
+        ).hexdigest()
+
+    def issue_lease(
+        self,
+        intent: Intent,
+        directive: Any,
+        *,
+        presenter: str | None = None,
+        payload_digest: str,
+        max_commands: int,
+        max_disconnected_ns: int,
+        safe_fallback: str,
+        deployment_id: str,
+        boot_counter: int,
+        sequence_floor: int = 0,
+        ttl_ns: int | None = None,
+    ) -> LeaseDecision:
+        """Mint a lease for an intent under an active directive.
+
+        The non-approval issuance path, mirroring ``evaluate``: the
+        pinned-policy check, the policy failure check, the directive
+        gate (denials recorded through ``record_directive_denial``,
+        the projection's evidence shape), and the approval gate —
+        an approval action returns ``require_approval`` here and is
+        minted only through ``issue_lease_with_approval``.
+        """
+
+        self._require_pinned_policy()
+        digest = self.intent_hash(intent)
+        failure = self._policy_failure(intent)
+        if failure:
+            return self._lease_decide("deny", failure, digest)
+        directive_failure = self._lease_directive_failure(intent, directive)
+        if directive_failure is not None:
+            return self._record_lease_directive_denial(intent, directive, digest, directive_failure)
+        if intent.action in self.policy.approval_actions:
+            return self._lease_decide("require_approval", "approval_required", digest)
+        return self._mint_lease(
+            intent,
+            directive,
+            digest,
+            presenter=presenter,
+            payload_digest=payload_digest,
+            max_commands=max_commands,
+            max_disconnected_ns=max_disconnected_ns,
+            safe_fallback=safe_fallback,
+            deployment_id=deployment_id,
+            boot_counter=boot_counter,
+            sequence_floor=sequence_floor,
+            ttl_ns=ttl_ns,
+        )
+
+    def issue_lease_with_approval(
+        self,
+        intent: Intent,
+        directive: Any,
+        envelope: ApprovalEnvelope,
+        *,
+        ceremony_evidence: CeremonyEvidence | None = None,
+        presenter: str | None = None,
+        payload_digest: str,
+        max_commands: int,
+        max_disconnected_ns: int,
+        safe_fallback: str,
+        deployment_id: str,
+        boot_counter: int,
+        sequence_floor: int = 0,
+        ttl_ns: int | None = None,
+    ) -> LeaseDecision:
+        """Mint a lease only after the approval path verifies.
+
+        The envelope (and, for ceremony actions, the ceremony
+        evidence) is verified by the same ``_verify_approval`` the
+        permit path uses — ceremony-gated actions require the
+        ceremony path for lease issuance exactly as for permits
+        (spec §3). The directive gate runs first, as it does in the
+        projection's composition.
+
+        The envelope must bind the lease approval hash of the exact
+        claim set requested here (``lease_approval_hash``), not the
+        bare intent hash: the approval authenticates the claims, so
+        a caller holding a valid approval cannot substitute a
+        different payload digest, command budget, presenter,
+        deployment, or TTL after verification (Codex P1 on PR #383).
+        """
+
+        self._require_pinned_policy()
+        digest = self.intent_hash(intent)
+        failure = self._policy_failure(intent)
+        if failure:
+            return self._lease_decide("deny", failure, digest)
+        directive_failure = self._lease_directive_failure(intent, directive)
+        if directive_failure is not None:
+            return self._record_lease_directive_denial(intent, directive, digest, directive_failure)
+        approval_digest = self.lease_approval_hash(
+            intent,
+            directive,
+            presenter=presenter,
+            payload_digest=payload_digest,
+            max_commands=max_commands,
+            max_disconnected_ns=max_disconnected_ns,
+            safe_fallback=safe_fallback,
+            deployment_id=deployment_id,
+            boot_counter=boot_counter,
+            sequence_floor=sequence_floor,
+            ttl_ns=ttl_ns,
+        )
+        result = self._verify_approval(
+            intent,
+            envelope,
+            ceremony_evidence,
+            lambda approval, verified_at_ns: self._mint_lease(
+                intent,
+                directive,
+                digest,
+                reason="verified_approval",
+                approval=approval,
+                envelope=envelope,
+                timestamp_ns=verified_at_ns,
+                presenter=presenter,
+                payload_digest=payload_digest,
+                max_commands=max_commands,
+                max_disconnected_ns=max_disconnected_ns,
+                safe_fallback=safe_fallback,
+                deployment_id=deployment_id,
+                boot_counter=boot_counter,
+                sequence_floor=sequence_floor,
+                ttl_ns=ttl_ns,
+            ),
+            approval_digest=approval_digest,
+        )
+        if isinstance(result, Decision):
+            return LeaseDecision(result.outcome, result.reason, digest)
+        return result
+
+    def _mint_lease(
+        self,
+        intent: Intent,
+        directive: Any,
+        digest: str,
+        *,
+        reason: str = "policy_satisfied",
+        approval: ApprovalUse | None = None,
+        envelope: ApprovalEnvelope | None = None,
+        timestamp_ns: int | None = None,
+        presenter: str | None,
+        payload_digest: str,
+        max_commands: int,
+        max_disconnected_ns: int,
+        safe_fallback: str,
+        deployment_id: str,
+        boot_counter: int,
+        sequence_floor: int,
+        ttl_ns: int | None,
+    ) -> LeaseDecision:
+        # The issuance funnel, mirroring _issue_permit: the pin is
+        # re-checked, and every lease parameter is validated here so
+        # no entry path mints a malformed artifact. Presenter binding
+        # is mandatory for leases (spec §3): a lease is never a
+        # bearer artifact, and never bound to a presenter this kernel
+        # could not verify a proof from — such a lease would be
+        # unspendable by construction, so it is not minted.
+        self._require_pinned_policy()
+        if presenter is None:
+            return self._lease_decide("deny", "presenter_binding_required", digest)
+        if not isinstance(presenter, str) or not presenter:
+            return self._lease_decide("deny", "presenter_invalid", digest)
+        if presenter not in self._presenter_verifiers:
+            return self._lease_decide("deny", "presenter_not_registered", digest)
+        if not _is_digest(payload_digest):
+            return self._lease_decide("deny", "lease_payload_digest_invalid", digest)
+        if isinstance(max_commands, bool) or not isinstance(max_commands, int) or max_commands <= 0:
+            return self._lease_decide("deny", "lease_command_budget_invalid", digest)
+        if isinstance(max_disconnected_ns, bool) or not isinstance(max_disconnected_ns, int) or max_disconnected_ns <= 0:
+            return self._lease_decide("deny", "lease_disconnected_window_invalid", digest)
+        if not isinstance(safe_fallback, str) or not safe_fallback:
+            return self._lease_decide("deny", "lease_safe_fallback_required", digest)
+        if not isinstance(deployment_id, str) or not deployment_id:
+            return self._lease_decide("deny", "lease_deployment_invalid", digest)
+        if isinstance(boot_counter, bool) or not isinstance(boot_counter, int) or boot_counter < 0:
+            return self._lease_decide("deny", "lease_boot_counter_invalid", digest)
+        if isinstance(sequence_floor, bool) or not isinstance(sequence_floor, int) or sequence_floor < 0:
+            return self._lease_decide("deny", "lease_sequence_floor_invalid", digest)
+        if ttl_ns is not None and (isinstance(ttl_ns, bool) or not isinstance(ttl_ns, int) or ttl_ns <= 0):
+            return self._lease_decide("deny", "lease_ttl_invalid", digest)
+        issued_at_ns = self._clock() if timestamp_ns is None else timestamp_ns
+        # The requested lifetime is clamped by the policy's permit TTL
+        # cap (spec §2): no issuance path stamps a longer one, and the
+        # expiry sits inside the signed token, so it cannot be
+        # extended by a holder.
+        ttl = self.policy.max_permit_ttl_ns if ttl_ns is None else min(ttl_ns, self.policy.max_permit_ttl_ns)
+        expires_at_ns = issued_at_ns + ttl
+        nonce = secrets.token_hex(16)
+        presenter_hash = sha256(presenter.encode()).hexdigest()
+        fields: dict[str, Any] = {
+            "intent_hash": digest,
+            "principal": intent.principal,
+            "action": intent.action,
+            "resource": intent.resource,
+            "payload_digest": payload_digest,
+            "directive_id": directive.directive_id,
+            "directive_version": directive.version,
+            "directive_hash": directive.directive_hash,
+            "parent_directive_hash": directive.parent_directive_hash,
+            "policy_hash": self.policy_hash,
+            "deployment_id": deployment_id,
+            "presenter": presenter,
+            "session_id": intent.session_id,
+            "nonce": nonce,
+            "max_commands": max_commands,
+            "max_disconnected_ns": max_disconnected_ns,
+            "safe_fallback": safe_fallback,
+            "sequence_floor": sequence_floor,
+            "boot_counter": boot_counter,
+            "issued_at_ns": issued_at_ns,
+            "expires_at_ns": expires_at_ns,
+        }
+        probe = Lease(token="probe", **fields)
+        lease_digest = probe.lease_digest
+        payload = f"{lease_digest}:{nonce}:{issued_at_ns}:{expires_at_ns}:{presenter_hash}"
+        signature = hmac.new(self._secret, payload.encode(), sha256).hexdigest()
+        token = f"{payload}:{signature}"
+        lease = Lease(token=token, **fields)
+        if not hmac.compare_digest(lease.lease_digest, lease_digest):
+            raise RuntimeError("lease digest does not match its claims")
+        issuance = LeaseIssuance(
+            lease_digest=lease_digest,
+            binding=directive.permit_binding,
+            expires_at_ns=expires_at_ns,
+            max_commands=max_commands,
+            sequence_floor=sequence_floor,
+            safe_fallback=safe_fallback,
+        )
+        replay = self._state.issue_lease(
+            token, digest, issuance, issued_at_ns, approval=approval, decision_reason=reason
+        )
+        if replay:
+            if envelope is None:
+                raise RuntimeError("state rejected an approval-free lease")
+            decision = self._approval_decide(replay, digest, envelope)
+            return LeaseDecision(decision.outcome, decision.reason, digest)
+        return LeaseDecision("allow", reason, digest, lease)
+
+    @staticmethod
+    def lease_proof_payload(lease_token: str, command_hash: str, presenter: str, sequence: int) -> bytes:
+        """The exact bytes a device presenter signs to prove a lease command.
+
+        The lease analogue of ``presenter_proof_payload``: the proof
+        binds the presenter identity to the exact lease token and the
+        exact command hash — which itself binds the action, target,
+        payload digest, and sequence — so a proof captured for one
+        command verifies for no other.
+        """
+
+        return _canonical(
+            {
+                "schema": LEASE_PROOF_SCHEMA,
+                "lease": lease_token,
+                "command_hash": command_hash,
+                "presenter": presenter,
+                "sequence": sequence,
+            }
+        )
+
+    def _lease_token_claims(self, lease: Lease) -> tuple[str, int, int, str] | None:
+        """Authenticate a lease token and cross-check its claims.
+
+        Follows ``_permit_token_claims``: the HMAC recomputed over
+        the token's own fields proves the token was minted under
+        this kernel's secret and is unaltered. For a lease the signed
+        digest is the lease digest — a hash over every claim — so
+        authentication extends to the full claim set: the recomputed
+        digest of the presented object must equal the token's digest,
+        and the token's nonce, times, and presenter hash must equal
+        the object's fields. Altering one field of a genuine lease
+        (its budget, its expiry) without re-signing therefore fails
+        here (acceptance test 11), as does a locally assembled lease
+        whose token this kernel never signed (acceptance test 1).
+        A lease token is never unbound: an empty-presenter claim
+        fails closed like a malformed one.
+        """
+
+        token = lease.token
+        if not isinstance(token, str):
+            return None
+        parts = token.split(":")
+        if len(parts) != 6:
+            return None
+        token_digest, nonce, issued_raw, expires_raw, presenter_hash, signature = parts
+        issued_at_ns = _token_time_ns(issued_raw)
+        expires_at_ns = _token_time_ns(expires_raw)
+        if issued_at_ns is None or expires_at_ns is None:
+            return None
+        if expires_at_ns <= issued_at_ns:
+            return None
+        if not _is_digest(presenter_hash) or presenter_hash == UNBOUND_PRESENTER_HASH:
+            return None
+        expected = hmac.new(
+            self._secret,
+            f"{token_digest}:{nonce}:{issued_raw}:{expires_raw}:{presenter_hash}".encode(),
+            sha256,
+        ).hexdigest()
+        if not hmac.compare_digest(signature.encode(), expected.encode()):
+            return None
+        try:
+            presented_digest = lease.lease_digest
+        except Exception:
+            return None
+        if not hmac.compare_digest(token_digest.encode(), presented_digest.encode()):
+            return None
+        if nonce != lease.nonce or issued_at_ns != lease.issued_at_ns or expires_at_ns != lease.expires_at_ns:
+            return None
+        if not hmac.compare_digest(presenter_hash, sha256(lease.presenter.encode()).hexdigest()):
+            return None
+        return token_digest, issued_at_ns, expires_at_ns, presenter_hash
+
+    def _lease_presenter_refusal(
+        self,
+        lease: Lease,
+        command: LeaseCommand,
+        presenter: str | None,
+        presenter_proof: str | None,
+    ) -> str | None:
+        """The presenter gate for lease commands (spec §4 step 3).
+
+        The lease analogue of ``_presenter_refusal``, stricter in one
+        respect: a lease is always bound, so there is no bearer path
+        to fall through to — a missing or wrong presenter is always a
+        refusal (acceptance test 12). Runs after the token is
+        authenticated and its expiry enforced, before the store is
+        consulted, so a failed presenter attempt never debits the
+        command budget. Only the literal ``True`` from the verifier
+        is a verdict in favor, as on the permit path.
+        """
+
+        if presenter is None or presenter_proof is None:
+            return "lease_presenter_proof_required"
+        if not isinstance(presenter, str) or not isinstance(presenter_proof, str):
+            return "lease_presenter_mismatch"
+        if not hmac.compare_digest(presenter.encode(), lease.presenter.encode()):
+            return "lease_presenter_mismatch"
+        verifier = self._presenter_verifiers.get(presenter)
+        if verifier is None:
+            return "lease_presenter_unverifiable"
+        payload = self.lease_proof_payload(lease.token, command.command_hash, presenter, command.sequence)
+        try:
+            verified = verifier.verify(payload, presenter_proof)
+        except Exception:
+            return "lease_presenter_unverifiable"
+        if verified is True:
+            return None
+        if verified is False:
+            return "lease_presenter_mismatch"
+        return "lease_presenter_unverifiable"
+
+    def _append_lease_rejection(self, lease_digest: str | None, intent_hash: str | None, sequence: int | None, reason: str) -> None:
+        self._state.append(
+            "lease_rejected",
+            {"lease_digest": lease_digest, "intent_hash": intent_hash, "sequence": sequence, "reason": reason},
+            self._clock(),
+        )
+
+    def consume_lease_command(
+        self,
+        lease: Lease,
+        command: LeaseCommand,
+        *,
+        presenter: str | None = None,
+        presenter_proof: str | None = None,
+    ) -> bool:
+        """Verify one command under a lease, in spec §4 order.
+
+        (1) The token signature and full-claim binding; (2) the
+        signed expiry, enforced here before the store is consulted —
+        expiry terminates the lease into its safe fallback, journaled
+        with the refusal (spec §6); (3) the named presenter's proof;
+        (4) exact intent binding of the command (action, target,
+        payload digest — a same-length swap fails), plus the signed
+        sequence floor; (5) the store's transition: directive status
+        and revocation, stored expiry, sequence monotonicity, and
+        the command-budget check-and-debit. Every refusal is recorded
+        as ``lease_rejected`` with its reason; kernel-layer refusals
+        never debit the budget.
+        """
+
+        self._require_pinned_policy()
+        if not isinstance(lease, Lease) or not isinstance(command, LeaseCommand):
+            self._append_lease_rejection(None, None, None, "lease_invalid")
+            return False
+        claims = self._lease_token_claims(lease)
+        if claims is None:
+            self._append_lease_rejection(lease.lease_digest, lease.intent_hash, command.sequence, "lease_signature_invalid")
+            return False
+        lease_digest, _issued_at_ns, expires_at_ns, _presenter_hash = claims
+        now_ns = self._clock()
+        if now_ns >= expires_at_ns:
+            self._append_lease_rejection(lease_digest, lease.intent_hash, command.sequence, "lease_expired")
+            self._state.append(
+                "lease_fallback",
+                {
+                    "lease_digest": lease_digest,
+                    "intent_hash": lease.intent_hash,
+                    "safe_fallback": lease.safe_fallback,
+                    "cause": "lease_expired",
+                },
+                now_ns,
+            )
+            return False
+        refusal = self._lease_presenter_refusal(lease, command, presenter, presenter_proof)
+        if refusal is not None:
+            self._append_lease_rejection(lease_digest, lease.intent_hash, command.sequence, refusal)
+            return False
+        if not (
+            hmac.compare_digest(command.action.encode(), lease.action.encode())
+            and hmac.compare_digest(command.resource.encode(), lease.resource.encode())
+            and hmac.compare_digest(command.payload_digest.encode(), lease.payload_digest.encode())
+        ):
+            self._append_lease_rejection(lease_digest, lease.intent_hash, command.sequence, "lease_command_mismatch")
+            return False
+        if command.sequence < lease.sequence_floor:
+            self._append_lease_rejection(lease_digest, lease.intent_hash, command.sequence, "lease_sequence_below_floor")
+            return False
+        return self._state.consume_lease_command(
+            lease.token, lease_digest, lease.intent_hash, command.sequence, self._clock()
+        )
 
     def verify_audit_report(self) -> dict[str, Any]:
         """Verify the audit chain and report its signing coverage.
@@ -1124,6 +2023,17 @@ class GovernanceKernel:
 
         return self._state.directive_hash_status(directive_hash)
 
+    def budget_spent(self, scope_key: str) -> int:
+        """Facade read: total cost already debited under one budget bucket.
+
+        Read-only and advisory: the directive projection consults it
+        as an issuance-time early check. The decisive budget check is
+        the atomic check-and-debit inside the state backend's consume
+        transition, never this read.
+        """
+
+        return self._state.budget_spent(scope_key)
+
     def activate_directive(
         self,
         directive: Any,
@@ -1162,6 +2072,69 @@ class GovernanceKernel:
         """Facade verb: bind an issued permit to its live directive."""
 
         self._state.bind_permit_to_directive(permit, intent_hash, binding, timestamp_ns)
+
+    def record_directive_denial(
+        self,
+        intent: Intent,
+        *,
+        directive_id: str,
+        version: int,
+        directive_hash: str,
+        reason: str,
+    ) -> None:
+        """Facade verb: record a directive-scope denial in the audit.
+
+        Kernel build item #2: the directive projection returns its
+        directive-scope denials (directive not active, parent not
+        active, mandate failure, aggregate-budget early check)
+        without a kernel evaluation, so before this verb those
+        denials appended nothing — a refused attempt was invisible
+        to the canonical audit and to reconciliation, unlike
+        kernel-reached denials (``decision``) and consume denials
+        (``permit_rejected``), which append exactly one record each.
+        The projection reports each of its denials through this verb
+        instead. The schema is fixed: the caller supplies the intent,
+        the directive's identity, and the reason it already computed;
+        the kernel derives the intent hash and appends exactly one
+        ``directive_denial`` record with ``authority_effect=none``.
+        Recording a denial grants nothing, spends nothing, and
+        changes no directive state.
+
+        Clock posture (Codex P2 on PR #372): the projection computes
+        its status denials before any trusted-time check, and those
+        paths returned their fail-closed Decision without touching
+        the clock before this verb existed — so the record must
+        never let an unavailable clock change the outcome. The
+        record time is resolved through ``_trusted_now`` (the
+        ``approval_rejected`` precedent in ``_approval_decide``);
+        an unavailable clock stamps 0, the same visible sentinel
+        approval rejections carry, instead of propagating the
+        clock's exception, writing an invalid ``None`` timestamp
+        into the in-memory chain, or tripping the SQLite backend's
+        NOT NULL timestamp constraint. The denial is still recorded
+        exactly once; only its timestamp degrades.
+        """
+
+        trusted_time = self._trusted_now()
+        record_time = 0 if trusted_time is None else trusted_time
+        self._state.append(
+            "directive_denial",
+            {
+                "schema": "pulpo.directive-denial.v0",
+                "directive_id": directive_id,
+                "version": version,
+                "directive_hash": directive_hash,
+                "intent_hash": self.intent_hash(intent),
+                "principal": intent.principal,
+                "action": intent.action,
+                "resource": intent.resource,
+                "cost": intent.cost,
+                "session_id": intent.session_id,
+                "reason": reason,
+                "authority_effect": "none",
+            },
+            record_time,
+        )
 
     def record_target_completion(
         self,

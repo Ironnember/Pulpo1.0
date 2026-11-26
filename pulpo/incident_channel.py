@@ -26,8 +26,9 @@ Feeds (see docs/incident-channel.md for the full table):
 
     canonical audit -- purchase_consequence_unknown is an incident until a
         custody record for the same custody_attempt_id resolves it;
-        purchase_revalidation_failed, permit_rejected, decision/deny and
-        approval_rejected are near-misses (refused before any effect).
+        purchase_revalidation_failed, permit_rejected, decision/deny,
+        approval_rejected and directive_denial are near-misses (refused
+        before any effect).
     custody store  -- one record per attempt_id, from the attempt's latest
         state: unresolved / reconciliation_required / attempt_authorized /
         attempt_claimed / request_transmitted are incidents, unresolved;
@@ -116,7 +117,11 @@ REPORT_SCHEMA = "pulpo.incident-report.v1"
 MAX_INCIDENT_REPORT_BYTES = 1_048_576
 
 # Audit events that are refusals: caught before any consequential effect.
-_AUDIT_NEAR_MISS_EVENTS = frozenset({"purchase_revalidation_failed", "permit_rejected", "approval_rejected"})
+# directive_denial joined the set with kernel build item #2's Codex P1
+# fix (PR #372): the projection's recorded denials are refusals in
+# exactly this sense, and a chain carrying them must not freeze into a
+# report that shows zero near-misses.
+_AUDIT_NEAR_MISS_EVENTS = frozenset({"purchase_revalidation_failed", "permit_rejected", "approval_rejected", "directive_denial"})
 # Custody states that emit a record, and the (kind, resolution) each maps to.
 # reconciled_success resolves an earlier unknown into a near-miss; it emits
 # no record by itself (see _derive_records).
