@@ -178,6 +178,7 @@ from __future__ import annotations
 
 from collections import Counter
 from dataclasses import dataclass
+import hashlib
 import unittest
 
 from pulpo import (
@@ -236,6 +237,41 @@ APPROVED_ARTIFACTS = (
     "installer-macos@head-tree-reviewed-clean",
 )
 
+# The substituted artifact set: what a build of the
+# force-pushed tree would produce, named in the same
+# shape as the approved set but bound to the substituted
+# tree. Used by the publication-binding regressions
+# (steps 3b/3c) as the output a caller might present in
+# place of the governed build's observed output.
+POISONED_ARTIFACTS = (
+    "installer-windows@head-tree-force-pushed-loader",
+    "installer-linux@head-tree-force-pushed-loader",
+    "installer-macos@head-tree-force-pushed-loader",
+)
+
+
+def artifact_digest(artifacts: tuple[str, ...]) -> str:
+    """Digest of an exact artifact set, in presentation order."""
+    return hashlib.sha256("\n".join(artifacts).encode("utf-8")).hexdigest()
+
+
+@dataclass(frozen=True)
+class BuildEvidence:
+    """Evidence of a governed build's observed output.
+
+    Carries the digest of the exact artifact set the
+    build produced, the artifact set itself, and the
+    provenance of that output -- the exact build resource
+    (the reviewed head tree) whose governed execution
+    produced it. Publication is bound to this evidence:
+    a digest alone, detached from the artifacts and the
+    build that produced them, proves nothing.
+    """
+
+    artifact_digest: str
+    artifacts: tuple[str, ...]
+    build_resource: str
+
 # The incident's acts. The substituted build is the SAME
 # action, principal, and session as the approved build --
 # the same pull request and the same workflow -- aimed at
@@ -288,13 +324,63 @@ class ReleaseLedger:
     returned status. (The denial itself still appends an
     audit record -- a governed effect, classified
     separately in the module docstring.)
+
+    Publication is additionally bound to the governed
+    build's observed output: recording a publication
+    effect for the exact publication intent requires
+    build evidence -- the observed artifact digest and
+    provenance produced by this ledger's own governed
+    build execution -- presented at the publication
+    boundary and checked before the publication permit
+    is consumed. Publication presented before any
+    governed build, with caller-fabricated evidence, or
+    with substituted output (an artifact set whose
+    digest is not the observed build's digest) is
+    refused without consuming the permit and without
+    recording an effect.
     """
 
     def __init__(self) -> None:
         self.effects: list[tuple[str, str]] = []
         self.artifacts: list[str] = []
+        # The build evidence this ledger has itself
+        # observed: set only when a governed build
+        # executes through this ledger, from the output
+        # that build actually produced. Caller-presented
+        # evidence is never adopted as observed evidence.
+        self.build_evidence: BuildEvidence | None = None
 
-    def execute(self, kernel: GovernanceKernel, permit: str | None, intent: Intent) -> bool:
+    def _publication_evidence_matches(self, evidence: BuildEvidence | None) -> bool:
+        # Publication is bound to the governed build's
+        # observed output (Codex P2 fix pass, PR #408):
+        # the presented evidence must exist, must be the
+        # evidence this ledger observed from its own
+        # governed build execution, must carry the
+        # provenance of the exact approved build, and its
+        # digest must match the artifact set presented
+        # with it. Any missing, fabricated, or substituted
+        # evidence fails closed here, BEFORE any permit
+        # is consumed or any effect is recorded.
+        if evidence is None or self.build_evidence is None:
+            return False
+        if evidence.build_resource != BUILD_RESOURCE:
+            return False
+        if evidence.artifact_digest != artifact_digest(evidence.artifacts):
+            return False
+        return evidence == self.build_evidence
+
+    def execute(
+        self,
+        kernel: GovernanceKernel,
+        permit: str | None,
+        intent: Intent,
+        *,
+        build_evidence: BuildEvidence | None = None,
+    ) -> bool:
+        if intent == PUBLISH_INTENT and not self._publication_evidence_matches(
+            build_evidence
+        ):
+            return False
         if permit is None:
             return False
         if not kernel.consume(permit, intent):
@@ -302,6 +388,11 @@ class ReleaseLedger:
         self.effects.append((intent.action, intent.resource))
         if intent == BUILD_INTENT:
             self.artifacts.extend(APPROVED_ARTIFACTS)
+            self.build_evidence = BuildEvidence(
+                artifact_digest(tuple(APPROVED_ARTIFACTS)),
+                tuple(APPROVED_ARTIFACTS),
+                BUILD_RESOURCE,
+            )
         return True
 
 
@@ -519,7 +610,14 @@ class PolinriderCIForcePushIncidentScenarioTests(unittest.TestCase):
         # exactly once under its own verified approval.
         self.assertTrue(self.ledger.execute(self.kernel, build_permit, BUILD_INTENT))
         self.assertEqual(list(APPROVED_ARTIFACTS), self.ledger.artifacts)
-        self.assertTrue(self.ledger.execute(self.kernel, publish_permit, PUBLISH_INTENT))
+        self.assertTrue(
+            self.ledger.execute(
+                self.kernel,
+                publish_permit,
+                PUBLISH_INTENT,
+                build_evidence=self.ledger.build_evidence,
+            )
+        )
         self.assertEqual(
             [("build_release", BUILD_RESOURCE), ("publish_release", PUBLISH_RESOURCE)],
             self.ledger.effects,
@@ -528,7 +626,14 @@ class PolinriderCIForcePushIncidentScenarioTests(unittest.TestCase):
         # re-presentation is rejected, and nothing further
         # is built or published.
         self.assertFalse(self.ledger.execute(self.kernel, build_permit, BUILD_INTENT))
-        self.assertFalse(self.ledger.execute(self.kernel, publish_permit, PUBLISH_INTENT))
+        self.assertFalse(
+            self.ledger.execute(
+                self.kernel,
+                publish_permit,
+                PUBLISH_INTENT,
+                build_evidence=self.ledger.build_evidence,
+            )
+        )
         self.assertEqual(2, len(self.ledger.effects))
         self.assertEqual(list(APPROVED_ARTIFACTS), self.ledger.artifacts)
         self.assertEqual(2, len(_events(self.kernel, "permit_consumed")))
@@ -683,8 +788,142 @@ class PolinriderCIForcePushIncidentScenarioTests(unittest.TestCase):
         # The governed release still completes: build the
         # approved tree, publish its set, and only its set.
         self.assertTrue(self.ledger.execute(self.kernel, build_permit, BUILD_INTENT))
-        self.assertTrue(self.ledger.execute(self.kernel, publish_permit, PUBLISH_INTENT))
+        self.assertTrue(
+            self.ledger.execute(
+                self.kernel,
+                publish_permit,
+                PUBLISH_INTENT,
+                build_evidence=self.ledger.build_evidence,
+            )
+        )
         self.assertEqual(list(APPROVED_ARTIFACTS), self.ledger.artifacts)
+        self.assertTrue(self.kernel.verify_audit())
+
+    # -- steps 3b/3c: publication is bound to the build's observed output -----
+    #
+    # Codex P2 fix pass (PR #408): the publication
+    # boundary previously recorded a publication effect
+    # from the intent's action and resource alone, without
+    # accepting or checking the artifacts the governed
+    # build produced -- so the exact publication intent
+    # consumed before any build, or after outputs were
+    # substituted, still returned success with the ledger's
+    # artifact set empty or unrelated. The boundary now
+    # requires the governed build's observed evidence
+    # (artifact digest, artifact set, and build
+    # provenance), checked before the permit is consumed.
+
+    def test_step3b_publication_without_build_evidence_refused(self) -> None:
+        build_permit = self._build_permit(self.kernel)
+        publish_permit = self._publish_permit(self.kernel)
+        # (a) No evidence at all, presented before any
+        # build has run: the publication permit is valid
+        # for the exact intent, but there is no governed
+        # build output to publish.
+        self.assertIsNone(self.ledger.build_evidence)
+        self.assertFalse(
+            self.ledger.execute(self.kernel, publish_permit, PUBLISH_INTENT)
+        )
+        # (b) Caller-fabricated evidence that names the
+        # approved artifacts and their correct digest, but
+        # was never observed from a governed build through
+        # this ledger: correctly shaped metadata is not
+        # build evidence.
+        fabricated = BuildEvidence(
+            artifact_digest(APPROVED_ARTIFACTS),
+            tuple(APPROVED_ARTIFACTS),
+            BUILD_RESOURCE,
+        )
+        self.assertFalse(
+            self.ledger.execute(
+                self.kernel,
+                publish_permit,
+                PUBLISH_INTENT,
+                build_evidence=fabricated,
+            )
+        )
+        # Both refusals happened BEFORE consume: no effect
+        # was recorded, no permit was consumed or rejected,
+        # and the publication permit is unspent.
+        self.assertEqual([], self.ledger.effects)
+        self.assertEqual([], self.ledger.artifacts)
+        self.assertEqual(0, len(_events(self.kernel, "permit_consumed")))
+        self.assertEqual(0, len(_events(self.kernel, "permit_rejected")))
+        # The honest path still completes with the same
+        # permit once the governed build has produced its
+        # observed evidence.
+        self.assertTrue(self.ledger.execute(self.kernel, build_permit, BUILD_INTENT))
+        self.assertTrue(
+            self.ledger.execute(
+                self.kernel,
+                publish_permit,
+                PUBLISH_INTENT,
+                build_evidence=self.ledger.build_evidence,
+            )
+        )
+        self.assertEqual(list(APPROVED_ARTIFACTS), self.ledger.artifacts)
+        self.assertTrue(self.kernel.verify_audit())
+
+    def test_step3c_publication_with_substituted_output_refused(self) -> None:
+        build_permit = self._build_permit(self.kernel)
+        publish_permit = self._publish_permit(self.kernel)
+        self.assertTrue(self.ledger.execute(self.kernel, build_permit, BUILD_INTENT))
+        observed = self.ledger.build_evidence
+        self.assertIsNotNone(observed)
+        # (a) Substituted output with its own self-consistent
+        # digest: the poisoned artifact set, digested
+        # correctly as itself, is still not the output the
+        # governed build produced.
+        substituted = BuildEvidence(
+            artifact_digest(POISONED_ARTIFACTS),
+            POISONED_ARTIFACTS,
+            BUILD_RESOURCE,
+        )
+        self.assertFalse(
+            self.ledger.execute(
+                self.kernel,
+                publish_permit,
+                PUBLISH_INTENT,
+                build_evidence=substituted,
+            )
+        )
+        # (b) Substituted output carrying the observed
+        # build's digest: the digest does not match the
+        # artifact set presented with it.
+        mismatched = BuildEvidence(
+            observed.artifact_digest,  # type: ignore[union-attr]
+            POISONED_ARTIFACTS,
+            BUILD_RESOURCE,
+        )
+        self.assertFalse(
+            self.ledger.execute(
+                self.kernel,
+                publish_permit,
+                PUBLISH_INTENT,
+                build_evidence=mismatched,
+            )
+        )
+        # Both refusals happened BEFORE consume: only the
+        # build effect exists, and the publication permit
+        # is unspent.
+        self.assertEqual([("build_release", BUILD_RESOURCE)], self.ledger.effects)
+        self.assertEqual(1, len(_events(self.kernel, "permit_consumed")))
+        self.assertEqual(0, len(_events(self.kernel, "permit_rejected")))
+        # The honest publication -- the observed evidence
+        # of the governed build -- still succeeds with the
+        # same permit.
+        self.assertTrue(
+            self.ledger.execute(
+                self.kernel,
+                publish_permit,
+                PUBLISH_INTENT,
+                build_evidence=observed,
+            )
+        )
+        self.assertEqual(
+            [("build_release", BUILD_RESOURCE), ("publish_release", PUBLISH_RESOURCE)],
+            self.ledger.effects,
+        )
         self.assertTrue(self.kernel.verify_audit())
 
     # -- step 4: a forged approval for the substituted build ------------------
@@ -761,7 +1000,14 @@ class PolinriderCIForcePushIncidentScenarioTests(unittest.TestCase):
         decision = self.kernel.evaluate(SUBSTITUTED_BUILD_INTENT)
         self.assertEqual("require_approval", decision.outcome)
         self.assertTrue(self.ledger.execute(self.kernel, build_permit, BUILD_INTENT))
-        self.assertTrue(self.ledger.execute(self.kernel, publish_permit, PUBLISH_INTENT))
+        self.assertTrue(
+            self.ledger.execute(
+                self.kernel,
+                publish_permit,
+                PUBLISH_INTENT,
+                build_evidence=self.ledger.build_evidence,
+            )
+        )
         self.assertEqual(list(APPROVED_ARTIFACTS), self.ledger.artifacts)
 
         build_hash = self.kernel.intent_hash(BUILD_INTENT)
@@ -883,7 +1129,14 @@ class PolinriderCIForcePushIncidentScenarioTests(unittest.TestCase):
         # The two legitimate acts still land; the wave
         # did not.
         self.assertTrue(self.ledger.execute(self.kernel, build_permit, BUILD_INTENT))
-        self.assertTrue(self.ledger.execute(self.kernel, publish_permit, PUBLISH_INTENT))
+        self.assertTrue(
+            self.ledger.execute(
+                self.kernel,
+                publish_permit,
+                PUBLISH_INTENT,
+                build_evidence=self.ledger.build_evidence,
+            )
+        )
         self.assertEqual(list(APPROVED_ARTIFACTS), self.ledger.artifacts)
         # Step 5, replayed: the now-spent build permit
         # re-presented for the substituted build.

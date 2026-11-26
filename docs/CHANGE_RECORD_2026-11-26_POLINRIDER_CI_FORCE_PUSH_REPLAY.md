@@ -473,3 +473,110 @@ Results (Verified — executed at both states):
 The evidence is therefore valid at the checkpoint and
 at the worktree head; reuse of the lesson at a later
 commit still requires re-evaluation there.
+
+## 9. Fix pass — Codex P2: bind publication to the artifacts produced by the build (2026-11-26)
+
+Authorized by Austin on 2026-11-26. Scenario/test layer
+only: no kernel or other production code is touched,
+no merge, and the review thread is left open.
+
+1. **Invariant or failure addressed.** The Codex review
+   thread on PR #408 (P2, first comment id 4710044079,
+   unresolved) found that `ReleaseLedger.execute()` —
+   this scenario's publication boundary — consumed a
+   publication permit and recorded a publication effect
+   from the intent's action and resource alone, without
+   accepting or checking the artifacts the governed
+   build produced. The exact publication intent could
+   therefore be consumed before the build intent (with
+   the ledger's artifact set still empty), or after
+   outputs were substituted, and still return success;
+   step 3's poisoned-publication denial rested on the
+   poisoned set being a *different intent*, not on any
+   build-to-artifact binding at the publication
+   boundary. **Verified** at the pre-fix head `d0bc526`
+   by reading the thread and the source: `execute()`
+   took only `(kernel, permit, intent)` and, for a
+   build, populated `artifacts` itself after consume;
+   publication accepted no artifact input at all.
+2. **Authority gained, narrowed, or left unchanged.**
+   Unchanged. `authority_effect=none`. The correction
+   narrows only the test harness's publication path:
+   publication of the exact publication intent now
+   additionally requires build evidence, checked before
+   the permit is consumed. No permit, policy, or kernel
+   behavior changes.
+3. **Canonical state mutations introduced or exposed.**
+   None. The ledger remains a test harness holding no
+   canonical state. The new check runs before
+   `kernel.consume`, so a refused publication appends
+   no audit record, consumes no permit, and records no
+   effect — the refusal is observable exactly as the
+   absence of all three, and the unspent permit is
+   shown still spending on the honest publication in
+   both regressions.
+4. **Exact success and adversarial evidence.** The
+   ledger now records, at the moment its governed build
+   executes, `BuildEvidence` — the observed artifact
+   digest (SHA-256 of the exact artifact set), the
+   artifact set itself, and its provenance (the exact
+   build resource, i.e. the reviewed head tree).
+   Publication requires presented evidence that (a)
+   exists, (b) equals the evidence this ledger itself
+   observed from its own governed build execution,
+   (c) carries the approved build's provenance, and
+   (d) has a digest matching the artifact set presented
+   with it. Two regressions were added (scenario count
+   9 → 11):
+   - step 3b: publication with no build evidence, and
+     publication with caller-fabricated evidence naming
+     the approved artifacts and their correct digest
+     but never observed from a governed build, are both
+     refused before consume (zero `permit_consumed`,
+     zero `permit_rejected`, no effect); the same
+     permit then publishes honestly once the governed
+     build has run.
+   - step 3c: publication after a governed build with
+     substituted output is refused before consume in
+     both forms — the poisoned artifact set with its
+     own self-consistent digest, and the poisoned set
+     carrying the observed build's digest (digest /
+     artifact-set mismatch); the same permit then
+     publishes honestly with the observed evidence.
+   The honest end-to-end path (authorized source
+   revision → governed build → observed artifact
+   digest → exact publication authorization →
+   publication) passes in the positive control and in
+   steps 3, 3b, 3c, 6, and 7, whose publication calls
+   now present the ledger's observed build evidence.
+   Counts in this environment (canonical `unittest`
+   runner; the local venv carries no `pytest` module):
+   baseline at `d0bc526` before the fix — scenario 9/9,
+   full suite 1171 OK (skipped=13); after the fix —
+   scenario 11/11, full suite 1173 OK (skipped=13),
+   the delta being exactly the two new regressions.
+5. **Boundary the evidence does not prove.** The
+   binding is proven at this scenario's ledger
+   boundary, for a caller that routes publication
+   through it. A caller that bypasses the ledger and
+   calls `kernel.consume` directly (as step 7's raw
+   consume probes deliberately do, at the kernel layer)
+   is governed by the kernel's exact-intent binding
+   alone; nothing here adds a kernel-level
+   artifact-binding, and no real CI or release pipeline
+   is governed by this harness (the §5 boundaries stand).
+6. **Claim classification.** The Codex finding and its
+   reproduction at `d0bc526`: **Verified** (thread text
+   plus source reading). The correction's behavior:
+   **Verified** (executable evidence, counts above).
+   That digest-plus-provenance evidence is the right
+   model of a real build's attested output: **Inferred**
+   — a harness modeling choice, stated here.
+7. **Legacy behavior source.** None; no legacy control
+   path was copied.
+8. **Temporal-transfer evidence.** No new reusable
+   lesson is claimed beyond this scenario's boundary;
+   the §8 checkpoint comparison for the original replay
+   stands, and the fix-pass regressions were executed
+   at the branch head stated in §9.4. Reuse at a later
+   commit requires re-evaluation there.
