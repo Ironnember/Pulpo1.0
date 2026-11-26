@@ -66,15 +66,24 @@ authorize a different payment arriving through the
 same provider gateway: the same amount addressed to
 a substituted payee (the incident's fake-IBAN shape)
 makes a different intent whose approval does not
-exist. Revocation is modeled two ways, because the
+exist. Revocation is modeled three ways, because the
 incident turns on it: as the end of an approval's
 validity window (an authorization granted while the
 provider relationship lived is refused after the
 window ends -- the governed counterpart of the
-October 27 disconnect), and as the refusal of the
-provider's standing access artifact itself at the
-dispatch boundary (standing access is not a permit,
-before revocation or after it). And the provider
+October 27 disconnect); as execution-time revocation
+of an already-issued permit, demonstrated as its own
+case (step 2b): where the permit's signed lifetime
+is tied to the relationship window, the genuine
+permit retained across the termination moment is
+refused at ``consume`` after the window ends -- a
+permit minted under the policy's default lifetime,
+which is not tied to the window, is not tested
+across that boundary and no revocation claim is
+made for it; and as the refusal of the provider's
+standing access artifact itself at the dispatch
+boundary (standing access is not a permit, before
+revocation or after it). And the provider
 cannot mint the missing approval: approval authority
 belongs to a named accountable human's key at the
 bank, which control of the provider platform does
@@ -110,8 +119,11 @@ attempted: a November 1 order with no approval at
 all (standing access is its own authority, as the
 bank's systems treated it); the relationship-era
 authorization presented after the revocation moment,
-and the provider's standing access artifact
-presented as a permit; the genuine approval for the
+the genuine issued permit retained and presented at
+consume after termination under a permit lifetime
+tied to the relationship window, and the provider's
+standing access artifact presented as a permit; the
+genuine approval for the
 verified payment presented for the same amount
 re-addressed to the fake Fortuneo-named IBAN; and
 the consumed approval and its spent permit
@@ -213,6 +225,18 @@ from tests.authority_support import HmacTestVerifier, signed_envelope, trust_for
 
 
 NOW = 1_000_000
+# The relationship window for the execution-time
+# revocation case (step 2b): a permit issued while
+# the provider relationship lived carries this signed
+# lifetime, so its life ends with the relationship.
+# The termination advance in step 2b (NOW + 2_000,
+# the same advance step 2 uses) is past this window;
+# the in-window control consume (NOW + 1_000) is
+# inside it. Under the policy's default permit
+# lifetime (4 hours) a permit is NOT tied to the
+# window -- step 2b makes no claim for that
+# configuration, and the module docstring says so.
+RELATIONSHIP_PERMIT_TTL_NS = 1_500
 # The service provider's payment gateway: the channel
 # through which payment orders arrived at the bank.
 # Every intent below is an act proposed under this
@@ -397,12 +421,16 @@ class CreditMutuelArkeaIncidentScenarioTests(unittest.TestCase):
         self.kernel = self._kernel()
         self.executor = PaymentExecutor()
 
-    def _kernel(self, *, clock=None) -> GovernanceKernel:
+    def _kernel(self, *, clock=None, permit_ttl_ns=None) -> GovernanceKernel:
+        policy_kwargs = {}
+        if permit_ttl_ns is not None:
+            policy_kwargs["max_permit_ttl_ns"] = permit_ttl_ns
         policy = Policy(
             frozenset({ACTION}),
             10_000,
             frozenset({ACTION}),
             authority_trust=trust_for(self.verifier),
+            **policy_kwargs,
         )
         return GovernanceKernel(
             policy,
@@ -541,6 +569,96 @@ class CreditMutuelArkeaIncidentScenarioTests(unittest.TestCase):
         self.assertEqual("approval_expired", rejected[0]["payload"]["reason"])
         self.assertEqual(1, len(_events(kernel, "permit_rejected")))
         self.assertTrue(kernel.verify_audit())
+
+    # -- step 2b: the issued permit itself, consumed after termination -------
+    #
+    # Execution-time revocation, as its own case --
+    # separate from step 2's approval expiry. Step 2
+    # never retained a permit across the revocation
+    # moment: it re-presented the approval envelope
+    # after its window ended (refused at evaluation,
+    # ``approval_expired``) and presented the provider's
+    # standing access artifact at consume (refused as a
+    # malformed token). Neither attempt presented the
+    # genuinely issued permit after termination, so the
+    # claimed revocation-at-consume evidence did not
+    # cover the one artifact that could actually have
+    # paid (Codex P1 on PR #406, Verified by probe at
+    # the pre-fix head: under the scenario policy's
+    # default 4-hour permit lifetime, the genuine
+    # permit consumed successfully 2,000 ns after
+    # issuance). This case closes that gap in the only
+    # configuration in which the kernel ties a permit's
+    # life to the relationship: the policy's permit
+    # lifetime is set to the relationship window, the
+    # genuine permit is retained -- not discarded --
+    # across the termination moment, and consumption of
+    # the identical authorized payment is then required
+    # to refuse.
+
+    def test_step2b_issued_permit_refused_after_relationship_termination(self) -> None:
+        clock_cell = [NOW]
+        kernel = self._kernel(
+            clock=lambda: clock_cell[0],
+            permit_ttl_ns=RELATIONSHIP_PERMIT_TTL_NS,
+        )
+        executor = PaymentExecutor()
+        # While the relationship lived: the genuine
+        # approval verifies and a permit mints for the
+        # exact approved payment. The permit is RETAINED
+        # here -- the artifact step 2 discarded.
+        permit = self._issue_permit(
+            kernel,
+            APPROVED_INTENT,
+            approval_id="approval-revocation-consume",
+            nonce="nonce-revocation-consume",
+        )
+        # In-window control, on a parallel kernel under
+        # the identical tied-lifetime policy: the same
+        # genuine permit shape, consumed before the
+        # termination moment, pays exactly once. The
+        # post-termination refusal below is therefore a
+        # revocation refusal, not a permit that was dead
+        # on arrival.
+        control_clock = [NOW]
+        control_kernel = self._kernel(
+            clock=lambda: control_clock[0],
+            permit_ttl_ns=RELATIONSHIP_PERMIT_TTL_NS,
+        )
+        control_executor = PaymentExecutor()
+        control_permit = self._issue_permit(
+            control_kernel,
+            APPROVED_INTENT,
+            approval_id="approval-revocation-control",
+            nonce="nonce-revocation-control",
+        )
+        control_clock[0] = NOW + 1_000
+        self.assertTrue(
+            control_executor.execute(control_kernel, control_permit, APPROVED_INTENT)
+        )
+        self.assertEqual(
+            [(ACTION, APPROVED_PAYMENT)], control_executor.effects
+        )
+        # The termination moment (October 27, in the
+        # incident's naming): the clock passes the end
+        # of the relationship window the permit's signed
+        # lifetime was tied to -- the same NOW + 2_000
+        # advance step 2 uses for the approval window.
+        clock_cell[0] = NOW + 2_000
+        # The retained genuine permit, presented at
+        # consume for the identical payment it genuinely
+        # authorized: refused. Already-issued payment
+        # authority does not survive the termination of
+        # the relationship that governed it.
+        self.assertFalse(executor.execute(kernel, permit, APPROVED_INTENT))
+        self.assertEqual([], executor.effects)
+        self.assertEqual(1, len(_events(kernel, "approval_verified")))
+        self.assertEqual(0, len(_events(kernel, "permit_consumed")))
+        rejected = _events(kernel, "permit_rejected")
+        self.assertEqual(1, len(rejected))
+        self.assertEqual("permit_expired", rejected[0]["payload"]["reason"])
+        self.assertTrue(kernel.verify_audit())
+        self.assertTrue(control_kernel.verify_audit())
 
     # -- step 3: the genuine approval, a substituted payee -------------------
     #

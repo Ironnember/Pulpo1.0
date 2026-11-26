@@ -147,6 +147,9 @@ Scenario module
   authorizes nothing; disconnect-without-revocation
   has no governed counterpart because the window,
   not the wire, is the authority's life.
+- step 2b (fix pass, 2026-11-26): execution-time
+  revocation as its own case, separate from step 2's
+  approval expiry -- see the fix-pass addendum below.
 - step 3: the genuine approval for the verified
   payment, presented for the same amount re-addressed
   to the fake Fortuneo-named IBAN (the incident's
@@ -523,3 +526,90 @@ later commit still requires re-evaluation there.
 - First public alarm: ZachXBT, November 2, 2026
   (on-chain investigation reporting, as carried in
   the coverage above).
+
+## Fix-pass addendum — 2026-11-26 (Codex P1 on PR #406)
+
+Finding (Recorded -- Codex review thread on PR #406,
+first comment 2026-11-26): step 2 discarded the
+genuinely issued permit (`decision.permit`) before
+the revocation moment. It then re-presented the
+approval envelope after its window ended (refused
+`approval_expired` at evaluation) and presented the
+provider's standing access artifact at consume
+(refused as a malformed token) -- but never attempted
+consumption of the authentic issued permit after
+termination. Under the scenario policy's default
+permit lifetime (4 hours,
+14,400,000,000,000 ns), the genuine permit minted at
+NOW would still have executed the approved payment
+at NOW + 2,000. The claimed revocation-at-consume
+evidence therefore did not cover the one artifact
+that could actually have paid.
+
+Verification of the finding (Verified -- executable
+probe at the pre-fix head `1fe8615`, before any
+change): with the default permit lifetime, consuming
+the genuine retained permit at NOW + 2,000 returned
+True (the permit paid after the modeled termination)
+-- the finding reproduces exactly as described. With
+the permit lifetime tied to the relationship window
+(1,500 ns), the same consumption at NOW + 2,000
+returned False with `permit_expired`, and consumption
+in-window at NOW + 1,000 returned True. The kernel's
+consume-time expiry enforcement is correct in both
+configurations; the defect was in the scenario's
+proof construction, not in the kernel. No kernel or
+core module is changed by this fix pass.
+
+Correction (scenario/test layer only): a new case,
+step 2b (`test_step2b_issued_permit_refused_after_
+relationship_termination`), separate from step 2's
+approval-expiry case, which is kept unchanged. Step
+2b's policy sets the permit lifetime to the
+relationship window (`RELATIONSHIP_PERMIT_TTL_NS =
+1,500`); the genuine permit is retained across the
+termination moment (the clock advance to NOW + 2,000,
+the same advance step 2 uses); consumption of the
+identical authorized payment is then required to
+refuse -- and does: no effect, zero
+`permit_consumed`, exactly one `permit_rejected` with
+reason `permit_expired`, audit chain verifies. An
+in-window control on a parallel kernel under the
+identical tied-lifetime policy consumes the same
+permit shape at NOW + 1,000 and pays exactly once, so
+the refusal is a revocation refusal, not a permit
+dead on arrival. The module docstring now states the
+boundary plainly: no revocation claim is made for a
+permit minted under the default lifetime, which is
+not tied to the relationship window. Authority is
+unchanged (`authority_effect=none`); no canonical
+state mutation is introduced or exposed beyond the
+existing consume/audit paths the scenario already
+exercised.
+
+Evidence (Verified -- executed in this environment
+with the repo venv interpreter; the venv carries no
+pytest module, so the repo's canonical
+`python -m unittest discover` command was used, same
+interpreter and environment before and after):
+
+- Baseline at `1fe8615` before the fix: scenario
+  8 tests OK; full suite 1155 OK (skipped=13).
+- After the fix: scenario 9 tests OK; full suite
+  1156 OK (skipped=13) -- the delta is exactly the
+  one new test.
+- Temporal transfer: the updated scenario module,
+  copied onto a clean worktree reconstructed at the
+  section 8 checkpoint `d7b7506`, passes 9/9 there --
+  the tied-lifetime revocation lesson TRANSFERS to
+  the checkpoint; it changes no kernel behavior
+  there (`authority_effect=none`); no negative
+  transfer observed.
+
+Claim classification for this addendum: the Codex
+finding is **Recorded** (the review thread) and
+**Verified** (reproduced by probe at the pre-fix
+head); the corrected kernel behavior is **Verified**
+(executable evidence above); the mapping of
+termination to the end of a tied permit lifetime
+remains **Inferred**, as in section 6.
