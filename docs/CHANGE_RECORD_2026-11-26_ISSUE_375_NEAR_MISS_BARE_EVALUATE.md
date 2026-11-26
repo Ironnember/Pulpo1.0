@@ -216,3 +216,20 @@ No count change from any other PR is absorbed here: the
 failing head contained neither PR #407 nor PR #410, and the
 delta is wholly explained by this PR's own rule. Custody
 untouched; no kernel change; visibility only, as above.
+
+The same interaction surfaced once more when this branch
+was updated against main after PR #415 (Mitel MiCollab
+replay) merged: that module also postdates this PR, and its
+step 7 pinned the same pre-fix behavior. Its hardcoded
+near-miss total moves 7 → 8 — exactly its recorded
+`require_approval` count (1) — with the identity and
+`decision` source-detail count updated in the same shape,
+and its module docstring and step-7 comments corrected to
+state the post-#375 derivation. After both module updates,
+the full suite at the updated head is green (1166 tests,
+13 skipped, local `python -m unittest discover`). No other
+module required changes: the filename, gainsight, mythos,
+and trajectory modules merged in PRs #410–#414 carry no
+pre-#375 near-miss pinning that this rule disturbs (their
+own multiplicity fixes did not touch the derivation
+expectations, and the suite result is the evidence).
