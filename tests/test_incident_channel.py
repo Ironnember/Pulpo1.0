@@ -232,6 +232,38 @@ class IncidentChannelAuditFeedTests(unittest.TestCase):
         self.assertEqual("permit_clock_invalid", report.records[1].reason)
         self.assertEqual("action_not_allowed", report.records[3].reason)
 
+    def test_directive_denial_audit_event_is_a_near_miss(self):
+        # Kernel build item #2 records projection-level denials as
+        # directive_denial; the channel must classify them as
+        # near-misses (Codex P1 on PR #372: without the
+        # classification, a chain carrying only a projection denial
+        # froze into a report showing zero near-misses).
+        self.backend.append("directive_denial",
+                            {"schema": "pulpo.directive-denial.v0",
+                             "directive_id": "deploy-prod", "version": 1,
+                             "directive_hash": "d" * 64,
+                             "intent_hash": "e" * 64,
+                             "principal": "agent:builder", "action": "write",
+                             "resource": "repo:core", "cost": 3,
+                             "session_id": "s1",
+                             "reason": "directive_not_authorized",
+                             "authority_effect": "none"}, 500)
+        report = freeze_incident_report(self.owner)
+        self.assertEqual(0, report.incidents)
+        self.assertEqual(1, report.near_misses)
+        (record,) = report.records
+        self.assertEqual("near_miss", record.kind)
+        self.assertEqual("canonical_audit", record.source)
+        self.assertEqual("directive_denial", record.source_detail)
+        self.assertEqual("not_applicable", record.resolution)
+        self.assertEqual("directive_not_authorized", record.reason)
+        self.assertEqual(500, record.first_seen_ns)
+        self.assertEqual(500, record.last_seen_ns)
+        self.assertTrue(record.record_id.startswith("near-miss:"))
+        self.assertEqual(self.kernel.audit[-1]["hash"], record.anchor_hash)
+        self.assertIn(("intent_hash", "e" * 64), record.anchors)
+        self.assertTrue(report.audit_valid)
+
     def test_allowed_decision_and_other_events_emit_no_record(self):
         self.backend.append("decision", {"outcome": "allow", "reason": "ok",
                                          "intent_hash": "a" * 64}, 100)
