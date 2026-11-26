@@ -64,12 +64,17 @@ approval presented in a later session -- permits are
 single-use and approvals are session-bound, so neither
 repetition mints or spends. What the agent actually
 accessed is reconciled against what was approved, per
-occurrence, by a test-local reconciliation (counts, not
-mere presence): on the governed path the counts are
-equal and the over-read count is zero; applied to the
-incident's own shape (the negative control's access
-log) the same reconciliation reports the over-read
-exactly -- three unapproved secrets per whole-file load.
+occurrence and per session, by a test-local
+reconciliation (counts, not mere presence): every
+approval and access record carries its session and
+action identity, so an approval in one session cannot
+compensate for excess access in another even when the
+aggregate counts are equal. On the governed path the
+counts are equal and the over-read count is zero;
+applied to the incident's own shape (the negative
+control's access log) the same reconciliation reports
+the over-read exactly -- three unapproved secrets per
+whole-file load.
 
 Setup: exactly one act is legitimate in this scenario
 -- fetch the one named GitLab token, once, in the
@@ -203,33 +208,55 @@ OTHER_SECRET_INTENT = Intent(AGENT, "read_secret", "secret-store/bi-client-secre
 LATER_SESSION_INTENT = Intent(AGENT, "read_secret", "secret-store/gitlab-token", 10, LATER_SESSION)
 
 
-def reconcile_access(approved: list[str], accessed: list[str]) -> dict:
+# One approval or access occurrence, with the identity
+# that bounds it: (session_id, action, secret name).
+# Reconciliation keys on the whole record, never on the
+# secret name alone -- a flattened per-name counter
+# would let an approval in one session compensate for
+# excess access in another whenever the aggregate
+# counts happened to match (Codex review on PR #409).
+AccessRecord = tuple[str, str, str]
+
+
+def access_record(session: str, name: str, action: str = "read_secret") -> AccessRecord:
+    return (session, action, name)
+
+
+def reconcile_access(approved: list[AccessRecord], accessed: list[AccessRecord]) -> dict:
     """Reconcile what was accessed against what was approved, per occurrence.
 
     Test-local; holds no canonical state. Counts, not
-    presence: each approved occurrence accounts for one
-    accessed occurrence of the same secret, in order, and
-    every accessed occurrence beyond the approved count
-    for that secret is an over-read occurrence, named.
-    This is the check the incident's workflow never ran:
-    run per session, the incident's first whole-file load
-    already reports three over-read occurrences.
+    presence, and never aggregate-only: each approved
+    occurrence accounts for one accessed occurrence of
+    the same secret under the same session and the same
+    action, in order, and every accessed occurrence
+    beyond the approved count for that exact
+    (session, action, secret) record is an over-read
+    occurrence, named with its session and action.
+    Approval in one session therefore cannot compensate
+    for excess access in another, even when the totals
+    are equal. This is the check the incident's workflow
+    never ran: run per session, the incident's first
+    whole-file load already reports three over-read
+    occurrences.
     """
-    remaining: dict[str, int] = {}
-    for name in approved:
-        remaining[name] = remaining.get(name, 0) + 1
-    over_read: list[str] = []
-    for name in accessed:
-        if remaining.get(name, 0) > 0:
-            remaining[name] -= 1
+    remaining: dict[AccessRecord, int] = {}
+    for record in approved:
+        remaining[record] = remaining.get(record, 0) + 1
+    over_read_records: list[AccessRecord] = []
+    for record in accessed:
+        if remaining.get(record, 0) > 0:
+            remaining[record] -= 1
         else:
-            over_read.append(name)
+            over_read_records.append(record)
+    over_read = [name for _session, _action, name in over_read_records]
     return {
         "approved_count": len(approved),
         "accessed_count": len(accessed),
-        "over_read_count": len(over_read),
+        "over_read_count": len(over_read_records),
         "over_read": over_read,
-        "ok": not over_read,
+        "over_read_records": over_read_records,
+        "ok": not over_read_records,
     }
 
 
@@ -265,13 +292,20 @@ class SecretStore:
 
     def __init__(self) -> None:
         self.accessed: list[str] = []
+        # The same log with session and action identity
+        # preserved per occurrence, for reconciliation.
+        self.accessed_records: list[AccessRecord] = []
 
     def read(self, kernel: GovernanceKernel, permit: str | None, intent: Intent) -> bool:
         if permit is None:
             return False
         if not kernel.consume(permit, intent):
             return False
-        self.accessed.extend(self.SERVES[intent.resource])
+        served = self.SERVES[intent.resource]
+        self.accessed.extend(served)
+        self.accessed_records.extend(
+            access_record(intent.session_id, name, intent.action) for name in served
+        )
         return True
 
 
@@ -291,8 +325,11 @@ class UngovernedAgent:
 
     def __init__(self) -> None:
         self.accessed: list[str] = []
+        self.accessed_records: list[AccessRecord] = []
 
-    def fetch_named_token(self, *, file_present: bool = True) -> list[str]:
+    def fetch_named_token(
+        self, *, file_present: bool = True, session: str = SESSION
+    ) -> list[str]:
         if file_present:
             loaded = list(STORE_CONTENTS)
         else:
@@ -301,6 +338,9 @@ class UngovernedAgent:
             # every secret the machine holds.
             loaded = list(STORE_CONTENTS)
         self.accessed.extend(loaded)
+        self.accessed_records.extend(
+            access_record(session, name) for name in loaded
+        )
         return loaded
 
 
@@ -365,10 +405,12 @@ class NordLayerAiScoutIncidentScenarioTests(unittest.TestCase):
         self.assertEqual([GITLAB_TOKEN], self.store.accessed)
         # Reconciliation: what was accessed is exactly
         # what was approved, per occurrence.
-        result = reconcile_access([GITLAB_TOKEN], self.store.accessed)
+        result = reconcile_access(
+            [access_record(SESSION, GITLAB_TOKEN)], self.store.accessed_records
+        )
         self.assertEqual(
             {"approved_count": 1, "accessed_count": 1, "over_read_count": 0,
-             "over_read": [], "ok": True},
+             "over_read": [], "over_read_records": [], "ok": True},
             result,
         )
         self.assertEqual(1, len(_events(self.kernel, "approval_verified")))
@@ -506,7 +548,9 @@ class NordLayerAiScoutIncidentScenarioTests(unittest.TestCase):
         self.assertEqual([GITLAB_TOKEN], self.store.accessed)
         self.assertEqual(1, len(_events(self.kernel, "permit_consumed")))
         self.assertEqual(2, len(_events(self.kernel, "permit_rejected")))
-        result = reconcile_access([GITLAB_TOKEN], self.store.accessed)
+        result = reconcile_access(
+            [access_record(SESSION, GITLAB_TOKEN)], self.store.accessed_records
+        )
         self.assertTrue(result["ok"])
         self.assertEqual(0, result["over_read_count"])
         self.assertTrue(self.kernel.verify_audit())
@@ -595,7 +639,9 @@ class NordLayerAiScoutIncidentScenarioTests(unittest.TestCase):
             decision = self.kernel.evaluate_with_approval(intent, envelope)
             self.assertEqual("deny", decision.outcome)
             self.assertFalse(self.store.read(self.kernel, decision.permit, intent))
-        result = reconcile_access([GITLAB_TOKEN], self.store.accessed)
+        result = reconcile_access(
+            [access_record(SESSION, GITLAB_TOKEN)], self.store.accessed_records
+        )
         self.assertEqual(1, result["approved_count"])
         self.assertEqual(1, result["accessed_count"])
         self.assertEqual(0, result["over_read_count"])
@@ -603,6 +649,61 @@ class NordLayerAiScoutIncidentScenarioTests(unittest.TestCase):
         self.assertTrue(result["ok"])
         self.assertEqual(3, len(_events(self.kernel, "approval_rejected")))
         self.assertTrue(self.kernel.verify_audit())
+
+    # -- step 6b: reconciliation preserves session boundaries ----------------
+    #
+    # Regression for the Codex finding on PR #409: the
+    # earlier reconciliation took flattened secret names
+    # and kept one global per-name counter, so an
+    # approval in one session could consume an excess
+    # access in another whenever the aggregate counts
+    # matched. The counterexample below is exact:
+    # session A is authorized 1 access and observes 2;
+    # session B is authorized 1 and observes 0; the
+    # aggregate totals are equal (2 = 2), yet session A
+    # overreached and reconciliation must say so.
+
+    def test_step6b_reconciliation_cross_session_aggregate_does_not_mask_overreach(self) -> None:
+        session_a = "session-a"
+        session_b = "session-b"
+        approved = [
+            access_record(session_a, GITLAB_TOKEN),
+            access_record(session_b, GITLAB_TOKEN),
+        ]
+        accessed = [
+            access_record(session_a, GITLAB_TOKEN),
+            access_record(session_a, GITLAB_TOKEN),
+        ]
+        result = reconcile_access(approved, accessed)
+        self.assertEqual(2, result["approved_count"])
+        self.assertEqual(2, result["accessed_count"])
+        self.assertEqual(1, result["over_read_count"])
+        self.assertEqual([GITLAB_TOKEN], result["over_read"])
+        self.assertEqual(
+            [access_record(session_a, GITLAB_TOKEN)], result["over_read_records"]
+        )
+        self.assertFalse(result["ok"])
+        # Action identity is part of the boundary too:
+        # the same secret in the same session under a
+        # different action is not covered by the read
+        # approval.
+        result = reconcile_access(
+            [access_record(session_a, GITLAB_TOKEN)],
+            [access_record(session_a, GITLAB_TOKEN, action="export_secret")],
+        )
+        self.assertEqual(1, result["over_read_count"])
+        self.assertFalse(result["ok"])
+        # The honest cross-session path still reconciles
+        # clean: one authorized access in each session,
+        # observed exactly once in each.
+        honest_accessed = [
+            access_record(session_a, GITLAB_TOKEN),
+            access_record(session_b, GITLAB_TOKEN),
+        ]
+        result = reconcile_access(approved, honest_accessed)
+        self.assertEqual(0, result["over_read_count"])
+        self.assertEqual([], result["over_read_records"])
+        self.assertTrue(result["ok"])
 
     # -- step 7: the incident channel sees the attempts ----------------------
     #
@@ -730,7 +831,7 @@ class NordLayerAiScoutIncidentScenarioTests(unittest.TestCase):
         # load already surfaces the over-read, by count
         # and by name -- the check whose absence let the
         # incident run for weeks.
-        result = reconcile_access([GITLAB_TOKEN], agent.accessed)
+        result = reconcile_access([access_record(SESSION, GITLAB_TOKEN)], agent.accessed_records)
         self.assertEqual(1, result["approved_count"])
         self.assertEqual(4, result["accessed_count"])
         self.assertEqual(3, result["over_read_count"])
@@ -746,7 +847,9 @@ class NordLayerAiScoutIncidentScenarioTests(unittest.TestCase):
         fallback = UngovernedAgent()
         loaded = fallback.fetch_named_token(file_present=False)
         self.assertEqual(list(STORE_CONTENTS), loaded)
-        result = reconcile_access([GITLAB_TOKEN], fallback.accessed)
+        result = reconcile_access(
+            [access_record(SESSION, GITLAB_TOKEN)], fallback.accessed_records
+        )
         self.assertEqual(3, result["over_read_count"])
         self.assertFalse(result["ok"])
         # The incident's full reported shape: the load
@@ -758,9 +861,13 @@ class NordLayerAiScoutIncidentScenarioTests(unittest.TestCase):
         # presence-only check would report only that the
         # file "was accessed."
         repeater = UngovernedAgent()
-        for _ in range(10):
-            repeater.fetch_named_token()
-        result = reconcile_access([GITLAB_TOKEN] * 10, repeater.accessed)
+        repeater_sessions = [f"mr-review-session-{i}" for i in range(1, 11)]
+        for session in repeater_sessions:
+            repeater.fetch_named_token(session=session)
+        result = reconcile_access(
+            [access_record(session, GITLAB_TOKEN) for session in repeater_sessions],
+            repeater.accessed_records,
+        )
         self.assertEqual(10, result["approved_count"])
         self.assertEqual(40, result["accessed_count"])
         self.assertEqual(30, result["over_read_count"])

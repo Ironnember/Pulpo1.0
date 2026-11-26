@@ -453,3 +453,65 @@ Results (Verified — executed at both states):
 The evidence is therefore valid at the checkpoint and
 at the worktree head; reuse of the lesson at a later
 commit still requires re-evaluation there.
+
+## Fix pass — 2026-11-26 (Codex review on PR #409)
+
+Finding (**Verified** — read from the Codex review
+thread on PR #409 and reproduced against the scenario
+source at the branch head `bb84ed5`): the test-local
+`reconcile_access` accepted flattened lists of secret
+names and kept one global per-name counter, so accesses
+from one session could consume approvals belonging to
+another. Duplicate reads in some sessions and no read
+in others could produce the same aggregate count and
+return `ok=True`, despite the module describing
+reconciliation as per session and in order.
+
+Correction (scenario/test layer only; no kernel or
+core module touched; `authority_effect=none`):
+
+- Approval and access records now carry identity as
+  `(session_id, action, secret_name)` records
+  (`AccessRecord` / `access_record`), and
+  `reconcile_access` counts per exact record, in order.
+  An approval in one session — or under a different
+  action — cannot compensate for excess access in
+  another, even when aggregate totals are equal.
+  Over-read occurrences are reported both by name and
+  as full records (`over_read_records`).
+- `SecretStore` and the `UngovernedAgent` double keep
+  a parallel `accessed_records` log with the session
+  and action of each served/accessed occurrence (the
+  governed store takes them from the consumed intent;
+  the ungoverned double takes the session it is told
+  it is in). All existing reconciliation call sites now
+  reconcile those records; the negative control's
+  10-session shape approves and accesses per distinct
+  session and still reports 30 over-read occurrences.
+- New regression
+  `test_step6b_reconciliation_cross_session_aggregate_does_not_mask_overreach`:
+  the exact counterexample — session A authorized 1
+  access, observed 2; session B authorized 1, observed
+  0; aggregate totals equal (2 = 2) — must NOT
+  reconcile clean: it reports 1 over-read occurrence
+  in session A and `ok=False`. The same test pins
+  action identity (a different action in the same
+  session is not covered) and the honest cross-session
+  path (1 authorized and 1 observed in each session
+  reconciles clean).
+
+Boundary respected: the step-7 counts pinning the
+pre-fix issue-#375 surfacing boundary are unchanged —
+that test is untouched by this pass and still passes
+exactly as written (PR #413 has not merged).
+
+Evidence (**Verified**, executable, this environment;
+the venv has no `pytest`, so the repo's canonical
+`unittest` runner was used): at the synced branch head
+`bb84ed5` before the fix, scenario 9/9 and full suite
+1156 OK (skipped=13); after the fix, scenario 10/10
+and full suite 1157 OK (skipped=13) — the delta is
+exactly the one new regression test. Claim
+classification: the finding and the correction's
+behavior are **Verified** (executable evidence at the
+fix commit); no other claim class changes.
