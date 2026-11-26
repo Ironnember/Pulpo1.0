@@ -360,12 +360,34 @@ class Environment:
         .pth name marks a startup hook), the hook's execution is
         attempted as its own governed act. No install
         authorization names it, so the attempt is routed through
-        the canonical kernel with a sentinel permit and refused;
-        no credential is read and nothing is exfiltrated."""
+        the canonical kernel with a sentinel permit. The payload
+        effects — credential reads and exfiltration — are gated
+        on the consume RESULT: they occur if and only if consume
+        returns True. Under the canonical kernel the sentinel is
+        refused, so no credential is read and nothing is
+        exfiltrated; under a kernel whose consume accepts (the
+        negative control's defective double), the hook executes
+        and the effects occur — the gate is the consume result,
+        not this harness's construction."""
         for version, (wheel, _attestation) in sorted(self.installed.items()):
             if b".pth" in wheel:
-                kernel.consume("no-permit-issued", execute_intent(version, wheel))
-                return False
+                if not kernel.consume(
+                    "no-permit-issued", execute_intent(version, wheel)
+                ):
+                    return False
+                # Consume succeeded — possible only under an
+                # unguarded or defective kernel. The hook
+                # executes: it reads the credential store and
+                # exfiltrates its contents (synthetic
+                # placeholders only).
+                self.credential_reads += len(self.credential_store)
+                self.exfiltrated.append(
+                    "\n".join(
+                        f"{name}={value}"
+                        for name, value in sorted(self.credential_store.items())
+                    ).encode()
+                )
+                return True
         return True
 
 
@@ -428,14 +450,19 @@ def reconcile_installs(
     explicitly (the PR #362 lesson): ``rejected_claims`` is claims
     minus audit-consumed installs — a claim with no consumed
     install behind it is a phantom claim and is rejected;
-    ``unaccounted_effects`` is observed installs minus
+    ``unreported_claims`` is audit-consumed installs missing from
+    the claims — an omitted claim is reported, and ``ok``
+    requires the claims to equal the supported set exactly (a
+    subset check would let an omitted install claim pass
+    silently); ``unaccounted_effects`` is observed installs minus
     audit-consumed installs — bytes installed that no consumed
     install accounts for, the incident's condition;
     ``missing_effects`` is audit-consumed installs the observer
     does not see."""
     return {
-        "ok": claims <= supported and observed == supported,
+        "ok": claims == supported and observed == supported,
         "rejected_claims": claims - supported,
+        "unreported_claims": supported - claims,
         "unaccounted_effects": observed - supported,
         "missing_effects": supported - observed,
     }
@@ -467,6 +494,18 @@ class _UnguardedConsumeKernel(GovernanceKernel):
         return self._state.consume_permit(
             permit, self.intent_hash(intent), self._clock()
         )
+
+
+class _SentinelAcceptingState(InMemoryKernelState):
+    """Defective state double for the startup negative control:
+    its consume accepts any permit string, modeling a kernel
+    whose rejection path is broken. Used to prove that
+    startup's payload effects are gated on the consume RESULT —
+    under this double the hook executes."""
+
+    def consume_permit(self, permit: str, intent_hash: str, timestamp_ns: int) -> bool:
+        self.append("permit_consumed", {"intent_hash": intent_hash}, timestamp_ns)
+        return True
 
 
 CANDIDATES: list[tuple[str, bytes, str | None]] = [
@@ -683,9 +722,25 @@ class MsAgentFrameworkApprovalPathTests(unittest.TestCase):
         self.assertEqual("permit_signature_invalid", rejected[0]["payload"]["reason"])
         self.assertTrue(self.kernel.verify_audit())
 
-    # -- beat 5: missing provenance fails closed at evaluation ----------------
+    # -- beat 5: the pipeline's key is not the reviewer authority -------------
+    #
+    # What this beat proves, stated precisely (narrowed in the
+    # fix pass — the original text claimed "missing provenance
+    # fails closed at evaluation"): (i) an approval envelope for
+    # the unattested hooked release signed by the release
+    # pipeline's OWN key mints nothing, because the pipeline is
+    # not the reviewer authority the policy pins — a
+    # wrong-authority rejection. Provenance absence is NOT what
+    # denies it: the attestation state is bound into the intent
+    # (att = hash-of-None), no policy constraint in this setup
+    # requires an attestation, and step 5b shows the SAME
+    # unattested intent allowing when the reviewer authority
+    # signs it. (ii) The attestation cannot be stripped
+    # downstream of approval: the clean release's permit
+    # presented with the attestation removed is a different
+    # intent, refused before consumption.
 
-    def test_step5_missing_provenance_fails_closed_at_evaluation(self) -> None:
+    def test_step5_pipeline_key_envelope_is_not_reviewer_authority(self) -> None:
         intent = publish_intent(V_BAD1, HOOKED_WHEEL_1, None)
         # (i) The release pipeline's OWN key signs an approval
         # envelope for the unattested hooked release — genuine
@@ -743,6 +798,33 @@ class MsAgentFrameworkApprovalPathTests(unittest.TestCase):
                 CLEAN_ATTESTATION,
             )
         )
+        self.assertTrue(self.kernel.verify_audit())
+
+    def test_step5b_reviewer_approval_of_unattested_intent_allows(self) -> None:
+        # The boundary of step 5's evidence: the SAME unattested
+        # hooked intent, signed by the reviewer authority the
+        # policy pins, evaluates to allow and publishes. Step
+        # 5(i)'s denial is therefore a wrong-authority rejection
+        # — the pipeline key is not the reviewer — not a
+        # provenance check. Provenance is enforced only as part
+        # of the exact intent the reviewer approves: an approval
+        # for the attested release does not cover the unattested
+        # one (step 2/5(ii) territory), and an approval for the
+        # unattested one is the reviewer's own act to answer for.
+        permit = self._issue(
+            self.kernel, publish_intent(V_BAD1, HOOKED_WHEEL_1, None)
+        )
+        self.assertTrue(
+            self.index.publish(
+                self.kernel,
+                permit,
+                publish_intent(V_BAD1, HOOKED_WHEEL_1, None),
+                V_BAD1,
+                HOOKED_WHEEL_1,
+                None,
+            )
+        )
+        self.assertIn((PACKAGE, V_BAD1), self.index.published)
         self.assertTrue(self.kernel.verify_audit())
 
     # -- single-use ------------------------------------------------------------
@@ -826,6 +908,15 @@ class MsAgentFrameworkApprovalPathTests(unittest.TestCase):
         # agree exactly.
         result = reconcile_installs({clean_triple}, observed, supported)
         self.assertTrue(result["ok"])
+
+        # An omitted claim is reported, not silently reconciled:
+        # empty claims against a supported install fail, with the
+        # install named as unreported. (A subset check —
+        # claims <= supported — would have passed this.)
+        result = reconcile_installs(set(), observed, supported)
+        self.assertFalse(result["ok"])
+        self.assertEqual({clean_triple}, result["unreported_claims"])
+        self.assertEqual(set(), result["rejected_claims"])
 
         # A claim for an install that never executed — the index
         # page asserting 1.26.1 was installed — is a phantom
@@ -912,6 +1003,26 @@ class MsAgentFrameworkApprovalPathTests(unittest.TestCase):
             index.published,
         )
 
+    def test_negative_control_startup_effects_follow_consume_result(self) -> None:
+        # The startup gate is the consume RESULT, not the
+        # harness's construction: under a defective kernel whose
+        # consume accepts the sentinel permit, the same startup
+        # attempt EXECUTES the hook — the credential store is read
+        # and its contents exfiltrated. Step 4's effect-free
+        # startup under the canonical kernel is therefore
+        # evidence about the kernel's refusal, not about a
+        # harness that never performs effects.
+        kernel = self._kernel(
+            _SentinelAcceptingState(), kernel_class=_UnguardedConsumeKernel
+        )
+        environment = Environment()
+        environment.installed[V_BAD1] = (HOOKED_WHEEL_1, None)
+        self.assertTrue(environment.startup(kernel))
+        self.assertEqual(
+            len(environment.credential_store), environment.credential_reads
+        )
+        self.assertEqual(1, len(environment.exfiltrated))
+
 
 class MsAgentFrameworkRevocationTests(unittest.TestCase):
     """Setup B: publishes and installs flow under the publisher's
@@ -952,7 +1063,14 @@ class MsAgentFrameworkRevocationTests(unittest.TestCase):
             directive_id="ms-agent-framework-publisher",
             principal=AGENT,
             allowed_actions=frozenset({"publish_release", "install_release"}),
-            resource_prefixes=(f"pypi:{PACKAGE}",),
+            # The trailing "@" delimits the package name: the
+            # kernel's directive check is a prefix match, so an
+            # undelimited "pypi:agent-framework" would also scope
+            # in look-alike packages (pypi:agent-framework-evil@…)
+            # — broader than the package-scoped authority this
+            # setup documents. Delimited, the scope is exactly
+            # this package.
+            resource_prefixes=(f"pypi:{PACKAGE}@",),
             max_cost=10_000,
             issued_at_ns=1_000_000,
             expires_at_ns=9_000_000,
@@ -1183,6 +1301,35 @@ class MsAgentFrameworkRevocationTests(unittest.TestCase):
             {(PACKAGE, V_CLEAN): (wheel_hash(CLEAN_WHEEL), attestation_hash(CLEAN_ATTESTATION))},
             index.published,
         )
+        self.assertTrue(kernel.verify_audit())
+
+    # -- directive scope is delimited to the package ---------------------------
+
+    def test_directive_scope_excludes_adjacent_package(self) -> None:
+        state = InMemoryKernelState()
+        d = self._directive()
+        kernel, verifier, controller = self._activate(state, d)
+        projection = GovernedDirectiveProjection(kernel)
+        # A look-alike package: the directive's delimited prefix
+        # (pypi:agent-framework@) does not cover
+        # pypi:agent-framework-evil@…, so no permit issues for it
+        # under the publisher's directive. (With the undelimited
+        # prefix the kernel's prefix match would have scoped it
+        # in — broader than the documented package scope.)
+        evil = Intent(
+            AGENT,
+            "publish_release",
+            f"pypi:{PACKAGE}-evil@9.9.9"
+            f"#wheel={wheel_hash(HOOKED_WHEEL_1)}#att={attestation_hash(None)}",
+            len(HOOKED_WHEEL_1),
+            SESSION,
+        )
+        decision = projection.evaluate(evil, d)
+        self.assertEqual(
+            ("deny", "directive_resource_not_allowed"),
+            (decision.outcome, decision.reason),
+        )
+        self.assertIsNone(decision.permit)
         self.assertTrue(kernel.verify_audit())
 
 

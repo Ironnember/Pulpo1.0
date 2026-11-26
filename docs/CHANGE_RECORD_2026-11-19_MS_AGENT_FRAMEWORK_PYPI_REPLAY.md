@@ -116,7 +116,8 @@ data exfiltrated) throughout.
 ## 4. Exact success and adversarial evidence
 
 Scenario module `tests/test_ms_agent_framework_incident_scenario.py`
-(14 tests, all passing at the PR head):
+(17 tests, all passing at the fix-pass head; 14 at the
+original head — the §9 fix pass added three):
 
 Setup A (approval path — each publish and install requires the
 reviewer authority's approval of the exact wheel bytes and
@@ -151,18 +152,34 @@ attestation):
   act, routed through the kernel with a sentinel permit:
   exactly one `permit_rejected` record for the execution intent,
   zero credential reads, zero exfiltration. No install
-  authorization names a startup execution.
-- step 5: missing provenance fails closed at evaluation, two
-  forms. (i) An approval envelope for the unattested hooked
-  release validly signed under the release pipeline's OWN key —
-  the ESRP-analog — is denied at evaluation; the test first
-  asserts the signature verifies under the pipeline key, so the
-  evidence is "authentic but not authority," not "malformed."
-  (ii) The clean release's permit presented with the same bytes
-  but the attestation stripped is refused before consumption
-  (the attestation is bound into the intent; stripping it is a
-  different intent), permit unspent, correct presentation then
-  executes.
+  authorization names a startup execution. The payload effects
+  are gated on the consume RESULT, and a dedicated negative
+  control proves the gate is the result rather than the
+  harness's construction: under a defective kernel double
+  whose consume accepts the sentinel, the same startup
+  EXECUTES the hook — the credential store is read and its
+  contents exfiltrated. (At the original head `startup()`
+  discarded the consume result and never performed effects;
+  the §9 fix pass corrects that.)
+- step 5: the pipeline's key is not the reviewer authority,
+  two forms. (i) An approval envelope for the unattested
+  hooked release validly signed under the release pipeline's
+  OWN key — the ESRP-analog — is denied at evaluation; the
+  test first asserts the signature verifies under the
+  pipeline key, so the evidence is "authentic but not
+  authority," not "malformed." This is a wrong-authority
+  rejection, NOT a provenance check (narrowed in the §9 fix
+  pass — the original text claimed "missing provenance fails
+  closed at evaluation"): no policy constraint in this setup
+  requires an attestation, and step 5b proves the boundary —
+  the SAME unattested intent signed by the reviewer
+  authority evaluates to allow and publishes. Provenance is
+  enforced only as part of the exact intent the reviewer
+  approves. (ii) The clean release's permit presented with
+  the same bytes but the attestation stripped is refused
+  before consumption (the attestation is bound into the
+  intent; stripping it is a different intent), permit
+  unspent, correct presentation then executes.
 - step 6: replay of the spent install permit is denied
   (single-use at consumption).
 - step 7: reconciliation in both directions, intent class
@@ -171,7 +188,11 @@ attestation):
   that 1.26.1 was installed is exactly the rejected (phantom)
   claim — claimed but never authorized; an environment where
   the hooked wheel is installed outside the governed path is
-  exactly the unaccounted effect.
+  exactly the unaccounted effect; and an omitted claim is
+  reported as an unreported claim and fails reconciliation —
+  `ok` requires the claims to equal the audit-supported set
+  exactly (at the original head a subset check let an omitted
+  claim pass silently; the §9 fix pass corrects that).
 - step 7b: provenance bound to submission-time audit order —
   the observer's submission log equals the audit-derived
   supported list; after the index-side log entry is rewritten
@@ -209,6 +230,15 @@ publisher's standing directive, scoped to the package):
 - directive substitution: a directive-issued permit for the
   clean release does not spend on the hooked wheel, and then
   spends on the clean release.
+- directive scope delimitation: the directive's resource
+  prefix is delimited to the package (`pypi:agent-framework@`),
+  and a publish intent for a look-alike package
+  (`pypi:agent-framework-evil@9.9.9`) is denied at projection
+  evaluation with reason `directive_resource_not_allowed` and
+  no permit. (At the original head the undelimited prefix
+  `pypi:agent-framework` scoped the look-alike in — verified
+  by probe: the same intent evaluated `allow` under the
+  undelimited prefix; the §9 fix pass corrects that.)
 
 Full suite at the PR head: **883 tests, OK (skipped=13)** —
 baseline at the base commit is 869 OK, skipped=13; the delta
@@ -347,3 +377,71 @@ claimed. The evidence is valid at the PR head commit only;
 reuse of the lesson at a later commit requires re-evaluation
 there. The replay itself changed no consequential authority
 (`authority_effect=none`).
+
+## 9. Post-review fix pass (Codex P1 x2 + P2 x2 on PR #370, 2026-11-25)
+
+Four Codex findings from the 2026-11-19 review of head
+`a4e9fbf` (the scenario module was unchanged between
+that head and `d1cb0e6`, so all four were live). All
+four are fixed in the scenario module; no kernel code
+is touched and no custody or authority semantics
+change (`authority_effect=none` throughout). The
+findings, in the review's order:
+
+- **P1 — test provenance rather than only the signer
+  identity.** Step 5's denial was caused solely by the
+  envelope's signer being the release-pipeline
+  verifier, whose identity differs from the policy's
+  pinned reviewer; the configured Policy has no
+  attestation constraint, so the test did not test
+  missing provenance. Disposition: the claim is
+  narrowed to what the evidence supports (the
+  alternative Codex offered), and the boundary is now
+  proven executably. Step 5 is renamed and restated
+  as a wrong-authority rejection; new step 5b shows
+  the SAME unattested intent, signed by the pinned
+  reviewer, evaluating to allow and publishing —
+  provenance is enforced only as part of the exact
+  intent the reviewer approves (the attestation hash,
+  including hash-of-None, is inside the bound intent,
+  and step 5(ii)'s strip-downstream refusal stands).
+- **P1 — gate startup effects on the consume
+  result.** `Environment.startup()` discarded the
+  consume result, always returned False, and never
+  performed any effect, so step 4's "permit rejection
+  prevents startup execution" was true by
+  construction. `startup()` now performs the payload
+  effects (credential-store read, exfiltration of the
+  synthetic contents) if and only if consume returns
+  True, and a new negative control
+  (`test_negative_control_startup_effects_follow_consume_result`)
+  runs the same startup under a defective kernel
+  double whose consume accepts the sentinel: the hook
+  executes and the effects occur. Step 4's canonical
+  assertions are unchanged.
+- **P2 — require claims to cover supported
+  installs.** `reconcile_installs` used
+  `claims <= supported`, so an omitted install claim
+  reconciled `ok=True`. It now requires
+  `claims == supported` and reports
+  `unreported_claims = supported - claims`; step 7
+  asserts the empty-claims case fails with the
+  supported install named as unreported.
+- **P2 — delimit the directive's package prefix.**
+  Setup B's directive used the undelimited prefix
+  `pypi:agent-framework`; the kernel's prefix match
+  therefore also scoped in look-alike packages.
+  Reproduced before the fix by probe: a publish
+  intent for `pypi:agent-framework-evil@9.9.9`
+  evaluated `allow / policy_satisfied` under the
+  undelimited prefix. The prefix is now
+  `pypi:agent-framework@`, and a new test pins the
+  adjacent package's denial
+  (`deny / directive_resource_not_allowed`, no
+  permit).
+
+Re-verification at the fix-pass head: scenario
+**17/17** (14 at the pre-pass head; the delta is
+exactly step 5b, the startup negative control, and
+the adjacent-package test); full suite **1053
+tests, OK (skipped=13)** in this environment.
