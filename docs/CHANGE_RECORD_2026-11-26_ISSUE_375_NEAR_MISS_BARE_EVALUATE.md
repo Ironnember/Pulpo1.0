@@ -188,3 +188,31 @@ scenario modules serve as the regression evidence instead —
 their step-6 sequences are re-derived under the new rule and
 their expected counts move by exactly their recorded
 `require_approval` counts, no more.
+
+## 9. Addendum (2026-11-26): Railway scenario interaction
+
+The Railway replay scenario (PR #405) merged to main after
+this PR was authored, so its step 6 was not among the twelve
+modules updated above. Its step 6 pinned the pre-fix behavior
+explicitly: the sequence's one bare-evaluate
+`require_approval` decision was asserted to contribute zero
+near-miss records, with a hardcoded total of 9. Under this
+PR's derivation rule that decision surfaces exactly one
+near-miss, so the module failed CI deterministically
+(`AssertionError: 9 != 10` in
+`test_step6_incident_channel_and_counted_reconciliation`;
+the `test` check failure was the downstream gate on
+`UNIT_RESULT=failure`, not a second defect).
+
+Fix, same shape as the twelve modules above and confined to
+the scenario layer: the module docstring and step-6 comments
+now state the post-#375 derivation; the accounting identity
+adds `len(require_approval_decisions)`; the hardcoded total
+moves 9 → 10 — exactly the scenario's recorded
+`require_approval` count (1), no more; the `decision`
+source-detail count becomes
+`len(denied_decisions) + len(require_approval_decisions)`.
+No count change from any other PR is absorbed here: the
+failing head contained neither PR #407 nor PR #410, and the
+delta is wholly explained by this PR's own rule. Custody
+untouched; no kernel change; visibility only, as above.
