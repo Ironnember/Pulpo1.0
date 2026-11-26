@@ -191,25 +191,32 @@ Scenario module
   estimates.
 - negative control: with the verifier swapped for the
   incident's own shape — an unfiltered-lookup verifier
-  holding a stored token, set to the GENUINE permit
-  issued for the inventory read (the first stored
-  token the lookup would have returned for the empty
-  object) — an envelope for the HOST act whose
-  "signature" is that stored token VERIFIES, a permit
-  mints, and the host act EXECUTES. Under the same
-  double, a random string is denied
-  (`approval_signature_invalid`) and an empty string
-  is denied (`approval_signature_missing`): only the
-  first stored token verifies, because the lookup is
-  the whole check. Contrast: the identical attack
+  whose store holds the GENUINE permit issued for the
+  inventory read (the first stored token) — an
+  envelope for the HOST act whose "signature" is the
+  empty object itself, `j:{}` (the incident's exact
+  input; the attacker never possesses the stored
+  token's value), VERIFIES: the double's modeled
+  provider lookup resolves the empty object to the
+  first stored token (asserted directly in the test),
+  a permit mints, and the host act EXECUTES. Under
+  the same double, a random string is denied
+  (`approval_signature_invalid` — it resolves through
+  the lookup to itself and matches no stored token)
+  and an empty string is denied
+  (`approval_signature_missing`): the lookup is the
+  whole check. Contrast: the identical attack
   envelope against the governed kernel is denied
   (`approval_signature_invalid`) — the stored permit
-  is not a signature over this envelope's payload. The
-  denials in the steps above therefore come from the
-  governed verification's shape (a computed expected
-  signature under the enrolled key, bound to the exact
-  intent), not from a harness that denies by
-  construction.
+  is not a signature over this envelope's payload.
+  The denials in the steps above therefore come from
+  the governed verification's shape (a computed
+  expected signature under the enrolled key, bound to
+  the exact intent), not from a harness that denies
+  by construction. (At the original head the control
+  presented the stored token's value directly and the
+  lookup step was not modeled; the §10 fix pass
+  corrects that.)
 
 Full suite at the worktree head: **1113 tests, OK
 (skipped=25)** in this environment — the recorded local
@@ -575,3 +582,53 @@ touch the review's separate P1 on the negative control
 (the modeled malformed-input lookup). That finding
 stands as reported; it is a different defect class and
 awaits its own pass.
+
+## 10. Second fix pass — 2026-11-25 (Codex P1 on the negative control)
+
+This is the pass §9 recorded as out of scope. Review
+finding (Codex, P1, on
+`tests/test_xen_orchestra_incident_scenario.py`): the
+negative control replaced the attack envelope's
+signature with the genuine permit itself, so the
+vulnerable verifier never received the empty-object
+token `j:{}` and never performed the
+empty-object-to-first-token lookup; the passing test
+showed only that an attacker already possessing the
+stored token could use it, not that the incident's
+unauthenticated `j:{}` input resolves to that token
+and executes. The finding is correct.
+
+Change (test module only; no production code):
+
+- `_UnfilteredLookupVerifier` now models the
+  provider step explicitly: a `lookup` method treats
+  the presented value as a lookup key — the empty
+  object is an empty filter, so the unfiltered
+  lookup returns the FIRST stored token; any other
+  value resolves to itself — and `verify` accepts
+  whatever the lookup returns if it is a stored
+  token. The store is now a token tuple
+  (`stored_tokens`) in place of the single
+  `stored_token` string.
+- The negative control presents ONLY the empty
+  object as the envelope signature — the incident's
+  exact input; the attacker never possesses the
+  stored token's value — and asserts the lookup
+  resolution directly
+  (`lookup(EMPTY_OBJECT_TOKEN) == genuine_permit`)
+  before the envelope verifies, a permit mints, and
+  the host act executes. The random-string denial
+  now runs through the lookup (resolves to itself,
+  matches nothing); the empty-string denial and the
+  governed-kernel contrast are unchanged.
+- §4's negative-control bullet and the module
+  docstring are updated to the modeled construction.
+
+Evidence (Verified, executed at this pass's head):
+scenario **8/8 pass**; full suite **1114 tests, OK
+(skipped=13)** in this environment — identical
+totals to the §9 head (this pass changed test
+internals, added no tests). The reconciliation P1
+was already fixed in §9 (head `6e2e317`); both
+threads are replied to on the PR and left open for
+Codex re-review.

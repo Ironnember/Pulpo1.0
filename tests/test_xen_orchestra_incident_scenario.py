@@ -56,8 +56,9 @@ directly), presented as the signature on an approval
 envelope (the lookup's answer dressed as an accountable
 approval), and -- in the negative control -- held as a
 verifier's stored token, reached by presenting the
-genuine first stored token the lookup would have
-returned. The only route from a request to a
+empty object itself, which the double's modeled
+provider lookup resolves to the first stored token:
+the attacker never possesses the token's value. The only route from a request to a
 consequence is a successful ``GovernanceKernel.consume``
 of a permit bound to the exact intent hash: principal,
 action, resource, cost, session.
@@ -178,27 +179,43 @@ EMPTY_OBJECT_TOKEN = "j:{}"
 class _UnfilteredLookupVerifier(HmacTestVerifier):
     """Deliberately vulnerable verifier double for the negative control.
 
-    An unfiltered-lookup verifier, the incident's token
-    provider modeled at the verification layer: it holds
-    a stored token -- set by the test to the GENUINE
-    permit issued for the inventory read, i.e. the first
-    stored token the lookup returned for the empty
-    object -- and ``verify`` returns True whenever the
-    presented signature equals that stored token, for
-    ANY envelope. The lookup is the whole check: whoever
-    presents (or, in the incident, reaches through the
-    empty object) the first stored token verifies,
-    whatever act the envelope names. Under this double a
-    random string and an empty string are denied -- only
-    the first stored token verifies. Test-local; never
-    imported by runtime code.
+    The incident's token provider modeled at the
+    verification layer, in the incident's own two
+    steps. The provider step (``lookup``): the
+    presented value is used as a lookup key, and the
+    empty object -- the incident's ``j:{}`` -- is an
+    empty filter, so the UNFILTERED lookup returns
+    the first stored token; any other value resolves
+    to itself. The check (``verify``): whatever the
+    lookup returns is accepted if it is a stored
+    token, for ANY envelope. The lookup is the whole
+    check: an attacker who presents only the empty
+    object -- who never possesses any stored token's
+    value -- is resolved by the provider to the first
+    stored token and verifies, whatever act the
+    envelope names. Under this double a random string
+    is denied (it resolves to itself and matches no
+    stored token); only the empty object (through the
+    lookup) or a genuinely stored token verifies.
+    Test-local; never imported by runtime code.
     """
 
-    stored_token = ""
+    stored_tokens: tuple[str, ...] = ()
+
+    def lookup(self, presented: str) -> str:
+        # The provider step, modeled explicitly: the
+        # empty object is an empty filter, and an
+        # unfiltered lookup returns the FIRST stored
+        # token. Any other presented value resolves to
+        # itself.
+        if presented == EMPTY_OBJECT_TOKEN and self.stored_tokens:
+            return self.stored_tokens[0]
+        return presented
 
     def verify(self, payload: bytes, signature: str) -> bool:
-        return bool(self.stored_token) and hmac.compare_digest(
-            signature, self.stored_token
+        resolved = self.lookup(signature)
+        return bool(resolved) and any(
+            hmac.compare_digest(resolved, token) for token in self.stored_tokens
         )
 
 
@@ -835,18 +852,22 @@ class XenOrchestraIncidentScenarioTests(unittest.TestCase):
         )
         # Same scenario, one component swapped: a verifier
         # modeling the token provider's unfiltered lookup.
-        # It holds the stored token (the genuine permit),
-        # and presenting that token as the "signature" on
-        # an envelope for the HOST act verifies -- the
-        # attacker in the incident reached exactly this
-        # state by sending the empty object, which the
-        # lookup resolved to the first stored token. A
-        # permit mints, and the host act EXECUTES. That is
-        # the incident reproduced at its exact layer: not
-        # the cookie parsing, not the executor -- the
-        # lookup that was the whole check.
+        # It holds the stored token (the genuine permit)
+        # in its store. The attacker presents ONLY the
+        # empty object -- the incident's exact input,
+        # ``j:{}`` -- as the "signature" on an envelope
+        # for the HOST act; the attacker never possesses
+        # the stored token's value. The double's lookup
+        # resolves the empty object to the first stored
+        # token (asserted directly below), and that
+        # resolution verifies. A permit mints, and the
+        # host act EXECUTES. That is the incident
+        # reproduced at its exact layer: not the cookie
+        # parsing, not the executor -- the lookup that
+        # was the whole check.
         double = _UnfilteredLookupVerifier()
-        double.stored_token = genuine_permit
+        double.stored_tokens = (genuine_permit,)
+        self.assertEqual(genuine_permit, double.lookup(EMPTY_OBJECT_TOKEN))
         blind_kernel = self._kernel(verifier=double)
         attack = signed_envelope(
             blind_kernel,
@@ -856,7 +877,7 @@ class XenOrchestraIncidentScenarioTests(unittest.TestCase):
             approval_id="approval-nc-attack",
             nonce="nonce-nc-attack",
         )
-        attack = replace(attack, signature=genuine_permit)
+        attack = replace(attack, signature=EMPTY_OBJECT_TOKEN)
         decision = blind_kernel.evaluate_with_approval(TARGET_INTENT, attack)
         self.assertEqual(("allow", "verified_approval"), (decision.outcome, decision.reason))
         self.assertIsNotNone(decision.permit)
@@ -865,11 +886,11 @@ class XenOrchestraIncidentScenarioTests(unittest.TestCase):
             [("administer_host", "xo:xcp-ng-hosts")], self.executor.effects
         )
         # Under the same double, a random string and an
-        # empty string are denied: only the first stored
-        # token verifies, because the lookup is the whole
-        # check. (The empty string is denied as missing
-        # before verification; the random string fails
-        # the lookup comparison itself.)
+        # empty string are denied: the random string
+        # resolves through the lookup to itself and
+        # matches no stored token, because the lookup is
+        # the whole check. (The empty string is denied
+        # as missing before verification.)
         random_attempt = signed_envelope(
             blind_kernel,
             TARGET_INTENT,
