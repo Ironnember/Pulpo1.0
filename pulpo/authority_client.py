@@ -6,17 +6,14 @@ from dataclasses import asdict, dataclass
 import json
 from typing import Any, Callable
 from urllib.parse import quote, urlparse
-from urllib.request import HTTPRedirectHandler, Request, build_opener
+from urllib.request import Request
 
 from .authority import ApprovalEnvelope, _require_sha256, _require_text
+from .transport import build_secure_opener
 
 
 MAX_AUTHORITY_RESPONSE_BYTES = 1_048_576
 
-
-class _NoRedirect(HTTPRedirectHandler):
-    def redirect_request(self, req, fp, code, msg, headers, newurl):
-        return None
 
 
 @dataclass(frozen=True)
@@ -93,7 +90,7 @@ class AuthorityClient:
             raise ValueError("authority base_url must be an HTTPS origin")
         self._base_url = base_url.rstrip("/")
         self._transport = transport or self._https_transport
-        self._opener = build_opener(_NoRedirect())
+        self._opener = build_secure_opener()
 
     def request_approval(self, approval: AuthorityApprovalRequest) -> tuple[str, str]:
         result = self._transport("POST", "/v1/approval-requests", asdict(approval))
