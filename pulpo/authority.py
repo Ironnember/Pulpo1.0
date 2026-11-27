@@ -321,7 +321,21 @@ class PolicyEnvelopeV2:
 
     @property
     def envelope_hash(self) -> str:
-        return sha256(_canonical(asdict(self))).hexdigest()
+        # The envelope's identity is canonical over signature order: the
+        # signing payload already sorts signer key IDs and verification
+        # compares signatures as a set, so the hash must apply the same
+        # normalization. Hashing the raw dataclass preserved tuple order
+        # and let the same dual-signed envelope carry two identities --
+        # a targeted veto recorded against one ordering did not bind the
+        # other (Codex P1 on PR #421). Sorting by signer key ID here
+        # keeps the hash of an already-canonical (sorted) presentation
+        # unchanged; only non-canonical orderings change identity, and
+        # they change to the canonical one.
+        canonical = asdict(self)
+        canonical["signatures"] = sorted(
+            canonical["signatures"], key=lambda entry: entry["key_id"]
+        )
+        return sha256(_canonical(canonical)).hexdigest()
 
 
 @dataclass(frozen=True)

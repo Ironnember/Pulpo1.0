@@ -629,5 +629,171 @@ class PolicyEnvelopeV2Tests(unittest.TestCase):
             )
 
 
+class PolicyEnvelopeV2P1RegressionTests(unittest.TestCase):
+    """Codex P1 regressions on PR #421 (Findings 4-6, verified 2026-11-27).
+
+    Each test is derived from the verification repro in
+    ~/workspace/goals/pulpo1-0-development/hidden_files/p1-verification-2026-11-27.md
+    and fails on the pre-fix tree (post-#418-stack, pre-Findings-4-6-fix).
+    """
+
+    def setUp(self):
+        self.signer_a = EnrolledHmacTestVerifier("signer-key:test-a:v1", b"signer-a-test-secret")
+        self.signer_b = EnrolledHmacTestVerifier("signer-key:test-b:v1", b"signer-b-test-secret")
+        self.veto = EnrolledHmacTestVerifier("veto-key:test:v1", b"veto-test-secret")
+        self.fallback = EnrolledHmacTestVerifier("fallback-key:test:v1", b"fallback-test-secret")
+        self.trust = dual_trust_for(self.signer_a, self.signer_b, self.veto, self.fallback)
+        self.policy = Policy(
+            frozenset({"read", "push"}),
+            100,
+            dual_control_trust=self.trust,
+        )
+        self.envelope = dual_signed_policy_envelope(self.policy, self.signer_a, self.signer_b)
+        self.intent = Intent("agent:publisher", "read", "repo:origin/main", 0, SESSION)
+        self.now = [NOW]
+
+    def make_kernel(self, *, policy=None, envelope=None, state=None, veto=False, fallback=False):
+        return GovernanceKernel(
+            policy or self.policy,
+            clock=lambda: self.now[0],
+            state=state,
+            policy_envelope_v2=self.envelope if envelope is None else envelope,
+            policy_signer_verifiers={
+                self.signer_a.key_id: self.signer_a,
+                self.signer_b.key_id: self.signer_b,
+            },
+            veto_verifier=self.veto if veto else None,
+            fallback_verifier=self.fallback if fallback else None,
+        )
+
+    def advance_policy(self, **changes):
+        values = {
+            "version": 2,
+            "previous_policy_hash": policy_hash_for(self.policy),
+        }
+        values.update(changes)
+        return replace(self.policy, **values)
+
+    # -- Finding 4: fewer than 2 signer verifiers disabled the mandate --
+
+    def test_underconfigured_signer_verifiers_do_not_disable_v2_envelope_requirement(self):
+        versioned = self.advance_policy()
+        for verifiers in (
+            {},
+            {self.signer_a.key_id: self.signer_a},
+        ):
+            with self.subTest(verifier_count=len(verifiers)):
+                with self.assertRaisesRegex(PolicyEnvelopeError, "envelope v2 is required"):
+                    GovernanceKernel(
+                        versioned,
+                        clock=lambda: self.now[0],
+                        policy_signer_verifiers=verifiers,
+                    )
+
+    # -- Finding 5: noncanonical envelope identity / veto evasion --------
+
+    def test_envelope_hash_is_canonical_over_signature_order(self):
+        reversed_envelope = replace(
+            self.envelope, signatures=tuple(reversed(self.envelope.signatures))
+        )
+        self.assertEqual(self.envelope.signing_bytes(), reversed_envelope.signing_bytes())
+        self.assertEqual(self.envelope.envelope_hash, reversed_envelope.envelope_hash)
+
+    def test_targeted_veto_binds_reversed_signature_presentation(self):
+        state = InMemoryKernelState()
+        kernel = self.make_kernel(state=state, veto=True)
+        policy_v2 = self.advance_policy()
+        envelope_v2 = dual_signed_policy_envelope(policy_v2, self.signer_a, self.signer_b)
+        kernel.record_policy_veto(
+            signed_policy_veto(
+                self.trust,
+                self.veto,
+                "targeted",
+                now_ns=self.now[0],
+                nonce="t1",
+                envelope_hash=envelope_v2.envelope_hash,
+            )
+        )
+        with self.assertRaisesRegex(PolicyEnvelopeError, "permanently vetoed"):
+            self.make_kernel(policy=policy_v2, envelope=envelope_v2, state=state)
+        reversed_envelope = replace(
+            envelope_v2, signatures=tuple(reversed(envelope_v2.signatures))
+        )
+        with self.assertRaisesRegex(PolicyEnvelopeError, "permanently vetoed"):
+            self.make_kernel(policy=policy_v2, envelope=reversed_envelope, state=state)
+
+    # -- Finding 6: fallback authority inheritance ------------------------
+
+    def test_replacement_fallback_key_cannot_inherit_predecessors_wait(self):
+        state = InMemoryKernelState()
+        kernel = self.make_kernel(state=state, veto=True, fallback=True)
+        kernel.record_policy_veto(
+            signed_policy_veto(
+                self.trust,
+                self.fallback,
+                "fallback_request",
+                now_ns=self.now[0],
+                nonce="f1",
+            )
+        )
+        # The signers advance to a trust enrolling a replacement
+        # fallback key F2; F1's request is the only one in the chain.
+        fallback2 = EnrolledHmacTestVerifier(
+            "fallback-key:test:v2", b"fallback-two-test-secret"
+        )
+        trust2 = dual_trust_for(self.signer_a, self.signer_b, self.veto, fallback2)
+        policy_v2 = self.advance_policy(dual_control_trust=trust2)
+        envelope_v2 = dual_signed_policy_envelope(policy_v2, self.signer_a, self.signer_b)
+        kernel2 = GovernanceKernel(
+            policy_v2,
+            clock=lambda: self.now[0],
+            state=state,
+            policy_envelope_v2=envelope_v2,
+            policy_signer_verifiers={
+                self.signer_a.key_id: self.signer_a,
+                self.signer_b.key_id: self.signer_b,
+            },
+            veto_verifier=self.veto,
+            fallback_verifier=fallback2,
+        )
+        self.now[0] += 25 * HOUR_NS
+        # F2 has made no request of its own: the predecessor's elapsed
+        # 25 hours must not authorize its standing act.
+        with self.assertRaisesRegex(PolicyVetoError, "24 hours"):
+            kernel2.record_policy_veto(
+                signed_policy_veto(
+                    trust2,
+                    fallback2,
+                    "standing",
+                    now_ns=self.now[0],
+                    nonce="f2-1",
+                    expires_at_ns=self.now[0] + HOUR_NS,
+                )
+            )
+        # F2's own request starts its own clock; once it matures under
+        # the current trust, the same act is accepted.
+        kernel2.record_policy_veto(
+            signed_policy_veto(
+                trust2,
+                fallback2,
+                "fallback_request",
+                now_ns=self.now[0],
+                nonce="f2-2",
+            )
+        )
+        self.now[0] += 25 * HOUR_NS
+        payload = kernel2.record_policy_veto(
+            signed_policy_veto(
+                trust2,
+                fallback2,
+                "standing",
+                now_ns=self.now[0],
+                nonce="f2-3",
+                expires_at_ns=self.now[0] + HOUR_NS,
+            )
+        )
+        self.assertEqual(fallback2.key_id, payload["key_id"])
+
+
 if __name__ == "__main__":
     unittest.main()

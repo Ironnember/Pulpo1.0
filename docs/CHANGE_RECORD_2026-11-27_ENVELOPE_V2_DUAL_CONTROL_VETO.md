@@ -194,3 +194,95 @@ lesson is claimed as generally reusable beyond this statement.
   `dual_trust_for`, `dual_signed_policy_envelope`, `signed_policy_veto`
   test helpers.
 - `tests/test_policy_envelope_v2.py` — 35 tests (new).
+
+## Addendum — stack update + Codex P1 fix pass (PR #421), 2026-11-27
+
+Authorized by Austin in words, 2026-11-27 11:32 MST: "Authorize fix
+passes for all 8." Findings verified firsthand in
+`~/workspace/goals/pulpo1-0-development/hidden_files/p1-verification-2026-11-27.md`
+(PR #421 section; repro at verification time: /tmp/repro_421_f456.py).
+
+**Stack update first.** PR #418's fix pass advanced
+`envelope-port-2026-11-27` to `57f51e1e61eee7fc8e8e9b84dc862786761a72ea`
+(Findings 1–3: execution-time policy-head revalidation, atomic
+`append_unique` policy-head admission, missing-envelope refusal without
+an approval verifier, and the read-only `latest_record` state
+primitive). That branch was merged into this branch (merge commit,
+merge-only, no rebase). One textual conflict, in `pulpo/kernel.py`'s
+construction-time missing-envelope chain: this branch's dual-control v2
+refusal and #418's generalized refusal both rewrote the same `elif`
+chain. Resolved by composing them — the era-specific dual-control
+branch first, #418's generalized branch second — so neither regime has
+a gap the other was written to close. One semantic composition follow-up
+was also required: #418's `_require_current_policy_head()` consulted
+only the v1 envelope slot, so every v2 kernel refused its own governed
+actions once its v2 head was recorded (1 suite error,
+`test_dual_signed_genesis_is_accepted_and_governs`); the revalidation
+now compares the recorded head against whichever envelope era the
+kernel holds. Suite after the stack merge + composition: **Ran 1257
+tests, OK (skipped=13)** (pre-stack baseline on this branch: Ran 1230,
+OK, skipped=13).
+
+**Finding 4 — missing signer enforcement (thread
+PRRT_kwDOUBywws680jv2, `pulpo/kernel.py`).** The mandatory v2-envelope
+refusal was gated on `len(self._policy_signer_verifiers) == 2`, so with
+0 or 1 signer verifiers a version-2 dual-control policy constructed
+with `policy_head=None` and `evaluate()` issued permits under the
+unsigned policy. Fix: dual control is mandatory, not a count
+coincidence — the refusal now fires wherever a dual-control policy is
+versioned (`version > 1`) or a head is recorded, regardless of how many
+signer verifiers are configured; under-configuration fails closed at
+construction. It composes with #418's generalized refusal (this branch
+is checked first for dual-control policies; no double refusal, no gap).
+
+**Finding 5 — noncanonical envelope identity / targeted-veto evasion
+(thread PRRT_kwDOUBywws680jv6, `pulpo/authority.py`).**
+`PolicyEnvelopeV2.envelope_hash` hashed the raw dataclass with
+signatures in tuple order, while the signing payload sorts signer key
+IDs and verification compares signatures as a set — so reversing the
+two valid signatures produced a different envelope identity, and a
+targeted veto recorded against the original ordering did not bind the
+reversed presentation (verified end-to-end evasion). Fix:
+`envelope_hash` is computed over a canonical serialization that sorts
+the signatures by signer key ID, the same normalization the signing
+payload uses. Hash-change scope: an already-canonical (sorted)
+presentation keeps its exact pre-fix hash (verified by direct
+comparison); only non-canonical orderings change identity, and they
+change to the canonical one.
+
+**Finding 6 — fallback authority inheritance (thread
+PRRT_kwDOUBywws680jv-, `pulpo/kernel.py`).** `_policy_veto_state`
+projected a chained fallback request down to its timestamp alone,
+discarding the `key_id` and `trust_hash` the chained payload carries,
+so after a trust rotation enrolled a replacement fallback key F2, F2
+could act on F1's matured 24-hour wait with no request of its own.
+Fix: the projection retains `key_id` and `trust_hash`, and
+`_fallback_trigger_satisfied` additionally requires the operative
+request to be the currently enrolled fallback key's own request under
+the current dual-control trust. A replacement key starts its own 24h
+clock; the current key acting on its own matured request under the
+current trust is unchanged (the pre-existing fallback tests are the
+evidence).
+
+**Regression evidence.** New class `PolicyEnvelopeV2P1RegressionTests`
+in `tests/test_policy_envelope_v2.py` (4 tests): under-configured
+signer verifiers (0 and 1) refused for a versioned dual-control policy;
+envelope hash identical across signature orderings; the end-to-end
+targeted-veto evasion scenario (reversed presentation now refused by
+the same targeted veto); replacement fallback key refused on the
+predecessor's wait, then accepted on its own matured request. All 4
+tests (5 failures counting both Finding-4 subtests) FAIL on the
+post-stack pre-fix tree and PASS after the fix. Final suite: **Ran
+1261 tests, OK (skipped=13)**. Behavior for correctly configured
+dual-control operation (2 verifiers, canonical signature order, own
+matured fallback request) is unchanged — the pre-existing v2 tests
+pass unmodified.
+
+**Authority / boundary.** Authority is narrowed only (three fail-open
+gaps closed); no new canonical state mutation, event, or authority
+plane is introduced — the Finding 6 change reads payload fields the
+chain already records. Claim classification: fix behavior and counts
+**Verified** (executed at the branch commits); the findings themselves
+**Recorded** (Codex threads + the verification report above). No
+temporal replay: the applicable historical evidence is the
+pre-existing suite passing unmodified alongside the new regressions.

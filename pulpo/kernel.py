@@ -700,11 +700,19 @@ class GovernanceKernel:
             self._accept_policy_head_v2()
         elif self._policy_envelope is not None:
             self._accept_policy_head()
-        elif (
-            dual is not None
-            and len(self._policy_signer_verifiers) == 2
-            and (self.policy.version > 1 or self._recorded_policy_head() is not None)
+        elif dual is not None and (
+            self.policy.version > 1 or self._recorded_policy_head() is not None
         ):
+            # Dual control is mandatory, not a count coincidence: the
+            # v2-envelope requirement does not depend on exactly two
+            # signer verifiers being configured. With zero or one
+            # verifier the branch above cannot verify an envelope, so
+            # an omitted envelope under a versioned dual-control policy
+            # (or a recorded head) must fail closed here rather than
+            # construct and govern under the unsigned policy (Codex P1
+            # on PR #421). This composes with the generalized
+            # missing-envelope refusal below (PR #418): the dual-control
+            # case is refused by this era-specific branch first.
             raise PolicyEnvelopeError(
                 "signed policy envelope v2 is required for a versioned dual-control policy or a recorded policy head"
             )
@@ -1475,7 +1483,17 @@ class GovernanceKernel:
             elif event == "policy_veto_standing_lifted":
                 standing_expires_at_ns = None
             elif event == "policy_veto_fallback_requested":
-                operative_request = {"timestamp_ns": record.get("timestamp_ns")}
+                # The projection retains the requesting key and the
+                # trust it acted under (both are in the chained payload):
+                # fallback eligibility is bound to the authenticated key
+                # + trust version that made the request, so a rotated
+                # fallback key cannot inherit a predecessor's elapsed
+                # wait (Codex P1 on PR #421).
+                operative_request = {
+                    "timestamp_ns": record.get("timestamp_ns"),
+                    "key_id": payload.get("key_id"),
+                    "trust_hash": payload.get("trust_hash"),
+                }
                 veto_act_after_request = False
             else:
                 continue
@@ -1538,12 +1556,23 @@ class GovernanceKernel:
         The operative (latest) fallback request starts the clock; the
         release requires at least ``FALLBACK_SILENCE_NS`` of chain time
         since that request's chained timestamp and no veto-holder act
-        chained after it. Nothing is self-certified: the request, the
-        silence, and the release are all records in the same chain.
+        chained after it. The request must also be the currently
+        enrolled fallback key's own request under the current
+        dual-control trust: a replacement key starts its own 24-hour
+        clock and cannot inherit a predecessor's elapsed wait.
+        Nothing is self-certified: the request, the silence, and the
+        release are all records in the same chain.
         """
 
         request = state["operative_request"]
         if request is None or state["veto_act_after_request"]:
+            return False
+        dual = self.policy.dual_control_trust
+        if dual is None:
+            return False
+        if request.get("key_id") != dual.fallback.key_id:
+            return False
+        if request.get("trust_hash") != dual.trust_hash:
             return False
         requested_at = request["timestamp_ns"]
         if type(requested_at) is not int:
