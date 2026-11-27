@@ -73,9 +73,10 @@ events, denied decisions, and ``directive_denial`` events
 into near-miss records. A bare ``evaluate`` that returns
 ``require_approval`` -- the kernel declining to mint without
 approval -- appends a decision record to the canonical audit
-but is NOT derived as a near-miss by the channel. The
-scenario asserts both halves of that statement exactly as
-they hold; it does not smooth the second half over.
+and is derived as a near-miss by the channel since the issue
+#375 fix (PR #413). The scenario asserts both halves of that
+statement exactly as they hold; it does not smooth the
+second half over.
 
 Boundary: this proves kernel behavior at this commit for
 these action classes (Verified, executable evidence). It
@@ -600,10 +601,11 @@ class TogetherIncidentScenarioTests(unittest.TestCase):
     # denied decision, and every directive-projection denial in
     # the sequence becomes a near-miss record in the derived
     # incident report. The bare require_approval decision is in
-    # the canonical audit (and counted below) but is NOT derived
-    # as a near-miss -- the expected near-miss count is built
-    # from the event classes the channel actually derives, so
-    # this test pins the boundary instead of papering over it.
+    # the canonical audit (and counted below) and is derived
+    # as a near-miss since the issue #375 fix (PR #413) -- the
+    # expected near-miss count is built from the event classes
+    # the channel actually derives, so this test pins the
+    # boundary instead of papering over it.
     #
     # The frozen sequence below is the full attempt sequence of
     # steps 1-5 and 7, not a subset: the swapped payload on
@@ -705,16 +707,17 @@ class TogetherIncidentScenarioTests(unittest.TestCase):
         # Every derived near-miss is accounted for by the event
         # classes the channel derives -- no more, no fewer. The
         # one require_approval decision above is an
-        # audit-recorded attempt that contributes zero near-miss
-        # records at this commit.
+        # audit-recorded attempt that contributes one near-miss
+        # record at this commit (since PR #413).
         self.assertEqual(
             len(permit_rejected)
             + len(approval_rejected)
             + len(directive_denials)
-            + len(denied_decisions),
+            + len(denied_decisions)
+            + len(require_approval_decisions),
             report.near_misses,
         )
-        self.assertEqual(12, report.near_misses)
+        self.assertEqual(13, report.near_misses)
         self.assertEqual(report.near_misses, len(report.records))
         for record in report.records:
             self.assertEqual("near_miss", record.kind)
@@ -727,7 +730,7 @@ class TogetherIncidentScenarioTests(unittest.TestCase):
                 "permit_rejected": len(permit_rejected),
                 "approval_rejected": len(approval_rejected),
                 "directive_denial": len(directive_denials),
-                "decision": len(denied_decisions),
+                "decision": len(denied_decisions) + len(require_approval_decisions),
             },
             detail_counts,
         )
