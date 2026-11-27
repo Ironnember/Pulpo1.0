@@ -69,7 +69,8 @@ from __future__ import annotations
 import hashlib
 import hmac
 import unittest
-from dataclasses import dataclass, replace
+from collections import Counter
+from dataclasses import dataclass, field, replace
 
 from pulpo import (
     CeremonyEvidence,
@@ -238,37 +239,51 @@ class _UnguardedConsumeKernel(GovernanceKernel):
 
 # -- test-level reconciliation ------------------------------------------------
 #
-# Compared sets, defined once and used for the kernel audit throughout:
+# Compared counts, defined once and used for the kernel audit throughout:
 #   consequences  — steps that executed (audit: permit_consumed records)
 #   attempts      — agent steps that did NOT execute and must be disclosed
 #                   (audit: permit_rejected records, plus decision records
 #                   with outcome require_approval / deny)
 # Authorization-side records (approval_verified, allow decisions) are the
 # authority's own trail, not agent steps, and are excluded by design.
+# Reconciliation compares OCCURRENCE COUNTS per intent hash, not set
+# membership: a hash that occurs twice in the record must be claimed
+# twice, and a claim may not report a hash more times than the record
+# holds it. (The set-based comparison this replaced collapsed each hash
+# to a single entry, so a duplicated or dropped copy of an event
+# reconciled falsely — the multiplicity blindness fixed by the
+# audited_counts pattern of PRs #396/#397.)
 # This reconciliation is TEST-LEVEL, implemented against the public
 # ``kernel.audit`` read path, as in the Mythos scenario: the shipped
 # reconcilers reconcile filesystem effects and custody-domain outcomes,
 # not an agent-claimed history against the kernel audit trail.
 
 
-def audited_sets(audit: list[dict]) -> tuple[set[str], set[str]]:
-    consequences: set[str] = set()
-    attempts: set[str] = set()
+def audited_counts(audit: list[dict]) -> tuple[Counter, Counter]:
+    consequences: Counter = Counter()
+    attempts: Counter = Counter()
     for record in audit:
         payload = record.get("payload") or {}
         intent_hash = payload.get("intent_hash")
         if intent_hash is None:
             continue
         if record["event"] == "permit_consumed":
-            consequences.add(intent_hash)
+            consequences[intent_hash] += 1
         elif record["event"] == "permit_rejected":
-            attempts.add(intent_hash)
+            attempts[intent_hash] += 1
         elif record["event"] == "decision" and payload.get("outcome") in {
             "require_approval",
             "deny",
         }:
-            attempts.add(intent_hash)
+            attempts[intent_hash] += 1
     return consequences, attempts
+
+
+def audited_sets(audit: list[dict]) -> tuple[set[str], set[str]]:
+    # Set view of audited_counts, kept for callers that only need the
+    # distinct hashes. Reconciliation itself must use the counts.
+    consequences, attempts = audited_counts(audit)
+    return set(consequences), set(attempts)
 
 
 @dataclass(frozen=True)
@@ -279,23 +294,34 @@ class ClaimReconciliation:
     missing_consequences: frozenset[str]  # executed per the record, missing from the claim
     phantom_attempts: frozenset[str]  # claimed as attempted, absent from the record
     audit_valid: bool = True  # False when verify_audit() fails / the chain is invalid
+    # Per-hash occurrence divergences (excess copies only, per direction):
+    undisclosed_attempt_counts: dict = field(default_factory=dict)
+    unbacked_consequence_counts: dict = field(default_factory=dict)
+    missing_consequence_counts: dict = field(default_factory=dict)
+    phantom_attempt_counts: dict = field(default_factory=dict)
+    audited_consequence_counts: dict = field(default_factory=dict)
+    audited_attempt_counts: dict = field(default_factory=dict)
 
 
 def reconcile_against_audit(kernel: GovernanceKernel, claim: dict) -> ClaimReconciliation:
     # Fail closed: reconciliation must verify the audit chain FIRST.
-    # Deriving sets from an invalid chain would accept fabricated
+    # Deriving counts from an invalid chain would accept fabricated
     # provenance — the exact failure this scenario exists to expose.
     try:
         audit_valid = kernel.verify_audit()
     except Exception:
         audit_valid = False
-    consequences, attempts = audited_sets(kernel.audit)
-    claimed_consequences = set(claim.get("consequences", ()))
-    claimed_attempts = set(claim.get("attempts", ()))
-    undisclosed = frozenset(attempts - claimed_attempts)
-    unbacked = frozenset(claimed_consequences - consequences)
-    missing = frozenset(consequences - claimed_consequences)
-    phantom = frozenset(claimed_attempts - attempts)
+    consequence_counts, attempt_counts = audited_counts(kernel.audit)
+    claimed_consequence_counts = Counter(claim.get("consequences", ()))
+    claimed_attempt_counts = Counter(claim.get("attempts", ()))
+    undisclosed_counts = attempt_counts - claimed_attempt_counts
+    unbacked_counts = claimed_consequence_counts - consequence_counts
+    missing_counts = consequence_counts - claimed_consequence_counts
+    phantom_counts = claimed_attempt_counts - attempt_counts
+    undisclosed = frozenset(undisclosed_counts)
+    unbacked = frozenset(unbacked_counts)
+    missing = frozenset(missing_counts)
+    phantom = frozenset(phantom_counts)
     ok = audit_valid and not (undisclosed or unbacked or missing or phantom)
     return ClaimReconciliation(
         ok=ok,
@@ -304,6 +330,12 @@ def reconcile_against_audit(kernel: GovernanceKernel, claim: dict) -> ClaimRecon
         missing_consequences=missing,
         phantom_attempts=phantom,
         audit_valid=audit_valid,
+        undisclosed_attempt_counts=dict(undisclosed_counts),
+        unbacked_consequence_counts=dict(unbacked_counts),
+        missing_consequence_counts=dict(missing_counts),
+        phantom_attempt_counts=dict(phantom_counts),
+        audited_consequence_counts=dict(consequence_counts),
+        audited_attempt_counts=dict(attempt_counts),
     )
 
 
@@ -621,6 +653,109 @@ class FilenameDeceptionIncidentScenarioTests(unittest.TestCase):
         self.assertEqual(frozenset(), result.undisclosed_attempts)
         self.assertEqual(frozenset(), result.unbacked_consequences)
         self.assertEqual(frozenset(), result.missing_consequences)
+        self.assertTrue(self.kernel.verify_audit())
+
+    # -- step 5c: reconciliation — occurrence counts, not set membership -------
+
+    def test_step5_reconciliation_counts_multiplicity_in_both_directions(self) -> None:
+        issued = self._issue_all(self.kernel)
+        self._create_both(self.kernel, issued)
+        submit_permit = issued["submit-1"][0]
+        # A legitimately repeated consequence: a second, separately
+        # permitted submission of deliverable 1 under its authorized name.
+        repeat_permit, _, _ = self._issue_permit(
+            self.kernel, SUBMIT_1_INTENT, "submit-1-repeat"
+        )
+        # A legitimately repeated attempt: the shortened rename is
+        # attempted twice with the genuine submission permit and is
+        # rejected twice — two audit occurrences of one intent hash.
+        self.assertFalse(self.ledger.execute(self.kernel, submit_permit, RENAME_SHORT_INTENT))
+        self.assertFalse(self.ledger.execute(self.kernel, submit_permit, RENAME_SHORT_INTENT))
+        self.assertTrue(self.ledger.execute(self.kernel, submit_permit, SUBMIT_1_INTENT))
+        self.assertTrue(self.ledger.execute(self.kernel, repeat_permit, SUBMIT_1_INTENT))
+        self.assertTrue(self.ledger.execute(self.kernel, issued["submit-2"][0], SUBMIT_2_INTENT))
+        submit_1_hash = self.hashes[SUBMIT_1_INTENT]
+        rename_short_hash = self.hashes[RENAME_SHORT_INTENT]
+        consequence_counts, attempt_counts = audited_counts(self.kernel.audit)
+        self.assertEqual(2, consequence_counts[submit_1_hash])
+        self.assertEqual(2, attempt_counts[rename_short_hash])
+        honest_consequences = [
+            self.hashes[CREATE_1_INTENT],
+            self.hashes[CREATE_2_INTENT],
+            submit_1_hash,
+            submit_1_hash,
+            self.hashes[SUBMIT_2_INTENT],
+        ]
+        honest_attempts = [rename_short_hash, rename_short_hash]
+
+        # LEGITIMATELY REPEATED event — PASS: a claim that reports the
+        # true multiplicity (2 submissions of deliverable 1, 2 rejected
+        # rename attempts) reconciles exactly against the audit counts.
+        honest_claim = {
+            "consequences": honest_consequences,
+            "attempts": honest_attempts,
+        }
+        honest = reconcile_against_audit(self.kernel, honest_claim)
+        self.assertTrue(honest.ok)
+        self.assertTrue(honest.audit_valid)
+        self.assertEqual(2, honest.audited_consequence_counts[submit_1_hash])
+        self.assertEqual(2, honest.audited_attempt_counts[rename_short_hash])
+
+        # MISSING event (claim count > audit count for a hash) — FAIL:
+        # the claim reports a third submission of deliverable 1 that the
+        # record does not hold. The set-based comparison accepted this
+        # claim (the hash is present in both sets); the count comparison
+        # names exactly the one unbacked copy. The same inflation on the
+        # attempts side is likewise a phantom copy, and fails.
+        inflated_claim = {
+            "consequences": honest_consequences + [submit_1_hash],
+            "attempts": honest_attempts,
+        }
+        inflated = reconcile_against_audit(self.kernel, inflated_claim)
+        self.assertFalse(inflated.ok)
+        self.assertTrue(inflated.audit_valid)
+        self.assertEqual({submit_1_hash: 1}, inflated.unbacked_consequence_counts)
+        self.assertEqual(frozenset({submit_1_hash}), inflated.unbacked_consequences)
+        self.assertEqual(frozenset(), inflated.missing_consequences)
+        inflated_attempts_claim = {
+            "consequences": honest_consequences,
+            "attempts": honest_attempts + [rename_short_hash],
+        }
+        inflated_attempts = reconcile_against_audit(self.kernel, inflated_attempts_claim)
+        self.assertFalse(inflated_attempts.ok)
+        self.assertEqual({rename_short_hash: 1}, inflated_attempts.phantom_attempt_counts)
+        self.assertEqual(frozenset({rename_short_hash}), inflated_attempts.phantom_attempts)
+
+        # EXTRA COPY (audit count > claim count for a hash) — FAIL: the
+        # record holds a second submission of deliverable 1 and a second
+        # rejected rename attempt that the claim omits, reporting each
+        # hash only once. The set-based comparison accepted this claim
+        # too (every hash is present on both sides); the count
+        # comparison names exactly the one dropped copy in each
+        # direction.
+        collapsed_claim = {
+            "consequences": [
+                self.hashes[CREATE_1_INTENT],
+                self.hashes[CREATE_2_INTENT],
+                submit_1_hash,
+                self.hashes[SUBMIT_2_INTENT],
+            ],
+            "attempts": [rename_short_hash],
+        }
+        collapsed = reconcile_against_audit(self.kernel, collapsed_claim)
+        self.assertFalse(collapsed.ok)
+        self.assertTrue(collapsed.audit_valid)
+        self.assertEqual({submit_1_hash: 1}, collapsed.missing_consequence_counts)
+        self.assertEqual(frozenset({submit_1_hash}), collapsed.missing_consequences)
+        self.assertEqual({rename_short_hash: 1}, collapsed.undisclosed_attempt_counts)
+        self.assertEqual(frozenset({rename_short_hash}), collapsed.undisclosed_attempts)
+        self.assertEqual(frozenset(), collapsed.unbacked_consequences)
+        self.assertEqual(frozenset(), collapsed.phantom_attempts)
+
+        # Restored to the true multiplicity, the same history reconciles
+        # again — the failures above are the counts, not the history.
+        restored = reconcile_against_audit(self.kernel, honest_claim)
+        self.assertTrue(restored.ok)
         self.assertTrue(self.kernel.verify_audit())
 
     # -- negative control -------------------------------------------------------
