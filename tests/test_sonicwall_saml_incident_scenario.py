@@ -628,13 +628,14 @@ class SonicWallSamlIncidentScenarioTests(unittest.TestCase):
         # Every derived near-miss is accounted for by the
         # event classes the channel derives -- no more, no
         # fewer. The require_approval decision above is an
-        # audit-recorded attempt that contributes zero
-        # near-miss records at this commit.
+        # audit-recorded attempt that contributes one
+        # near-miss record (issue #375, fixed by #413).
         self.assertEqual(
-            len(permit_rejected) + len(approval_rejected) + len(denied_decisions),
+            len(permit_rejected) + len(approval_rejected) + len(denied_decisions)
+            + len(require_approval_decisions),
             report.near_misses,
         )
-        self.assertEqual(8, report.near_misses)
+        self.assertEqual(9, report.near_misses)
         self.assertEqual(report.near_misses, len(report.records))
         for record in report.records:
             self.assertEqual("near_miss", record.kind)
@@ -646,7 +647,7 @@ class SonicWallSamlIncidentScenarioTests(unittest.TestCase):
             {
                 "permit_rejected": len(permit_rejected),
                 "approval_rejected": len(approval_rejected),
-                "decision": len(denied_decisions),
+                "decision": len(denied_decisions) + len(require_approval_decisions),
             },
             detail_counts,
         )

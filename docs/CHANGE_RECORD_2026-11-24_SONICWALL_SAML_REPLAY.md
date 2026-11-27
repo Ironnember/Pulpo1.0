@@ -528,3 +528,22 @@ Re-verification at the fix-pass head: scenario 7/7;
 full suite **1113 tests, OK (skipped=13)** in this
 environment — identical totals to the pre-pass head,
 as expected for a wording-only change.
+
+## 10. Pin refresh — #413 near-miss derivation shift (2026-11-27)
+
+Addendum to §9: PR #413 (merged 2026-11-26 as
+`b1cea2f`, fixing issue #375) changed the incident
+channel's near-miss derivation so a bare-evaluate
+`require_approval` decision now surfaces as a
+near-miss. This scenario's step-5 sequence contains
+one such decision, so its pinned incident-channel
+count moves from 8 to 9 near-misses (0 incidents
+unchanged). This is an expectation shift from the
+#413 derivation change, not a behavior change in
+this scenario: all allow/deny assertions are
+unchanged. The step-5 accounting assertions now
+include the `require_approval` decision in the
+near-miss sum and in the `decision` detail count,
+matching the pattern used by the scenarios updated
+in #413 itself. No kernel or production code is
+changed (`authority_effect=none`).
