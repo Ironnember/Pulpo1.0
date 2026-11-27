@@ -13,6 +13,7 @@ still controls execution rights.
 
 from __future__ import annotations
 
+from contextlib import closing
 from dataclasses import asdict, dataclass
 from hashlib import sha256
 import json
@@ -72,7 +73,7 @@ class SQLiteProposalCommitments:
         if self.path.exists() and not self.path.is_file():
             raise ProposalCommitmentViolation("proposal_store_not_regular_file")
         try:
-            with self._connect() as connection:
+            with closing(self._connect()) as connection:
                 connection.execute("PRAGMA journal_mode=WAL")
                 connection.execute(
                     """
@@ -187,7 +188,7 @@ class SQLiteProposalCommitments:
         commitment_id = f"proposal:{commitment_hash}"
         encoded_order = _canonical(asdict(order)).decode()
         try:
-            with self._connect() as connection:
+            with closing(self._connect()) as connection:
                 connection.execute("BEGIN IMMEDIATE")
                 existing = connection.execute(
                     """
@@ -220,6 +221,7 @@ class SQLiteProposalCommitments:
                         self.READY,
                     ),
                 )
+                connection.commit()
             return ProposalCommitment(
                 commitment_id=commitment_id,
                 commitment_hash=commitment_hash,
@@ -252,7 +254,7 @@ class SQLiteProposalCommitments:
         if isinstance(now_ns, bool) or not isinstance(now_ns, int) or now_ns <= 0:
             raise ProposalCommitmentViolation("proposal_custody_time_invalid")
         try:
-            with self._connect() as connection:
+            with closing(self._connect()) as connection:
                 connection.execute("BEGIN IMMEDIATE")
                 row = connection.execute(
                     """
@@ -278,6 +280,7 @@ class SQLiteProposalCommitments:
                 )
                 if cursor.rowcount != 1:
                     raise ProposalCommitmentViolation("proposal_commitment_already_claimed")
+                connection.commit()
                 return (
                     ProposalCommitment(**{**asdict(commitment), "state": self.CLAIMED}),
                     order,
@@ -290,7 +293,7 @@ class SQLiteProposalCommitments:
     def order_for_hash(self, order_hash: str) -> DomainPurchaseOrder:
         _require_hash(order_hash, "proposal_order_hash")
         try:
-            with self._connect() as connection:
+            with closing(self._connect()) as connection:
                 row = connection.execute(
                     """
                     SELECT commitment_id, commitment_hash, order_hash, availability_hash,
