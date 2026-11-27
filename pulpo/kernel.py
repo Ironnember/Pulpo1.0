@@ -13,7 +13,7 @@ import stat
 import time
 from typing import Any, Callable, Protocol
 
-from .authority import ApprovalEnvelope, ApprovalVerifier, AuthorityTrust
+from .authority import ApprovalEnvelope, ApprovalVerifier, AuthorityTrust, PolicyEnvelope
 from .ceremony import CeremonyEvidence, CeremonyTrust, CeremonyVerifier
 from .state import (
     ApprovalUse,
@@ -286,6 +286,16 @@ class Policy:
     # unbound permits are refused at consume. Default false keeps the
     # token-v2 bearer posture for policies that do not opt in.
     require_presenter_binding: bool = False
+    # Signed policy envelope (door-two ◆2, ported from Pulpo-Preview):
+    # the policy's position in the authenticated version chain. Genesis
+    # is version 1 with no previous hash; every later version names the
+    # policy hash it succeeds. The chain position binds into the policy
+    # hash only above genesis, so version 1 policies keep their exact
+    # pre-envelope hash. There is no no-expiry form: a version is a
+    # positive integer and a successor always names its predecessor
+    # (door-two ◆1 — NULL-expiry rejected everywhere).
+    version: int = 1
+    previous_policy_hash: str | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.require_presenter_binding, bool):
@@ -319,6 +329,12 @@ class Policy:
             and self.ceremony_trust.key_fingerprint == self.authority_trust.key_fingerprint
         ):
             raise ValueError("ceremony trust key must be distinct from authority trust key")
+        if isinstance(self.version, bool) or not isinstance(self.version, int) or self.version < 1:
+            raise ValueError("policy version must be a positive integer")
+        if self.version == 1 and self.previous_policy_hash is not None:
+            raise ValueError("genesis policy version must not carry a previous policy hash")
+        if self.version > 1 and not _is_digest(self.previous_policy_hash):
+            raise ValueError("policy version above genesis requires a previous policy hash")
 
 
 @dataclass(frozen=True)
@@ -457,6 +473,56 @@ class AuthorityTrustError(RuntimeError):
     """Raised when a configured verifier does not match pinned policy trust."""
 
 
+class PolicyEnvelopeError(RuntimeError):
+    """Raised when a signed policy envelope is missing, invalid, or stale."""
+
+
+def policy_hash_for(policy: Policy) -> str:
+    """The policy hash for ``policy``; genesis policies hash as before."""
+    grants = [
+        {
+            "principal": grant.principal,
+            "allowed_actions": sorted(grant.allowed_actions),
+            "resource_prefixes": sorted(grant.resource_prefixes),
+            "max_cost": grant.max_cost,
+        }
+        for grant in sorted(policy.agent_grants, key=lambda item: item.principal)
+    ]
+    payload = {
+        "schema": "pulpo.policy.v1",
+        "allowed_actions": sorted(policy.allowed_actions),
+        "max_cost": policy.max_cost,
+        "approval_actions": sorted(policy.approval_actions),
+        "agent_grants": grants,
+        "authority_trust": asdict(policy.authority_trust) if policy.authority_trust else None,
+    }
+    if policy.ceremony_actions or policy.ceremony_trust is not None:
+        # Opted-in policies bind their ceremony configuration into the
+        # policy hash. Policies that never opted in keep the exact
+        # pre-ceremony hash, so their envelopes and behavior are unchanged.
+        payload["ceremony_actions"] = sorted(policy.ceremony_actions)
+        payload["ceremony_trust"] = asdict(policy.ceremony_trust) if policy.ceremony_trust else None
+    if policy.max_permit_ttl_ns != DEFAULT_MAX_PERMIT_TTL_NS:
+        # A non-default permit TTL is an authority-relevant policy
+        # choice (it widens or narrows the bearer window), so it binds
+        # into the policy hash. Policies at the default keep the exact
+        # pre-Item-4 hash, so their envelopes and behavior are unchanged.
+        payload["max_permit_ttl_ns"] = policy.max_permit_ttl_ns
+    if policy.require_presenter_binding:
+        # Requiring presenter binding is an authority-relevant
+        # policy choice (it retires the bearer posture), so it
+        # binds into the policy hash. Policies that do not require
+        # it keep the exact pre-Item-4B hash.
+        payload["require_presenter_binding"] = True
+    if policy.version != 1:
+        # Versioned policies bind the head chain. Version 1 policies hash
+        # exactly as before, so existing permits and audit records keep
+        # their policy hash.
+        payload["version"] = policy.version
+        payload["previous_policy_hash"] = policy.previous_policy_hash
+    return sha256(_canonical(payload)).hexdigest()
+
+
 class GovernanceKernel:
     """Evaluates intent, issues one-use permits, and maintains an audit chain."""
 
@@ -472,6 +538,7 @@ class GovernanceKernel:
         audit_signer: AuditSigner | None = None,
         legacy_audit_records: int = 0,
         presenter_verifiers: dict[str, PresenterVerifier] | None = None,
+        policy_envelope: PolicyEnvelope | None = None,
     ) -> None:
         self.policy = policy
         # Pin the exact policy this kernel was constructed under. Every
@@ -503,12 +570,48 @@ class GovernanceKernel:
             raise AuthorityTrustError("approval verifier does not match pinned authority trust")
         if self._ceremony_verifier is not None and not self._ceremony_verifier_matches_trust(self._ceremony_verifier):
             raise AuthorityTrustError("ceremony verifier does not match pinned ceremony trust")
+        # Signed versioned policy envelope (door-two ◆2; ported from
+        # Pulpo-Preview, reconciled): an envelope supplied at construction
+        # is verified against the pinned issuer trust, and its
+        # version/previous-hash chain is the authenticated current policy
+        # head, recorded in the audit chain at acceptance below. A policy
+        # with no pinned trust has no issuer key, so an envelope for it is
+        # unverifiable and refused; an envelope that cannot be verified
+        # because no approval verifier is configured is likewise refused.
+        # Reconciliation against the fork: the fork requires an envelope
+        # whenever a pinned trust and an approval verifier coexist.
+        # Canonical requires one exactly where a chain is claimed or
+        # already exists -- a versioned policy (version > 1), or state
+        # that already records a policy head -- so a genesis policy with
+        # no recorded head keeps the exact pre-envelope construction
+        # behavior (existing deployments, including the merge gate whose
+        # production policy source is still configuration pending the
+        # signer-custody decision, adopt envelopes by an explicit act,
+        # after which an envelope cannot be silently dropped).
+        self._policy_envelope: PolicyEnvelope | None = None
+        if self.policy.authority_trust is None:
+            if policy_envelope is not None:
+                raise PolicyEnvelopeError("policy envelope requires a pinned authority trust")
+        elif policy_envelope is not None:
+            if self._approval_verifier is None:
+                raise PolicyEnvelopeError("policy envelope cannot be verified without an approval verifier")
+            self._policy_envelope = self._verify_policy_envelope(policy_envelope, self._approval_verifier)
         try:
             audit_valid = self.verify_audit()
         except Exception as exc:
             raise StateIntegrityError("kernel state audit chain is invalid") from exc
         if not audit_valid:
             raise StateIntegrityError("kernel state audit chain is invalid")
+        if self._policy_envelope is not None:
+            self._accept_policy_head()
+        elif (
+            self.policy.authority_trust is not None
+            and self._approval_verifier is not None
+            and (self.policy.version > 1 or self._recorded_policy_head() is not None)
+        ):
+            raise PolicyEnvelopeError(
+                "signed policy envelope is required for a versioned policy or a recorded policy head"
+            )
 
     @property
     def audit(self) -> list[dict[str, Any]]:
@@ -520,42 +623,21 @@ class GovernanceKernel:
 
     @property
     def policy_hash(self) -> str:
-        grants = [
-            {
-                "principal": grant.principal,
-                "allowed_actions": sorted(grant.allowed_actions),
-                "resource_prefixes": sorted(grant.resource_prefixes),
-                "max_cost": grant.max_cost,
-            }
-            for grant in sorted(self.policy.agent_grants, key=lambda item: item.principal)
-        ]
-        payload = {
-            "schema": "pulpo.policy.v1",
-            "allowed_actions": sorted(self.policy.allowed_actions),
-            "max_cost": self.policy.max_cost,
-            "approval_actions": sorted(self.policy.approval_actions),
-            "agent_grants": grants,
-            "authority_trust": asdict(self.policy.authority_trust) if self.policy.authority_trust else None,
+        return policy_hash_for(self.policy)
+
+    @property
+    def policy_head(self) -> dict[str, Any] | None:
+        """The authenticated policy head accepted at construction, if any."""
+
+        if self._policy_envelope is None:
+            return None
+        envelope = self._policy_envelope
+        return {
+            "policy_version": envelope.version,
+            "policy_hash": envelope.policy_hash,
+            "previous_policy_hash": envelope.previous_policy_hash,
+            "envelope_hash": envelope.envelope_hash,
         }
-        if self.policy.ceremony_actions or self.policy.ceremony_trust is not None:
-            # Opted-in policies bind their ceremony configuration into the
-            # policy hash. Policies that never opted in keep the exact
-            # pre-ceremony hash, so their envelopes and behavior are unchanged.
-            payload["ceremony_actions"] = sorted(self.policy.ceremony_actions)
-            payload["ceremony_trust"] = asdict(self.policy.ceremony_trust) if self.policy.ceremony_trust else None
-        if self.policy.max_permit_ttl_ns != DEFAULT_MAX_PERMIT_TTL_NS:
-            # A non-default permit TTL is an authority-relevant policy
-            # choice (it widens or narrows the bearer window), so it binds
-            # into the policy hash. Policies at the default keep the exact
-            # pre-Item-4 hash, so their envelopes and behavior are unchanged.
-            payload["max_permit_ttl_ns"] = self.policy.max_permit_ttl_ns
-        if self.policy.require_presenter_binding:
-            # Requiring presenter binding is an authority-relevant
-            # policy choice (it retires the bearer posture), so it
-            # binds into the policy hash. Policies that do not require
-            # it keep the exact pre-Item-4B hash.
-            payload["require_presenter_binding"] = True
-        return sha256(_canonical(payload)).hexdigest()
 
     def lock_target(self, target_id: str, intent: Intent, *, version: int = 1) -> LockedTarget:
         """Record an exact proposed target without granting authority."""
@@ -939,6 +1021,112 @@ class GovernanceKernel:
             trust.key_fingerprint,
         )
         return actual == expected
+
+    def _verify_policy_envelope(
+        self, envelope: PolicyEnvelope | None, verifier: ApprovalVerifier
+    ) -> PolicyEnvelope:
+        """Verify a signed envelope against the pinned issuer trust."""
+
+        if not isinstance(envelope, PolicyEnvelope):
+            raise PolicyEnvelopeError(
+                "signed policy envelope is required for a policy with pinned authority trust"
+            )
+        trust = self.policy.authority_trust
+        assert trust is not None
+        bindings = (
+            (envelope.authority_id, trust.authority_id, "policy envelope authority mismatch"),
+            (envelope.verifier_id, trust.verifier_id, "policy envelope verifier mismatch"),
+            (envelope.key_id, trust.key_id, "policy envelope key mismatch"),
+            (envelope.deployment_id, trust.deployment_id, "policy envelope deployment mismatch"),
+            (envelope.trust_hash, trust.trust_hash, "policy envelope trust mismatch"),
+        )
+        for actual, expected, message in bindings:
+            if actual != expected:
+                raise PolicyEnvelopeError(message)
+        if envelope.version != self.policy.version:
+            raise PolicyEnvelopeError("policy envelope version mismatch")
+        if envelope.previous_policy_hash != self.policy.previous_policy_hash:
+            raise PolicyEnvelopeError("policy envelope previous-hash mismatch")
+        if not hmac.compare_digest(envelope.policy_hash, self.policy_hash):
+            raise PolicyEnvelopeError("policy envelope policy-hash mismatch")
+        if not envelope.signature:
+            raise PolicyEnvelopeError("policy envelope signature missing")
+        try:
+            signature_valid = verifier.verify(envelope.signing_bytes(), envelope.signature)
+        except Exception as exc:
+            raise PolicyEnvelopeError("policy envelope verifier failed") from exc
+        if signature_valid is not True:
+            raise PolicyEnvelopeError("policy envelope signature invalid")
+        return envelope
+
+    def _recorded_policy_head(self) -> dict[str, Any] | None:
+        """Latest policy head recorded in the canonical audit chain, if any."""
+
+        head: dict[str, Any] | None = None
+        for record in self.audit:
+            if record.get("event") != "policy_head_accepted":
+                continue
+            payload = record.get("payload", {})
+            if not isinstance(payload, dict):
+                continue
+            if type(payload.get("policy_version")) is not int:
+                continue
+            if not _is_digest(payload.get("policy_hash")):
+                continue
+            head = payload
+        return head
+
+    def _accept_policy_head(self) -> None:
+        """Refuse a stale or forked policy head; record an advancing head.
+
+        The recorded head lives in the canonical audit chain (existing
+        ``append`` path, canonical columns only), so a stale kernel reopening
+        the same state is refused instead of governing indefinitely under an
+        older policy. Reopening with the identical head is a restart, not an
+        advance, and records nothing new.
+        """
+
+        envelope = self._policy_envelope
+        assert envelope is not None
+        head = self._recorded_policy_head()
+        if head is None:
+            self._append_policy_head(envelope)
+            return
+        recorded_version = head["policy_version"]
+        recorded_hash = head["policy_hash"]
+        if envelope.version < recorded_version:
+            raise PolicyEnvelopeError(
+                "stale policy envelope: version is older than the recorded policy head"
+            )
+        if envelope.version == recorded_version:
+            if not hmac.compare_digest(envelope.policy_hash, recorded_hash):
+                raise PolicyEnvelopeError(
+                    "policy envelope conflicts with the recorded policy head"
+                )
+            return
+        if envelope.previous_policy_hash != recorded_hash:
+            raise PolicyEnvelopeError(
+                "policy envelope chain is broken: previous hash does not match the recorded policy head"
+            )
+        self._append_policy_head(envelope)
+
+    def _append_policy_head(self, envelope: PolicyEnvelope) -> None:
+        timestamp = self._trusted_now()
+        self._state.append(
+            "policy_head_accepted",
+            {
+                "policy_version": envelope.version,
+                "policy_hash": envelope.policy_hash,
+                "previous_policy_hash": envelope.previous_policy_hash,
+                "envelope_hash": envelope.envelope_hash,
+                "authority_id": envelope.authority_id,
+                "verifier_id": envelope.verifier_id,
+                "key_id": envelope.key_id,
+                "deployment_id": envelope.deployment_id,
+                "trust_hash": envelope.trust_hash,
+            },
+            timestamp if timestamp is not None else 0,
+        )
 
     def _ceremony_failure(
         self,
