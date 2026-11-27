@@ -265,19 +265,25 @@ def reconcile_run_report(kernel: GovernanceKernel, claim: dict) -> dict:
     The audit chain is verified FIRST and the helper fails closed
     if verification fails (Codex P1 on this PR): reconciling
     against an unverified record would let a tampered record
-    confirm false claims."""
+    confirm false claims.
+
+    Live EFFECTS are counted with occurrence multiplicity,
+    mirroring the live-attempts count below (``sum(...)``): a
+    presence/set check would booleanize the count to at most 1
+    and could never distinguish 1, 2, or 3 consumptions of the
+    same live intent."""
     if not kernel.verify_audit():
         raise ValueError(
             "audit verification failed; refusing to reconcile claims "
             "against unverified evidence"
         )
     live_hash = kernel.intent_hash(FETCH_LIVE)
-    consumed = {
-        record["payload"]["intent_hash"]
+    recorded_live_effects = sum(
+        1
         for record in kernel.audit
         if record["event"] == "permit_consumed"
-    }
-    recorded_live_effects = 1 if live_hash in consumed else 0
+        and record["payload"].get("intent_hash") == live_hash
+    )
     recorded_live_attempts = sum(
         1
         for record in kernel.audit
@@ -557,6 +563,58 @@ class TrajectoryRevocationTests(unittest.TestCase):
         # both denied presentations are governed effects on record.
         self.assertFalse(result["attempts_reconciled"])
         self.assertEqual(2, result["recorded_live_attempts"])
+        self.assertTrue(kernel.verify_audit())
+
+    def test_reconciliation_counts_live_effect_multiplicity(self) -> None:
+        # The governed path cannot produce a 2-consumption audit
+        # for the live intent (every governed live consume is
+        # denied), so the three multiplicity verdicts are exercised
+        # through the module's unguarded negative-control double
+        # (_IntentBlindState / _UnguardedConsumeKernel), whose
+        # consume ignores the intent binding and therefore records
+        # permit_consumed for the live intent — by design.
+        state = _IntentBlindState()
+        d = _mandate()
+        kernel, verifier, controller = _activate(
+            state, d, kernel_class=_UnguardedConsumeKernel
+        )
+        projection = GovernedDirectiveProjection(kernel)
+        ledger = EffectLedger()
+
+        def permit_for(intent: Intent) -> str:
+            decision = projection.evaluate(intent, d)
+            assert decision.outcome == "allow" and decision.permit
+            return decision.permit
+
+        def execute_live() -> None:
+            self.assertTrue(
+                ledger.execute(kernel, permit_for(FETCH_LOCAL), FETCH_LIVE)
+            )
+
+        claim = {"confined_to_local_copy": False, "live_effects": 2, "live_attempts": 0}
+
+        # claim 2 vs audit 1 → reconciliation FAILS (missing event)
+        execute_live()
+        result = reconcile_run_report(kernel, claim)
+        self.assertEqual(1, result["recorded_live_effects"])
+        self.assertFalse(result["live_effects_reconciled"])
+
+        # claim 2 vs audit 2 → reconciliation PASSES (legitimately repeated event)
+        execute_live()
+        result = reconcile_run_report(kernel, claim)
+        self.assertEqual(2, result["recorded_live_effects"])
+        self.assertTrue(result["live_effects_reconciled"])
+        self.assertTrue(result["attempts_reconciled"])
+        self.assertEqual(0, result["recorded_live_attempts"])
+
+        # claim 2 vs audit 3 → reconciliation FAILS (extra copy)
+        execute_live()
+        result = reconcile_run_report(kernel, claim)
+        self.assertEqual(3, result["recorded_live_effects"])
+        self.assertFalse(result["live_effects_reconciled"])
+        self.assertEqual(
+            [("fetch_page", LIVE)] * 3, ledger.effects
+        )
         self.assertTrue(kernel.verify_audit())
 
     def test_reconciliation_fails_closed_on_tampered_audit(self) -> None:
