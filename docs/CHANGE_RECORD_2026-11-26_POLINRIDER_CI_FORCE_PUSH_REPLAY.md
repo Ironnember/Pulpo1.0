@@ -207,13 +207,14 @@ Scenario module
   a report over the full attempt sequence of steps 1–5
   yields zero incidents and exactly the near-miss
   records the channel's derivation produces from the
-  audit: 6 `permit_rejected`, 2 `approval_rejected`, and
-  2 denied `decision` records (10 near-misses in total),
-  each classified Recorded under a valid audit chain;
-  the freeze appends nothing. The step also pins the
-  surfacing boundary stated in §5: the sequence's 1
-  `require_approval` decision is present in the audit
-  and contributes zero near-miss records.
+  audit: 6 `permit_rejected`, 2 `approval_rejected`, 2
+  denied `decision` records, and 1 `require_approval`
+  `decision` record (11 near-misses in total), each
+  classified Recorded under a valid audit chain; the
+  freeze appends nothing. The step also pins the
+  surfacing boundary as amended by §10: the sequence's
+  1 `require_approval` decision is present in the audit
+  and contributes one near-miss record.
 - negative control: an ungoverned CI model that builds
   whatever the PR head currently contains behaves
   correctly before the force-push (clean tree in, clean
@@ -580,3 +581,42 @@ no merge, and the review thread is left open.
    stands, and the fix-pass regressions were executed
    at the branch head stated in §9.4. Reuse at a later
    commit requires re-evaluation there.
+
+## 10. Addendum — #413 near-miss derivation pin refresh (2026-11-27)
+
+Cause (Recorded): PR #413, merged 2026-11-26 as
+`b1cea2f` ("Fix #375: derive near-miss from
+bare-evaluate require_approval decisions"), changed
+the incident channel's near-miss derivation so a
+bare `evaluate` returning `require_approval` now
+derives one near-miss record. This branch was built
+before #413 and pinned the old derivation in step
+7; after the branch merged `main` containing #413,
+CI failed on exactly that pin (expected 10, got
+11). This is an expectation shift, not a behavior
+change in this scenario: every allow/deny assertion
+is unchanged and passes as before. (This addendum
+is numbered §10 because §9 above is the Codex
+fix pass.)
+
+Correction (test pins and this record only; no
+kernel or production code touched,
+`authority_effect=none`): step 7's pinned total
+moves 10 → 11; the accounting sum and the
+`decision` source-detail count now include the
+sequence's 1 `require_approval` decision, which
+contributes one near-miss record; §4's step 7
+counts are updated the same way. §5.4's
+surfacing-boundary statement and §8's checkpoint
+counts remain accurate for the pre-#413 base they
+describe and are superseded for the current head
+by this addendum: the #375 derivation gap they
+record is closed on `main` by #413.
+
+Evidence (Verified — executed in this environment
+with the repo venv interpreter): before the fix,
+the scenario module failed on the single assertion
+above (11 tests, FAILED (failures=1), `10 != 11`
+at step 7); after the fix, the scenario module
+passes 11/11 and the full suite passes: 1186
+tests, OK (skipped=13).
