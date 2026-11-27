@@ -19,6 +19,7 @@ from .authority import (
     AuthorityTrust,
     Ed25519ApprovalVerifier,
     P256ApprovalVerifier,
+    PolicyEnvelope,
 )
 from .authority_client import AuthorityApprovalRequest, AuthorityClient, AuthorityPoll
 from .ceremony import (
@@ -40,6 +41,7 @@ from .kernel import (
     LeaseDecision,
     LockedTarget,
     Policy,
+    PolicyEnvelopeError,
     PresenterVerifier,
     StateIntegrityError,
     TargetResolution,
@@ -101,6 +103,8 @@ __all__ = [
     "P256ApprovalVerifier",
     "P256CeremonyVerifier",
     "Policy",
+    "PolicyEnvelope",
+    "PolicyEnvelopeError",
     "PresenterVerifier",
     "PulpoOrchestrator",
     "SQLiteBudgetAccount",

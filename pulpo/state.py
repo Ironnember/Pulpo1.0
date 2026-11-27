@@ -515,6 +515,7 @@ class KernelState(Protocol):
     def directive_hash_status(self, directive_hash: str) -> str: ...
     def append(self, event: str, payload: dict[str, Any], timestamp_ns: int) -> None: ...
     def append_unique(self, event: str, identity_field: str, identity_value: Any, payload: dict[str, Any], timestamp_ns: int) -> dict[str, Any] | None: ...
+    def latest_record(self, event: str) -> dict[str, Any] | None: ...
 
 
 class InMemoryKernelState:
@@ -993,6 +994,16 @@ class InMemoryKernelState:
             previous = self._audit[-1]["hash"] if self._audit else "0" * 64
             # Detached at write, as in append() above (diagnosis Repro C).
             self._audit.append(_audit_record(previous, event, deepcopy(payload), timestamp_ns, signer=self.audit_signer))
+            return None
+
+    def latest_record(self, event: str) -> dict[str, Any] | None:
+        # Targeted tail read: scanning under the audit lock without
+        # copying the whole chain (the audit property deep-copies every
+        # record). Returns a detached copy, as the audit property does.
+        with self._audit_lock:
+            for record in reversed(self._audit):
+                if record.get("event") == event:
+                    return deepcopy(record)
             return None
 
 
@@ -1628,6 +1639,29 @@ class SQLiteKernelState:
                 return matches[0]
             self._append(event, payload, timestamp_ns)
             return None
+
+    def latest_record(self, event: str) -> dict[str, Any] | None:
+        # Targeted tail read: one indexed-order row instead of the
+        # audit property's full-chain rebuild on every access.
+        if self._audit_has_signature:
+            row = self._connection.execute(
+                "SELECT event, payload_json, previous_hash, timestamp_ns, hash, signature FROM audit WHERE event = ? ORDER BY sequence DESC LIMIT 1",
+                (event,),
+            ).fetchone()
+        else:
+            row = self._connection.execute(
+                "SELECT event, payload_json, previous_hash, timestamp_ns, hash FROM audit WHERE event = ? ORDER BY sequence DESC LIMIT 1",
+                (event,),
+            ).fetchone()
+            if row is not None:
+                row = (*row, None)
+        if row is None:
+            return None
+        record_event, payload_json, previous_hash, timestamp_ns, record_hash, signature = row
+        record: dict[str, Any] = {"event": record_event, "payload": json.loads(payload_json), "previous_hash": previous_hash, "timestamp_ns": timestamp_ns, "hash": record_hash}
+        if signature is not None:
+            record["signature"] = signature
+        return record
 
     def _append(self, event: str, payload: dict[str, Any], timestamp_ns: int) -> None:
         row = self._connection.execute("SELECT hash FROM audit ORDER BY sequence DESC LIMIT 1").fetchone(); previous = row[0] if row else "0" * 64

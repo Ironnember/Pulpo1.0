@@ -118,6 +118,66 @@ class ApprovalEnvelope:
         return sha256(_canonical(asdict(self))).hexdigest()
 
 
+@dataclass(frozen=True)
+class PolicyEnvelope:
+    """Signed, versioned policy issued by the pinned authority.
+
+    The envelope is the authenticated current policy head: ``version`` and
+    ``previous_policy_hash`` chain policies in order, and ``signature`` is
+    verified at kernel construction against the already-pinned issuer
+    ``key_fingerprint`` (via the envelope's ``trust_hash`` binding). The
+    envelope carries no authority of its own; it only proves that the holder
+    of the issuer key issued exactly this policy version. A policy without a
+    pinned authority trust has no issuer key, so it has no envelope.
+    """
+
+    policy_hash: str
+    version: int
+    previous_policy_hash: str | None
+    authority_id: str
+    verifier_id: str
+    key_id: str
+    deployment_id: str
+    trust_hash: str
+    signature: str
+    schema: str = "pulpo.policy-envelope.v1"
+
+    def __post_init__(self) -> None:
+        for value, field in (
+            (self.authority_id, "authority_id"),
+            (self.verifier_id, "verifier_id"),
+            (self.key_id, "key_id"),
+            (self.deployment_id, "deployment_id"),
+        ):
+            _require_text(value, field)
+        _require_sha256(self.policy_hash, "policy_hash")
+        _require_sha256(self.trust_hash, "trust_hash")
+        if self.previous_policy_hash is not None:
+            _require_sha256(self.previous_policy_hash, "previous_policy_hash")
+        if isinstance(self.version, bool) or not isinstance(self.version, int) or self.version < 1:
+            raise ValueError("version must be a positive integer")
+        if self.version == 1 and self.previous_policy_hash is not None:
+            raise ValueError("genesis policy envelope must not carry a previous policy hash")
+        if self.version > 1 and self.previous_policy_hash is None:
+            raise ValueError("policy envelope above genesis requires a previous policy hash")
+        if self.schema != "pulpo.policy-envelope.v1":
+            raise ValueError("unsupported policy envelope schema")
+
+    def signing_payload(self) -> dict[str, object]:
+        return {key: value for key, value in asdict(self).items() if key != "signature"}
+
+    def signing_bytes(self) -> bytes:
+        return _canonical(self.signing_payload())
+
+    @property
+    def signing_payload_hash(self) -> str:
+        return sha256(self.signing_bytes()).hexdigest()
+
+    @property
+    def envelope_hash(self) -> str:
+        return sha256(_canonical(asdict(self))).hexdigest()
+
+
 class ApprovalVerifier(Protocol):
     """Verifier configured by the trusted control-plane owner."""
 

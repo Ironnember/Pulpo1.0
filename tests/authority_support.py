@@ -6,7 +6,8 @@ from dataclasses import replace
 import hashlib
 import hmac
 
-from pulpo import ApprovalEnvelope, AuthorityTrust
+from pulpo import ApprovalEnvelope, AuthorityTrust, PolicyEnvelope
+from pulpo.kernel import policy_hash_for
 
 
 class HmacTestVerifier:
@@ -74,3 +75,34 @@ def signed_envelope(
     values.update(changes)
     unsigned = ApprovalEnvelope(**values)
     return replace(unsigned, signature=verifier.sign(unsigned.signing_bytes()))
+
+
+def signed_policy_envelope(policy, verifier, *, sign=None):
+    """Sign a policy's versioned hash with the issuer test key.
+
+    Test-only helper: the signer is the same test double that signs approval
+    envelopes (``HmacTestVerifier.sign``), or an explicit ``sign`` callable
+    for verifiers that are verification-only (Ed25519/P-256 test fixtures
+    hold the private key separately). Production issuers sign with the real
+    authority key; this helper proves the verification path, not an issuer.
+    """
+
+    trust = policy.authority_trust
+    if trust is None:
+        raise ValueError("policy envelope requires a pinned authority trust")
+    values = {
+        "policy_hash": policy_hash_for(policy),
+        "version": policy.version,
+        "previous_policy_hash": policy.previous_policy_hash,
+        "authority_id": trust.authority_id,
+        "verifier_id": trust.verifier_id,
+        "key_id": trust.key_id,
+        "deployment_id": trust.deployment_id,
+        "trust_hash": trust.trust_hash,
+        "signature": "",
+    }
+    unsigned = PolicyEnvelope(**values)
+    signer = sign or getattr(verifier, "sign", None)
+    if signer is None:
+        raise ValueError("policy envelope signer is required")
+    return replace(unsigned, signature=signer(unsigned.signing_bytes()))
