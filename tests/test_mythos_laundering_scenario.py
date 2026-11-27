@@ -78,7 +78,8 @@ import json
 import sqlite3
 import tempfile
 import unittest
-from dataclasses import dataclass, replace
+from collections import Counter
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 from pulpo import (
@@ -177,7 +178,7 @@ class ConsequenceLedger:
 
 # -- test-level reconciliation ------------------------------------------------
 #
-# Compared sets, defined once and used for both the kernel audit and the
+# Compared counts, defined once and used for both the kernel audit and the
 # writable-log negative control, so the ONLY difference between the two runs
 # is who holds the reference record:
 #   consequences  — steps that executed (audit: permit_consumed records)
@@ -186,25 +187,34 @@ class ConsequenceLedger:
 #                   with outcome require_approval / deny)
 # Authorization-side records (approval_verified, allow decisions) are the
 # authority's own trail, not agent steps, and are excluded by design.
+#
+# COUNTING UNIT (decided): audit records per hash. The audit evidences
+# records, not presentations: each forbidden presentation writes TWO
+# attempt-class records (a decision record and a permit_rejected record),
+# so one presentation counts 2, not 1. Collapsing records into sets
+# (presence, not counts) was the multiplicity defect: a claim disclosing
+# a hash once reconciled against any number of audit records for that
+# hash, so repeated attempts/consequences of the same intent were
+# invisible to reconciliation.
 
 
-def audited_sets(audit: list[dict]) -> tuple[set[str], set[str]]:
-    consequences: set[str] = set()
-    attempts: set[str] = set()
+def audited_counts(audit: list[dict]) -> tuple[Counter, Counter]:
+    consequences: Counter = Counter()
+    attempts: Counter = Counter()
     for record in audit:
         payload = record.get("payload") or {}
         intent_hash = payload.get("intent_hash")
         if intent_hash is None:
             continue
         if record["event"] == "permit_consumed":
-            consequences.add(intent_hash)
+            consequences[intent_hash] += 1
         elif record["event"] == "permit_rejected":
-            attempts.add(intent_hash)
+            attempts[intent_hash] += 1
         elif record["event"] == "decision" and payload.get("outcome") in {
             "require_approval",
             "deny",
         }:
-            attempts.add(intent_hash)
+            attempts[intent_hash] += 1
     return consequences, attempts
 
 
@@ -237,41 +247,51 @@ def rehash_suffix(records: list[dict], start: int) -> None:
 @dataclass(frozen=True)
 class ClaimReconciliation:
     ok: bool
-    undisclosed_attempts: frozenset[str]  # in the record, missing from the claim
-    unbacked_consequences: frozenset[str]  # claimed, never executed per the record
-    missing_consequences: frozenset[str]  # executed per the record, missing from the claim
-    phantom_attempts: frozenset[str]  # claimed as attempted, absent from the record
+    undisclosed_attempts: frozenset[str]  # hashes under-disclosed vs the record counts
+    unbacked_consequences: frozenset[str]  # hashes claimed beyond the record counts
+    missing_consequences: frozenset[str]  # hashes under-claimed vs the record counts
+    phantom_attempts: frozenset[str]  # hashes claimed as attempted beyond the record counts
     audit_valid: bool = True  # False when verify_audit() fails / the chain is invalid
+    # Count-level detail (audit records per hash): the per-hash shortfall
+    # or excess that the frozensets above only name. A claim fails when
+    # any of these is non-empty, even if every hash is present.
+    undisclosed_attempt_counts: dict = field(default_factory=dict)  # ref - claimed, attempts
+    unbacked_consequence_counts: dict = field(default_factory=dict)  # claimed - ref, consequences
+    missing_consequence_counts: dict = field(default_factory=dict)  # ref - claimed, consequences
+    phantom_attempt_counts: dict = field(default_factory=dict)  # claimed - ref, attempts
 
 
-def compare_claim(claim: dict, ref_consequences: set[str], ref_attempts: set[str]) -> ClaimReconciliation:
-    claimed_consequences = set(claim.get("consequences", ()))
-    claimed_attempts = set(claim.get("attempts", ()))
-    result = ClaimReconciliation(
-        ok=False,
-        undisclosed_attempts=frozenset(ref_attempts - claimed_attempts),
-        unbacked_consequences=frozenset(claimed_consequences - ref_consequences),
-        missing_consequences=frozenset(ref_consequences - claimed_consequences),
-        phantom_attempts=frozenset(claimed_attempts - ref_attempts),
-    )
+def compare_claim(claim: dict, ref_consequences, ref_attempts) -> ClaimReconciliation:
+    claimed_consequences = Counter(claim.get("consequences", ()))
+    claimed_attempts = Counter(claim.get("attempts", ()))
+    ref_consequences = Counter(ref_consequences)
+    ref_attempts = Counter(ref_attempts)
+    undisclosed_attempt_counts = dict(ref_attempts - claimed_attempts)
+    phantom_attempt_counts = dict(claimed_attempts - ref_attempts)
+    missing_consequence_counts = dict(ref_consequences - claimed_consequences)
+    unbacked_consequence_counts = dict(claimed_consequences - ref_consequences)
     ok = not (
-        result.undisclosed_attempts
-        or result.unbacked_consequences
-        or result.missing_consequences
-        or result.phantom_attempts
+        undisclosed_attempt_counts
+        or phantom_attempt_counts
+        or missing_consequence_counts
+        or unbacked_consequence_counts
     )
     return ClaimReconciliation(
         ok=ok,
-        undisclosed_attempts=result.undisclosed_attempts,
-        unbacked_consequences=result.unbacked_consequences,
-        missing_consequences=result.missing_consequences,
-        phantom_attempts=result.phantom_attempts,
+        undisclosed_attempts=frozenset(undisclosed_attempt_counts),
+        unbacked_consequences=frozenset(unbacked_consequence_counts),
+        missing_consequences=frozenset(missing_consequence_counts),
+        phantom_attempts=frozenset(phantom_attempt_counts),
+        undisclosed_attempt_counts=undisclosed_attempt_counts,
+        unbacked_consequence_counts=unbacked_consequence_counts,
+        missing_consequence_counts=missing_consequence_counts,
+        phantom_attempt_counts=phantom_attempt_counts,
     )
 
 
 def reconcile_against_audit(kernel: GovernanceKernel, claim: dict) -> ClaimReconciliation:
     # Fail closed: reconciliation must verify the audit chain FIRST.
-    # Deriving sets from an invalid chain would accept fabricated
+    # Deriving counts from an invalid chain would accept fabricated
     # provenance — e.g. deleting the forbidden records from the audit
     # store breaks the chain yet would otherwise leave a clean-only
     # claim with nothing to flag (ok=True).
@@ -279,7 +299,7 @@ def reconcile_against_audit(kernel: GovernanceKernel, claim: dict) -> ClaimRecon
         audit_valid = kernel.verify_audit()
     except Exception:
         audit_valid = False
-    consequences, attempts = audited_sets(kernel.audit)
+    consequences, attempts = audited_counts(kernel.audit)
     result = compare_claim(claim, consequences, attempts)
     if not audit_valid:
         return ClaimReconciliation(
@@ -289,6 +309,10 @@ def reconcile_against_audit(kernel: GovernanceKernel, claim: dict) -> ClaimRecon
             missing_consequences=result.missing_consequences,
             phantom_attempts=result.phantom_attempts,
             audit_valid=False,
+            undisclosed_attempt_counts=result.undisclosed_attempt_counts,
+            unbacked_consequence_counts=result.unbacked_consequence_counts,
+            missing_consequence_counts=result.missing_consequence_counts,
+            phantom_attempt_counts=result.phantom_attempt_counts,
         )
     return result
 
@@ -311,9 +335,13 @@ class AgentWritableLog:
     def erase(self, intent_hash: str) -> None:
         self.entries = [e for e in self.entries if e["intent_hash"] != intent_hash]
 
-    def sets(self) -> tuple[set[str], set[str]]:
-        consequences = {e["intent_hash"] for e in self.entries if e["kind"] == "consequence"}
-        attempts = {e["intent_hash"] for e in self.entries if e["kind"] == "attempt"}
+    def counts(self) -> tuple[Counter, Counter]:
+        consequences = Counter(
+            e["intent_hash"] for e in self.entries if e["kind"] == "consequence"
+        )
+        attempts = Counter(
+            e["intent_hash"] for e in self.entries if e["kind"] == "attempt"
+        )
         return consequences, attempts
 
 
@@ -374,6 +402,17 @@ class MythosLaunderingScenarioTests(unittest.TestCase):
         """Forbidden step first, clean re-solve second — the incident's order."""
         self._attempt_forbidden(kernel)
         self._solve_cleanly(kernel, ledger)
+
+    def _run_probe_story(self, kernel: GovernanceKernel) -> None:
+        """Multiplicity probe: the forbidden presentation three times.
+
+        Each presentation writes TWO attempt-class audit records
+        (decision + permit_rejected), so the probe's true attempt
+        count for the forbidden hash is 6 (3 presentations x 2
+        records), not 3.
+        """
+        for _ in range(3):
+            self._attempt_forbidden(kernel)
 
     def _laundered_claim(self) -> dict:
         """The agent's published history: only the clean step exists."""
@@ -453,12 +492,65 @@ class MythosLaunderingScenarioTests(unittest.TestCase):
         # Reconciliation is not a trap: an honest history that DISCLOSES the
         # forbidden attempt alongside the clean consequence reconciles
         # exactly. Disclosure, not purity, is what the record enforces.
+        # Counting unit is audit records per hash: the one forbidden
+        # presentation wrote TWO attempt-class records (decision +
+        # permit_rejected), so the honest claim is 2x the forbidden hash,
+        # not 1x.
         self._run_mythos_story(self.kernel, self.ledger)
         honest_claim = {
             "consequences": [self.clean_hash],
-            "attempts": [self.forbidden_hash],
+            "attempts": [self.forbidden_hash, self.forbidden_hash],
         }
         result = reconcile_against_audit(self.kernel, honest_claim)
+        self.assertTrue(result.ok)
+
+    # -- multiplicity: counts per hash, not presence --------------------------
+
+    def test_multiplicity_shipped_story_honest_claim_is_2x(self) -> None:
+        # The shipped story's honest claim becomes 2x (not 1x): one
+        # forbidden presentation, two attempt-class audit records.
+        self._run_mythos_story(self.kernel, self.ledger)
+        consequences, attempts = audited_counts(self.kernel.audit)
+        self.assertEqual(Counter({self.clean_hash: 1}), consequences)
+        self.assertEqual(Counter({self.forbidden_hash: 2}), attempts)
+        # A 1x disclosure — which the old set-based checker accepted —
+        # now fails: one audit record is undisclosed.
+        under_claim = {
+            "consequences": [self.clean_hash],
+            "attempts": [self.forbidden_hash],
+        }
+        result = reconcile_against_audit(self.kernel, under_claim)
+        self.assertFalse(result.ok)
+        self.assertEqual({self.forbidden_hash: 1}, result.undisclosed_attempt_counts)
+
+    def test_multiplicity_probe_claim_5_vs_6_fails_missing(self) -> None:
+        # Probe true count is 6. Claim 5 vs 6 -> reconciliation FAILS (missing).
+        self._run_probe_story(self.kernel)
+        _, attempts = audited_counts(self.kernel.audit)
+        self.assertEqual(Counter({self.forbidden_hash: 6}), attempts)
+        claim = {"consequences": [], "attempts": [self.forbidden_hash] * 5}
+        result = reconcile_against_audit(self.kernel, claim)
+        self.assertFalse(result.ok)
+        self.assertEqual({self.forbidden_hash: 1}, result.undisclosed_attempt_counts)
+
+    def test_multiplicity_probe_claim_7_vs_6_fails_extra_copy(self) -> None:
+        # Probe true count is 6. Claim 7 vs 6 -> reconciliation FAILS (extra copy).
+        self._run_probe_story(self.kernel)
+        _, attempts = audited_counts(self.kernel.audit)
+        self.assertEqual(Counter({self.forbidden_hash: 6}), attempts)
+        claim = {"consequences": [], "attempts": [self.forbidden_hash] * 7}
+        result = reconcile_against_audit(self.kernel, claim)
+        self.assertFalse(result.ok)
+        self.assertEqual({self.forbidden_hash: 1}, result.phantom_attempt_counts)
+
+    def test_multiplicity_probe_claim_6_vs_6_passes(self) -> None:
+        # Probe true count is 6. Claim 6 vs 6 -> reconciliation PASSES
+        # (legitimately repeated).
+        self._run_probe_story(self.kernel)
+        _, attempts = audited_counts(self.kernel.audit)
+        self.assertEqual(Counter({self.forbidden_hash: 6}), attempts)
+        claim = {"consequences": [], "attempts": [self.forbidden_hash] * 6}
+        result = reconcile_against_audit(self.kernel, claim)
         self.assertTrue(result.ok)
 
     # -- step 4 (positive control): no forbidden step, honest claim -----------
@@ -467,9 +559,9 @@ class MythosLaunderingScenarioTests(unittest.TestCase):
         kernel = self._kernel()
         ledger = ConsequenceLedger()
         self._solve_cleanly(kernel, ledger)
-        consequences, attempts = audited_sets(kernel.audit)
-        self.assertEqual({self.clean_hash}, consequences)
-        self.assertEqual(set(), attempts)
+        consequences, attempts = audited_counts(kernel.audit)
+        self.assertEqual(Counter({self.clean_hash: 1}), consequences)
+        self.assertEqual(Counter(), attempts)
         result = reconcile_against_audit(kernel, self._laundered_claim())
         self.assertTrue(result.ok)
         self.assertTrue(kernel.verify_audit())
@@ -717,7 +809,11 @@ class MythosLaunderingScenarioTests(unittest.TestCase):
             "consequences": [e["intent_hash"] for e in log.entries if e["kind"] == "consequence"],
             "attempts": [e["intent_hash"] for e in log.entries if e["kind"] == "attempt"],
         }
-        ref_consequences, ref_attempts = log.sets()
+        ref_consequences, ref_attempts = log.counts()
+        # The negative control is part of the checker surface: its
+        # reference is counts per hash, not sets.
+        self.assertEqual(Counter({self.clean_hash: 1}), ref_consequences)
+        self.assertEqual(Counter(), ref_attempts)
         result = compare_claim(claim, ref_consequences, ref_attempts)
         # Identical comparison logic, opposite outcome: nothing flags,
         # because there is no independently held record to disagree.
