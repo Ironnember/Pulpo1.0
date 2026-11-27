@@ -1891,7 +1891,8 @@ class GovernanceKernel:
 
         head = self._recorded_policy_head()
         envelope = self._policy_envelope
-        if envelope is None:
+        envelope_v2 = self._policy_envelope_v2
+        if envelope is None and envelope_v2 is None:
             if head is not None:
                 raise PolicyEnvelopeError(
                     "a policy head is recorded in state but this kernel holds no signed policy envelope"
@@ -1901,8 +1902,15 @@ class GovernanceKernel:
             raise PolicyEnvelopeError(
                 "this kernel's signed policy head is missing from the recorded policy chain"
             )
-        if head["policy_version"] != envelope.version or not hmac.compare_digest(
-            head["policy_hash"], envelope.policy_hash
+        # Stack composition (PR #421 on PR #418): the revalidation
+        # compares against whichever envelope era this kernel holds --
+        # a v2 dual-control kernel's head is its envelope v2, and it is
+        # superseded in exactly the same way when the recorded head
+        # moves past it.
+        held_version = envelope.version if envelope is not None else envelope_v2.version
+        held_hash = envelope.policy_hash if envelope is not None else envelope_v2.policy_hash
+        if head["policy_version"] != held_version or not hmac.compare_digest(
+            head["policy_hash"], held_hash
         ):
             raise PolicyEnvelopeError(
                 "stale policy: this kernel's policy head has been superseded by the recorded policy head"
