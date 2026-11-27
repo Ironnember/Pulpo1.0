@@ -85,7 +85,7 @@ derived incident report turns ``permit_rejected`` events,
 near-miss records. A bare ``evaluate`` that returns
 ``require_approval`` -- the kernel declining to mint without
 approval -- appends a decision record to the canonical audit
-but is NOT derived as a near-miss by the channel. The scenario
+but is derived as a near-miss by the channel since the issue #375 fix. The scenario
 asserts both halves of that statement exactly as they hold;
 it does not smooth the second half over.
 
@@ -497,7 +497,7 @@ class LeadstackIncidentScenarioTests(unittest.TestCase):
     # every denied decision in the sequence becomes a near-miss
     # record in the derived incident report. The bare
     # require_approval decisions are in the canonical audit (and
-    # counted below) but are NOT derived as near-misses -- the
+    # counted below) but are derived as near-misses (issue #375) -- the
     # expected near-miss count is built from the event classes
     # the channel actually derives, so this test pins the
     # boundary instead of papering over it.
@@ -594,13 +594,14 @@ class LeadstackIncidentScenarioTests(unittest.TestCase):
         # Every derived near-miss is accounted for by the event
         # classes the channel derives -- no more, no fewer. The
         # four require_approval decisions above are
-        # audit-recorded attempts that contribute zero near-miss
-        # records at this commit.
+        # audit-recorded attempts that each contribute one near-miss
+        # record per occurrence (issue #375).
         self.assertEqual(
-            len(permit_rejected) + len(approval_rejected) + len(denied_decisions),
+            len(permit_rejected) + len(approval_rejected) + len(denied_decisions)
+            + len(require_approval_decisions),
             report.near_misses,
         )
-        self.assertEqual(14, report.near_misses)
+        self.assertEqual(18, report.near_misses)
         self.assertEqual(report.near_misses, len(report.records))
         for record in report.records:
             self.assertEqual("near_miss", record.kind)
@@ -612,7 +613,7 @@ class LeadstackIncidentScenarioTests(unittest.TestCase):
             {
                 "permit_rejected": len(permit_rejected),
                 "approval_rejected": len(approval_rejected),
-                "decision": len(denied_decisions),
+                "decision": len(denied_decisions) + len(require_approval_decisions),
             },
             detail_counts,
         )
