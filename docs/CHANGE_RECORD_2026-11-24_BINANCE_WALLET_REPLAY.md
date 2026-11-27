@@ -178,12 +178,14 @@ Scenario module
   exactly the near-miss records the channel's
   derivation produces from the audit: 3
   `permit_rejected`, 2 `approval_rejected`, and 3
-  denied `decision` records (8 near-misses in total),
+  denied `decision` records, plus 1 `require_approval`
+  `decision` record (9 near-misses in total),
   each classified Recorded under a valid audit chain;
   the freeze appends nothing. The step also pins the
   surfacing boundary stated in §5: the sequence's 1
   `require_approval` decision is present in the audit
-  and contributes zero near-miss records. The counts
+  and contributes one near-miss record since the issue
+  #375 fix (PR #413; §10). The counts
   are from the executed run at this head, not
   estimates.
 - negative control: with the verifier swapped for the
@@ -494,3 +496,30 @@ Re-verification at the fix-pass head: scenario 8/8;
 full suite **1114 tests, OK (skipped=13)** in this
 environment — identical totals to the pre-pass head,
 as expected for a wording-only change.
+
+## 10. Addendum — #413 near-miss derivation pin refresh (2026-11-27)
+
+Cause (Verified): PR #413 (merged 2026-11-26 as
+`b1cea2f`, fixing issue #375) changed the incident
+channel's derivation so a `decision` record with
+outcome `require_approval` derives one near-miss per
+occurrence, mirroring the deny path. This branch was
+built before #413 and pinned the pre-#413 total;
+step 6 failed deterministically at the old head
+(8 != 9). The delta is exactly this scenario's 1
+`require_approval` decision — the same update shape
+#413 itself applied to its twelve scenarios.
+
+Change (test pins and this record only; no kernel or
+production code touched; `authority_effect=none`):
+step 6's near-miss identity and `decision`
+source-detail count now include
+`len(require_approval_decisions)`; the pinned total
+moves 8 → 9; the module docstring and §4 counts
+state the new derivation. §5 and §8 describe the
+pre-#413 boundary and checkpoint states as they
+stood when recorded and are left as written; this
+addendum supersedes them for the current head.
+
+Re-verification at this head: scenario 8/8; full
+suite **1183 tests, OK (skipped=13)**.
