@@ -1,0 +1,4 @@
+interface:
+  display_name: "Pulpo 3.5 Proof"
+  short_description: "Reproduce bounded Pulpo proofs from exact source"
+  default_prompt: "Use $prove-pulpo35 to reconcile Pulpo source, run the bounded proof, and report remaining authority and custody gaps."
