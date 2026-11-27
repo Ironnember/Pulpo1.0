@@ -185,17 +185,18 @@ Scenario module
   and the spent-permit replay) yields zero incidents
   and exactly the near-miss records the channel's
   derivation produces from the audit: 3
-  `permit_rejected`, 2 `approval_rejected`, and 2
-  denied `decision` records (7 near-misses in
-  total), each classified Recorded under a valid
-  audit chain; the freeze appends nothing; executor
-  attempts and effects reconcile as multisets
-  (attempts {fraud payment: 2, approved payment: 2},
-  effects {approved payment: 1}). The step also pins
-  the surfacing boundary stated in section 5: the
-  sequence's 1 `require_approval` decision is
-  present in the audit and contributes zero
-  near-miss records. The revocation route (step 2)
+  `permit_rejected`, 2 `approval_rejected`, 2
+  denied `decision` records, and 1
+  `require_approval` `decision` record (8
+  near-misses in total), each classified Recorded
+  under a valid audit chain; the freeze appends
+  nothing; executor attempts and effects reconcile
+  as multisets (attempts {fraud payment: 2,
+  approved payment: 2}, effects {approved payment:
+  1}). The step also pins the surfacing boundary
+  as amended by section 9: the sequence's 1
+  `require_approval` decision is present in the
+  audit and contributes one near-miss record. The revocation route (step 2)
   requires a moving clock and is pinned on its own
   kernel there; its denial is the same
   `approval_rejected` event class counted here and
@@ -613,3 +614,40 @@ head); the corrected kernel behavior is **Verified**
 (executable evidence above); the mapping of
 termination to the end of a tied permit lifetime
 remains **Inferred**, as in section 6.
+
+## 9. Addendum — #413 near-miss derivation pin refresh (2026-11-27)
+
+Cause (Recorded): PR #413, merged 2026-11-26 as
+`b1cea2f` ("Fix #375: derive near-miss from
+bare-evaluate require_approval decisions"), changed
+the incident channel's near-miss derivation so a
+bare `evaluate` returning `require_approval` now
+derives one near-miss record. This branch was built
+before #413 and pinned the old derivation in step
+6; after the branch merged `main` containing #413,
+CI failed on exactly that pin (expected 7, got 8).
+This is an expectation shift, not a behavior change
+in this scenario: every allow/deny assertion is
+unchanged and passes as before.
+
+Correction (test pins and this record only; no
+kernel or production code touched, `authority_effect
+=none`): step 6's pinned total moves 7 → 8; the
+accounting sum and the `decision` source-detail
+count now include the sequence's 1
+`require_approval` decision, which contributes one
+near-miss record; section 4's step 6 counts are
+updated the same way. Section 5's surfacing-boundary
+statement and section 8's checkpoint counts remain
+accurate for the pre-#413 base they describe and
+are superseded for the current head by this
+addendum: the #375 derivation gap they record is
+closed on `main` by #413.
+
+Evidence (Verified -- executed in this environment
+with the repo venv interpreter): before the fix,
+the scenario module failed on the single assertion
+above (9 tests, FAILED (failures=1), `7 != 8` at
+step 6); after the fix, the scenario module passes
+9/9 and the full suite passes: 1184 tests, OK
+(skipped=13).
