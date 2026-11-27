@@ -26,7 +26,6 @@ from __future__ import annotations
 
 from hashlib import sha256
 import json
-import shutil
 import sqlite3
 import tempfile
 import unittest
@@ -46,14 +45,30 @@ def verify_state_file(state_path, *, audit_signer=None):
     """Snippet 1 (docs/evidence-and-audit.md): offline state verification.
 
     Verifies a snapshot copy of the state file; the original is only
-    ever read. Kernel construction itself verifies the chain and
-    raises ``StateIntegrityError`` on an invalid one — that raise IS
-    the negative verdict, not an error path around it.
+    ever read. The snapshot is taken with SQLite's backup API, not a
+    file copy: a deployment in WAL mode can hold committed records
+    only in the ``-wal`` sidecar, and copying the main file alone
+    would omit them — a truncated chain verifies on its own internal
+    terms. The backup API yields one consistent snapshot including
+    WAL contents, even while the writer connection is still open.
+    Kernel construction itself verifies the chain and raises
+    ``StateIntegrityError`` on an invalid one — that raise IS the
+    negative verdict, not an error path around it.
     """
 
     with tempfile.TemporaryDirectory() as snapshot_dir:
         snapshot = Path(snapshot_dir) / "state.db"
-        shutil.copyfile(state_path, snapshot)
+        source = sqlite3.connect(
+            f"{Path(state_path).resolve().as_uri()}?mode=ro", uri=True
+        )
+        try:
+            destination = sqlite3.connect(snapshot)
+            try:
+                source.backup(destination)
+            finally:
+                destination.close()
+        finally:
+            source.close()
         state = SQLiteKernelState(snapshot, audit_signer=audit_signer, migrate_schema=False)
         try:
             kernel = GovernanceKernel(
@@ -86,6 +101,36 @@ def verify_exported_records(records):
             return False
         previous = record["hash"]
     return True
+
+
+def build_open_wal_deployment(path, *, audit_signer=None):
+    """A WAL-mode deployment whose records live only in the -wal sidecar.
+
+    Returns ``(state, records)`` with the writer connection still open:
+    autocheckpoint is disabled and a TRUNCATE checkpoint is taken
+    before any governed action, so every audit record the kernel then
+    appends is committed but uncheckpointed — present in
+    ``state.db-wal``, absent from the main database file. The caller
+    must close the returned state.
+    """
+
+    state = SQLiteKernelState(path, audit_signer=audit_signer)
+    state._connection.execute("PRAGMA journal_mode = WAL")
+    state._connection.execute("PRAGMA wal_autocheckpoint = 0")
+    state._connection.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+    kernel = GovernanceKernel(
+        Policy(frozenset({"write"}), 100),
+        SECRET,
+        state=state,
+    )
+    decision = kernel.evaluate(INTENT)
+    assert decision.outcome == "allow" and decision.permit is not None
+    assert kernel.consume(decision.permit, INTENT) is True
+    assert kernel.consume(decision.permit, INTENT) is False  # replay: recorded refusal
+    denied = kernel.evaluate(Intent("agent:builder", "write", "repo:core", 10_000, "s1"))
+    assert denied.outcome == "deny"
+    records = [dict(record) for record in kernel.audit]
+    return state, records
 
 
 def build_deployment(path, *, audit_signer=None):
@@ -136,6 +181,29 @@ class UnsignedDeploymentTests(unittest.TestCase):
             connection.close()
             with self.assertRaises(StateIntegrityError):
                 verify_state_file(path)
+
+
+class WalDeploymentTests(unittest.TestCase):
+    def test_snapshot_includes_committed_wal_records_while_writer_open(self):
+        # Regression (Codex P1, PR #419, Finding 8): a deployment in
+        # SQLite WAL mode can hold committed audit records only in the
+        # -wal sidecar. Snapshotting the main file alone verifies a
+        # truncated — here empty — chain on its own internal terms
+        # while omitting committed evidence. The snapshot must carry
+        # the full history even while the writer is still open.
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "state.db"
+            state, records = build_open_wal_deployment(path)
+            try:
+                wal_sidecar = Path(str(path) + "-wal")
+                self.assertTrue(wal_sidecar.exists())
+                self.assertGreater(wal_sidecar.stat().st_size, 0)
+                report = verify_state_file(path)
+            finally:
+                state.close()
+            self.assertTrue(report["ok"])
+            self.assertEqual(report["total_records"], len(records))
+            self.assertGreater(len(records), 0)
 
 
 class ExportedRecordTests(unittest.TestCase):

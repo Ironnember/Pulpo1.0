@@ -103,8 +103,19 @@ artifact is never opened writable and the chain math is the kernel's
 own rather than a second implementation. For an unsigned deployment
 this needs no key of any kind.
 
+The snapshot is taken with SQLite's **backup API**, not by copying
+the database file. A deployment running SQLite in WAL mode can hold
+committed audit records only in the `state.db-wal` sidecar, not yet
+checkpointed into the main file; copying the main file alone would
+produce a snapshot missing those records — and a truncated chain
+verifies on its own internal terms, potentially as a valid
+zero-record chain. The backup API reads through the source
+connection, so the snapshot is one consistent database that includes
+committed WAL contents, taken correctly even while the deployment's
+writer connection is still open.
+
 ```python
-import shutil, tempfile
+import sqlite3, tempfile
 from pathlib import Path
 from pulpo import GovernanceKernel, Policy
 from pulpo.state import SQLiteKernelState
@@ -112,7 +123,16 @@ from pulpo.state import SQLiteKernelState
 def verify_state_file(state_path, *, audit_signer=None):
     with tempfile.TemporaryDirectory() as snapshot_dir:
         snapshot = Path(snapshot_dir) / "state.db"
-        shutil.copyfile(state_path, snapshot)
+        source = sqlite3.connect(
+            f"{Path(state_path).resolve().as_uri()}?mode=ro", uri=True)
+        try:
+            destination = sqlite3.connect(snapshot)
+            try:
+                source.backup(destination)
+            finally:
+                destination.close()
+        finally:
+            source.close()
         state = SQLiteKernelState(snapshot, audit_signer=audit_signer,
                                   migrate_schema=False)
         try:

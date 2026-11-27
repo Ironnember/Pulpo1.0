@@ -113,3 +113,99 @@ historical Git state contains an earlier version of them whose
 behavior a lesson could transfer from or regress against. The gate
 wraps the kernel API as it exists at this commit only; nothing about
 it is claimed to transfer to historical kernel states.
+
+---
+
+# Addendum — 2026-11-27 — Finding 8 fix: WAL-complete evidence snapshots
+
+Fix pass authorized by Austin on 2026-11-27 ("Authorize fix passes for
+all 8"), addressing Finding 8 of the P1 verification report
+(`~/workspace/goals/pulpo1-0-development/hidden_files/p1-verification-2026-11-27.md`):
+Codex P1 (PR #419, `docs/evidence-and-audit.md`) — Snippet 1's
+`verify_state_file()` snapshot copied only the main SQLite file, so a
+deployment in WAL mode could verify a truncated (potentially
+zero-record) snapshot while committed audit records sat uncheckpointed
+in the `-wal` sidecar. Verdict in the report: CONFIRMED-REPRODUCED.
+Files changed: `docs/evidence-and-audit.md`,
+`tests/test_evidence_verification.py`, this record. No kernel changes.
+
+## 1. Invariant or failure addressed
+
+Evidence completeness of the published offline-verification pattern:
+a snapshot used to verify the audit chain must not omit committed
+records. The snippet and its duplicated test logic now take the
+snapshot through SQLite's **backup API** from a read-only source
+connection instead of `shutil.copyfile` of the main file. The backup
+API yields one consistent snapshot including committed WAL contents,
+even while the deployment's writer connection is still open — where
+copying the main file and the `-wal` sidecar as separate files could
+tear if the writer appends mid-copy. (The sibling production example,
+`examples/wire_authorization/check_evidence.py`, already handled the
+sidecar by copying it; it is unchanged.)
+
+## 2. Authority gained, narrowed, or left unchanged
+
+**Unchanged.** The snippet remains read-only against the deployment
+artifact (the source connection is opened `mode=ro`) and verifies a
+snapshot copy through the same verifier-kernel construction as
+before. No capability is gained; no writer is introduced.
+
+## 3. Canonical state mutations introduced or exposed
+
+**None.** The backup destination is a fresh temporary file; the
+deployment's state file and sidecars are only read.
+
+## 4. Exact success and adversarial evidence
+
+- New regression test
+  `WalDeploymentTests.test_snapshot_includes_committed_wal_records_while_writer_open`:
+  builds a real kernel deployment in WAL mode with
+  `wal_autocheckpoint=0`, TRUNCATE-checkpoints before acting, and
+  leaves the writer connection open, so all 4 audit records are
+  committed but live only in `state.db-wal`. **Fail-first:** against
+  the pre-fix snippet logic the test fails —
+  `AssertionError: 0 != 4` (the snapshot verified `ok` with zero
+  records). **After the fix:** the snapshot verifies `ok` with
+  `total_records == 4`, the full history.
+- `tests/test_evidence_verification.py`: 9 tests OK (8 pre-existing,
+  unchanged in result, including the tampered-snapshot, wrong-secret,
+  and no-signer fail-closed cases, now exercised through the
+  backup-API snapshot path).
+- Full suite at the fix head (`python -W error -m unittest discover
+  -s tests`): **Ran 1214 tests — OK (skipped=13)**, against the
+  c974f7c4 baseline of 1213 OK (skipped=13); the one new test is the
+  WAL regression above and no pre-existing test changed result.
+
+## 5. Boundary the evidence does not prove
+
+- The regression pins the still-open-writer, autocheckpoint-off case.
+  It does not prove snapshot consistency against a writer appending
+  *concurrently during* the backup itself; the backup API's own
+  consistency guarantee is relied on there, not re-proven.
+- Nothing here changes the doc's stated completeness boundary:
+  internal consistency of the records shown is proven, completeness
+  still requires independently held anchors.
+- `pulpo/state.py` does not force WAL mode; the fix covers
+  deployments that choose it, exactly the finding's conditional scope.
+
+## 6. Claim classification
+
+- Fix mechanism and regression behavior: **Verified** at the fix
+  commit, as scoped by the tests above.
+- The finding and its reproduction: **Recorded** in the 2026-11-27
+  P1 verification report cited above.
+
+## 7. Legacy behavior source
+
+SQLite's documented backup API (`sqlite3.Connection.backup`) — a
+standard library mechanism, no external code copied and no control
+path adopted. The sidecar-copy alternative in
+`examples/wire_authorization/check_evidence.py` remains that
+example's own approach.
+
+## 8. Temporal-transfer evidence
+
+No relevant historical checkpoint exists: the defect and its fix live
+entirely in this branch's new evidence document and its tests, which
+have no earlier Git state. Nothing is claimed to transfer to
+historical states.
