@@ -25,9 +25,19 @@ class LocalIntelligenceEffectProofScriptTests(unittest.TestCase):
             protected = root / "protected"
             protected.mkdir()
             profile = build_seatbelt_profile(runtime, (protected,))
+            self.assertIn("(deny network*)", profile)
+            self.assertNotIn("(allow network*)", profile)
             self.assertIn("(deny file-write*)", profile)
             self.assertIn(f'(allow file-write* (subpath "{runtime.resolve()}"))', profile)
             self.assertIn(f'(deny file-read* (subpath "{protected.resolve()}"))', profile)
+
+    def test_network_egress_requires_explicit_profile_opt_in(self):
+        with tempfile.TemporaryDirectory() as temp:
+            runtime = Path(temp) / "runtime"
+            runtime.mkdir()
+            profile = build_seatbelt_profile(runtime, allow_network=True)
+            self.assertIn("(allow network*)", profile)
+            self.assertNotIn("(deny network*)", profile)
 
     def test_codex_exec_argv_freezes_ephemeral_readonly_update_and_hook_controls(self):
         with tempfile.TemporaryDirectory() as temp:
@@ -62,6 +72,17 @@ class LocalIntelligenceEffectProofScriptTests(unittest.TestCase):
         self.assertEqual(env["CODEX_HOME"], "/home/test/.codex")
         self.assertNotIn("OPENAI_API_KEY", env)
         self.assertNotIn("AWS_SECRET_ACCESS_KEY", env)
+
+    def test_environment_can_replace_real_home_with_disposable_runtime_home(self):
+        env = sanitize_environment(
+            {"HOME": "/Users/operator", "PATH": "/bin", "SSH_AUTH_SOCK": "/tmp/agent.sock"},
+            Path("/tmp/runtime"),
+            codex_home=Path("/tmp/runtime/codex-home"),
+            home_override=Path("/tmp/runtime/home"),
+        )
+        self.assertEqual(env["HOME"], "/tmp/runtime/home")
+        self.assertEqual(env["CODEX_HOME"], "/tmp/runtime/codex-home")
+        self.assertNotIn("SSH_AUTH_SOCK", env)
 
     def test_profile_binding_changes_for_any_containment_identity_change(self):
         one = profile_binding(codex_sha256="a" * 64, seatbelt_sha256="b" * 64, seatbelt_profile_sha256="c" * 64)
