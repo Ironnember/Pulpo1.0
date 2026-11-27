@@ -129,3 +129,31 @@ generally reusable beyond this statement.
 - `pulpo/__init__.py` — exports `PolicyEnvelope`, `PolicyEnvelopeError`.
 - `tests/authority_support.py` — `signed_policy_envelope` test helper.
 - `tests/test_policy_envelope.py` — 23 tests (new).
+
+## Addendum — service-boundary presenter wiring (door-two ◆4), same branch
+
+Austin's ◆4 ruling (2026-11-27 ~06:34 MST): "Binding-required is the
+default — wire the gate as v2 with the envelope port." The canonical half
+of that wiring is in this branch; the gate deployment half lives in
+`~/workspace/pulpo-gate/` (uncommitted deployment directory) and is
+reported with it.
+
+- `pulpo/service.py`: the evaluate / evaluate_with_approval /
+  evaluate_locked_target verbs accept an optional `presenter`; the
+  consume verb accepts optional `presenter` + `presenter_proof`; the
+  client mirrors all four. Omitted fields reproduce the exact pre-binding
+  protocol (proven by test against a policy without binding required).
+  The presenter a request asserts is now a **claimed principal**
+  (`_claimed_principals`), so a credential cannot assert a presenter
+  outside its bound principal set — refused at the boundary, before the
+  kernel.
+- This retires the shipped 3B bound recorded in the gate README ("the
+  consume verb carries no presenter fields — addendum A5"), which was
+  the reason `require_presenter_binding` could not be enabled behind
+  the service boundary.
+- New tests: `tests/test_service_presenter_binding.py` (6 tests) —
+  bound issue + proven consume over the loopback boundary, replay
+  refused, unbound issuance refused, unproven consumption refused,
+  wrong-key proof refused (and the permit unburned), foreign presenter
+  refused at the boundary, legacy bearer flow unchanged when binding
+  is not required.

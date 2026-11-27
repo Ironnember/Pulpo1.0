@@ -479,6 +479,7 @@ class KernelService:
 
         note(args.get("intent"), "principal")
         note(args, "operator_principal")
+        note(args, "presenter")
         note(args.get("directive"), "principal")
         note(args.get("parent_directive"), "principal")
         note(args.get("binding"), "budget_principal")
@@ -595,12 +596,24 @@ class KernelService:
     # -- verbs: authority decisions --
 
     def _verb_evaluate(self, args: dict[str, Any]) -> Any:
-        return decision_to_dict(self._kernel.evaluate(intent_from_dict(args.get("intent"))))
+        # Presenter binding (Item 4B) crosses the service boundary as two
+        # optional fields: the presenter identity a permit is bound to at
+        # issuance, here, and the presenter's proof at consume, below.
+        # Requests that omit them behave exactly as the pre-binding
+        # protocol; a policy with require_presenter_binding refuses
+        # unbound issuance and unproven consumption at the kernel.
+        return decision_to_dict(
+            self._kernel.evaluate(
+                intent_from_dict(args.get("intent")),
+                presenter=_optional_str(args, "presenter"),
+            )
+        )
 
     def _verb_evaluate_with_approval(self, args: dict[str, Any]) -> Any:
         decision = self._kernel.evaluate_with_approval(
             intent_from_dict(args.get("intent")),
             envelope_from_dict(args.get("envelope")),
+            presenter=_optional_str(args, "presenter"),
         )
         return decision_to_dict(decision)
 
@@ -608,6 +621,8 @@ class KernelService:
         consumed = self._kernel.consume(
             _require_str(args, "permit"),
             intent_from_dict(args.get("intent")),
+            presenter=_optional_str(args, "presenter"),
+            presenter_proof=_optional_str(args, "presenter_proof"),
         )
         return {"consumed": consumed}
 
@@ -648,6 +663,7 @@ class KernelService:
             _require_str(args, "target_id"),
             _require_str(args, "expected_target_hash"),
             version=_require_int(args, "version"),
+            presenter=_optional_str(args, "presenter"),
         )
         return {
             "resolution": resolution_to_dict(resolution),
@@ -833,19 +849,37 @@ class KernelServiceClient:
 
     # -- authority decisions --
 
-    def evaluate(self, intent: Intent) -> Decision:
-        return decision_from_dict(self._call("evaluate", {"intent": intent_to_dict(intent)}))
+    def evaluate(self, intent: Intent, *, presenter: str | None = None) -> Decision:
+        args: dict[str, Any] = {"intent": intent_to_dict(intent)}
+        if presenter is not None:
+            args["presenter"] = presenter
+        return decision_from_dict(self._call("evaluate", args))
 
-    def evaluate_with_approval(self, intent: Intent, envelope: ApprovalEnvelope) -> Decision:
-        return decision_from_dict(
-            self._call(
-                "evaluate_with_approval",
-                {"intent": intent_to_dict(intent), "envelope": envelope_to_dict(envelope)},
-            )
-        )
+    def evaluate_with_approval(
+        self, intent: Intent, envelope: ApprovalEnvelope, *, presenter: str | None = None
+    ) -> Decision:
+        args: dict[str, Any] = {
+            "intent": intent_to_dict(intent),
+            "envelope": envelope_to_dict(envelope),
+        }
+        if presenter is not None:
+            args["presenter"] = presenter
+        return decision_from_dict(self._call("evaluate_with_approval", args))
 
-    def consume(self, permit: str, intent: Intent) -> bool:
-        result = self._call("consume", {"permit": permit, "intent": intent_to_dict(intent)})
+    def consume(
+        self,
+        permit: str,
+        intent: Intent,
+        *,
+        presenter: str | None = None,
+        presenter_proof: str | None = None,
+    ) -> bool:
+        args: dict[str, Any] = {"permit": permit, "intent": intent_to_dict(intent)}
+        if presenter is not None:
+            args["presenter"] = presenter
+        if presenter_proof is not None:
+            args["presenter_proof"] = presenter_proof
+        result = self._call("consume", args)
         return bool(result["consumed"])
 
     def projection_evaluate(self, intent: Intent, directive: Directive) -> Decision:
@@ -885,12 +919,16 @@ class KernelServiceClient:
         )
 
     def evaluate_locked_target(
-        self, target_id: str, expected_target_hash: str, *, version: int = 1
+        self, target_id: str, expected_target_hash: str, *, version: int = 1, presenter: str | None = None
     ) -> tuple[TargetResolution, Decision | None]:
-        result = self._call(
-            "evaluate_locked_target",
-            {"target_id": target_id, "expected_target_hash": expected_target_hash, "version": version},
-        )
+        args: dict[str, Any] = {
+            "target_id": target_id,
+            "expected_target_hash": expected_target_hash,
+            "version": version,
+        }
+        if presenter is not None:
+            args["presenter"] = presenter
+        result = self._call("evaluate_locked_target", args)
         decision = result.get("decision")
         return resolution_from_dict(result["resolution"]), (
             decision_from_dict(decision) if decision is not None else None
