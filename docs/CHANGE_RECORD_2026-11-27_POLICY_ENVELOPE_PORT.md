@@ -209,8 +209,17 @@ appended through the state layer's existing atomic `append_unique`
 primitive (identity: `policy_version`) instead of plain `append`, so
 check-and-append is one state transition on both backends (in-memory:
 the audit lock spans match-check + append; SQLite: `BEGIN IMMEDIATE`
-transaction). No state.py change; no new event, router, ledger, or
-authority plane.
+transaction). No new event, router, ledger, or authority plane. One
+read-only state primitive is added in `pulpo/state.py`:
+`latest_record(event)` — a targeted tail read (in-memory: reverse scan
+under the audit lock, detached copy of the one record; SQLite: one
+`ORDER BY sequence DESC LIMIT 1` row) — because execution-time
+revalidation consults the recorded head on every consequential
+transition and the `audit` property rebuilds/deep-copies the whole
+chain per access; the first fix-pass commit's per-call full-chain read
+pushed the CI unit-tests job past its 5-minute timeout (job cancelled
+at 5m16s, twice; the pre-fix head's job ran 50s). It mutates nothing
+and returns the same record shape the `audit` property returns.
 
 ### 4. Exact success and adversarial evidence
 

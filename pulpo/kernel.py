@@ -1063,8 +1063,31 @@ class GovernanceKernel:
         return envelope
 
     def _recorded_policy_head(self) -> dict[str, Any] | None:
-        """Latest policy head recorded in the canonical audit chain, if any."""
+        """Latest policy head recorded in the canonical audit chain, if any.
 
+        Execution-time revalidation (see _require_current_policy_head)
+        consults this on every consequential transition, so the common
+        path is the state layer's targeted tail read -- reading the
+        whole chain per call (the audit property rebuilds/deep-copies
+        every record) made governed operation quadratic in the chain
+        length and pushed the test suite past its CI job timeout. A
+        malformed latest head record falls back to the full scan below,
+        which skips malformed records exactly as the original lookup
+        did; a state without the targeted read gets the full scan too.
+        """
+
+        latest_record = getattr(self._state, "latest_record", None)
+        if latest_record is not None:
+            record = latest_record("policy_head_accepted")
+            if record is None:
+                return None
+            payload = record.get("payload", {})
+            if (
+                isinstance(payload, dict)
+                and type(payload.get("policy_version")) is int
+                and _is_digest(payload.get("policy_hash"))
+            ):
+                return payload
         head: dict[str, Any] | None = None
         for record in self.audit:
             if record.get("event") != "policy_head_accepted":
