@@ -676,4 +676,4 @@ stood when recorded and are left as written; this
 addendum supersedes them for the current head.
 
 Re-verification at this head: scenario 9/9; full
-suite **1183 tests, OK (skipped=13)**.
+suite **1184 tests, OK (skipped=13)**.
