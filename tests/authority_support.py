@@ -6,7 +6,16 @@ from dataclasses import replace
 import hashlib
 import hmac
 
-from pulpo import ApprovalEnvelope, AuthorityTrust, PolicyEnvelope
+from pulpo import (
+    ApprovalEnvelope,
+    AuthorityTrust,
+    DualControlTrust,
+    EnrolledKeyTrust,
+    EnvelopeSignature,
+    PolicyEnvelope,
+    PolicyEnvelopeV2,
+    PolicyVeto,
+)
 from pulpo.kernel import policy_hash_for
 
 
@@ -106,3 +115,93 @@ def signed_policy_envelope(policy, verifier, *, sign=None):
     if signer is None:
         raise ValueError("policy envelope signer is required")
     return replace(unsigned, signature=signer(unsigned.signing_bytes()))
+
+
+class EnrolledHmacTestVerifier:
+    """Same-process test double for one enrolled dual-control key.
+
+    Test-only: each instance stands in for one enrolled key (signer, veto,
+    or fallback) with its own secret and fingerprint. Production keys are
+    human-held hardware keys enrolled at the genesis ceremony; nothing
+    here is evidence of a real enrollment.
+    """
+
+    authority_id = "authority:test-owner"
+    verifier_id = "verifier:test-only"
+    algorithm = "hmac-sha256-test-only"
+
+    def __init__(self, key_id, secret):
+        self.key_id = key_id
+        self.secret = secret
+        self.key_fingerprint = hashlib.sha256(b"fingerprint:" + secret).hexdigest()
+
+    def sign(self, payload):
+        return hmac.new(self.secret, payload, hashlib.sha256).hexdigest()
+
+    def verify(self, payload, signature):
+        return hmac.compare_digest(self.sign(payload), signature)
+
+    def enrolled(self):
+        return EnrolledKeyTrust(
+            key_id=self.key_id,
+            algorithm=self.algorithm,
+            key_fingerprint=self.key_fingerprint,
+        )
+
+
+def dual_trust_for(signer_a, signer_b, veto, fallback, *, deployment_id="deployment:test"):
+    return DualControlTrust(
+        authority_id=signer_a.authority_id,
+        verifier_id=signer_a.verifier_id,
+        deployment_id=deployment_id,
+        signers=(signer_a.enrolled(), signer_b.enrolled()),
+        veto=veto.enrolled(),
+        fallback=fallback.enrolled(),
+    )
+
+
+def dual_signed_policy_envelope(policy, signer_a, signer_b):
+    """Dual-sign a policy's versioned hash with both enrolled signer doubles."""
+
+    trust = policy.dual_control_trust
+    if trust is None:
+        raise ValueError("policy envelope v2 requires a dual-control trust")
+    entries = tuple(
+        EnvelopeSignature(key_id=signer.key_id, signature="")
+        for signer in (signer_a, signer_b)
+    )
+    unsigned = PolicyEnvelopeV2(
+        policy_hash=policy_hash_for(policy),
+        version=policy.version,
+        previous_policy_hash=policy.previous_policy_hash,
+        authority_id=trust.authority_id,
+        verifier_id=trust.verifier_id,
+        deployment_id=trust.deployment_id,
+        trust_hash=trust.trust_hash,
+        signatures=entries,
+    )
+    payload = unsigned.signing_bytes()
+    signed = tuple(
+        EnvelopeSignature(key_id=signer.key_id, signature=signer.sign(payload))
+        for signer in (signer_a, signer_b)
+    )
+    return replace(unsigned, signatures=signed)
+
+
+def signed_policy_veto(trust, actor, kind, *, now_ns, nonce, **fields):
+    """Sign a veto-registry record with the acting key's test double."""
+
+    values = {
+        "kind": kind,
+        "authority_id": trust.authority_id,
+        "verifier_id": trust.verifier_id,
+        "deployment_id": trust.deployment_id,
+        "trust_hash": trust.trust_hash,
+        "key_id": actor.key_id,
+        "nonce": nonce,
+        "issued_at_ns": now_ns,
+        "signature": "",
+    }
+    values.update(fields)
+    unsigned = PolicyVeto(**values)
+    return replace(unsigned, signature=actor.sign(unsigned.signing_bytes()))

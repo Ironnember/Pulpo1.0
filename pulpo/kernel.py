@@ -13,7 +13,15 @@ import stat
 import time
 from typing import Any, Callable, Protocol
 
-from .authority import ApprovalEnvelope, ApprovalVerifier, AuthorityTrust, PolicyEnvelope
+from .authority import (
+    ApprovalEnvelope,
+    ApprovalVerifier,
+    AuthorityTrust,
+    DualControlTrust,
+    PolicyEnvelope,
+    PolicyEnvelopeV2,
+    PolicyVeto,
+)
 from .ceremony import CeremonyEvidence, CeremonyTrust, CeremonyVerifier
 from .state import (
     ApprovalUse,
@@ -296,6 +304,14 @@ class Policy:
     # (door-two ◆1 — NULL-expiry rejected everywhere).
     version: int = 1
     previous_policy_hash: str | None = None
+    # Envelope schema v2 (signer-custody decision, 2026-11-27): when a
+    # dual-control trust is pinned, policy authority is held jointly --
+    # two enrolled signer keys must both sign every envelope, a third key
+    # holds the policy-layer veto, and a fourth (Operations Manager seat)
+    # is the standing-veto fallback. The trust binds into the policy hash
+    # only for policies that enroll it, so unenrolled policies keep their
+    # exact pre-v2 hash and their v1 envelope era.
+    dual_control_trust: DualControlTrust | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.require_presenter_binding, bool):
@@ -329,6 +345,13 @@ class Policy:
             and self.ceremony_trust.key_fingerprint == self.authority_trust.key_fingerprint
         ):
             raise ValueError("ceremony trust key must be distinct from authority trust key")
+        if self.dual_control_trust is not None and self.ceremony_trust is not None:
+            dual = self.dual_control_trust
+            enrolled = [key.key_fingerprint for key in (*dual.signers, dual.veto, dual.fallback)]
+            if self.ceremony_trust.key_fingerprint in enrolled:
+                raise ValueError(
+                    "ceremony trust key must be distinct from dual-control signer, veto, and fallback keys"
+                )
         if isinstance(self.version, bool) or not isinstance(self.version, int) or self.version < 1:
             raise ValueError("policy version must be a positive integer")
         if self.version == 1 and self.previous_policy_hash is not None:
@@ -477,6 +500,17 @@ class PolicyEnvelopeError(RuntimeError):
     """Raised when a signed policy envelope is missing, invalid, or stale."""
 
 
+class PolicyVetoError(RuntimeError):
+    """Raised when a policy veto record is invalid, replayed, or out of scope."""
+
+
+# The chained silence that must separate an Operations Manager fallback
+# request from any fallback standing-veto act (signer-custody fallback
+# clause, 2026-11-27): 24 hours of chain time with no veto-holder act
+# chained after the request.
+FALLBACK_SILENCE_NS = 24 * 60 * 60 * 1_000_000_000
+
+
 def policy_hash_for(policy: Policy) -> str:
     """The policy hash for ``policy``; genesis policies hash as before."""
     grants = [
@@ -520,6 +554,11 @@ def policy_hash_for(policy: Policy) -> str:
         # their policy hash.
         payload["version"] = policy.version
         payload["previous_policy_hash"] = policy.previous_policy_hash
+    if policy.dual_control_trust is not None:
+        # Dual-control enrollment is authority-defining (it names who may
+        # advance policy and who may halt it), so it binds into the hash.
+        # Policies that never enroll keep their exact pre-v2 hash.
+        payload["dual_control_trust"] = asdict(policy.dual_control_trust)
     return sha256(_canonical(payload)).hexdigest()
 
 
@@ -539,6 +578,10 @@ class GovernanceKernel:
         legacy_audit_records: int = 0,
         presenter_verifiers: dict[str, PresenterVerifier] | None = None,
         policy_envelope: PolicyEnvelope | None = None,
+        policy_envelope_v2: PolicyEnvelopeV2 | None = None,
+        policy_signer_verifiers: dict[str, ApprovalVerifier] | None = None,
+        veto_verifier: ApprovalVerifier | None = None,
+        fallback_verifier: ApprovalVerifier | None = None,
     ) -> None:
         self.policy = policy
         # Pin the exact policy this kernel was constructed under. Every
@@ -589,6 +632,57 @@ class GovernanceKernel:
         # signer-custody decision, adopt envelopes by an explicit act,
         # after which an envelope cannot be silently dropped).
         self._policy_envelope: PolicyEnvelope | None = None
+        # Envelope schema v2 (signer-custody decision, 2026-11-27): a
+        # policy that pins a dual-control trust lives in the v2 era. Its
+        # envelopes are dual-signed, its veto registry is active, and the
+        # era is fixed by the first recorded head -- a v1 envelope offered
+        # to a v2 policy (or vice versa) is an era mismatch, refused, so a
+        # chain on v2 dual control can never silently downgrade to v1
+        # single-signer rules. Signer/veto/fallback verifiers are
+        # deployment configuration injected at construction, like the
+        # approval verifier, and every one supplied must match the key it
+        # claims to verify for in the enrolled trust.
+        self._policy_signer_verifiers: dict[str, ApprovalVerifier] = dict(
+            policy_signer_verifiers or {}
+        )
+        self._veto_verifier = veto_verifier
+        self._fallback_verifier = fallback_verifier
+        dual = self.policy.dual_control_trust
+        if dual is not None:
+            enrolled_signers = {key.key_id: key for key in dual.signers}
+            for signer_key_id, signer_verifier in self._policy_signer_verifiers.items():
+                binding = enrolled_signers.get(signer_key_id)
+                if binding is None or not self._enrolled_verifier_matches(
+                    signer_verifier, dual, binding
+                ):
+                    raise AuthorityTrustError(
+                        "policy signer verifier does not match an enrolled signer key"
+                    )
+            if veto_verifier is not None and not self._enrolled_verifier_matches(
+                veto_verifier, dual, dual.veto
+            ):
+                raise AuthorityTrustError("veto verifier does not match the enrolled veto key")
+            if fallback_verifier is not None and not self._enrolled_verifier_matches(
+                fallback_verifier, dual, dual.fallback
+            ):
+                raise AuthorityTrustError(
+                    "fallback verifier does not match the enrolled fallback key"
+                )
+        else:
+            if self._policy_signer_verifiers or veto_verifier is not None or fallback_verifier is not None:
+                raise AuthorityTrustError(
+                    "policy signer, veto, and fallback verifiers require a dual-control trust"
+                )
+        self._policy_envelope_v2: PolicyEnvelopeV2 | None = None
+        if dual is not None:
+            if policy_envelope is not None:
+                raise PolicyEnvelopeError(
+                    "policy envelope era mismatch: a dual-control policy requires an envelope v2"
+                )
+            if policy_envelope_v2 is not None:
+                self._policy_envelope_v2 = self._verify_policy_envelope_v2(policy_envelope_v2)
+        elif policy_envelope_v2 is not None:
+            raise PolicyEnvelopeError("policy envelope v2 requires a dual-control trust")
         if self.policy.authority_trust is None:
             if policy_envelope is not None:
                 raise PolicyEnvelopeError("policy envelope requires a pinned authority trust")
@@ -602,8 +696,26 @@ class GovernanceKernel:
             raise StateIntegrityError("kernel state audit chain is invalid") from exc
         if not audit_valid:
             raise StateIntegrityError("kernel state audit chain is invalid")
-        if self._policy_envelope is not None:
+        if self._policy_envelope_v2 is not None:
+            self._accept_policy_head_v2()
+        elif self._policy_envelope is not None:
             self._accept_policy_head()
+        elif dual is not None and (
+            self.policy.version > 1 or self._recorded_policy_head() is not None
+        ):
+            # Dual control is mandatory, not a count coincidence: the
+            # v2-envelope requirement does not depend on exactly two
+            # signer verifiers being configured. With zero or one
+            # verifier the branch above cannot verify an envelope, so
+            # an omitted envelope under a versioned dual-control policy
+            # (or a recorded head) must fail closed here rather than
+            # construct and govern under the unsigned policy (Codex P1
+            # on PR #421). This composes with the generalized
+            # missing-envelope refusal below (PR #418): the dual-control
+            # case is refused by this era-specific branch first.
+            raise PolicyEnvelopeError(
+                "signed policy envelope v2 is required for a versioned dual-control policy or a recorded policy head"
+            )
         elif (self.policy.authority_trust is not None and self.policy.version > 1) or (
             self._recorded_policy_head() is not None
         ):
@@ -632,6 +744,20 @@ class GovernanceKernel:
     def policy_head(self) -> dict[str, Any] | None:
         """The authenticated policy head accepted at construction, if any."""
 
+        if self._policy_envelope_v2 is not None:
+            envelope = self._policy_envelope_v2
+            dual = self.policy.dual_control_trust
+            assert dual is not None
+            return {
+                "policy_version": envelope.version,
+                "policy_hash": envelope.policy_hash,
+                "previous_policy_hash": envelope.previous_policy_hash,
+                "envelope_hash": envelope.envelope_hash,
+                "schema": envelope.schema,
+                "signer_key_ids": sorted(entry.key_id for entry in envelope.signatures),
+                "veto_key_id": dual.veto.key_id,
+                "fallback_key_id": dual.fallback.key_id,
+            }
         if self._policy_envelope is None:
             return None
         envelope = self._policy_envelope
@@ -1025,6 +1151,29 @@ class GovernanceKernel:
         )
         return actual == expected
 
+    @staticmethod
+    def _enrolled_verifier_matches(verifier: Any, dual: DualControlTrust, binding: Any) -> bool:
+        """True when ``verifier`` is exactly the enrolled key ``binding`` names."""
+
+        try:
+            actual = (
+                verifier.authority_id,
+                verifier.verifier_id,
+                verifier.key_id,
+                verifier.algorithm,
+                verifier.key_fingerprint,
+            )
+        except Exception:
+            return False
+        expected = (
+            dual.authority_id,
+            dual.verifier_id,
+            binding.key_id,
+            binding.algorithm,
+            binding.key_fingerprint,
+        )
+        return actual == expected
+
     def _verify_policy_envelope(
         self, envelope: PolicyEnvelope | None, verifier: ApprovalVerifier
     ) -> PolicyEnvelope:
@@ -1115,6 +1264,10 @@ class GovernanceKernel:
         envelope = self._policy_envelope
         assert envelope is not None
         head = self._recorded_policy_head()
+        if head is not None and head.get("schema") == "pulpo.policy-envelope.v2":
+            raise PolicyEnvelopeError(
+                "policy envelope era mismatch: the recorded policy head is an envelope v2 head"
+            )
         if head is None:
             self._append_policy_head(envelope)
             return
@@ -1169,6 +1322,369 @@ class GovernanceKernel:
             raise PolicyEnvelopeError(
                 "policy envelope conflicts with the recorded policy head"
             )
+
+    def _verify_policy_envelope_v2(self, envelope: PolicyEnvelopeV2) -> PolicyEnvelopeV2:
+        """Verify a dual-signed envelope against the dual-control trust.
+
+        Both enrolled signer keys must have signed the exact payload --
+        which itself binds the signer key-id set -- and each signature is
+        verified with the verifier enrolled for that key. One signature,
+        an unenrolled key, or a signature from the wrong key all refuse:
+        neither signer alone can advance policy.
+        """
+
+        dual = self.policy.dual_control_trust
+        assert dual is not None
+        if not isinstance(envelope, PolicyEnvelopeV2):
+            raise PolicyEnvelopeError("signed policy envelope v2 is required")
+        bindings = (
+            (envelope.authority_id, dual.authority_id, "policy envelope authority mismatch"),
+            (envelope.verifier_id, dual.verifier_id, "policy envelope verifier mismatch"),
+            (envelope.deployment_id, dual.deployment_id, "policy envelope deployment mismatch"),
+            (envelope.trust_hash, dual.trust_hash, "policy envelope trust mismatch"),
+        )
+        for actual, expected, message in bindings:
+            if actual != expected:
+                raise PolicyEnvelopeError(message)
+        if envelope.version != self.policy.version:
+            raise PolicyEnvelopeError("policy envelope version mismatch")
+        if envelope.previous_policy_hash != self.policy.previous_policy_hash:
+            raise PolicyEnvelopeError("policy envelope previous-hash mismatch")
+        if not hmac.compare_digest(envelope.policy_hash, self.policy_hash):
+            raise PolicyEnvelopeError("policy envelope policy-hash mismatch")
+        enrolled = {key.key_id: key for key in dual.signers}
+        presented = {entry.key_id: entry.signature for entry in envelope.signatures}
+        if set(presented) != set(enrolled):
+            raise PolicyEnvelopeError(
+                "policy envelope v2 requires signatures from both enrolled signer keys"
+            )
+        for key_id, binding in enrolled.items():
+            signature = presented[key_id]
+            if not signature:
+                raise PolicyEnvelopeError("policy envelope signature missing")
+            verifier = self._policy_signer_verifiers.get(key_id)
+            if verifier is None:
+                raise PolicyEnvelopeError(
+                    "policy envelope v2 cannot be verified without both signer verifiers"
+                )
+            if not self._enrolled_verifier_matches(verifier, dual, binding):
+                raise PolicyEnvelopeError("policy envelope signer verifier mismatch")
+            try:
+                signature_valid = verifier.verify(envelope.signing_bytes(), signature)
+            except Exception as exc:
+                raise PolicyEnvelopeError("policy envelope verifier failed") from exc
+            if signature_valid is not True:
+                raise PolicyEnvelopeError("policy envelope signature invalid")
+        return envelope
+
+    def _accept_policy_head_v2(self) -> None:
+        """Refuse a stale, forked, cross-era, or vetoed v2 head; record an advance.
+
+        The veto registry is consulted before any append: an acceptance is
+        the only moment a head enters the chain, so it is the governed
+        boundary the veto guards. Reopening with the identical head
+        appends nothing and is a restart, not an advance -- the veto halts
+        advances, not governance under an already-accepted head.
+        """
+
+        envelope = self._policy_envelope_v2
+        assert envelope is not None
+        head = self._recorded_policy_head()
+        if head is not None and head.get("schema") != "pulpo.policy-envelope.v2":
+            raise PolicyEnvelopeError(
+                "policy envelope era mismatch: the recorded policy head is an envelope v1 head"
+            )
+        if head is None:
+            self._refuse_if_vetoed(envelope)
+            self._append_policy_head_v2(envelope)
+            return
+        recorded_version = head["policy_version"]
+        recorded_hash = head["policy_hash"]
+        if envelope.version < recorded_version:
+            raise PolicyEnvelopeError(
+                "stale policy envelope: version is older than the recorded policy head"
+            )
+        if envelope.version == recorded_version:
+            if not hmac.compare_digest(envelope.policy_hash, recorded_hash):
+                raise PolicyEnvelopeError(
+                    "policy envelope conflicts with the recorded policy head"
+                )
+            return
+        if envelope.previous_policy_hash != recorded_hash:
+            raise PolicyEnvelopeError(
+                "policy envelope chain is broken: previous hash does not match the recorded policy head"
+            )
+        self._refuse_if_vetoed(envelope)
+        self._append_policy_head_v2(envelope)
+
+    def _append_policy_head_v2(self, envelope: PolicyEnvelopeV2) -> None:
+        dual = self.policy.dual_control_trust
+        assert dual is not None
+        timestamp = self._trusted_now()
+        self._state.append(
+            "policy_head_accepted",
+            {
+                "schema": envelope.schema,
+                "policy_version": envelope.version,
+                "policy_hash": envelope.policy_hash,
+                "previous_policy_hash": envelope.previous_policy_hash,
+                "envelope_hash": envelope.envelope_hash,
+                "authority_id": envelope.authority_id,
+                "verifier_id": envelope.verifier_id,
+                "deployment_id": envelope.deployment_id,
+                "trust_hash": envelope.trust_hash,
+                "signer_key_ids": sorted(entry.key_id for entry in envelope.signatures),
+                "veto_key_id": dual.veto.key_id,
+                "fallback_key_id": dual.fallback.key_id,
+            },
+            timestamp if timestamp is not None else 0,
+        )
+
+    # -- Policy veto registry (signer-custody decision, 2026-11-27) -----
+    #
+    # Veto records enter canonical state only through ``record_policy_veto``
+    # -- a governed intake that verifies the record's signature against the
+    # enrolled veto or fallback key before appending it to the audit chain.
+    # Registry state is derived from the chain in order, never stored
+    # separately: the latest standing act in chain order is the standing
+    # state (so the veto holder's acts supersede fallback acts whenever
+    # they land), and targeted kills accumulate permanently.
+
+    _VETO_EVENTS = {
+        "targeted": "policy_veto_targeted",
+        "standing": "policy_veto_standing_set",
+        "standing_renewal": "policy_veto_standing_renewed",
+        "standing_lift": "policy_veto_standing_lifted",
+        "fallback_request": "policy_veto_fallback_requested",
+    }
+
+    def _policy_veto_state(self) -> dict[str, Any]:
+        """Derive the veto registry from the audit chain, in chain order."""
+
+        targeted: set[str] = set()
+        standing_expires_at_ns: int | None = None
+        seen_veto_hashes: set[str] = set()
+        seen_nonces: set[tuple[str, str]] = set()
+        operative_request: dict[str, Any] | None = None
+        veto_act_after_request = False
+        dual = self.policy.dual_control_trust
+        veto_key_id = dual.veto.key_id if dual is not None else None
+        for record in self.audit:
+            event = record.get("event")
+            payload = record.get("payload", {})
+            if not isinstance(payload, dict):
+                continue
+            if event == "policy_veto_targeted":
+                if isinstance(payload.get("envelope_hash"), str):
+                    targeted.add(payload["envelope_hash"])
+            elif event == "policy_veto_standing_set" or event == "policy_veto_standing_renewed":
+                expires = payload.get("expires_at_ns")
+                standing_expires_at_ns = expires if type(expires) is int else None
+            elif event == "policy_veto_standing_lifted":
+                standing_expires_at_ns = None
+            elif event == "policy_veto_fallback_requested":
+                # The projection retains the requesting key and the
+                # trust it acted under (both are in the chained payload):
+                # fallback eligibility is bound to the authenticated key
+                # + trust version that made the request, so a rotated
+                # fallback key cannot inherit a predecessor's elapsed
+                # wait (Codex P1 on PR #421).
+                operative_request = {
+                    "timestamp_ns": record.get("timestamp_ns"),
+                    "key_id": payload.get("key_id"),
+                    "trust_hash": payload.get("trust_hash"),
+                }
+                veto_act_after_request = False
+            else:
+                continue
+            if isinstance(payload.get("veto_hash"), str):
+                seen_veto_hashes.add(payload["veto_hash"])
+            key_id = payload.get("key_id")
+            nonce = payload.get("nonce")
+            if isinstance(key_id, str) and isinstance(nonce, str):
+                seen_nonces.add((key_id, nonce))
+            if (
+                operative_request is not None
+                and event != "policy_veto_fallback_requested"
+                and key_id == veto_key_id
+            ):
+                veto_act_after_request = True
+        return {
+            "targeted": targeted,
+            "standing_expires_at_ns": standing_expires_at_ns,
+            "seen_veto_hashes": seen_veto_hashes,
+            "seen_nonces": seen_nonces,
+            "operative_request": operative_request,
+            "veto_act_after_request": veto_act_after_request,
+        }
+
+    def _refuse_if_vetoed(self, envelope: PolicyEnvelopeV2) -> None:
+        """Refuse an advancing head the veto registry bars.
+
+        A targeted kill names this exact envelope and is permanent. A
+        standing veto bars every advance while active -- including an
+        advance whose effect would alter the veto arrangement itself, so
+        a live veto cannot be routed around by the signers.
+        """
+
+        state = self._policy_veto_state()
+        if not state["seen_veto_hashes"] and not state["targeted"]:
+            return
+        if envelope.envelope_hash in state["targeted"]:
+            raise PolicyEnvelopeError(
+                "policy envelope is permanently vetoed by a targeted veto"
+            )
+        standing_expires = state["standing_expires_at_ns"]
+        if standing_expires is not None:
+            now_ns = self._trusted_now()
+            if now_ns is None:
+                raise PolicyEnvelopeError(
+                    "policy veto state cannot be judged without a trusted clock"
+                )
+            if now_ns < standing_expires:
+                raise PolicyEnvelopeError(
+                    "policy advances are halted by a standing veto"
+                )
+
+    def _standing_veto_active(self, state: dict[str, Any], now_ns: int) -> bool:
+        expires = state["standing_expires_at_ns"]
+        return expires is not None and now_ns < expires
+
+    def _fallback_trigger_satisfied(self, state: dict[str, Any], now_ns: int) -> bool:
+        """The chained fallback trigger: request, 24h of silence, no veto act.
+
+        The operative (latest) fallback request starts the clock; the
+        release requires at least ``FALLBACK_SILENCE_NS`` of chain time
+        since that request's chained timestamp and no veto-holder act
+        chained after it. The request must also be the currently
+        enrolled fallback key's own request under the current
+        dual-control trust: a replacement key starts its own 24-hour
+        clock and cannot inherit a predecessor's elapsed wait.
+        Nothing is self-certified: the request, the silence, and the
+        release are all records in the same chain.
+        """
+
+        request = state["operative_request"]
+        if request is None or state["veto_act_after_request"]:
+            return False
+        dual = self.policy.dual_control_trust
+        if dual is None:
+            return False
+        if request.get("key_id") != dual.fallback.key_id:
+            return False
+        if request.get("trust_hash") != dual.trust_hash:
+            return False
+        requested_at = request["timestamp_ns"]
+        if type(requested_at) is not int:
+            return False
+        return now_ns - requested_at >= FALLBACK_SILENCE_NS
+
+    def _veto_record_authorized(
+        self, veto: PolicyVeto, state: dict[str, Any], now_ns: int
+    ) -> tuple[Any, Any]:
+        """Resolve a veto record's actor to its enrolled binding and verifier.
+
+        This is the single authority seam for the whole registry. The veto
+        key may perform any act at any time. The fallback key may perform
+        standing acts only, and only behind the chained 24-hour trigger;
+        targeted acts never delegate. Lift authority is decided here and
+        nowhere else.
+        """
+
+        dual = self.policy.dual_control_trust
+        assert dual is not None
+        if veto.key_id == dual.veto.key_id:
+            return dual.veto, self._veto_verifier
+        if veto.key_id == dual.fallback.key_id:
+            if veto.kind == "targeted":
+                raise PolicyVetoError("targeted policy vetoes never delegate to the fallback key")
+            if veto.kind == "fallback_request":
+                return dual.fallback, self._fallback_verifier
+            if not self._fallback_trigger_satisfied(state, now_ns):
+                raise PolicyVetoError(
+                    "fallback standing-veto act requires a chained request and 24 hours without a veto-holder act"
+                )
+            return dual.fallback, self._fallback_verifier
+        raise PolicyVetoError("policy veto record is signed by an unenrolled key")
+
+    def record_policy_veto(self, veto: PolicyVeto) -> dict[str, Any]:
+        """Verify and chain a signed veto-registry record.
+
+        The governed intake for the registry: bindings are checked against
+        the enrolled dual-control trust, the signature is verified with
+        the actor's enrolled verifier, replays are refused, and the
+        registry's state machine (no double standing set, renewals only
+        extend an active veto, lifts only clear one) is enforced at
+        intake. Returns the chained audit payload.
+        """
+
+        dual = self.policy.dual_control_trust
+        if dual is None:
+            raise PolicyVetoError("policy vetoes require a dual-control trust")
+        if not isinstance(veto, PolicyVeto):
+            raise PolicyVetoError("policy veto record is required")
+        bindings = (
+            (veto.authority_id, dual.authority_id, "policy veto authority mismatch"),
+            (veto.verifier_id, dual.verifier_id, "policy veto verifier mismatch"),
+            (veto.deployment_id, dual.deployment_id, "policy veto deployment mismatch"),
+            (veto.trust_hash, dual.trust_hash, "policy veto trust mismatch"),
+        )
+        for actual, expected, message in bindings:
+            if actual != expected:
+                raise PolicyVetoError(message)
+        now_ns = self._trusted_now()
+        if now_ns is None:
+            raise PolicyVetoError("policy veto intake requires a trusted clock")
+        state = self._policy_veto_state()
+        binding, verifier = self._veto_record_authorized(veto, state, now_ns)
+        if verifier is None:
+            raise PolicyVetoError("policy veto cannot be verified without the actor's verifier")
+        if not self._enrolled_verifier_matches(verifier, dual, binding):
+            raise PolicyVetoError("policy veto verifier does not match the enrolled key")
+        if not veto.signature:
+            raise PolicyVetoError("policy veto signature missing")
+        try:
+            signature_valid = verifier.verify(veto.signing_bytes(), veto.signature)
+        except Exception as exc:
+            raise PolicyVetoError("policy veto verifier failed") from exc
+        if signature_valid is not True:
+            raise PolicyVetoError("policy veto signature invalid")
+        if veto.veto_hash in state["seen_veto_hashes"] or (veto.key_id, veto.nonce) in state["seen_nonces"]:
+            raise PolicyVetoError("policy veto record replayed")
+        active = self._standing_veto_active(state, now_ns)
+        if veto.kind == "targeted":
+            if veto.envelope_hash in state["targeted"]:
+                raise PolicyVetoError("policy envelope is already under a targeted veto")
+        elif veto.kind == "standing":
+            if active:
+                raise PolicyVetoError("a standing veto is already active; renew or lift it instead")
+            assert veto.expires_at_ns is not None
+            if veto.expires_at_ns <= now_ns:
+                raise PolicyVetoError("standing policy veto expiry must be in the future")
+        elif veto.kind == "standing_renewal":
+            if not active:
+                raise PolicyVetoError("no active standing veto to renew")
+            assert veto.expires_at_ns is not None
+            if veto.expires_at_ns <= state["standing_expires_at_ns"]:
+                raise PolicyVetoError("standing policy veto renewal must extend the current expiry")
+        elif veto.kind == "standing_lift":
+            if not active:
+                raise PolicyVetoError("no active standing veto to lift")
+        payload = {
+            "kind": veto.kind,
+            "authority_id": veto.authority_id,
+            "verifier_id": veto.verifier_id,
+            "deployment_id": veto.deployment_id,
+            "trust_hash": veto.trust_hash,
+            "key_id": veto.key_id,
+            "nonce": veto.nonce,
+            "issued_at_ns": veto.issued_at_ns,
+            "envelope_hash": veto.envelope_hash,
+            "expires_at_ns": veto.expires_at_ns,
+            "veto_hash": veto.veto_hash,
+        }
+        self._state.append(self._VETO_EVENTS[veto.kind], payload, now_ns)
+        return payload
 
     def _ceremony_failure(
         self,
@@ -1404,7 +1920,8 @@ class GovernanceKernel:
 
         head = self._recorded_policy_head()
         envelope = self._policy_envelope
-        if envelope is None:
+        envelope_v2 = self._policy_envelope_v2
+        if envelope is None and envelope_v2 is None:
             if head is not None:
                 raise PolicyEnvelopeError(
                     "a policy head is recorded in state but this kernel holds no signed policy envelope"
@@ -1414,8 +1931,15 @@ class GovernanceKernel:
             raise PolicyEnvelopeError(
                 "this kernel's signed policy head is missing from the recorded policy chain"
             )
-        if head["policy_version"] != envelope.version or not hmac.compare_digest(
-            head["policy_hash"], envelope.policy_hash
+        # Stack composition (PR #421 on PR #418): the revalidation
+        # compares against whichever envelope era this kernel holds --
+        # a v2 dual-control kernel's head is its envelope v2, and it is
+        # superseded in exactly the same way when the recorded head
+        # moves past it.
+        held_version = envelope.version if envelope is not None else envelope_v2.version
+        held_hash = envelope.policy_hash if envelope is not None else envelope_v2.policy_hash
+        if head["policy_version"] != held_version or not hmac.compare_digest(
+            head["policy_hash"], held_hash
         ):
             raise PolicyEnvelopeError(
                 "stale policy: this kernel's policy head has been superseded by the recorded policy head"
