@@ -2202,6 +2202,53 @@ class GovernanceKernel:
         )
         return completion
 
+    def record_node_dry_run_observation(
+        self,
+        *,
+        target_id: str,
+        version: int,
+        target_hash: str,
+        intent: Intent,
+        consumption_hash: str,
+        output: dict[str, Any],
+        object_hash: str,
+        timestamp_ns: int,
+    ) -> None:
+        """Facade verb: append the synthetic GPIO dry-run observation record.
+
+        Fixed schema: the ``node_gpio_dry_run_observed`` event. The
+        Phase 2 dry-run seam (``pulpo.node_dry_run``) resolves the
+        locked target, consumes the permit, and reads the synthetic
+        output back; this verb is the only route by which its
+        observation reaches canonical state, so no module outside the
+        kernel touches the state backend. The kernel derives the
+        intent and policy hashes itself; the caller supplies the
+        exact consumption record hash, the observed output, and the
+        trusted observation time it already resolved (an unavailable
+        clock fails in the caller before this verb runs — nothing is
+        appended here on a degraded timestamp). The record grants
+        nothing: ``authority_effect=none``; its governed effect is
+        the synthetic observation itself.
+        """
+
+        self._state.append(
+            "node_gpio_dry_run_observed",
+            {
+                "schema": "pulpo.node-gpio-dry-run.v1",
+                "target_id": target_id,
+                "version": version,
+                "target_hash": target_hash,
+                "intent_hash": self.intent_hash(intent),
+                "policy_hash": self.policy_hash,
+                "consumption_hash": consumption_hash,
+                "output": output,
+                "object_hash": object_hash,
+                "authority_effect": "none",
+                "governed_effect": "synthetic_output_observed",
+            },
+            timestamp_ns,
+        )
+
     def record_domain_outcome_memory(
         self,
         *,
