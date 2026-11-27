@@ -27,6 +27,63 @@ def _canonical(value: Any) -> bytes:
     return _CANONICAL_ENCODER.encode(value).encode()
 
 
+class AuditSigningKey(Protocol):
+    """The signer/verifier seam for audit records.
+
+    A state backend holds one of these: it signs each appended
+    record's hash and verifies every signature on the chain at boot.
+    ``AuditSigner`` (HMAC) is the original implementation;
+    ``Ed25519AuditSigner`` adds the asymmetric era, and
+    ``CompositeAuditSigner`` verifies across eras during a
+    transition. Verification is the security-critical half: a
+    missing, malformed, or wrong-era signature must never verify.
+    """
+
+    algorithm: str
+
+    def sign(self, record_hash: str) -> str: ...
+
+    def verify(self, record_hash: str, signature: Any) -> bool: ...
+
+
+#: Audit signature algorithms, ordered oldest era first. The order is
+#: the era order: once a chain carries a signature from a later era,
+#: a signature from an earlier era is a downgrade and is refused at
+#: verification (see GovernanceKernel.verify_audit_report).
+AUDIT_SIGNATURE_ALGORITHMS = ("hmac-sha256", "ed25519")
+
+_ED25519_SIGNATURE_PREFIX = "ed25519:"
+
+
+def audit_signature_algorithm(signature: Any) -> str | None:
+    """Classify a stored audit signature value by era.
+
+    HMAC-era signatures are the bare 64-character lowercase hex of the
+    original record shape — byte-identical to every signature written
+    before the Ed25519 era existed, so existing chains classify
+    without any record being rewritten. Ed25519-era signatures carry
+    the explicit ``ed25519:`` tag over the 128-character hex of the
+    64-byte signature. Anything else — including a bare tag with no
+    well-formed signature behind it — is malformed and classifies as
+    None: it verifies under no era.
+    """
+
+    if not isinstance(signature, str) or not signature:
+        return None
+    if signature.startswith(_ED25519_SIGNATURE_PREFIX):
+        encoded = signature[len(_ED25519_SIGNATURE_PREFIX):]
+        if len(encoded) == 128 and all(
+            character in "0123456789abcdef" for character in encoded
+        ):
+            return "ed25519"
+        return None
+    if len(signature) == 64 and all(
+        character in "0123456789abcdef" for character in signature
+    ):
+        return "hmac-sha256"
+    return None
+
+
 class AuditSigner:
     """HMAC-SHA256 signer/verifier for audit records (Phase 2, Item 1).
 
@@ -36,10 +93,10 @@ class AuditSigner:
     signature covers the record's own ``hash`` and is stored as a
     sibling field, excluded from the hashed body — the exact pattern
     ``AuditAnchor`` uses (``signing_payload()`` excludes ``signature``).
-    The field is algorithm-agile: a future Ed25519 signer can replace
-    this class behind the same record shape without changing the chain
-    math. Verification is constant-time; a missing, non-string, or
-    malformed signature never verifies.
+    The field is algorithm-agile: the Ed25519 signer below succeeds
+    this class behind the same record shape without changing the
+    chain math. Verification is constant-time; a missing, non-string,
+    malformed, or wrong-era signature never verifies.
     """
 
     algorithm = "hmac-sha256"
@@ -55,7 +112,9 @@ class AuditSigner:
         return hmac.new(self._secret, record_hash.encode("utf-8"), sha256).hexdigest()
 
     def verify(self, record_hash: str, signature: Any) -> bool:
-        if not isinstance(signature, str) or not signature:
+        if audit_signature_algorithm(signature) != "hmac-sha256":
+            # A tagged Ed25519-era value, or anything malformed, is
+            # not an HMAC signature and never verifies as one.
             return False
         try:
             expected = self.sign(record_hash)
@@ -64,7 +123,295 @@ class AuditSigner:
         return hmac.compare_digest(expected, signature)
 
 
-def _audit_record(previous_hash: str, event: str, payload: dict[str, Any], timestamp_ns: int, signer: AuditSigner | None = None) -> dict[str, Any]:
+def _ed25519_private_key_class() -> Any:
+    try:
+        from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+    except ImportError as exc:
+        raise RuntimeError(
+            "Ed25519 audit signing requires the pulpo[authority] extra"
+        ) from exc
+    return Ed25519PrivateKey
+
+
+def _ed25519_public_key_class() -> Any:
+    try:
+        from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
+    except ImportError as exc:
+        raise RuntimeError(
+            "Ed25519 audit verification requires the pulpo[authority] extra"
+        ) from exc
+    return Ed25519PublicKey
+
+
+class Ed25519AuditVerifier:
+    """Verification-only audit signer pinned to one Ed25519 public key.
+
+    This is the publishable half of the Ed25519 era: anyone holding
+    the public key — exported as a standalone artifact (see
+    ``Ed25519AuditSigner.public_artifact``) — can verify an
+    Ed25519-era chain without holding any deployment secret, the
+    property the symmetric HMAC era cannot offer. It holds no private
+    material and cannot sign.
+    """
+
+    algorithm = "ed25519"
+
+    def __init__(self, public_key: bytes) -> None:
+        if len(public_key) != 32:
+            raise ValueError("Ed25519 public_key must be exactly 32 bytes")
+        self._public_key_bytes = bytes(public_key)
+        self._public_key = _ed25519_public_key_class().from_public_bytes(
+            self._public_key_bytes
+        )
+        self.key_fingerprint = sha256(self._public_key_bytes).hexdigest()
+
+    @classmethod
+    def from_public_key_hex(cls, text: str) -> "Ed25519AuditVerifier":
+        if not isinstance(text, str):
+            raise TypeError("public key hex must be a string")
+        try:
+            public_key = bytes.fromhex(text.strip())
+        except ValueError as exc:
+            raise ValueError("public key hex is malformed") from exc
+        return cls(public_key)
+
+    @classmethod
+    def from_artifact(cls, artifact: dict[str, Any]) -> "Ed25519AuditVerifier":
+        """Build a verifier from a published verification-key artifact.
+
+        The artifact's fingerprint is checked against the key it
+        carries: a substituted key under a copied fingerprint (or the
+        reverse) is refused here, before any chain is trusted to it.
+        """
+
+        if not isinstance(artifact, dict):
+            raise TypeError("verification-key artifact must be a mapping")
+        if artifact.get("algorithm") != "ed25519":
+            raise ValueError("verification-key artifact is not an Ed25519 key")
+        verifier = cls.from_public_key_hex(artifact.get("public_key"))
+        fingerprint = artifact.get("key_fingerprint")
+        if fingerprint is not None and fingerprint != verifier.key_fingerprint:
+            raise ValueError(
+                "verification-key artifact fingerprint does not match its key"
+            )
+        return verifier
+
+    def public_key_bytes(self) -> bytes:
+        return self._public_key_bytes
+
+    def public_key_hex(self) -> str:
+        return self._public_key_bytes.hex()
+
+    def sign(self, record_hash: str) -> str:
+        raise RuntimeError("an Ed25519 audit verifier holds no signing key")
+
+    def verify(self, record_hash: str, signature: Any) -> bool:
+        if audit_signature_algorithm(signature) != "ed25519":
+            # A bare HMAC-era value, or anything malformed, is not an
+            # Ed25519 signature and never verifies as one.
+            return False
+        encoded = signature[len(_ED25519_SIGNATURE_PREFIX):]
+        if len(encoded) != 128 or any(
+            character not in "0123456789abcdef" for character in encoded
+        ):
+            return False
+        if not isinstance(record_hash, str):
+            return False
+        try:
+            from cryptography.exceptions import InvalidSignature
+
+            self._public_key.verify(
+                bytes.fromhex(encoded), record_hash.encode("utf-8")
+            )
+        except (InvalidSignature, ValueError):
+            return False
+        return True
+
+
+class Ed25519AuditSigner:
+    """Ed25519 signer/verifier for audit records.
+
+    The asymmetric successor to ``AuditSigner``: the signature still
+    covers the record's ``hash`` and is stored as the same sibling
+    field, but the stored value is tagged (``ed25519:<hex>``) so a
+    chain can carry both eras and verification can dispatch per
+    record. The private key is a 32-byte seed held as a custody file
+    (hex text in an owner-only file beside the state it attests —
+    the ``audit-secret`` pattern, with asymmetric custody: the file
+    is the deployment's signing key and must never be published);
+    the public key is exportable as a standalone artifact for
+    publication, so third parties verify with
+    ``Ed25519AuditVerifier`` and no secret at all.
+    """
+
+    algorithm = "ed25519"
+
+    def __init__(self, private_key: bytes) -> None:
+        if len(private_key) != 32:
+            raise ValueError("Ed25519 private_key must be exactly 32 bytes")
+        self._private_key = _ed25519_private_key_class().from_private_bytes(
+            bytes(private_key)
+        )
+        self._verifier = Ed25519AuditVerifier(self.public_key_bytes())
+
+    @classmethod
+    def generate(cls) -> "Ed25519AuditSigner":
+        private_key = _ed25519_private_key_class().generate()
+        from cryptography.hazmat.primitives import serialization
+
+        seed = private_key.private_bytes(
+            serialization.Encoding.Raw,
+            serialization.PrivateFormat.Raw,
+            serialization.NoEncryption(),
+        )
+        return cls(seed)
+
+    @classmethod
+    def from_custody_file(cls, path: str | PathLike[str]) -> "Ed25519AuditSigner":
+        """Load the signing key from its custody file.
+
+        The file holds the 32-byte seed as hex text (the deployment
+        secret-file shape). Loading never creates or repairs the
+        file: provisioning is an explicit operator act
+        (``save_custody_file``), mirroring the load-only half of the
+        ops secret custody split.
+        """
+
+        with open(path, "rb") as handle:
+            raw = handle.read()
+        try:
+            seed = bytes.fromhex(raw.decode("utf-8").strip())
+        except (UnicodeDecodeError, ValueError):
+            seed = raw.strip()
+        if len(seed) != 32:
+            raise ValueError("Ed25519 audit custody file is malformed")
+        return cls(seed)
+
+    def save_custody_file(self, path: str | PathLike[str]) -> None:
+        """Write the signing key to a new owner-only custody file.
+
+        Refuses to overwrite: a collision means a key already lives
+        there, and silently replacing a deployment's audit signing
+        key would orphan every chain it signed. The caller owns the
+        path; rotation is generate-new + re-provision, never an
+        in-place rewrite.
+        """
+
+        import os
+        import stat as _stat
+
+        seed = self._seed_bytes()
+        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        try:
+            os.fchmod(fd, _stat.S_IRUSR | _stat.S_IWUSR)
+            view = memoryview((seed.hex() + "\n").encode("utf-8"))
+            while view:
+                view = view[os.write(fd, view):]
+            os.fsync(fd)
+        finally:
+            os.close(fd)
+
+    def _seed_bytes(self) -> bytes:
+        from cryptography.hazmat.primitives import serialization
+
+        return self._private_key.private_bytes(
+            serialization.Encoding.Raw,
+            serialization.PrivateFormat.Raw,
+            serialization.NoEncryption(),
+        )
+
+    def public_key_bytes(self) -> bytes:
+        from cryptography.hazmat.primitives import serialization
+
+        return self._private_key.public_key().public_bytes(
+            serialization.Encoding.Raw, serialization.PublicFormat.Raw
+        )
+
+    def public_key_hex(self) -> str:
+        return self._verifier.public_key_hex()
+
+    @property
+    def key_fingerprint(self) -> str:
+        return self._verifier.key_fingerprint
+
+    def public_artifact(self) -> dict[str, Any]:
+        """The publishable verification-key artifact for this signer.
+
+        Carries everything a third party needs to verify an
+        Ed25519-era chain and nothing that can sign: the algorithm,
+        the public key, and its fingerprint. Suitable for publication
+        at a well-known evidence URL.
+        """
+
+        return {
+            "schema": "pulpo.audit-verification-key.v1",
+            "algorithm": "ed25519",
+            "public_key": self.public_key_hex(),
+            "key_fingerprint": self.key_fingerprint,
+        }
+
+    def verifier(self) -> Ed25519AuditVerifier:
+        """The verification-only half of this signer."""
+
+        return self._verifier
+
+    def sign(self, record_hash: str) -> str:
+        if not isinstance(record_hash, str):
+            raise TypeError("record hash must be a string")
+        signature = self._private_key.sign(record_hash.encode("utf-8"))
+        return _ED25519_SIGNATURE_PREFIX + signature.hex()
+
+    def verify(self, record_hash: str, signature: Any) -> bool:
+        return self._verifier.verify(record_hash, signature)
+
+
+class CompositeAuditSigner:
+    """Dual-era audit signer: signs in the current era, verifies all.
+
+    The transition handle. ``signer`` (when given) signs every new
+    record — during an HMAC → Ed25519 transition it is the Ed25519
+    signer; with no signer the composite is verification-only.
+    ``verifiers`` carries one verifier per era the chain may contain
+    (the signer's own era is included automatically). Verification
+    dispatches on the record's own signature form, so a mixed chain
+    verifies end to end, while a record signed in an era the
+    deployment never configured verification for is refused — there
+    is nothing it could be verified against. Era monotonicity (no
+    downgrade after a transition) is enforced by the kernel's
+    verification pass, which classifies each signature with
+    ``audit_signature_algorithm``.
+    """
+
+    def __init__(
+        self,
+        signer: AuditSigningKey | None = None,
+        verifiers: Any = (),
+    ) -> None:
+        self._signer = signer
+        by_algorithm: dict[str, AuditSigningKey] = {}
+        for verifier in verifiers:
+            by_algorithm[verifier.algorithm] = verifier
+        if signer is not None:
+            by_algorithm.setdefault(signer.algorithm, signer)
+        self._verifiers = by_algorithm
+        self.algorithm = signer.algorithm if signer is not None else "dual-era"
+
+    def sign(self, record_hash: str) -> str:
+        if self._signer is None:
+            raise RuntimeError("this composite audit signer is verification-only")
+        return self._signer.sign(record_hash)
+
+    def verify(self, record_hash: str, signature: Any) -> bool:
+        algorithm = audit_signature_algorithm(signature)
+        if algorithm is None:
+            return False
+        verifier = self._verifiers.get(algorithm)
+        if verifier is None:
+            return False
+        return verifier.verify(record_hash, signature)
+
+
+def _audit_record(previous_hash: str, event: str, payload: dict[str, Any], timestamp_ns: int, signer: AuditSigningKey | None = None) -> dict[str, Any]:
     body = {"event": event, "payload": payload, "previous_hash": previous_hash, "timestamp_ns": timestamp_ns}
     record = {**body, "hash": sha256(_canonical(body)).hexdigest()}
     if signer is not None:
@@ -518,7 +865,7 @@ class KernelState(Protocol):
 
 
 class InMemoryKernelState:
-    def __init__(self, audit_signer: AuditSigner | None = None, legacy_audit_records: int = 0) -> None:
+    def __init__(self, audit_signer: AuditSigningKey | None = None, legacy_audit_records: int = 0) -> None:
         # Audit signing (Phase 2, Item 1): when a signer is supplied,
         # every appended record carries an HMAC over its hash. When no
         # signer is supplied the backend stays in legacy mode — records
@@ -997,7 +1344,7 @@ class InMemoryKernelState:
 
 
 class SQLiteKernelState:
-    def __init__(self, path: str | PathLike[str], audit_signer: AuditSigner | None = None, legacy_audit_records: int = 0, migrate_schema: bool = True) -> None:
+    def __init__(self, path: str | PathLike[str], audit_signer: AuditSigningKey | None = None, legacy_audit_records: int = 0, migrate_schema: bool = True) -> None:
         # Audit signing (Phase 2, Item 1): same contract as the
         # in-memory backend — a signer signs every appended record, no
         # signer means legacy unsigned mode. ``legacy_audit_records``

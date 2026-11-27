@@ -24,7 +24,7 @@ import sqlite3
 from typing import Callable
 
 from .custody import CustodyViolation, SQLiteGovernanceCustody, TransitionReceipt
-from .state import AuditSigner, _audit_record, _canonical
+from .state import AuditSigningKey, _audit_record, _canonical
 
 
 class CustodyEvidenceViolation(RuntimeError):
@@ -44,7 +44,7 @@ class SQLiteCustodyEvidenceConvergence:
         custody: SQLiteGovernanceCustody,
         *,
         fault_hook: FaultHook | None = None,
-        audit_signer: AuditSigner | None = None,
+        audit_signer: AuditSigningKey | None = None,
     ) -> None:
         # Audit signing (Phase 2, Item 1): this convergence is the one
         # append route into the canonical audit that does not go through

@@ -16,14 +16,16 @@ from typing import Any, Callable, Protocol
 from .authority import ApprovalEnvelope, ApprovalVerifier, AuthorityTrust
 from .ceremony import CeremonyEvidence, CeremonyTrust, CeremonyVerifier
 from .state import (
+    AUDIT_SIGNATURE_ALGORITHMS,
     ApprovalUse,
-    AuditSigner,
+    AuditSigningKey,
     DirectivePermitBinding,
     InMemoryKernelState,
     KernelState,
     LeaseIssuance,
     SQLiteKernelState,
     VerifiedAuthorityEvidence,
+    audit_signature_algorithm,
 )
 
 
@@ -469,7 +471,7 @@ class GovernanceKernel:
         state: KernelState | None = None,
         *,
         ceremony_verifier: CeremonyVerifier | None = None,
-        audit_signer: AuditSigner | None = None,
+        audit_signer: AuditSigningKey | None = None,
         legacy_audit_records: int = 0,
         presenter_verifiers: dict[str, PresenterVerifier] | None = None,
     ) -> None:
@@ -1930,6 +1932,15 @@ class GovernanceKernel:
         prove. Malformed records fail as ``audit_record_malformed``
         instead of raising, so callers that treat verification as a
         boolean (boot included) fail closed the same way.
+
+        Signatures carry an era (``AUDIT_SIGNATURE_ALGORITHMS``,
+        oldest first). A chain may transition to a later era at a
+        record boundary — the mixed chain verifies end to end under a
+        dual-era verifier — but eras never regress: once a record has
+        verified under a later era, a subsequent record claiming an
+        earlier era fails as ``audit_signature_downgrade`` on its era
+        claim alone, so a writer holding only the retired era's key
+        cannot extend a transitioned chain.
         """
 
         signer = getattr(self._state, "audit_signer", None)
@@ -1948,6 +1959,7 @@ class GovernanceKernel:
             "failed_record": None,
         }
         previous = "0" * 64
+        max_era_rank = -1
         try:
             records = self.audit
         except Exception:
@@ -1969,6 +1981,15 @@ class GovernanceKernel:
                 return report
             signature = record.get("signature") if isinstance(record, dict) else None
             if signature is not None:
+                algorithm = audit_signature_algorithm(signature)
+                era_rank = (
+                    AUDIT_SIGNATURE_ALGORITHMS.index(algorithm)
+                    if algorithm is not None
+                    else None
+                )
+                if era_rank is not None and era_rank < max_era_rank:
+                    report.update({"ok": False, "reason": "audit_signature_downgrade", "failed_record": index})
+                    return report
                 if signer is None or not signer.verify(record["hash"], signature):
                     # With no signer configured there is nothing a
                     # signature could be verified against, so a present
@@ -1976,6 +1997,8 @@ class GovernanceKernel:
                     # forgery-shaped anomaly: fail rather than ignore.
                     report.update({"ok": False, "reason": "audit_signature_invalid", "failed_record": index})
                     return report
+                if era_rank is not None:
+                    max_era_rank = max(max_era_rank, era_rank)
                 report["signed_records"] += 1
             elif signer is not None and index >= legacy_records:
                 report.update({"ok": False, "reason": "audit_signature_missing", "failed_record": index})
