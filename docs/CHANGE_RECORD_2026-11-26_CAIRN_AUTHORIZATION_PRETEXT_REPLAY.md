@@ -526,3 +526,45 @@ Results (Verified -- executed at both states):
 The evidence is therefore valid at the checkpoint and
 at the worktree head; reuse of the lesson at a later
 commit still requires re-evaluation there.
+
+## 9. Addendum (2026-11-27): the issue #375 derivation landed
+
+This replay was authored and first freshened against a
+main that predated PR #413 (the issue #375 fix: the
+incident channel now derives a near-miss from a
+bare-evaluate `require_approval` decision, per
+occurrence). Section 5's surfacing boundary, the
+step-7 counts in section 4, and section 8's head-side
+near-miss figure state the pre-#375 derivation exactly
+as it held at the authored head and at the section 8
+checkpoint (`e42f929`); those statements stand as
+executed at those states.
+
+The branch update of 2026-11-26 17:12 MST brought
+`b1cea2f` (#413) into this branch, and CI at the
+updated head failed deterministically on the pinned
+total (`8 != 9`, unit-tests, run 45915344400). At the
+updated head the derivation includes the sequence's 1
+`require_approval` decision, so step 7 surfaces 9
+near-misses: 2 `permit_rejected`, 3
+`approval_rejected`, and 4 `decision` records (3
+denied + 1 `require_approval`). The scenario module
+was updated in the same shape PR #413 applied to the
+twelve modules it touched and to Railway and Mitel:
+the module docstring and step-7 comments now state
+the post-#375 derivation; the accounting identity and
+the `decision` source-detail count include the
+`require_approval` decisions; the hardcoded total
+moves 8 -> 9 -- exactly this scenario's
+`require_approval` count (1), no more. No other count
+change is absorbed here. Authorization behavior is
+unchanged -- every allow/deny assertion in the module
+is untouched; the delta is visibility only, and
+section 5's boundary is superseded at the current
+head by this addendum (the gap it described is the
+one #413 closed). Full suite at the fixed head: 1175
+tests, OK (13 skipped, local
+`python -W error -m unittest discover`). Claim
+classification: Verified -- the failing CI assertion
+at the pre-fix head and the green suite at the fixed
+head are the evidence.
