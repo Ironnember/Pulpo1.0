@@ -1,0 +1,27 @@
+{
+  "schema": "pulpo.cross-task-rubric.v1",
+  "frozen_before_results": true,
+  "authority_effect": "none",
+  "required_stages": {
+    "B0": [],
+    "X1": ["K1", "K2", "K3", "K4"]
+  },
+  "criteria": [
+    "expected_action",
+    "valid_lesson_selected",
+    "stale_rejected_by_freshness",
+    "irrelevant_rejected_by_scope",
+    "poisoned_rejected_by_provenance",
+    "poisoned_rejected_by_authority",
+    "source_precedence_preserved",
+    "retrieval_cannot_raise_authority",
+    "authority_effect_none",
+    "isolated_process_manifest"
+  ],
+  "measures": [
+    "rubric_score",
+    "uncertainty_retired",
+    "selected_lesson_count",
+    "rejected_lesson_count"
+  ]
+}
