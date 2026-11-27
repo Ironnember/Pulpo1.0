@@ -201,13 +201,15 @@ Scenario module
   zero incidents and exactly the near-miss records
   the channel's derivation produces from the audit:
   2 `permit_rejected`, 2 `approval_rejected`, and 2
-  denied `decision` records (6 near-misses in
+  denied `decision` records, plus 1 `require_approval`
+  `decision` record (7 near-misses in
   total), each classified Recorded under a valid
   audit chain; the freeze appends nothing. The step
   also pins the surfacing boundary stated in §5: the
   sequence's 1 `require_approval` decision is
-  present in the audit and contributes zero
-  near-miss records. The counts are from the executed
+  present in the audit and contributes one
+  near-miss record since the issue
+  #375 fix (PR #413; §10). The counts are from the executed
   run at this head, not estimates.
 - negative control: with the governed boundary
   swapped for the inferred model of the incident — a
@@ -562,6 +564,33 @@ transfer re-run per §8's method: the amended
 scenario passes 8/8 at the exact base `d7b7506`,
 so the §8 transfer result stands for the amended
 module.
+
+## 10. Addendum — #413 near-miss derivation pin refresh (2026-11-27)
+
+Cause (Verified): PR #413 (merged 2026-11-26 as
+`b1cea2f`, fixing issue #375) changed the incident
+channel's derivation so a `decision` record with
+outcome `require_approval` derives one near-miss per
+occurrence, mirroring the deny path. This branch was
+built before #413 and pinned the pre-#413 total;
+step 6 failed deterministically at the old head
+(6 != 7). The delta is exactly this scenario's 1
+`require_approval` decision — the same update shape
+#413 itself applied to its twelve scenarios.
+
+Change (test pins and this record only; no kernel or
+production code touched; `authority_effect=none`):
+step 6's near-miss identity and `decision`
+source-detail count now include
+`len(require_approval_decisions)`; the pinned total
+moves 6 → 7; the module docstring and §4 counts
+state the new derivation. §5 and §8 describe the
+pre-#413 boundary and checkpoint states as they
+stood when recorded and are left as written; this
+addendum supersedes them for the current head.
+
+Re-verification at this head: scenario 8/8; full
+suite **1183 tests, OK (skipped=13)**.
 
 ## Sources
 
