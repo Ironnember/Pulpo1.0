@@ -33,7 +33,6 @@ from pulpo.directives import Directive
 from pulpo.state import (
     ApprovalUse,
     CompositeAuditSigner,
-    Ed25519AuditSigner,
     InMemoryKernelState,
     LeaseIssuance,
     SQLiteKernelState,
@@ -47,9 +46,26 @@ LEASE = "lease-1"
 LEASE_DIGEST = "lease-digest-1"
 
 
+class _StubVerifier:
+    """One era's verifier half, without the cryptography extra: the
+    composite below is verification-only because it has NO signer,
+    which is the whole of the defect's trigger — its sign() raises
+    the exact RuntimeError before any verifier is consulted. (The
+    real Ed25519-backed composite is exercised in
+    tests/test_audit_signing_ed25519.py; this file must also run in
+    the zero-dependency CI job.)"""
+
+    algorithm = "ed25519"
+
+    def sign(self, record_hash: str) -> str:
+        raise RuntimeError("verifier is verification-only")
+
+    def verify(self, record_hash: str, signature) -> bool:
+        return False
+
+
 def verify_only_signer() -> CompositeAuditSigner:
-    ed = Ed25519AuditSigner(bytes.fromhex("11" * 32))
-    return CompositeAuditSigner(verifiers=[ed.verifier()])
+    return CompositeAuditSigner(verifiers=[_StubVerifier()])
 
 
 def make_directive(**overrides) -> Directive:

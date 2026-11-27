@@ -112,7 +112,15 @@ behind the same state-backend seam; no second ledger or writer.
   transition (full canonical-container snapshot compared before and
   after the raising call), plus two SQLite disposition tests. All 7
   in-memory tests FAIL on pre-fix code and PASS after; the 2 SQLite
-  tests pass both before and after, pinning the disposition.
+  tests pass both before and after, pinning the disposition. The
+  tests build the verification-only composite over a stub verifier
+  half so the file also runs in CI's zero-dependency job (no
+  `cryptography` extra) — the composite is verification-only because
+  it has no signer half, which is the whole of the trigger; the real
+  Ed25519-backed composite is exercised in
+  `tests/test_audit_signing_ed25519.py`. (First CI run caught this:
+  the helper originally built a real Ed25519 signer and errored in
+  the zero-dependency job; fixed in the follow-up commit.)
 - Full suite: see PR description for before/after totals; behavior
   with a working signer is unchanged — every pre-existing test
   passes unmodified.
