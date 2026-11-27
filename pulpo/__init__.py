@@ -45,6 +45,7 @@ from .kernel import (
     TargetResolution,
 )
 from .namecom import NameComCoreAdapter
+from .permit_gate import PermitGate, PermitRefused, require_permit, spend_permit
 from .orchestrator import (
     ApprovalHandle,
     AuthorizationAttempt,
@@ -100,6 +101,8 @@ __all__ = [
     "OrchestrationError",
     "P256ApprovalVerifier",
     "P256CeremonyVerifier",
+    "PermitGate",
+    "PermitRefused",
     "Policy",
     "PresenterVerifier",
     "PulpoOrchestrator",
@@ -111,5 +114,7 @@ __all__ = [
     "anchor_records",
     "anchor_state",
     "evaluate_locked_target_with_approval",
+    "require_permit",
+    "spend_permit",
     "verify_anchored_audit",
 ]
