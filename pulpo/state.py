@@ -912,6 +912,25 @@ class InMemoryKernelState:
         self._audit: list[dict[str, Any]] = []
         self._audit_lock = RLock()
 
+    def _require_audit_signing_available(self) -> None:
+        # Finding 7 (Codex P1 on PR #420): every mutating transition
+        # below appends its signed audit record AFTER recording its
+        # mutations, so a signer that cannot sign — a verification-only
+        # CompositeAuditSigner raises on every sign() — failed the
+        # transition with the mutations already landed: canonical state
+        # changed with no signed evidence, irreversibly for a spent
+        # permit. Signing availability is a property of the signer's
+        # configuration, not of the record (every signer behind the
+        # AuditSigningKey seam either signs any record hash or none),
+        # so each transition probes the signer BEFORE its first
+        # mutation, inside the same locked sequence: a signer that
+        # cannot sign refuses the transition here, against an unchanged
+        # state, and a signer that passes the probe signs the
+        # transition's appends. The probe signature is discarded; it
+        # is recorded nowhere.
+        if self.audit_signer is not None:
+            self.audit_signer.sign("0" * 64)
+
     @property
     def audit(self) -> list[dict[str, Any]]:
         # Return detached deep copies, copied under the audit lock, matching
@@ -943,12 +962,14 @@ class InMemoryKernelState:
             if approval is not None:
                 replay = self.approval_replay_reason(approval.approval_id, approval.nonce)
                 if replay: return replay
+                self._require_audit_signing_available()
                 if approval.ceremony_evidence_id is not None:
                     ceremony_replay = self.ceremony_replay_reason(approval.ceremony_evidence_id)
                     if ceremony_replay: return ceremony_replay
                     self._ceremony_evidence_ids.add(approval.ceremony_evidence_id)
                 self._approval_ids.add(approval.approval_id); self._approval_nonces.add(approval.nonce)
                 self.append("approval_verified", approval.audit_payload, timestamp_ns)
+            self._require_audit_signing_available()
             self._issued[permit] = intent_hash
             if expires_at_ns is not None:
                 self._permit_expiry[permit] = expires_at_ns
@@ -964,6 +985,7 @@ class InMemoryKernelState:
             if permit in self._permit_directives: raise ValueError("permit directive binding is immutable")
             if self.directive_status(binding.directive_id, binding.version, binding.directive_hash) != "active": raise ValueError("directive is not active for permit binding")
             if binding.parent_directive_hash is not None and self.directive_hash_status(binding.parent_directive_hash) != "active": raise ValueError("parent directive is not active for permit binding")
+            self._require_audit_signing_available()
             self._permit_directives[permit] = binding
             self.append("permit_bound_to_directive", {"intent_hash": intent_hash, **binding.audit_payload()}, timestamp_ns)
 
@@ -1107,6 +1129,9 @@ class InMemoryKernelState:
                 elif budget_key is not None:
                     payload["budget_status"] = "within_budget"
             if valid:
+                # Finding 7: signing availability is established
+                # before the spend and budget debits below.
+                self._require_audit_signing_available()
                 self._spent.add(permit)
                 if budget_key is not None:
                     self._budget_spent[budget_key] = budget_spent_before + budget_amount
@@ -1128,6 +1153,7 @@ class InMemoryKernelState:
             if approval is not None:
                 replay = self.approval_replay_reason(approval.approval_id, approval.nonce)
                 if replay: return replay
+                self._require_audit_signing_available()
                 if approval.ceremony_evidence_id is not None:
                     ceremony_replay = self.ceremony_replay_reason(approval.ceremony_evidence_id)
                     if ceremony_replay: return ceremony_replay
@@ -1135,6 +1161,7 @@ class InMemoryKernelState:
                 self._approval_ids.add(approval.approval_id); self._approval_nonces.add(approval.nonce)
                 self.append("approval_verified", approval.audit_payload, timestamp_ns)
             if lease in self._leases: return "lease_token_replayed"
+            self._require_audit_signing_available()
             self._leases[lease] = _LeaseEntry(
                 lease_digest=issuance.lease_digest,
                 intent_hash=intent_hash,
@@ -1195,6 +1222,7 @@ class InMemoryKernelState:
                         reason = "lease_budget_exhausted"
                         payload["lease_status"] = reason
             if reason is None:
+                self._require_audit_signing_available()
                 assert entry is not None
                 entry.commands_used += 1
                 entry.last_sequence = sequence
@@ -1249,6 +1277,7 @@ class InMemoryKernelState:
             parent_hash = getattr(directive, "parent_directive_hash", None)
             if parent_hash is not None and self.directive_hash_status(parent_hash) != "active":
                 raise ValueError("parent directive is not active for activation")
+            self._require_audit_signing_available()
             self._directives[key] = (directive.directive_hash, False)
             self._directive_parents[key] = parent_hash
             if budget is not None:
@@ -1276,6 +1305,7 @@ class InMemoryKernelState:
                 version=version,
                 directive_hash=digest,
             )
+            self._require_audit_signing_available()
             self._directives[key] = (digest, True)
             self.append("directive_revoked", {"directive_id": directive_id, "version": version, "directive_hash": digest, "authority_evidence": evidence.audit_payload()}, timestamp_ns)
 
