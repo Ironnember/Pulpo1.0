@@ -71,8 +71,7 @@ events, ``approval_rejected`` events, and denied
 decisions into near-miss records. A bare ``evaluate``
 that returns ``require_approval`` -- the kernel declining
 to mint without approval -- appends a decision record to
-the canonical audit but is NOT derived as a near-miss by
-the channel. The scenario asserts both halves of that
+the canonical audit but is derived as a near-miss by the channel since the issue #375 fix. The scenario asserts both halves of that
 statement exactly as they hold; it does not smooth the
 second half over.
 
@@ -750,13 +749,14 @@ class GlinetGoodCloudIncidentScenarioTests(unittest.TestCase):
         # Every derived near-miss is accounted for by the
         # event classes the channel derives -- no more, no
         # fewer. The require_approval decision above is an
-        # audit-recorded attempt that contributes zero
-        # near-miss records at this commit.
+        # audit-recorded attempt that contributes one near-miss
+        # record per occurrence (issue #375).
         self.assertEqual(
-            len(permit_rejected) + len(approval_rejected) + len(denied_decisions),
+            len(permit_rejected) + len(approval_rejected) + len(denied_decisions)
+            + len(require_approval_decisions),
             report.near_misses,
         )
-        self.assertEqual(10, report.near_misses)
+        self.assertEqual(11, report.near_misses)
         self.assertEqual(report.near_misses, len(report.records))
         for record in report.records:
             self.assertEqual("near_miss", record.kind)
@@ -768,7 +768,7 @@ class GlinetGoodCloudIncidentScenarioTests(unittest.TestCase):
             {
                 "permit_rejected": len(permit_rejected),
                 "approval_rejected": len(approval_rejected),
-                "decision": len(denied_decisions),
+                "decision": len(denied_decisions) + len(require_approval_decisions),
             },
             detail_counts,
         )
