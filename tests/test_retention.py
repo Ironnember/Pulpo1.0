@@ -14,7 +14,7 @@ class GovernedRetentionTests(unittest.TestCase):
             clock=lambda: 20,
         )
         self.inventory = EvidenceInventory()
-        self.retention = GovernedRetention(self.inventory, self.state)
+        self.retention = GovernedRetention(self.inventory, self.kernel)
         self.policy = RetentionPolicy("policy-1", "GREENLEE_SO", max_age_ns=5)
         self.record = EvidenceRecord(
             evidence_id="evidence-1",

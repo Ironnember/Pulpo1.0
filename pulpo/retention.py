@@ -14,7 +14,6 @@ import json
 from typing import Any
 
 from .kernel import Decision, GovernanceKernel, Intent
-from .state import KernelState
 
 
 def _canonical(value: Any) -> bytes:
@@ -113,22 +112,19 @@ class EvidenceInventory:
 class GovernedRetention:
     """Retention decision and deletion reconciliation using canonical Pulpo authority."""
 
-    def __init__(self, inventory: EvidenceInventory, state: KernelState) -> None:
+    def __init__(self, inventory: EvidenceInventory, kernel: GovernanceKernel) -> None:
         self.inventory = inventory
-        self._state = state
+        self._kernel = kernel
 
     def create_evidence(self, record: EvidenceRecord, timestamp_ns: int) -> None:
         self.inventory.put(record)
-        self._state.append(
-            "evidence_created",
-            {
-                "evidence_id": record.evidence_id,
-                "agency_id": record.agency_id,
-                "created_at_ns": record.created_at_ns,
-                "evidence_hash": record.evidence_hash,
-                "merkle_root": self.inventory.merkle_root,
-            },
-            timestamp_ns,
+        self._kernel.record_evidence_created(
+            evidence_id=record.evidence_id,
+            agency_id=record.agency_id,
+            created_at_ns=record.created_at_ns,
+            evidence_hash=record.evidence_hash,
+            merkle_root=self.inventory.merkle_root,
+            timestamp_ns=timestamp_ns,
         )
 
     @staticmethod
@@ -155,56 +151,58 @@ class GovernedRetention:
     ) -> DeletionManifest | None:
         expected_resource = f"evidence:{evidence_id}"
         if intent.action != "delete_evidence" or intent.resource != expected_resource or intent.principal != actor:
-            self._state.append(
-                "deletion_rejected",
-                {"evidence_id": evidence_id, "reason": "deletion_intent_mismatch", "intent_hash": kernel.intent_hash(intent)},
-                now_ns,
+            self._kernel.record_deletion_rejected(
+                evidence_id=evidence_id,
+                reason="deletion_intent_mismatch",
+                intent_hash=kernel.intent_hash(intent),
+                timestamp_ns=now_ns,
             )
             return None
         if decision.outcome != "allow" or not decision.permit or decision.intent_hash != kernel.intent_hash(intent):
-            self._state.append(
-                "deletion_rejected",
-                {"evidence_id": evidence_id, "reason": "valid_permit_required", "intent_hash": kernel.intent_hash(intent)},
-                now_ns,
+            self._kernel.record_deletion_rejected(
+                evidence_id=evidence_id,
+                reason="valid_permit_required",
+                intent_hash=kernel.intent_hash(intent),
+                timestamp_ns=now_ns,
             )
             return None
         # Consume first.  A denied retention attempt cannot be replayed later after
         # time advances and silently become eligible under an old permit.
         if not kernel.consume(decision.permit, intent):
-            self._state.append(
-                "deletion_rejected",
-                {"evidence_id": evidence_id, "reason": "permit_rejected", "intent_hash": decision.intent_hash},
-                now_ns,
+            self._kernel.record_deletion_rejected(
+                evidence_id=evidence_id,
+                reason="permit_rejected",
+                intent_hash=decision.intent_hash,
+                timestamp_ns=now_ns,
             )
             return None
 
         record = self.inventory.get(evidence_id)
         if record is None:
-            self._state.append(
-                "deletion_rejected",
-                {"evidence_id": evidence_id, "reason": "evidence_not_found", "intent_hash": decision.intent_hash},
-                now_ns,
+            self._kernel.record_deletion_rejected(
+                evidence_id=evidence_id,
+                reason="evidence_not_found",
+                intent_hash=decision.intent_hash,
+                timestamp_ns=now_ns,
             )
             return None
 
         eligibility = self.eligibility(record, policy, now_ns)
-        self._state.append(
-            "retention_evaluated",
-            {
-                "evidence_id": evidence_id,
-                "policy_id": policy.policy_id,
-                "eligible": eligibility.eligible,
-                "reason": eligibility.reason,
-                "age_ns": eligibility.age_ns,
-                "intent_hash": decision.intent_hash,
-            },
-            now_ns,
+        self._kernel.record_retention_evaluated(
+            evidence_id=evidence_id,
+            policy_id=policy.policy_id,
+            eligible=eligibility.eligible,
+            reason=eligibility.reason,
+            age_ns=eligibility.age_ns,
+            intent_hash=decision.intent_hash,
+            timestamp_ns=now_ns,
         )
         if not eligibility.eligible:
-            self._state.append(
-                "deletion_rejected",
-                {"evidence_id": evidence_id, "reason": eligibility.reason, "intent_hash": decision.intent_hash},
-                now_ns,
+            self._kernel.record_deletion_rejected(
+                evidence_id=evidence_id,
+                reason=eligibility.reason,
+                intent_hash=decision.intent_hash,
+                timestamp_ns=now_ns,
             )
             return None
 
@@ -228,5 +226,5 @@ class GovernedRetention:
             "intent_hash": decision.intent_hash,
         }
         manifest = DeletionManifest(manifest_id=_hash({"schema": "pulpo.deletion-manifest.v1", **core}), **core)
-        self._state.append("deletion_executed", asdict(manifest), now_ns)
+        self._kernel.record_deletion_executed(**asdict(manifest), timestamp_ns=now_ns)
         return manifest

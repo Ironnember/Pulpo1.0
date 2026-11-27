@@ -2202,6 +2202,166 @@ class GovernanceKernel:
         )
         return completion
 
+    def record_evidence_created(
+        self,
+        *,
+        evidence_id: str,
+        agency_id: str,
+        created_at_ns: int,
+        evidence_hash: str,
+        merkle_root: str,
+        timestamp_ns: int,
+    ) -> None:
+        """Facade verb: append the governed-retention evidence-created record.
+
+        Fixed schema: the ``evidence_created`` event. The governed
+        retention module (``pulpo.retention``) inventories the exact
+        evidence object and computes its hash and the inventory's
+        Merkle root; this verb is the only route by which that
+        observation reaches canonical state, so the retention module
+        never touches the state backend itself. The payload is
+        exactly the record the retention proof has always written —
+        the verb changes the route, not the record. The record
+        grants nothing: creating an inventory entry is an
+        execution-side observation, and deletion authority still
+        requires the permit path the retention module drives through
+        ``evaluate``/``consume``.
+        """
+
+        self._state.append(
+            "evidence_created",
+            {
+                "evidence_id": evidence_id,
+                "agency_id": agency_id,
+                "created_at_ns": created_at_ns,
+                "evidence_hash": evidence_hash,
+                "merkle_root": merkle_root,
+            },
+            timestamp_ns,
+        )
+
+    def record_retention_evaluated(
+        self,
+        *,
+        evidence_id: str,
+        policy_id: str,
+        eligible: bool,
+        reason: str,
+        age_ns: int,
+        intent_hash: str,
+        timestamp_ns: int,
+    ) -> None:
+        """Facade verb: append the governed-retention eligibility record.
+
+        Fixed schema: the ``retention_evaluated`` event. The
+        retention module computes eligibility (agency match, clock
+        sanity, age against the policy window) after the deletion
+        permit has been consumed; this verb is the only route by
+        which that evaluation reaches canonical state. The payload
+        is exactly the record the retention proof has always
+        written. The record grants nothing: eligibility is not
+        authority, and an ineligible evaluation is followed by a
+        ``deletion_rejected`` record through its own verb.
+        """
+
+        self._state.append(
+            "retention_evaluated",
+            {
+                "evidence_id": evidence_id,
+                "policy_id": policy_id,
+                "eligible": eligible,
+                "reason": reason,
+                "age_ns": age_ns,
+                "intent_hash": intent_hash,
+            },
+            timestamp_ns,
+        )
+
+    def record_deletion_rejected(
+        self,
+        *,
+        evidence_id: str,
+        reason: str,
+        intent_hash: str,
+        timestamp_ns: int,
+    ) -> None:
+        """Facade verb: append a governed-retention deletion rejection.
+
+        Fixed schema: the ``deletion_rejected`` event. Every refusal
+        path in the retention module's deletion flow (intent
+        mismatch, permit invalid or unconsumable, evidence missing,
+        retention ineligible) reports through this verb instead of
+        appending to the state backend itself, so a refused attempt
+        is visible to the canonical audit exactly once per refusal —
+        the same one-record-per-denial discipline as
+        ``record_directive_denial``. The payload is exactly the
+        record the retention proof has always written. The record
+        grants nothing and spends nothing beyond what the flow
+        already consumed before the refusal.
+        """
+
+        self._state.append(
+            "deletion_rejected",
+            {
+                "evidence_id": evidence_id,
+                "reason": reason,
+                "intent_hash": intent_hash,
+            },
+            timestamp_ns,
+        )
+
+    def record_deletion_executed(
+        self,
+        *,
+        manifest_id: str,
+        evidence_id: str,
+        agency_id: str,
+        deleted_at_ns: int,
+        actor: str,
+        policy_id: str,
+        eligibility_reason: str,
+        evidence_hash: str,
+        merkle_root_before: str,
+        merkle_root_after: str,
+        intent_hash: str,
+        timestamp_ns: int,
+    ) -> None:
+        """Facade verb: append the governed-retention deletion manifest record.
+
+        Fixed schema: the ``deletion_executed`` event, whose payload
+        is the deletion manifest itself — the field set of the
+        retention module's ``DeletionManifest`` in its canonical
+        order (manifest id, evidence and agency identity, deletion
+        time, actor, policy, eligibility reason, the exact evidence
+        hash, the inventory Merkle roots before and after removal,
+        and the intent hash the permit was bound to). The retention
+        module assembles the manifest from the deletion it performed
+        under a consumed permit; this verb is the only route by
+        which the manifest reaches canonical state. The payload is
+        exactly the record the retention proof has always written.
+        The manifest is evidence of the deletion, not authority for
+        it: the authority was the permit, consumed before the
+        manifest existed.
+        """
+
+        self._state.append(
+            "deletion_executed",
+            {
+                "manifest_id": manifest_id,
+                "evidence_id": evidence_id,
+                "agency_id": agency_id,
+                "deleted_at_ns": deleted_at_ns,
+                "actor": actor,
+                "policy_id": policy_id,
+                "eligibility_reason": eligibility_reason,
+                "evidence_hash": evidence_hash,
+                "merkle_root_before": merkle_root_before,
+                "merkle_root_after": merkle_root_after,
+                "intent_hash": intent_hash,
+            },
+            timestamp_ns,
+        )
+
     def record_domain_outcome_memory(
         self,
         *,
