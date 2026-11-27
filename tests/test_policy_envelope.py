@@ -368,5 +368,160 @@ class PolicyEnvelopeTests(unittest.TestCase):
             )
 
 
+class PolicyEnvelopeP1RegressionTests(unittest.TestCase):
+    """Adversarial regressions for the three Codex P1 findings on PR #418.
+
+    Each test is derived from the runtime reproduction in
+    ~/workspace/goals/pulpo1-0-development/hidden_files/p1-verification-2026-11-27.md
+    (script /tmp/repro418.py) and fails on the pre-fix code.
+    """
+
+    def setUp(self):
+        self.verifier = HmacTestVerifier()
+        self.policy = Policy(
+            frozenset({"read", "push"}),
+            100,
+            frozenset({"push"}),
+            authority_trust=trust_for(self.verifier),
+        )
+        self.envelope = signed_policy_envelope(self.policy, self.verifier)
+        self.intent_push = Intent("agent:publisher", "push", "repo:origin/main", 0, SESSION)
+        self.intent_read = Intent("agent:publisher", "read", "repo:origin/main", 0, SESSION)
+
+    def make_kernel(self, *, policy=None, envelope=None, state=None):
+        return GovernanceKernel(
+            policy or self.policy,
+            approval_verifier=self.verifier,
+            clock=lambda: NOW,
+            state=state,
+            policy_envelope=self.envelope if envelope is None else envelope,
+        )
+
+    def advance_to_v2(self, state, *, max_cost=100):
+        policy_v2 = replace(
+            self.policy,
+            version=2,
+            previous_policy_hash=policy_hash_for(self.policy),
+            max_cost=max_cost,
+        )
+        envelope_v2 = signed_policy_envelope(policy_v2, self.verifier)
+        return self.make_kernel(policy=policy_v2, envelope=envelope_v2, state=state)
+
+    # Finding 1: a long-lived kernel whose policy head is superseded by
+    # another kernel on the same state must refuse at execution time,
+    # on both the approval path and the plain evaluate/consume path.
+    def test_stale_kernel_refuses_after_head_advances_on_shared_state(self):
+        state = InMemoryKernelState()
+        stale = self.make_kernel(state=state)
+        self.advance_to_v2(state)
+        approval = signed_envelope(stale, self.intent_push, self.verifier, now_ns=NOW)
+        with self.assertRaisesRegex(PolicyEnvelopeError, "superseded"):
+            stale.evaluate_with_approval(self.intent_push, approval)
+        with self.assertRaisesRegex(PolicyEnvelopeError, "superseded"):
+            stale.evaluate(self.intent_read)
+
+    def test_stale_kernel_cannot_consume_a_permit_issued_before_supersession(self):
+        state = InMemoryKernelState()
+        stale = self.make_kernel(state=state)
+        decision = stale.evaluate(self.intent_read)
+        self.assertEqual("allow", decision.outcome)
+        self.advance_to_v2(state)
+        with self.assertRaisesRegex(PolicyEnvelopeError, "superseded"):
+            stale.consume(decision.permit, self.intent_read)
+
+    # Finding 2: two validly signed successors of the same predecessor,
+    # constructed concurrently with both head-reads synchronized before
+    # either append, cannot both land -- exactly one conflicting head
+    # is refused and exactly one v2 head is recorded.
+    def test_concurrent_conflicting_policy_heads_cannot_both_land(self):
+        import threading
+
+        state = InMemoryKernelState()
+        self.make_kernel(state=state)
+        policy_a = replace(
+            self.policy,
+            version=2,
+            previous_policy_hash=policy_hash_for(self.policy),
+            max_cost=100,
+        )
+        policy_b = replace(policy_a, max_cost=50)
+        envelope_a = signed_policy_envelope(policy_a, self.verifier)
+        envelope_b = signed_policy_envelope(policy_b, self.verifier)
+
+        original = GovernanceKernel._recorded_policy_head
+        barrier = threading.Barrier(2)
+
+        def synchronized_head(kernel_self):
+            head = original(kernel_self)
+            envelope = getattr(kernel_self, "_policy_envelope", None)
+            if (
+                head is not None
+                and head.get("policy_version") == 1
+                and envelope is not None
+                and envelope.version == 2
+            ):
+                try:
+                    barrier.wait(timeout=5)
+                except threading.BrokenBarrierError:
+                    pass
+            return head
+
+        results = {}
+
+        def build(name, policy, envelope):
+            try:
+                self.make_kernel(policy=policy, envelope=envelope, state=state)
+                results[name] = "ACCEPTED"
+            except Exception as exc:  # noqa: BLE001 - recorded for assertion
+                results[name] = f"{type(exc).__name__}: {exc}"
+
+        GovernanceKernel._recorded_policy_head = synchronized_head
+        try:
+            threads = [
+                threading.Thread(target=build, args=("a", policy_a, envelope_a)),
+                threading.Thread(target=build, args=("b", policy_b, envelope_b)),
+            ]
+            for thread in threads:
+                thread.start()
+            for thread in threads:
+                thread.join(10)
+        finally:
+            GovernanceKernel._recorded_policy_head = original
+
+        accepted = [name for name, result in results.items() if result == "ACCEPTED"]
+        refused = [
+            result for result in results.values() if result.startswith("PolicyEnvelopeError")
+        ]
+        self.assertEqual(1, len(accepted), results)
+        self.assertEqual(1, len(refused), results)
+        heads_v2 = [
+            record["payload"]
+            for record in state.audit
+            if record["event"] == "policy_head_accepted"
+            and record["payload"]["policy_version"] == 2
+        ]
+        self.assertEqual(1, len(heads_v2))
+
+    # Finding 3: omitting both the envelope and the approval verifier
+    # must not construct a versioned kernel, nor a kernel over state
+    # that already records a policy head.
+    def test_missing_verifier_and_envelope_refused_for_versioned_policy(self):
+        policy_v2 = replace(
+            self.policy, version=2, previous_policy_hash=policy_hash_for(self.policy)
+        )
+        with self.assertRaisesRegex(
+            PolicyEnvelopeError, "signed policy envelope is required"
+        ):
+            GovernanceKernel(policy_v2, clock=lambda: NOW)
+
+    def test_missing_verifier_and_envelope_refused_with_recorded_head(self):
+        state = InMemoryKernelState()
+        self.make_kernel(state=state)
+        with self.assertRaisesRegex(
+            PolicyEnvelopeError, "signed policy envelope is required"
+        ):
+            GovernanceKernel(self.policy, clock=lambda: NOW, state=state)
+
+
 if __name__ == "__main__":
     unittest.main()
