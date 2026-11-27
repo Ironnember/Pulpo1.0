@@ -157,3 +157,126 @@ reported with it.
   wrong-key proof refused (and the permit unburned), foreign presenter
   refused at the boundary, legacy bearer flow unchanged when binding
   is not required.
+
+## Addendum — Codex P1 fix pass (PR #418), 2026-11-27
+
+Authorization: Austin Irvan, 2026-11-27 11:32 MST — "Authorize fix
+passes for all 8" (the eight verified Codex P1 findings across PRs
+#418/#419/#420/#421). This addendum covers the three #418 findings
+only. Findings and firsthand reproduction evidence:
+`~/workspace/goals/pulpo1-0-development/hidden_files/p1-verification-2026-11-27.md`
+(PR #418 section; repro script `/tmp/repro418.py`). Fix-pass base head:
+a5269e08f18520d68efc785bd17b39d70f496e7b (`pulpo/kernel.py`
+byte-identical to the verified head 97b666b).
+
+### 1. The invariants / failures addressed
+
+1. **Stale kernels retain superseded authority** (thread
+   PRRT_kwDOUBywws68zrBc). A long-lived kernel never re-consulted the
+   recorded policy head after construction, so after another kernel on
+   the same state advanced the head v1 → v2, the stale kernel's
+   `evaluate_with_approval` still returned allow and its permits still
+   consumed under v1.
+2. **Concurrent policy updates create conflicting heads** (thread
+   PRRT_kwDOUBywws68zrBm). `_accept_policy_head()` read the recorded
+   head and appended the new head in separate steps with no lock
+   spanning check + append, so two barrier-synchronized constructors
+   with different validly signed v2 envelopes on the same v1
+   predecessor both landed a `policy_head_accepted` record.
+3. **Missing verifier disables envelope enforcement** (thread
+   PRRT_kwDOUBywws68zrBu). The missing-envelope refusal at construction
+   was conditional on an approval verifier being configured, so
+   omitting both the envelope and the verifier constructed a versioned
+   kernel (or one over state with a recorded head) with
+   `policy_head=None` and full governing power.
+
+### 2. Authority gained, narrowed, or left unchanged
+
+- **Narrowed (all three):** superseded kernels refuse at execution
+  time; a second conflicting successor of the same predecessor refuses
+  at construction; an under-configured construction (no verifier, no
+  envelope) refuses wherever a chain is claimed or recorded. Every
+  refusal is fail-closed with the named `PolicyEnvelopeError`.
+- **Unchanged:** well-configured, current-policy operation is
+  byte-for-byte the prior behavior — the pre-existing envelope tests
+  and the full suite pass unmodified. No new authority is granted to
+  any party; no signer, credential, or custody semantics touched.
+
+### 3. Canonical state mutations introduced or exposed
+
+None new. The same single `policy_head_accepted` audit event is now
+appended through the state layer's existing atomic `append_unique`
+primitive (identity: `policy_version`) instead of plain `append`, so
+check-and-append is one state transition on both backends (in-memory:
+the audit lock spans match-check + append; SQLite: `BEGIN IMMEDIATE`
+transaction). No state.py change; no new event, router, ledger, or
+authority plane.
+
+### 4. Exact success and adversarial evidence
+
+- Mechanisms: (1) `_require_pinned_policy()` — invoked by evaluate,
+  the approval path, consume, and every other permit-affecting path —
+  now also calls `_require_current_policy_head()`, which re-reads the
+  recorded head at execution time and refuses (`PolicyEnvelopeError`:
+  "stale policy: this kernel's policy head has been superseded by the
+  recorded policy head") when it no longer matches this kernel's
+  envelope, and refuses an envelope-less kernel once any head is
+  recorded. (2) `_append_policy_head()` appends via `append_unique`
+  keyed on `policy_version`; a constructor handed back a winning head
+  that is not its own envelope refuses with "policy envelope conflicts
+  with the recorded policy head". (3) The construction-time
+  missing-envelope refusal no longer requires
+  `approval_verifier is not None`, and fires on a recorded head even
+  without a pinned trust on the presented policy.
+- New adversarial regression tests
+  (`tests/test_policy_envelope.py::PolicyEnvelopeP1RegressionTests`, 5
+  tests, derived from the verification reproductions): stale kernel
+  refuses on evaluate + evaluate_with_approval after supersession;
+  stale kernel cannot consume a permit issued before supersession;
+  barrier-synchronized conflicting v2 constructors — exactly one
+  accepted, exactly one `PolicyEnvelopeError`, exactly one v2 head
+  recorded; missing verifier + missing envelope refused for a
+  versioned policy; same refused over state with a recorded head.
+- Fail-first: all 5 new tests FAIL against the pre-fix kernel
+  (verified by stashing the kernel change: `FAILED (failures=5)`) and
+  PASS after the fix. The original `/tmp/repro418.py`, re-pointed at
+  the fixed tree, now raises the named supersession refusal at the
+  stale kernel's first governed action.
+- Suite totals (`python -W error -m unittest discover -s tests`):
+  test-case discovery at the pre-fix base head counts **1217**; after
+  the fix the full run is **Ran 1222 tests, OK (skipped=13)** — the
+  delta is exactly the 5 new regression tests, zero regressions.
+
+### 5. The boundary the evidence does not prove
+
+- Finding 2's atomicity is proven for the two state backends in this
+  repo (in-memory lock, SQLite immediate transaction) under the
+  barrier-synchronized interleaving from the verification report;
+  uninstrumented races did not trigger even pre-fix, and no claim is
+  made about backends outside this repo.
+- Finding 1's revalidation reads the audit chain on every
+  consequential transition of an envelope-governed (or head-recorded)
+  state; it does not make a kernel constructed *before* any envelope
+  adoption on a never-enveloped state refuse — that remains the
+  documented genesis/legacy behavior until an envelope is adopted.
+
+### 6. Claim classification
+
+- Finding existence and pre-fix reproduction: **Recorded** (Codex
+  threads + the 2026-11-27 verification report).
+- Fix behavior, fail-first property, and suite totals at the fix-pass
+  commit: **Verified** (executed at the exact commit).
+- Production deployment effect: **Unknown** — no production kernel has
+  adopted envelopes yet (signer custody still open, per the record
+  above).
+
+### 7. Legacy behavior source
+
+None new; the fixes extend the ported mechanism within canonical's own
+kernel/state control paths.
+
+### 8. Temporal-transfer evidence
+
+No relevant historical checkpoint exists for these defects — they were
+introduced by this branch's port itself and are fixed on the same
+branch before merge. No reusable lesson is claimed beyond this record.

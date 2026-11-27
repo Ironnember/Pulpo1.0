@@ -604,11 +604,14 @@ class GovernanceKernel:
             raise StateIntegrityError("kernel state audit chain is invalid")
         if self._policy_envelope is not None:
             self._accept_policy_head()
-        elif (
-            self.policy.authority_trust is not None
-            and self._approval_verifier is not None
-            and (self.policy.version > 1 or self._recorded_policy_head() is not None)
+        elif (self.policy.authority_trust is not None and self.policy.version > 1) or (
+            self._recorded_policy_head() is not None
         ):
+            # The requirement does not depend on an approval verifier
+            # being configured: omitting both the envelope and the
+            # verifier must not silently disable envelope enforcement
+            # where a chain is claimed (version > 1) or already exists
+            # (a recorded policy head) (Codex P1 on PR #418).
             raise PolicyEnvelopeError(
                 "signed policy envelope is required for a versioned policy or a recorded policy head"
             )
@@ -1112,21 +1115,37 @@ class GovernanceKernel:
 
     def _append_policy_head(self, envelope: PolicyEnvelope) -> None:
         timestamp = self._trusted_now()
-        self._state.append(
+        payload = {
+            "policy_version": envelope.version,
+            "policy_hash": envelope.policy_hash,
+            "previous_policy_hash": envelope.previous_policy_hash,
+            "envelope_hash": envelope.envelope_hash,
+            "authority_id": envelope.authority_id,
+            "verifier_id": envelope.verifier_id,
+            "key_id": envelope.key_id,
+            "deployment_id": envelope.deployment_id,
+            "trust_hash": envelope.trust_hash,
+        }
+        # Admission must be atomic: the check in _accept_policy_head()
+        # reads the recorded head, so the append goes through the state
+        # layer's compare-and-append primitive keyed on the policy
+        # version. Two concurrent constructors advancing from the same
+        # predecessor cannot both land a head for the same version --
+        # the loser is handed the head that won and refuses here if it
+        # is not its own envelope (Codex P1 on PR #418).
+        existing = self._state.append_unique(
             "policy_head_accepted",
-            {
-                "policy_version": envelope.version,
-                "policy_hash": envelope.policy_hash,
-                "previous_policy_hash": envelope.previous_policy_hash,
-                "envelope_hash": envelope.envelope_hash,
-                "authority_id": envelope.authority_id,
-                "verifier_id": envelope.verifier_id,
-                "key_id": envelope.key_id,
-                "deployment_id": envelope.deployment_id,
-                "trust_hash": envelope.trust_hash,
-            },
+            "policy_version",
+            envelope.version,
+            payload,
             timestamp if timestamp is not None else 0,
         )
+        if existing is not None and not hmac.compare_digest(
+            str(existing.get("policy_hash", "")), envelope.policy_hash
+        ):
+            raise PolicyEnvelopeError(
+                "policy envelope conflicts with the recorded policy head"
+            )
 
     def _ceremony_failure(
         self,
@@ -1343,6 +1362,40 @@ class GovernanceKernel:
         if not hmac.compare_digest(self.policy_hash, self._pinned_policy_hash):
             raise StateIntegrityError(
                 "kernel policy does not match the policy pinned at construction"
+            )
+        self._require_current_policy_head()
+
+    def _require_current_policy_head(self) -> None:
+        """Fail closed if the recorded policy head has moved past this kernel.
+
+        The pinned-hash check above compares the kernel against its own
+        construction-time policy; it cannot see another kernel sharing
+        the same state advancing the recorded policy head afterwards.
+        Every consequential transition therefore re-reads the recorded
+        head at execution time: a kernel whose signed envelope is no
+        longer the recorded head refuses instead of issuing or consuming
+        under the superseded policy, and a kernel holding no envelope at
+        all refuses once a head has been recorded by someone else
+        (Codex P1 on PR #418).
+        """
+
+        head = self._recorded_policy_head()
+        envelope = self._policy_envelope
+        if envelope is None:
+            if head is not None:
+                raise PolicyEnvelopeError(
+                    "a policy head is recorded in state but this kernel holds no signed policy envelope"
+                )
+            return
+        if head is None:
+            raise PolicyEnvelopeError(
+                "this kernel's signed policy head is missing from the recorded policy chain"
+            )
+        if head["policy_version"] != envelope.version or not hmac.compare_digest(
+            head["policy_hash"], envelope.policy_hash
+        ):
+            raise PolicyEnvelopeError(
+                "stale policy: this kernel's policy head has been superseded by the recorded policy head"
             )
 
     def _permit_token_claims(self, permit: object) -> tuple[str, int, int, str] | None:
