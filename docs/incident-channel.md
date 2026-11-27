@@ -35,6 +35,7 @@ below), not a decision this module makes.
 | canonical audit | `purchase_revalidation_failed` | near-miss | not_applicable | audit record hash | hash chain |
 | canonical audit | `permit_rejected` | near-miss | not_applicable | audit record hash | hash chain |
 | canonical audit | `decision` with outcome `deny` | near-miss | not_applicable | audit record hash | hash chain |
+| canonical audit | `decision` with outcome `require_approval` | near-miss | not_applicable | audit record hash | hash chain |
 | canonical audit | `approval_rejected` | near-miss | not_applicable | audit record hash | hash chain |
 | canonical audit | `directive_denial` | near-miss | not_applicable | audit record hash | hash chain |
 | custody store | attempt `unresolved` | incident | unresolved | attempt authorization hash | authorization hashes only; the resolution is **Recorded** from the store, not anchored to a signed transition |
@@ -48,6 +49,13 @@ Rules:
 - One record per source audit event (`incident:<audit-record-hash>` or
   `near-miss:<audit-record-hash>`); one record per custody attempt
   (`incident:custody:<attempt_id>`, the attempt id already being a hash).
+  In particular (issue #375), a bare-evaluate-only attempt sequence —
+  `decision` records with outcome `require_approval`, no permit ever
+  issued or consumed — surfaces one near-miss per decision record, so
+  repeats count per occurrence and no decision is counted twice. This
+  is visibility only: it changes no authorization semantics, and it
+  does not retroactively invent records for historical gaps — a
+  historical audit gains records only when a report is frozen over it.
 - Merge: when a custody attempt has a `purchase_consequence_unknown` audit
   event carrying its `custody_attempt_id`, exactly one record is emitted,
   anchored on the audit event, with resolution taken from the attempt's
