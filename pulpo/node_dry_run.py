@@ -118,22 +118,15 @@ def execute_dry_run_output(
         now = kernel._trusted_now()
         if now is None:
             raise DryRunConsequenceUnknown("observation_time_unavailable")
-        kernel._state.append(
-            EVENT,
-            {
-                "schema": "pulpo.node-gpio-dry-run.v1",
-                "target_id": target_id,
-                "version": version,
-                "target_hash": target_hash,
-                "intent_hash": kernel.intent_hash(intent),
-                "policy_hash": kernel.policy_hash,
-                "consumption_hash": consumed["hash"],
-                "output": asdict(observed),
-                "object_hash": observed.object_hash,
-                "authority_effect": "none",
-                "governed_effect": "synthetic_output_observed",
-            },
-            now,
+        kernel.record_node_dry_run_observation(
+            target_id=target_id,
+            version=version,
+            target_hash=target_hash,
+            intent=intent,
+            consumption_hash=consumed["hash"],
+            output=asdict(observed),
+            object_hash=observed.object_hash,
+            timestamp_ns=now,
         )
     except DryRunConsequenceUnknown:
         raise

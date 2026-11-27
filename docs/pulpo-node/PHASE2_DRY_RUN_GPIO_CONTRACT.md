@@ -126,3 +126,39 @@ This is a new contract candidate, not a reusable organizational lesson or a
 claim of historical competence transfer. No temporal-transfer result is claimed.
 The Phase 1 virtual-lamp fixture and canonical target/kernel/state interfaces
 are the behavior references; no legacy authority or ledger is copied.
+
+## Addendum — state routing through the kernel (2026-11-27)
+
+Cause (Verified): the structural pin from PR #359
+(`test_no_state_reach_through_outside_kernel`) forbids any
+`pulpo/*.py` module besides `kernel.py` from reaching into the
+state backend. `execute_dry_run_output` appended its
+observation record by calling the kernel's state backend
+directly — the pin failed deterministically at the old head
+with `node_dry_run.py` as the sole offender
+(`[] != ['node_dry_run.py']`). The branch's incident-channel
+counts were not implicated; the scenario suite passed.
+
+Decision: Austin, 2026-11-27 — "Route both through the
+kernel" (this PR and PR #68), rejecting an exemption from
+the pin.
+
+Change (routing only; `authority_effect=none`, unchanged):
+`GovernanceKernel` gains the fixed-schema facade verb
+`record_node_dry_run_observation`, mirroring
+`record_directive_denial` / `record_target_completion` —
+the kernel derives the intent and policy hashes itself and
+appends exactly one `node_gpio_dry_run_observed` record.
+`execute_dry_run_output` now calls that verb with the exact
+consumption record hash, the observed output, and the
+trusted observation time it already resolved; an
+unavailable clock still fails in the caller before any
+append. Event name, payload fields and values, ordering,
+and failure semantics are byte-identical to the direct
+append they replace. No other module, table, or state path
+changed.
+
+Re-verification at this head: structural pin passes;
+capability-facade, dry-run GPIO, and virtual-lamp modules
+pass (37 tests); full suite **1196 tests, OK
+(skipped=13)**.
