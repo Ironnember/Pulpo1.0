@@ -95,13 +95,13 @@ Incident-channel surfacing (Verified at this commit, by
 executable probe and by the channel's derivation rules):
 the derived incident report turns ``permit_rejected``
 events, ``approval_rejected`` events, and denied
-decisions into near-miss records. Two classes of refusal
-in this scenario are NOT derived as near-misses, and the
-scenario asserts both exactly as they hold rather than
-smoothing either over. A bare ``evaluate`` returning
-``require_approval`` appends a decision record to the
-canonical audit but is not derived (the known channel
-boundary, issue #375). And a reconciliation refusal
+decisions into near-miss records. A bare ``evaluate``
+returning ``require_approval`` appends a decision record
+to the canonical audit and is derived as a near-miss by
+the channel since the issue #375 fix (PR #413). One
+class of refusal in this scenario is NOT derived as a
+near-miss, and the scenario asserts it exactly as it
+holds rather than smoothing it over. A reconciliation refusal
 happens at the dispatch boundary, before any consume is
 attempted: it appends nothing to the canonical audit at
 all, and is recorded only in the dispatcher's own
@@ -1311,16 +1311,18 @@ class FusionistAceIncidentScenarioTests(unittest.TestCase):
         self.assertEqual(1, len(require_approval_decisions))
         # Every derived near-miss is accounted for by the
         # event classes the channel derives -- no more, no
-        # fewer. The require_approval decision and the
-        # reconciliation refusal above are both real,
-        # recorded refusals that contribute zero near-miss
-        # records at this commit, each for its stated
+        # fewer. The require_approval decision contributes
+        # one near-miss record since the issue #375 fix
+        # (PR #413); the reconciliation refusal above is a
+        # real, recorded refusal that contributes zero
+        # near-miss records at this commit, for its stated
         # reason.
         self.assertEqual(
-            len(permit_rejected) + len(approval_rejected) + len(denied_decisions),
+            len(permit_rejected) + len(approval_rejected) + len(denied_decisions)
+            + len(require_approval_decisions),
             report.near_misses,
         )
-        self.assertEqual(6, report.near_misses)
+        self.assertEqual(7, report.near_misses)
         self.assertEqual(report.near_misses, len(report.records))
         for record in report.records:
             self.assertEqual("near_miss", record.kind)
@@ -1332,7 +1334,7 @@ class FusionistAceIncidentScenarioTests(unittest.TestCase):
             {
                 "permit_rejected": len(permit_rejected),
                 "approval_rejected": len(approval_rejected),
-                "decision": len(denied_decisions),
+                "decision": len(denied_decisions) + len(require_approval_decisions),
             },
             detail_counts,
         )

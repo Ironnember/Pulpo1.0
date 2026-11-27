@@ -197,12 +197,14 @@ Scenario module
   near-miss records the channel's derivation produces
   from the audit: 2 `permit_rejected`,
   2 `approval_rejected`, and 2 denied `decision`
-  records (6 near-misses in total), each classified
+  records, plus 1 `require_approval` `decision` record
+  (7 near-misses in total), each classified
   Recorded under a valid audit chain; the freeze
   appends nothing. The step also pins both surfacing
   boundaries stated in §5: the sequence's
-  1 `require_approval` decision contributes zero
-  near-miss records, and the included reconciliation
+  1 `require_approval` decision contributes one
+  near-miss record since the issue #375 fix
+  (PR #413; §11), and the included reconciliation
   refusal (step 2's route) leaves the canonical audit
   length unchanged across the dispatch.
 - negative control: with the reconciliation gate
@@ -603,3 +605,30 @@ Evidence (Verified, executed at the fix-pass head):
   and this pass's findings are left open for the
   reviewers on re-review; this pass does not resolve
   them.
+
+## 11. Addendum — #413 near-miss derivation pin refresh (2026-11-27)
+
+Cause (Verified): PR #413 (merged 2026-11-26 as
+`b1cea2f`, fixing issue #375) changed the incident
+channel's derivation so a `decision` record with
+outcome `require_approval` derives one near-miss per
+occurrence, mirroring the deny path. This branch was
+built before #413 and pinned the pre-#413 total;
+step 9 failed deterministically at the old head
+(6 != 7). The delta is exactly this scenario's 1
+`require_approval` decision — the same update shape
+#413 itself applied to its twelve scenarios.
+
+Change (test pins and this record only; no kernel or
+production code touched; `authority_effect=none`):
+step 9's near-miss identity and `decision`
+source-detail count now include
+`len(require_approval_decisions)`; the pinned total
+moves 6 → 7; the module docstring and §4 counts
+state the new derivation. §5 and §8 describe the
+pre-#413 boundary and checkpoint states as they
+stood when recorded and are left as written; this
+addendum supersedes them for the current head.
+
+Re-verification at this head: scenario 13/13; full
+suite **1188 tests, OK (skipped=13)**.
